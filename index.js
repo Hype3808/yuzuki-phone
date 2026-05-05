@@ -10,13 +10,13 @@
  * Copyright (c) yuzuki. All rights reserved.
  * ======================================================== */
 // ========================================
-// 虚拟手机互动系统 v1.0.3
+// 虚拟手机互动系统 v1.0.4
 // SillyTavern 扩展插件
 // ========================================
 
 const ST_PHONE_BASE_URL = new URL('./', import.meta.url).href;
 const ST_PHONE_GLOBAL_CSS_URL = new URL('./phone.css', import.meta.url).href;
-const ST_PHONE_VERSION = '1.0.3';
+const ST_PHONE_VERSION = '1.0.4';
 const ST_PHONE_UPDATE_MANIFEST_URLS = [
     'https://raw.githubusercontent.com/gaigai315/yuzuki-phone/main/manifest.json',
     'https://raw.githubusercontent.com/gaigai315/yuzuki-phone/master/manifest.json'
@@ -29,9 +29,8 @@ const ST_PHONE_CURRENT_UPDATE = {
     version: ST_PHONE_VERSION,
     date: '2026-05-05',
     items: [
-        '微信线下转线上新增接收人校验，只有发给用户或小手机微信里用户自己的昵称时才同步。',
-        '修复聊天 API 预设切换后不生效的问题，旧预设也能正确切换。',
-        '本次微信规则更新后必须更新提示词：可在设置页常规设置点击“一键更新所有提示词为默认最新版本”，或进入线下提示词区域对该提示词单独手动更新。'
+        '聊天 API 支持按 App 绑定不同预设，可让蜜语使用 Gemini、微信使用 GPT 等不同请求配置。',
+        '生图功能已接通 NovelAI / NAI，蜜语直播可按设置生成图片，并支持新剧情自动生图。'
     ]
 };
 

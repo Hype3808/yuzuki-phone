@@ -438,6 +438,23 @@ export class SettingsApp {
                                     </div>
                                 </div>
 
+                                <div style="margin-bottom: 12px; padding: 10px; background: #fff; border: 1px solid #ececec; border-radius: 8px;">
+                                    <div style="font-size: 12px; color: #333; font-weight: 700; margin-bottom: 4px;">App API 路由</div>
+                                    <div style="font-size: 11px; color: #888; line-height: 1.5; margin-bottom: 8px;">可让蜜语、微信分别使用不同 API 预设；不选则使用上方当前预设。</div>
+                                    <div style="display: grid; grid-template-columns: 54px 1fr; gap: 8px; align-items: center; margin-bottom: 8px;">
+                                        <div style="font-size: 12px; color: #666;">微信</div>
+                                        <select id="phone-api-route-wechat" data-api-route-app="wechat" style="width: 100%; padding: 7px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 12px; background: #fff; box-sizing: border-box;">
+                                            <option value="">跟随当前预设</option>
+                                        </select>
+                                    </div>
+                                    <div style="display: grid; grid-template-columns: 54px 1fr; gap: 8px; align-items: center;">
+                                        <div style="font-size: 12px; color: #666;">蜜语</div>
+                                        <select id="phone-api-route-honey" data-api-route-app="honey" style="width: 100%; padding: 7px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 12px; background: #fff; box-sizing: border-box;">
+                                            <option value="">跟随当前预设</option>
+                                        </select>
+                                    </div>
+                                </div>
+
                                 <div style="margin-bottom: 12px;">
                                     <div style="font-size: 12px; color: #666; margin-bottom: 4px;">API 提供商</div>
                                     <select id="phone-api-provider" style="width: 100%; padding: 8px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 13px; background: #fff;">
@@ -2428,7 +2445,8 @@ export class SettingsApp {
             maxTokens: 4096,
             useStream: true,
             profiles: [],
-            activeProfileName: ''
+            activeProfileName: '',
+            appProfileRoutes: {}
         });
 
         const normalizeApiConfig = (config) => {
@@ -2446,6 +2464,15 @@ export class SettingsApp {
                     maxTokens: parseInt(p.maxTokens, 10) || 4096,
                     useStream: p.useStream !== false
                 }));
+            const validProfileNames = new Set(merged.profiles.map(p => p.name));
+            const rawRoutes = (merged.appProfileRoutes && typeof merged.appProfileRoutes === 'object')
+                ? merged.appProfileRoutes
+                : {};
+            merged.appProfileRoutes = {};
+            ['wechat', 'honey'].forEach((appId) => {
+                const routeName = String(rawRoutes[appId] || '').trim();
+                merged.appProfileRoutes[appId] = validProfileNames.has(routeName) ? routeName : '';
+            });
             merged.maxTokens = parseInt(merged.maxTokens, 10) || 4096;
             merged.useStream = merged.useStream !== false;
             return merged;
@@ -2532,6 +2559,19 @@ export class SettingsApp {
             }
         };
 
+        const renderAppRouteSelects = (config) => {
+            const routeOptions = ['<option value="">跟随当前预设</option>']
+                .concat(config.profiles.map(p => `<option value="${this._escapeHtml(p.name)}">${this._escapeHtml(p.name)}</option>`))
+                .join('');
+            ['wechat', 'honey'].forEach((appId) => {
+                const select = document.getElementById(`phone-api-route-${appId}`);
+                if (!select) return;
+                const value = String(config.appProfileRoutes?.[appId] || '').trim();
+                select.innerHTML = routeOptions;
+                select.value = config.profiles.some(p => p.name === value) ? value : '';
+            });
+        };
+
         const parseOpenAIModelsResponse = (data) => {
             const apiManager = window.VirtualPhone?.apiManager;
             if (apiManager && typeof apiManager._parseOpenAIModelsResponse === 'function') {
@@ -2591,6 +2631,7 @@ export class SettingsApp {
         const initialConfig = readApiConfig();
         applyConfigToForm(initialConfig);
         renderProfileSelect(initialConfig);
+        renderAppRouteSelects(initialConfig);
         updateProviderPlaceholders(initialConfig.provider || 'openai');
 
         // 2. 开关展开面板 (并自动保存状态)
@@ -2640,8 +2681,23 @@ export class SettingsApp {
                 updateProviderPlaceholders(merged.provider || 'openai');
                 await saveApiConfig(merged); // 切换预设即生效
                 renderProfileSelect(merged);
+                renderAppRouteSelects(merged);
             };
         }
+
+        document.querySelectorAll('[data-api-route-app]').forEach((select) => {
+            select.addEventListener('change', async (e) => {
+                const appId = String(e.target.dataset.apiRouteApp || '').trim();
+                if (!appId) return;
+                const config = readApiConfig();
+                config.appProfileRoutes = {
+                    ...(config.appProfileRoutes || {}),
+                    [appId]: String(e.target.value || '').trim()
+                };
+                const saved = await saveApiConfig(config);
+                renderAppRouteSelects(saved);
+            });
+        });
 
         // 2.6 存为预设
         const apiProfileSaveBtn = document.getElementById('phone-api-profile-save');
@@ -2671,6 +2727,7 @@ export class SettingsApp {
                 config.activeProfileName = name;
                 const saved = await saveApiConfig(config);
                 renderProfileSelect(saved);
+                renderAppRouteSelects(saved);
                 const select = document.getElementById('phone-api-profile-select');
                 if (select) {
                     const idx = saved.profiles.findIndex(p => p.name === name);
@@ -2700,6 +2757,7 @@ export class SettingsApp {
                 if (config.activeProfileName === target.name) config.activeProfileName = '';
                 const saved = await saveApiConfig(config);
                 renderProfileSelect(saved);
+                renderAppRouteSelects(saved);
                 alert('✅ 预设已删除');
             };
         }
@@ -2721,6 +2779,7 @@ export class SettingsApp {
 
                 const saved = await saveApiConfig(config);
                 renderProfileSelect(saved);
+                renderAppRouteSelects(saved);
                 alert('✅ 手机专属 API 配置已保存！');
             };
         }

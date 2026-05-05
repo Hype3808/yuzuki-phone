@@ -46,12 +46,16 @@ export class ApiManager {
         this.proxyRouteHints.set(this._getProxyHintKey(provider, apiUrl), source);
     }
 
-    _resolvePhoneApiConfig(rawConfig) {
+    _resolvePhoneApiConfig(rawConfig, appId = '') {
         if (!rawConfig || typeof rawConfig !== 'object') return rawConfig;
 
         const config = { ...rawConfig };
         const profiles = Array.isArray(config.profiles) ? config.profiles : [];
-        const activeName = String(config.activeProfileName || '').trim();
+        const routes = (config.appProfileRoutes && typeof config.appProfileRoutes === 'object')
+            ? config.appProfileRoutes
+            : {};
+        const routedName = String(routes[String(appId || '').trim()] || '').trim();
+        const activeName = routedName || String(config.activeProfileName || '').trim();
         const activeProfile = activeName
             ? profiles.find((p) => p && String(p.name || '').trim() === activeName)
             : null;
@@ -215,7 +219,7 @@ export class ApiManager {
                 const phoneConfigRaw = this.storage.get('phone_api_config');
                 if (phoneConfigRaw) {
                     const parsed = typeof phoneConfigRaw === 'string' ? JSON.parse(phoneConfigRaw) : phoneConfigRaw;
-                    apiConfig = this._normalizeRuntimeApiConfig(this._resolvePhoneApiConfig(parsed));
+                    apiConfig = this._normalizeRuntimeApiConfig(this._resolvePhoneApiConfig(parsed, appId));
                 } else {
                     const rawConfig = localStorage.getItem('gg_api');
                     if (rawConfig) apiConfig = this._normalizeRuntimeApiConfig(JSON.parse(rawConfig));

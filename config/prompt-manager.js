@@ -154,7 +154,7 @@ export class PromptManager {
 - 动作 tag 必须直接写成 NAI 能识别的普通英文 tag，不要写 source#、target#、self# 这类标记。例如写 touching face、blushing、hands tied behind back，不要写 source#touching face。
 - 成人直播画面必须写出剧情中真实可见的成人身体状态或成人动作，不能只写 shirtless、abs、chest muscles、crotch area visible、one hand under desk 这种擦边或含糊 tag。若剧情中已经出现裸露、自慰、性器官或性行为，必须在 AI 原始画面 tag 里明确写出对应可绘制 tag，例如：penis、erection、pussy、nude、male masturbation、female masturbation、handjob、fellatio、sex、spread legs、cum、saliva trail。需要下半身或全身时使用 cowboy shot / full body / legs visible，避免 upper body close-up 裁掉关键画面。
 - 服装必须写状态，不只写衣服名：open shirt、shirt lift、towel slipping、messy clothes、wet clothes、half undressed、underwear only 等。环境必须包含直播属性：phone on tripod、comments overlay、webcam view、smartphone screen、bedroom/gym/bathroom 等；不要只写 live streaming room 或 screen glow。
-- 可以用 {{tag}} 或 {{{tag}}} 加权最核心的动作、表情、构图或身体状态，但不要整串都加权。建议 45-90 个 tag。
+- 可以用 {{tag}} 或 {{{tag}}} 加权最核心的动作、表情、构图或身体状态，但不要整串都加权。tag 数量不设上限，按画面复杂度充分展开，越具体越好；但必须围绕同一帧可见内容，不要堆无关画风词或把剧情流水账塞进去。
 - 必须避开 underage、child、teen、loli、shota、minor、school uniform、student 等未成年或校园暗示 tag；角色年龄感必须是 adult character。`;
     }
 
@@ -174,7 +174,7 @@ export class PromptManager {
 - NAI 提示词必须足够具体，禁止只写 nsfw/live streaming/specific pose/specific outfit/mood tags 这类占位词。必须包含：rating:explicit 或 nsfw、adult character、主体人数与性别、镜头距离、构图角度、角色焦点、脸部/眼睛/头发/手部细节、具体表情、可见动作、服装状态、背景地点、直播设备或屏幕光、光影、画面氛围。
 - 当前激情直播是成人内容时，NAI tag 必须写出与直播剧情一致的成人可见部位或成人动作；不要只写 shirtless、abs、chest muscles 这种普通擦边胸像。需要下半身或全身内容时，使用 cowboy shot/full body/legs visible 等构图，避免 upper body close-up 裁掉关键画面。
 - NAI tag 推荐顺序：adult/rating 与人数关系 -> 构图/镜头/角度 -> 核心主体锚点与外貌 -> 表情/动作/姿势 -> 服装状态 -> 场景道具 -> 光影氛围。蜜语不限制最多两人；多人画面要明确主视觉焦点，并用 BREAK 隔开核心主体，背景人群可用 faceless viewers / audience silhouettes / blurred figures 概括，禁止把 extra hands、extra arms、extra limbs 写进正面提示词。
-- NAI 提示词建议 45-90 个英文 tag，使用逗号分隔，不要写中文，不要写完整句子，不要输出解释。至少 70% 的 tag 必须是能被画出来的具体画面元素。必须避开 underage、child、teen、loli、shota、minor 等未成年相关 tag。`
+- NAI 提示词不限制 tag 数量，按画面复杂度充分展开，越具体越好；使用逗号分隔，不要写中文，不要写完整句子，不要输出解释。至少 70% 的 tag 必须是能被画出来的具体画面元素，且必须围绕同一帧可见内容，避免堆无关画风词或剧情流水账。必须避开 underage、child、teen、loli、shota、minor 等未成年相关 tag。`
         );
 
         if (!text.includes('NAI 画面提示词必须以可见画面细节为主体')) {
@@ -1345,7 +1345,7 @@ IP属地：根据故事背景，生成虚拟的命名城市的IP市区
 - 动作 tag 必须直接写成 NAI 能识别的普通英文 tag，不要写 source#、target#、self# 这类标记。例如写 touching face、blushing、hands tied behind back，不要写 source#touching face。
 - 成人直播画面必须写出剧情中真实可见的成人身体状态或成人动作，不能只写 shirtless、abs、chest muscles、crotch area visible、one hand under desk 这种擦边或含糊 tag。若剧情中已经出现裸露、自慰、性器官或性行为，必须在 AI 原始画面 tag 里明确写出对应可绘制 tag，例如：penis、erection、pussy、nude、male masturbation、female masturbation、handjob、fellatio、sex、spread legs、cum、saliva trail。需要下半身或全身时使用 cowboy shot / full body / legs visible，避免 upper body close-up 裁掉关键画面。
 - 服装必须写状态，不只写衣服名：open shirt、shirt lift、towel slipping、messy clothes、wet clothes、half undressed、underwear only 等。环境必须包含直播属性：phone on tripod、comments overlay、webcam view、smartphone screen、bedroom/gym/bathroom 等；不要只写 live streaming room 或 screen glow。
-- 可以用 {{tag}} 或 {{{tag}}} 加权最核心的动作、表情、构图或身体状态，但不要整串都加权。建议 45-90 个 tag。
+- 可以用 {{tag}} 或 {{{tag}}} 加权最核心的动作、表情、构图或身体状态，但不要整串都加权。tag 数量不设上限，按画面复杂度充分展开，越具体越好；但必须围绕同一帧可见内容，不要堆无关画风词或把剧情流水账塞进去。
 - 必须避开 underage、child、teen、loli、shota、minor、school uniform、student 等未成年或校园暗示 tag；角色年龄感必须是 adult character。
 
 

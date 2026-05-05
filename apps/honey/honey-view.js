@@ -1889,6 +1889,8 @@ export class HoneyView {
             : '当前未设置动态背景。';
         const honeyWorldbookRaw = this.app?.storage?.get?.('phone-honey-use-worldbook');
         const useHoneyWorldbook = honeyWorldbookRaw === true || honeyWorldbookRaw === 'true';
+        const honeyAutoImageRaw = this.app?.storage?.get?.('phone-image-honey-auto-generate');
+        const useHoneyAutoImage = honeyAutoImageRaw === true || honeyAutoImageRaw === 'true';
 
         const html = `
             <div class="honey-app honey-page-settings">
@@ -1957,6 +1959,16 @@ export class HoneyView {
                             </div>
                             <label class="honey-toggle-switch">
                                 <input type="checkbox" id="phone-honey-use-worldbook" ${useHoneyWorldbook ? 'checked' : ''}>
+                                <span class="honey-toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="honey-settings-row">
+                            <div>
+                                <div class="honey-settings-label">直播自动生图</div>
+                                <div class="honey-settings-desc">开启后，直播剧情刷新出新 NAI tag 时，会清空旧图并自动生成新直播图。</div>
+                            </div>
+                            <label class="honey-toggle-switch">
+                                <input type="checkbox" id="phone-image-honey-auto-generate" ${useHoneyAutoImage ? 'checked' : ''}>
                                 <span class="honey-toggle-slider"></span>
                             </label>
                         </div>
@@ -2690,110 +2702,7 @@ export class HoneyView {
                 this.app.phoneShell.showNotification('蜜语', '当前直播没有可用的 NAI 提示词', '⚠️');
                 return;
             }
-
-            const imageManager = window.VirtualPhone?.imageGenerationManager;
-            if (!imageManager || typeof imageManager.generate !== 'function') {
-                this.app.phoneShell.showNotification('生图失败', '生图管理器未初始化', '❌');
-                return;
-            }
-
-            const imageStorage = this.app?.storage || window.VirtualPhone?.storage || null;
-            if (imageStorage && imageManager.storage !== imageStorage) {
-                imageManager.storage = imageStorage;
-            }
-            const readNumber = (key, fallback, min, max, integer = true) => {
-                const value = Number(imageStorage?.get?.(key));
-                let next = Number.isFinite(value) ? value : fallback;
-                next = Math.max(min, Math.min(max, next));
-                return integer ? Math.round(next) : next;
-            };
-            const provider = String(imageStorage?.get?.('phone-image-provider') || 'novelai').trim() || 'novelai';
-            const honeyWidth = readNumber('phone-image-honey-width', 832, 64, 2048, true);
-            const honeyHeight = readNumber('phone-image-honey-height', 1216, 64, 2048, true);
-            const imageSteps = readNumber('phone-image-steps', 28, 1, 50, true);
-            const imageScale = readNumber('phone-image-scale', 7, 0, 50, false);
-            const safeHoneyWidth = honeyWidth < 512 ? 832 : honeyWidth;
-            const safeHoneyHeight = honeyHeight < 768 ? 1216 : honeyHeight;
-            const safeHoneySteps = provider === 'novelai' && imageSteps < 20 ? 28 : imageSteps;
-            const safeHoneyScale = provider === 'novelai' && imageScale < 1 ? 7 : imageScale;
-            console.log([
-                '[Honey NAI] 即将请求直播生图',
-                `尺寸: ${safeHoneyWidth}x${safeHoneyHeight}`,
-                `Steps: ${safeHoneySteps}`,
-                `Scale: ${safeHoneyScale}`,
-                `Provider: ${provider}`,
-                '',
-                'AI 原始画面 tag:',
-                prompt || '(空)'
-            ].join('\n'));
-            this.currentSceneData = {
-                ...scene,
-                naiPrompt: prompt,
-                naiImageUrl: '',
-                generatedImageUrl: '',
-                imageUrl: '',
-                imageGenerationStatus: 'loading',
-                imageGenerationProvider: provider,
-                imageGenerationModel: '',
-                imageGenerationPrompt: prompt,
-                imageGenerationWidth: '',
-                imageGenerationHeight: '',
-                imageGenerationSteps: '',
-                imageGenerationSampler: '',
-                imageGenerationSchedule: '',
-                imageGenerationScale: '',
-                imageGenerationError: ''
-            };
-            this._persistCurrentScene();
-            this.render();
-
-            try {
-                const result = await imageManager.generate({
-                    app: 'honey',
-                    prompt,
-                    provider,
-                    width: safeHoneyWidth,
-                    height: safeHoneyHeight,
-                    steps: safeHoneySteps,
-                    scale: safeHoneyScale
-                });
-                this.currentSceneData = {
-                    ...(this.currentSceneData || scene),
-                    naiImageUrl: result.imageUrl || result.imageData || '',
-                    generatedImageUrl: result.imageUrl || result.imageData || '',
-                    naiPrompt: prompt,
-                    imageGenerationStatus: 'done',
-                    imageGenerationProvider: result.provider || provider,
-                    imageGenerationModel: result.model || '',
-                    imageGenerationPrompt: prompt,
-                    imageGenerationWidth: Number(result.width || result.requestedWidth || 0) || '',
-                    imageGenerationHeight: Number(result.height || result.requestedHeight || 0) || '',
-                    imageGenerationSteps: Number(result.steps || 0) || '',
-                    imageGenerationSampler: String(result.sampler || '').trim(),
-                    imageGenerationSchedule: String(result.schedule || '').trim(),
-                    imageGenerationScale: Number(result.scale || 0) || '',
-                    imageGenerationError: ''
-                };
-                this._persistCurrentScene();
-                this.render();
-                this.app.phoneShell.showNotification('蜜语', '直播图片已生成', '🖼️');
-            } catch (err) {
-                const message = err?.message || String(err || '生成失败');
-                this.currentSceneData = {
-                    ...(this.currentSceneData || scene),
-                    naiPrompt: prompt,
-                    naiImageUrl: '',
-                    generatedImageUrl: '',
-                    imageUrl: '',
-                    imageGenerationStatus: 'failed',
-                    imageGenerationProvider: provider,
-                    imageGenerationPrompt: prompt,
-                    imageGenerationError: message
-                };
-                this._persistCurrentScene();
-                this.render();
-                this.app.phoneShell.showNotification('生图失败', message, '❌');
-            }
+            this._generateSceneImageFromPrompt({ scene, prompt, auto: false });
         });
 
         const liveVideo = root.querySelector('#honey-live-video-el');
@@ -3406,6 +3315,16 @@ export class HoneyView {
             this.app.phoneShell.showNotification(
                 enabled ? '已开启' : '已关闭',
                 `蜜语生成${enabled ? '会' : '不会'}注入酒馆世界书`,
+                enabled ? '✅' : 'ℹ️'
+            );
+        });
+
+        root.querySelector('#phone-image-honey-auto-generate')?.addEventListener('change', async (e) => {
+            const enabled = !!e.target.checked;
+            await this.app?.storage?.set?.('phone-image-honey-auto-generate', enabled);
+            this.app.phoneShell.showNotification(
+                enabled ? '已开启' : '已关闭',
+                `蜜语直播${enabled ? '会' : '不会'}在新剧情后自动生图`,
                 enabled ? '✅' : 'ℹ️'
             );
         });
@@ -5835,6 +5754,141 @@ export class HoneyView {
             || hasIntroDelta;
     }
 
+    _isHoneyAutoImageEnabled() {
+        const raw = this.app?.storage?.get?.('phone-image-honey-auto-generate');
+        return raw === true || raw === 'true';
+    }
+
+    async _generateSceneImageFromPrompt({ scene = null, prompt = '', auto = false, sourceRoot = null } = {}) {
+        const normalizedPrompt = String(prompt || '').trim();
+        const baseScene = scene || this.currentSceneData || {};
+        if (!normalizedPrompt) {
+            if (!auto) this.app?.phoneShell?.showNotification?.('蜜语', '当前直播没有可用的 NAI 提示词', '⚠️');
+            return null;
+        }
+
+        const imageManager = window.VirtualPhone?.imageGenerationManager;
+        if (!imageManager || typeof imageManager.generate !== 'function') {
+            if (!auto) this.app?.phoneShell?.showNotification?.('生图失败', '生图管理器未初始化', '❌');
+            return null;
+        }
+
+        const imageStorage = this.app?.storage || window.VirtualPhone?.storage || null;
+        if (imageStorage && imageManager.storage !== imageStorage) {
+            imageManager.storage = imageStorage;
+        }
+        const readNumber = (key, fallback, min, max, integer = true) => {
+            const value = Number(imageStorage?.get?.(key));
+            let next = Number.isFinite(value) ? value : fallback;
+            next = Math.max(min, Math.min(max, next));
+            return integer ? Math.round(next) : next;
+        };
+        const provider = String(imageStorage?.get?.('phone-image-provider') || 'novelai').trim() || 'novelai';
+        const honeyWidth = readNumber('phone-image-honey-width', 832, 64, 2048, true);
+        const honeyHeight = readNumber('phone-image-honey-height', 1216, 64, 2048, true);
+        const imageSteps = readNumber('phone-image-steps', 28, 1, 50, true);
+        const imageScale = readNumber('phone-image-scale', 7, 0, 50, false);
+        const safeHoneyWidth = honeyWidth < 512 ? 832 : honeyWidth;
+        const safeHoneyHeight = honeyHeight < 768 ? 1216 : honeyHeight;
+        const safeHoneySteps = provider === 'novelai' && imageSteps < 20 ? 28 : imageSteps;
+        const safeHoneyScale = provider === 'novelai' && imageScale < 1 ? 7 : imageScale;
+
+        console.log([
+            auto ? '[Honey NAI] 自动请求直播生图' : '[Honey NAI] 即将请求直播生图',
+            `尺寸: ${safeHoneyWidth}x${safeHoneyHeight}`,
+            `Steps: ${safeHoneySteps}`,
+            `Scale: ${safeHoneyScale}`,
+            `Provider: ${provider}`,
+            '',
+            'AI 原始画面 tag:',
+            normalizedPrompt || '(空)'
+        ].join('\n'));
+
+        this.currentSceneData = {
+            ...(this.currentSceneData || baseScene),
+            ...baseScene,
+            naiPrompt: normalizedPrompt,
+            naiImageUrl: '',
+            generatedImageUrl: '',
+            imageUrl: '',
+            imageGenerationStatus: 'loading',
+            imageGenerationProvider: provider,
+            imageGenerationModel: '',
+            imageGenerationPrompt: normalizedPrompt,
+            imageGenerationWidth: '',
+            imageGenerationHeight: '',
+            imageGenerationSteps: '',
+            imageGenerationSampler: '',
+            imageGenerationSchedule: '',
+            imageGenerationScale: '',
+            imageGenerationError: ''
+        };
+        this._persistCurrentScene();
+        if (this.currentPage === 'live' && sourceRoot) {
+            this._refreshLivePageDom({ sourceRoot, scene: this.currentSceneData });
+        } else {
+            this.render();
+        }
+
+        try {
+            const result = await imageManager.generate({
+                app: 'honey',
+                prompt: normalizedPrompt,
+                provider,
+                width: safeHoneyWidth,
+                height: safeHoneyHeight,
+                steps: safeHoneySteps,
+                scale: safeHoneyScale
+            });
+            this.currentSceneData = {
+                ...(this.currentSceneData || baseScene),
+                naiImageUrl: result.imageUrl || result.imageData || '',
+                generatedImageUrl: result.imageUrl || result.imageData || '',
+                naiPrompt: normalizedPrompt,
+                imageGenerationStatus: 'done',
+                imageGenerationProvider: result.provider || provider,
+                imageGenerationModel: result.model || '',
+                imageGenerationPrompt: normalizedPrompt,
+                imageGenerationWidth: Number(result.width || result.requestedWidth || 0) || '',
+                imageGenerationHeight: Number(result.height || result.requestedHeight || 0) || '',
+                imageGenerationSteps: Number(result.steps || 0) || '',
+                imageGenerationSampler: String(result.sampler || '').trim(),
+                imageGenerationSchedule: String(result.schedule || '').trim(),
+                imageGenerationScale: Number(result.scale || 0) || '',
+                imageGenerationError: ''
+            };
+            this._persistCurrentScene();
+            if (this.currentPage === 'live' && sourceRoot) {
+                this._refreshLivePageDom({ sourceRoot, scene: this.currentSceneData });
+            } else {
+                this.render();
+            }
+            this.app?.phoneShell?.showNotification?.('蜜语', auto ? '新剧情图片已自动生成' : '直播图片已生成', '🖼️');
+            return result;
+        } catch (err) {
+            const message = err?.message || String(err || '生成失败');
+            this.currentSceneData = {
+                ...(this.currentSceneData || baseScene),
+                naiPrompt: normalizedPrompt,
+                naiImageUrl: '',
+                generatedImageUrl: '',
+                imageUrl: '',
+                imageGenerationStatus: 'failed',
+                imageGenerationProvider: provider,
+                imageGenerationPrompt: normalizedPrompt,
+                imageGenerationError: message
+            };
+            this._persistCurrentScene();
+            if (this.currentPage === 'live' && sourceRoot) {
+                this._refreshLivePageDom({ sourceRoot, scene: this.currentSceneData });
+            } else {
+                this.render();
+            }
+            this.app?.phoneShell?.showNotification?.(auto ? '自动生图失败' : '生图失败', message, '❌');
+            return null;
+        }
+    }
+
     _restoreSessionState() {
         this.recommendTopics = this._getDefaultTopics();
         this.currentSceneData = null;
@@ -6360,11 +6414,12 @@ export class HoneyView {
             };
             const previousNaiPrompt = this._resolveSceneNaiPrompt(workingScene);
             const nextNaiPrompt = this._resolveSceneNaiPrompt(nextScene);
+            const hasNewNaiPrompt = !!nextNaiPrompt && nextNaiPrompt !== previousNaiPrompt;
             if (nextNaiPrompt) {
                 nextScene.naiPrompt = nextNaiPrompt;
                 nextScene.imageGenerationPrompt = '';
             }
-            if (nextNaiPrompt && nextNaiPrompt !== previousNaiPrompt) {
+            if (hasNewNaiPrompt) {
                 nextScene.naiImageUrl = '';
                 nextScene.generatedImageUrl = '';
                 nextScene.imageUrl = '';
@@ -6477,6 +6532,14 @@ export class HoneyView {
                 this._persistCurrentScene();
                 if (this.currentPage === 'live') {
                     this._refreshLivePageDom({ sourceRoot, scene: nextScene });
+                }
+                if (hasNewNaiPrompt && this._isHoneyAutoImageEnabled()) {
+                    this._generateSceneImageFromPrompt({
+                        scene: this.currentSceneData,
+                        prompt: nextNaiPrompt,
+                        auto: true,
+                        sourceRoot
+                    });
                 }
             }
 
