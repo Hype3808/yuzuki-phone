@@ -2173,7 +2173,7 @@ export class HoneyData {
         let collab = '无';
         let collabCost = 0;
 
-        const sectionEndPattern = /(?:^|\n)\s*(?:在线人数|在线|粉丝数|粉丝|榜单|打赏记录(?:（[^）]*）|\([^\)]*\))?|评论区|直播剧情描写|剧情面板|直播实况|好友申请|互动记录)\s*[：:]/i;
+        const sectionEndPattern = /(?:^|\n)\s*(?:在线人数|在线|粉丝数|粉丝|画面|榜单|打赏记录(?:（[^）]*）|\([^\)]*\))?|评论区|直播剧情描写|剧情面板|直播实况|好友申请|互动记录)\s*[：:]/i;
         const explicitCollabValues = Array.from(text.matchAll(/联播\s*(?:[（(]\s*金币\s*[：:]\s*(\d+)\s*[)）])?\s*[：:]\s*([^\]】\n]+)/ig))
             .map(match => ({
                 name: String(match?.[2] || '').trim(),
@@ -2188,10 +2188,10 @@ export class HoneyData {
             }
         }
         const leaderboardSection = this._extractSectionByPatternPairs(text, [
-            { start: /(?:^|\n)\s*榜单\s*[：:]\s*/i, end: /(?:^|\n)\s*(?:打赏记录(?:（[^）]*）|\([^\)]*\))?|评论区|直播剧情描写|剧情面板|直播实况|好友申请)\s*[：:]/i }
+            { start: /(?:^|\n)\s*榜单\s*[：:]\s*/i, end: /(?:^|\n)\s*(?:画面|打赏记录(?:（[^）]*）|\([^\)]*\))?|评论区|直播剧情描写|剧情面板|直播实况|好友申请)\s*[：:]/i }
         ]);
         const giftsSection = this._extractSectionByPatternPairs(text, [
-            { start: /(?:^|\n)\s*打赏记录(?:（[^）]*）|\([^\)]*\))?\s*[：:]\s*/i, end: /(?:^|\n)\s*(?:评论区|直播剧情描写|剧情面板|直播实况|好友申请)\s*[：:]/i }
+            { start: /(?:^|\n)\s*打赏记录(?:（[^）]*）|\([^\)]*\))?\s*[：:]\s*/i, end: /(?:^|\n)\s*(?:画面|评论区|直播剧情描写|剧情面板|直播实况|好友申请)\s*[：:]/i }
         ]);
         const commentsSection = this._extractSectionByPatternPairs(text, [
             { start: /(?:^|\n)\s*(?:评论区)\s*[：:]\s*/i, end: /(?:^|\n)\s*(?:直播剧情描写|剧情面板|直播实况|好友申请)\s*[：:]/i }
@@ -2315,7 +2315,10 @@ export class HoneyData {
         if (mode === 'continue') {
             messages.push({
                 role: 'system',
-                content: '这是同一场用户自己的直播，必须在已有直播状态上续写，不得重置世界线。',
+                content: [
+                    '这是同一场用户自己的直播，必须在已有直播状态上续写，不得重置世界线。',
+                    '本轮必须根据最新直播画面重新输出一行：画面：[NAI英文tag提示词: ...]，用于支持当前剧情生成新图片。'
+                ].join('\n'),
                 isPhoneMessage: true
             });
             historyTurns.forEach((turn) => {
@@ -2473,6 +2476,7 @@ export class HoneyData {
             instructionUserPrompt = '';
             instructionSystemPrompt = [
                 '这是同一场直播的持续观看，不要重置世界线。请在已有内容上推进剧情并更新评论区。',
+                '本轮必须根据最新直播剧情重新输出一行：画面：[NAI英文tag提示词: ...]，用于支持当前剧情生成新图片。',
                 '【好感度规则】请在“--- 当前激情直播 ---”区块中显式输出一行：好感度：N%。',
                 'N 必须是 0-100 的数字（可保留 1 位小数）。',
                 '若本轮没有用户送礼（包括仅普通聊天或无互动），好感度必须保持不变，不得上涨。',
@@ -3001,7 +3005,7 @@ export class HoneyData {
                 .map(m => cleanValue(m[1] || '', 180))
                 .filter(Boolean);
 
-            const mapped = { title: '', host: '', viewers: '', tag: '' };
+            const mapped = { title: '', host: '', viewers: '', tag: '', naiPrompt: '' };
             const unnamed = [];
             segments.forEach(seg => {
                 const kv = seg.match(/^([^：:]{1,20})[：:]\s*(.+)$/);
@@ -3016,6 +3020,7 @@ export class HoneyData {
                 else if (/^(主播昵称|主播)$/i.test(field)) mapped.host = val;
                 else if (/^(在线人数|在线)$/i.test(field)) mapped.viewers = val;
                 else if (/^(tag|标签)$/i.test(field)) mapped.tag = val;
+                else if (/^(画面|NAI英文tag提示词|NAI提示词|NovelAI提示词|imagePrompt)$/i.test(field)) mapped.naiPrompt = this._extractNaiPrompt(val);
             });
 
             const hostFromDash = body.match(/(?:主播昵称|主播)\s*[：:]?\s*([^－—\-|]+)\s*(?:(?:[-－—|])|$)/i);
@@ -3054,7 +3059,8 @@ export class HoneyData {
                 tag: cleanValue(mapped.tag, 32),
                 host: this._stripFollowStateSuffix(cleanValue(mapped.host, 40)),
                 viewers: cleanValue(mapped.viewers, 24),
-                intro: ''
+                intro: '',
+                naiPrompt: mapped.naiPrompt || this._extractNaiPrompt(body)
             };
         };
 

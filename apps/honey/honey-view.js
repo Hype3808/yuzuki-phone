@@ -2729,9 +2729,19 @@ export class HoneyView {
             this.currentSceneData = {
                 ...scene,
                 naiPrompt: prompt,
+                naiImageUrl: '',
+                generatedImageUrl: '',
+                imageUrl: '',
                 imageGenerationStatus: 'loading',
                 imageGenerationProvider: provider,
+                imageGenerationModel: '',
                 imageGenerationPrompt: prompt,
+                imageGenerationWidth: '',
+                imageGenerationHeight: '',
+                imageGenerationSteps: '',
+                imageGenerationSampler: '',
+                imageGenerationSchedule: '',
+                imageGenerationScale: '',
                 imageGenerationError: ''
             };
             this._persistCurrentScene();
@@ -2772,6 +2782,9 @@ export class HoneyView {
                 this.currentSceneData = {
                     ...(this.currentSceneData || scene),
                     naiPrompt: prompt,
+                    naiImageUrl: '',
+                    generatedImageUrl: '',
+                    imageUrl: '',
                     imageGenerationStatus: 'failed',
                     imageGenerationProvider: provider,
                     imageGenerationPrompt: prompt,
@@ -5779,6 +5792,9 @@ export class HoneyView {
         const aiFriendRequests = Array.isArray(aiData.friendRequests) ? aiData.friendRequests : [];
         const aiCollabRequests = Array.isArray(aiData.collabRequests) ? aiData.collabRequests : [];
         const aiFavorability = this._normalizeFavorability(aiData.favorability, null);
+        const aiNaiPrompt = this._resolveSceneNaiPrompt(aiData);
+        const currentNaiPrompt = this._resolveSceneNaiPrompt(currentScene);
+        const hasNaiPromptDelta = !!aiNaiPrompt && aiNaiPrompt !== currentNaiPrompt;
 
         const currentDescription = String(currentScene?.description || '').trim();
         const hasMeaningfulDescription = this._hasMeaningfulSceneDescription(aiDescription)
@@ -5813,6 +5829,7 @@ export class HoneyView {
             || hasFriendRequests
             || hasCollabRequests
             || hasFavorability
+            || hasNaiPromptDelta
             || hasMetaDelta
             || hasHostOrTitleDelta
             || hasIntroDelta;
@@ -6101,12 +6118,25 @@ export class HoneyView {
                         _topicKey: topicKey,
                         host: restoredScene.host,
                         viewers: restoredScene.viewers,
-                        fans: restoredScene.fans,
-                        collab: restoredScene.collab,
-                        intro: restoredScene.intro,
-                        description: restoredScene.description,
-                        comments: restoredScene.comments
-                    };
+                    fans: restoredScene.fans,
+                    collab: restoredScene.collab,
+                    intro: restoredScene.intro,
+                    naiPrompt: restoredScene.naiPrompt,
+                    imageGenerationPrompt: restoredScene.imageGenerationPrompt,
+                    naiImageUrl: restoredScene.naiImageUrl,
+                    generatedImageUrl: restoredScene.generatedImageUrl,
+                    imageGenerationStatus: restoredScene.imageGenerationStatus,
+                    imageGenerationProvider: restoredScene.imageGenerationProvider,
+                    imageGenerationModel: restoredScene.imageGenerationModel,
+                    imageGenerationWidth: restoredScene.imageGenerationWidth,
+                    imageGenerationHeight: restoredScene.imageGenerationHeight,
+                    imageGenerationSteps: restoredScene.imageGenerationSteps,
+                    imageGenerationSampler: restoredScene.imageGenerationSampler,
+                    imageGenerationSchedule: restoredScene.imageGenerationSchedule,
+                    imageGenerationScale: restoredScene.imageGenerationScale,
+                    description: restoredScene.description,
+                    comments: restoredScene.comments
+                };
                     this._persistCurrentScene();
                     if (this.currentPage === 'live') {
                         this._refreshLivePageDom({ sourceRoot, scene: restoredScene });
@@ -6328,6 +6358,27 @@ export class HoneyView {
                 _topicTitle: topicTitle,
                 _topicKey: topicKey
             };
+            const previousNaiPrompt = this._resolveSceneNaiPrompt(workingScene);
+            const nextNaiPrompt = this._resolveSceneNaiPrompt(nextScene);
+            if (nextNaiPrompt) {
+                nextScene.naiPrompt = nextNaiPrompt;
+                nextScene.imageGenerationPrompt = '';
+            }
+            if (nextNaiPrompt && nextNaiPrompt !== previousNaiPrompt) {
+                nextScene.naiImageUrl = '';
+                nextScene.generatedImageUrl = '';
+                nextScene.imageUrl = '';
+                nextScene.imageGenerationStatus = '';
+                nextScene.imageGenerationProvider = '';
+                nextScene.imageGenerationModel = '';
+                nextScene.imageGenerationWidth = '';
+                nextScene.imageGenerationHeight = '';
+                nextScene.imageGenerationSteps = '';
+                nextScene.imageGenerationSampler = '';
+                nextScene.imageGenerationSchedule = '';
+                nextScene.imageGenerationScale = '';
+                nextScene.imageGenerationError = '';
+            }
             const previousIntro = String(workingScene?.intro || '').trim();
             if (!String(nextScene?.intro || '').trim() && previousIntro) {
                 nextScene.intro = previousIntro;
@@ -6403,6 +6454,19 @@ export class HoneyView {
                     fans: this.currentSceneData.fans,
                     collab: this.currentSceneData.collab,
                     intro: this.currentSceneData.intro,
+                    naiPrompt: this.currentSceneData.naiPrompt,
+                    imageGenerationPrompt: this.currentSceneData.imageGenerationPrompt,
+                    naiImageUrl: this.currentSceneData.naiImageUrl,
+                    generatedImageUrl: this.currentSceneData.generatedImageUrl,
+                    imageGenerationStatus: this.currentSceneData.imageGenerationStatus,
+                    imageGenerationProvider: this.currentSceneData.imageGenerationProvider,
+                    imageGenerationModel: this.currentSceneData.imageGenerationModel,
+                    imageGenerationWidth: this.currentSceneData.imageGenerationWidth,
+                    imageGenerationHeight: this.currentSceneData.imageGenerationHeight,
+                    imageGenerationSteps: this.currentSceneData.imageGenerationSteps,
+                    imageGenerationSampler: this.currentSceneData.imageGenerationSampler,
+                    imageGenerationSchedule: this.currentSceneData.imageGenerationSchedule,
+                    imageGenerationScale: this.currentSceneData.imageGenerationScale,
                     description: this.currentSceneData.description,
                     comments: this.currentSceneData.comments
                 };

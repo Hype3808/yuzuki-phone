@@ -37,6 +37,11 @@
     position: relative;
 }
 
+.honey-page-live .honey-content {
+    gap: 0;
+    padding-top: 0;
+}
+
 /* 修复：拥有视频时清空父级渐变背景，使用纯黑打底 */
 .honey-page-recommend .honey-content.has-bg-video {
     background: #050505 !important;

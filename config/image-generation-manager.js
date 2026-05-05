@@ -154,128 +154,9 @@ export class ImageGenerationManager {
             .join(separator);
     }
 
-    _normalizeHoneyScenePrompt(prompt) {
-        const blocked = new Set([
-            'masterpiece',
-            'best quality',
-            'very aesthetic',
-            'highres',
-            'sharp focus',
-            'cinematic lighting',
-            'detailed anime illustration',
-            'clean lineart',
-            'lineart',
-            'loose soft lineart',
-            'sketch',
-            'sketchy',
-            'sketchy delicate lines',
-            'rough sketch',
-            'pencil sketch',
-            'pencil lines',
-            'draft',
-            'unfinished',
-            'flat color',
-            'pale color',
-            'low contrast',
-            'wispy outlines',
-            'outline',
-            'simple background',
-            'empty background',
-            'blank background',
-            'white background',
-            'rating:general',
-            'rating:questionable',
-            'sfw'
-        ]);
-        return String(prompt || '')
-            .split(',')
-            .map(tag => tag.trim())
-            .filter(tag => {
-                if (!tag) return false;
-                const lower = tag.toLowerCase();
-                if (blocked.has(lower)) return false;
-                if (/^rating\s*:\s*(?:general|safe|questionable)$/i.test(tag)) return false;
-                return true;
-            })
-            .join(', ');
-    }
-
-    _buildHoneyPromptPrompt(scenePrompt, fixedPrompt = '', fixedPromptEnd = '') {
-        const base = this._normalizeHoneyScenePrompt(scenePrompt);
-        const fixedStart = this._normalizeHoneyScenePrompt(fixedPrompt);
-        const fixedEnd = this._normalizeHoneyScenePrompt(fixedPromptEnd);
-        const lowerBase = base.toLowerCase();
-        const hasExplicitMarker = /\b(?:rating\s*:\s*explicit|nsfw|explicit|nude|naked|penis|pussy|sex|fellatio|paizuri|masturbation|handjob|footjob|cum)\b/.test(lowerBase);
-        const adultLiveBase = [
-            hasExplicitMarker ? '' : 'rating:explicit',
-            hasExplicitMarker ? '' : 'nsfw',
-            hasExplicitMarker ? '' : 'adult erotic live stream',
-            base
-        ].filter(Boolean).join(', ');
-        const quality = [
-            'masterpiece',
-            'best quality',
-            'very aesthetic',
-            'highres',
-            'sharp focus',
-            'detailed face'
-        ].join(', ');
-        return this._joinPrompt([quality, adultLiveBase, fixedStart, fixedEnd]);
-    }
-
-    _buildHoneyNegativePrompt(negativePrompt) {
-        const qualityNegative = [
-            'lowres',
-            'bad anatomy',
-            'bad hands',
-            'missing fingers',
-            'extra fingers',
-            'fused fingers',
-            'poorly drawn hands',
-            'poorly drawn face',
-            'deformed',
-            'mutated',
-            'extra limbs',
-            'cropped',
-            'out of frame',
-            'blurry',
-            'motion blur',
-            'jpeg artifacts',
-            'text',
-            'watermark',
-            'logo',
-            'username',
-            'signature',
-            'sketch',
-            'sketchy',
-            'rough sketch',
-            'pencil sketch',
-            'lineart',
-            'loose lineart',
-            'unfinished',
-            'draft',
-            'flat color',
-            'low contrast',
-            'simple background',
-            'empty background',
-            'blank background',
-            'white background',
-            'child',
-            'teen',
-            'minor',
-            'loli',
-            'shota',
-            'underage'
-        ].join(', ');
-        return this._joinPrompt([qualityNegative, negativePrompt]);
-    }
-
     _debugNovelAIRequest({ endpoint, payload, config, options }) {
         if (!config?.debugPayload) return;
         const originalPrompt = String(options?.prompt || '').trim();
-        const scenePrompt = String(options?.app || '').trim().toLowerCase() === 'honey'
-            ? this._normalizeHoneyScenePrompt(originalPrompt)
-            : originalPrompt;
         const debugInfo = {
             endpoint,
             provider: 'novelai',
@@ -290,7 +171,6 @@ export class ImageGenerationManager {
             cfgRescale: payload?.parameters?.cfg_rescale,
             seed: payload?.parameters?.seed,
             originalPrompt,
-            scenePrompt,
             positivePrompt: payload?.input || '',
             negativePrompt: payload?.parameters?.negative_prompt || '',
             payload
@@ -313,11 +193,8 @@ export class ImageGenerationManager {
                 `CFG Rescale: ${debugInfo.cfgRescale}`,
                 `Seed: ${debugInfo.seed}`,
                 '',
-                'AI 画面 tag（已移除通用质量词，实际参与拼接）:',
-                debugInfo.scenePrompt || '(空)',
-                debugInfo.originalPrompt !== debugInfo.scenePrompt
-                    ? `\nAI 原始返回 tag:\n${debugInfo.originalPrompt || '(空)'}`
-                    : '',
+                'AI 画面 tag（原样）:',
+                debugInfo.originalPrompt || '(空)',
                 '',
                 '最终发送给 NAI 的正面提示词:',
                 debugInfo.positivePrompt || '(空)',
@@ -342,10 +219,7 @@ export class ImageGenerationManager {
                 cfgRescale: debugInfo.cfgRescale,
                 seed: debugInfo.seed
             });
-            console.info('AI 画面 tag（已移除通用质量词）', debugInfo.scenePrompt);
-            if (debugInfo.originalPrompt !== debugInfo.scenePrompt) {
-                console.info('AI 原始返回 tag', debugInfo.originalPrompt);
-            }
+            console.info('AI 画面 tag（原样）', debugInfo.originalPrompt);
             console.info('positive prompt', debugInfo.positivePrompt);
             console.info('negative prompt', debugInfo.negativePrompt);
             console.info('full payload', debugInfo.payload);
@@ -542,21 +416,17 @@ export class ImageGenerationManager {
 
     _buildNovelAIPayload(options, config) {
         const appKey = String(options.app || '').trim().toLowerCase();
-        const rawPrompt = appKey === 'honey'
-            ? String(options.prompt || '').trim()
-            : this._joinPrompt([
-                config.fixedPrompt,
-                options.prompt,
-                config.fixedPromptEnd
-            ]);
+        const rawPrompt = this._joinPrompt([
+            config.fixedPrompt,
+            options.prompt,
+            config.fixedPromptEnd
+        ]);
         const rawNegativePrompt = this._joinPrompt([
             config.negativePrompt,
             options.negativePrompt
         ]);
-        const prompt = appKey === 'honey'
-            ? this._buildHoneyPromptPrompt(options.prompt, config.fixedPrompt, config.fixedPromptEnd)
-            : rawPrompt;
-        const negativePrompt = appKey === 'honey' ? this._buildHoneyNegativePrompt(rawNegativePrompt) : rawNegativePrompt;
+        const prompt = rawPrompt;
+        const negativePrompt = rawNegativePrompt;
         const seed = Number(options.seed ?? config.seed);
         const appDefaults = this._getAppDefaultSize(appKey);
         let width = Number(options.width || config.width);
