@@ -2533,6 +2533,12 @@ export class SettingsApp {
 
             const modelInput = document.getElementById('phone-api-model');
             if (modelInput) modelInput.value = config.model || '';
+            const modelSelect = document.getElementById('phone-api-model-select');
+            if (modelInput && modelSelect) {
+                modelSelect.style.display = 'none';
+                modelSelect.innerHTML = '';
+                modelInput.style.display = 'block';
+            }
 
             const tokensInput = document.getElementById('phone-api-tokens');
             if (tokensInput) tokensInput.value = config.maxTokens || 4096;
@@ -2652,6 +2658,13 @@ export class SettingsApp {
         if (apiProviderSelect) {
             apiProviderSelect.onchange = () => {
                 updateProviderPlaceholders(apiProviderSelect.value || 'openai');
+                const modelSelect = document.getElementById('phone-api-model-select');
+                const modelInput = document.getElementById('phone-api-model');
+                if (modelSelect && modelInput) {
+                    modelSelect.style.display = 'none';
+                    modelSelect.innerHTML = '';
+                    modelInput.style.display = 'block';
+                }
             };
         }
 
