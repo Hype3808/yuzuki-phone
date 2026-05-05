@@ -815,6 +815,41 @@ renderChatRoom(chat) {
         return html;
     }
 
+    _resolveMessageAvatarIdentity(msg, userInfo) {
+        const isMe = msg.from === 'me' || msg.from === userInfo.name;
+        if (isMe) {
+            return {
+                isMe: true,
+                senderName: userInfo.name || '我',
+                senderAvatar: userInfo.avatar || ''
+            };
+        }
+
+        const isGroupChat = this.app.currentChat?.type === 'group';
+        if (isGroupChat) {
+            const senderName = msg.from || '群成员';
+            const senderContact = this.app.wechatData.getContactByName(senderName);
+            return {
+                isMe: false,
+                senderName,
+                senderAvatar: senderContact?.avatar || ''
+            };
+        }
+
+        const currentChat = this.app.currentChat || {};
+        const currentContact = currentChat.contactId
+            ? this.app.wechatData.getContact(currentChat.contactId)
+            : this.app.wechatData.getContactByName(currentChat.name);
+        const senderName = currentContact?.name || currentChat.name || msg.from || '对方';
+        const senderAvatar = currentContact?.avatar || currentChat.avatar || msg.avatar || '';
+
+        return {
+            isMe: false,
+            senderName,
+            senderAvatar
+        };
+    }
+
     // 🔥 智能局部刷新消息列表（移动端安全版防闪烁）
     smartUpdateMessages(messages, userInfo) {
         const container = document.getElementById('chat-messages');
@@ -841,7 +876,7 @@ renderChatRoom(chat) {
 
     // 渲染单条消息（全新红包样式）
     renderMessage(msg, userInfo) {
-        const isMe = msg.from === 'me' || msg.from === userInfo.name;
+        const { isMe, senderName, senderAvatar } = this._resolveMessageAvatarIdentity(msg, userInfo);
         const isRedPacketOpened = msg.status === 'opened';
 
         // 🔥🔥🔥 系统消息特殊处理（居中透明气泡）
@@ -869,27 +904,6 @@ renderChatRoom(chat) {
 
         // 🔥🔥🔥 群聊消息处理：获取发送者名字和头像
         const isGroupChat = this.app.currentChat?.type === 'group';
-        let senderName = msg.from || '';
-        let senderAvatar = msg.avatar || '👤';
-
-        if (!isMe) {
-            if (isGroupChat) {
-                // 群聊：使用每条消息的发送者信息
-                senderName = msg.from || '群成员';
-
-                // 尝试从联系人获取头像
-                const senderContact = this.app.wechatData.getContactByName(msg.from);
-                if (senderContact && senderContact.avatar) {
-                    senderAvatar = senderContact.avatar;
-                } else {
-                    // 🔥 核心修复1：群聊中如果没有专属头像，强制置空，绝对不能继承 msg.avatar（因为那往往携带的是群头像）
-                    senderAvatar = ''; 
-                }
-            } else {
-                // 单聊：使用当前聊天的头像
-                senderAvatar = this.app.currentChat?.avatar || msg.avatar || '👤';
-            }
-        }
 
         let messageBody = '';
 

@@ -2983,7 +2983,8 @@ export class WechatApp {
             }
 
             // 仅在微信主界面可见且不在通话全屏时刷新，避免打断设置页/通话页
-            if (this._wechatPanelMode === 'main' && isWechatActive && !isCallOverlayVisible) {
+            const isChatSending = !!this.chatView?.isSending;
+            if (this._wechatPanelMode === 'main' && isWechatActive && !isCallOverlayVisible && !isChatSending) {
                 this.render();
             }
         };
