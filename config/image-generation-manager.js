@@ -35,10 +35,40 @@ export class ImageGenerationManager {
         return result;
     }
 
+    _getAppDefaultSize(app) {
+        switch (String(app || '').trim().toLowerCase()) {
+            case 'honey':
+                return { width: 832, height: 1216 };
+            case 'wechat':
+                return { width: 768, height: 1024 };
+            case 'weibo':
+                return { width: 768, height: 768 };
+            default:
+                return { width: 832, height: 1216 };
+        }
+    }
+
+    getSizeForApp(app = '') {
+        const appKey = String(app || '').trim().toLowerCase();
+        const defaults = this._getAppDefaultSize(appKey);
+        if (!appKey) {
+            return {
+                width: this._getNumber('phone-image-width', defaults.width, 64, 2048),
+                height: this._getNumber('phone-image-height', defaults.height, 64, 2048)
+            };
+        }
+
+        return {
+            width: this._getNumber(`phone-image-${appKey}-width`, defaults.width, 64, 2048),
+            height: this._getNumber(`phone-image-${appKey}-height`, defaults.height, 64, 2048)
+        };
+    }
+
     getConfig(overrides = {}) {
         const provider = String(overrides.provider || this._get('phone-image-provider', 'novelai')).trim() || 'novelai';
         const legacySiliconflowKey = String(this._get('siliconflow_api_key', '') || '').trim();
         const legacySiliconflowModel = String(this._get('image_generation_model', '') || '').trim();
+        const size = this.getSizeForApp(overrides.app || '');
 
         return {
             enabled: overrides.enabled ?? this._getBool('phone-image-enabled', false),
@@ -49,8 +79,8 @@ export class ImageGenerationManager {
             model: String(overrides.model || this._get(`phone-image-${provider}-model`, '') || (provider === 'novelai' ? 'nai-diffusion-4-5-full' : legacySiliconflowModel || 'Kwai-Kolors/Kolors')).trim(),
             sampler: String(overrides.sampler || this._get('phone-image-novelai-sampler', 'k_euler')).trim() || 'k_euler',
             schedule: String(overrides.schedule || this._get('phone-image-novelai-schedule', 'karras')).trim() || 'karras',
-            width: this._getNumber('phone-image-width', 832, 64, 2048),
-            height: this._getNumber('phone-image-height', 1216, 64, 2048),
+            width: size.width,
+            height: size.height,
             steps: this._getNumber('phone-image-steps', 28, 1, 50),
             scale: this._getNumber('phone-image-scale', 5, 0, 50),
             cfgRescale: this._getNumber('phone-image-cfg-rescale', 0, 0, 1),

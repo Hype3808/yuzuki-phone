@@ -48,19 +48,36 @@ export class TtsManager {
         const scoped = String(this.storage?.get?.(this._getProviderConfigKey(provider, field)) || '').trim();
         if (scoped) return scoped;
         const globalProvider = String(this.storage?.get?.('phone-tts-provider') || 'minimax_cn').trim() || 'minimax_cn';
-        if (legacyKey && provider === globalProvider) {
+        if (legacyKey && provider !== 'volcengine' && provider === globalProvider) {
             return String(this.storage?.get?.(legacyKey) || '').trim();
         }
         return '';
     }
 
+    _inferProviderFromUrl(apiUrl = '', fallback = 'minimax_cn') {
+        const url = String(apiUrl || '').trim().toLowerCase();
+        if (url.includes('minimaxi.com')) return 'minimax_cn';
+        if (url.includes('minimax.chat')) return 'minimax_intl';
+        if (url.includes('openspeech.bytedance.com')) return 'volcengine';
+        if (url.includes('api.openai.com') || /\/audio\/speech\b/.test(url)) return 'openai';
+        return String(fallback || '').trim() || 'minimax_cn';
+    }
+
     _resolveConfig(options = {}) {
-        const provider = String(options.provider || this.storage?.get?.('phone-tts-provider') || 'minimax_cn').trim() || 'minimax_cn';
+        let provider = String(options.provider || this.storage?.get?.('phone-tts-provider') || 'minimax_cn').trim() || 'minimax_cn';
+        const rawLegacyUrl = String(this.storage?.get?.('phone-tts-url') || '').trim();
+        if (!options.provider && rawLegacyUrl) {
+            provider = this._inferProviderFromUrl(rawLegacyUrl, provider);
+        }
+
         const defaults = this._getProviderDefaults(provider);
         const apiKey = this._getStoredProviderValue(provider, 'key', 'phone-tts-key');
         const scopedUrl = this._getStoredProviderValue(provider, 'url');
         const legacyUrl = this._getStoredProviderValue(provider, 'url', 'phone-tts-url');
-        const apiUrl = scopedUrl || (provider === 'volcengine' ? defaults.url : legacyUrl) || defaults.url || '';
+        let apiUrl = scopedUrl || (provider === 'volcengine' ? defaults.url : legacyUrl) || defaults.url || '';
+        if (!apiUrl && rawLegacyUrl) {
+            apiUrl = rawLegacyUrl;
+        }
         const scopedModel = this._getStoredProviderValue(provider, 'model');
         const legacyModel = this._getStoredProviderValue(provider, 'model', 'phone-tts-model');
         const model = scopedModel || (provider === 'volcengine' ? defaults.model : legacyModel) || defaults.model || '';

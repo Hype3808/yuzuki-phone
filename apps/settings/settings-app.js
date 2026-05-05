@@ -58,7 +58,7 @@ export class SettingsApp {
     _getTtsProviderValue(provider, field, legacyKey = '') {
         const scoped = String(this.storage.get(this._getTtsProviderConfigKey(provider, field)) || '').trim();
         if (scoped) return scoped;
-        if (legacyKey && provider === this._getCurrentTtsProvider()) {
+        if (legacyKey && provider !== 'volcengine' && provider === this._getCurrentTtsProvider()) {
             return String(this.storage.get(legacyKey) || '').trim();
         }
         return '';
@@ -88,7 +88,13 @@ export class SettingsApp {
         const currentTtsModel = this._getTtsProviderValue(currentTtsProvider, 'model', 'phone-tts-model') || currentTtsDefaults.model || '';
         const currentTtsVoice = this._getTtsProviderValue(currentTtsProvider, 'voice', 'phone-tts-voice');
         const volcTtsKey = this._getTtsProviderValue('volcengine', 'key', 'phone-tts-key');
-        const volcTtsVoice = this._getTtsProviderValue('volcengine', 'voice', 'phone-tts-voice');
+        const volcTtsVoice = this._getTtsProviderValue('volcengine', 'voice');
+        const ttsVoiceHistory = (() => {
+            try { return JSON.parse(this.storage.get('phone-tts-voice-history') || '[]'); } catch(e) { return []; }
+        })();
+        const volcTtsVoiceHistory = (() => {
+            try { return JSON.parse(this.storage.get('phone-tts-volc-voice-history') || '[]'); } catch(e) { return []; }
+        })();
         const currentTtsVolcAppId = this._getTtsProviderValue('volcengine', 'app-id', 'phone-tts-volc-app-id');
         const currentTtsVolcResourceId = this._getTtsProviderValue('volcengine', 'resource-id', 'phone-tts-volc-resource-id') || 'seed-tts-2.0';
         const currentTtsVolcCloneWorkerUrl = this._getTtsProviderValue('volcengine', 'clone-worker-url', 'phone-tts-volc-clone-worker-url') || DEFAULT_DOUBAO_CLONE_WORKER_URL;
@@ -545,12 +551,7 @@ export class SettingsApp {
                                             <span style="font-size: 14px; color: #000;">音色 ID (Voice)</span>
                                             <select id="phone-tts-voice-preset" style="width: 140px; height: 30px; padding: 0 4px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 11px; background: #fafafa;">
                                                 <option value="">-- 历史音色 --</option>
-                                                ${(() => {
-                                                    try {
-                                                        const list = JSON.parse(this.storage.get('phone-tts-voice-history') || '[]');
-                                                        return list.map(v => `<option value="${v}">${v}</option>`).join('');
-                                                    } catch(e) { return ''; }
-                                                })()}
+                                                ${ttsVoiceHistory.map(v => `<option value="${v}">${v}</option>`).join('')}
                                             </select>
                                         </div>
                                         <input type="text" id="phone-tts-voice"
@@ -603,12 +604,7 @@ export class SettingsApp {
                                             <span style="font-size: 14px; color: #000;">音色 ID (Voice)</span>
                                             <select id="phone-tts-volc-voice-preset" style="width: 140px; height: 30px; padding: 0 4px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 11px; background: #fafafa;">
                                                 <option value="">-- 历史音色 --</option>
-                                                ${(() => {
-                                                    try {
-                                                        const list = JSON.parse(this.storage.get('phone-tts-voice-history') || '[]');
-                                                        return list.map(v => `<option value="${v}">${v}</option>`).join('');
-                                                    } catch(e) { return ''; }
-                                                })()}
+                                                ${volcTtsVoiceHistory.map(v => `<option value="${v}">${v}</option>`).join('')}
                                             </select>
                                         </div>
                                         <div style="display: flex; gap: 6px; margin-top: 6px;">
@@ -759,6 +755,12 @@ export class SettingsApp {
         const schedule = String(this.storage.get('phone-image-novelai-schedule') || 'karras').trim() || 'karras';
         const width = Number(this.storage.get('phone-image-width') || 832);
         const height = Number(this.storage.get('phone-image-height') || 1216);
+        const honeyWidth = Number(this.storage.get('phone-image-honey-width') || 832);
+        const honeyHeight = Number(this.storage.get('phone-image-honey-height') || 1216);
+        const wechatWidth = Number(this.storage.get('phone-image-wechat-width') || 768);
+        const wechatHeight = Number(this.storage.get('phone-image-wechat-height') || 1024);
+        const weiboWidth = Number(this.storage.get('phone-image-weibo-width') || 768);
+        const weiboHeight = Number(this.storage.get('phone-image-weibo-height') || 768);
         const steps = Number(this.storage.get('phone-image-steps') || 28);
         const scale = Number(this.storage.get('phone-image-scale') || 5);
         const cfgRescale = Number(this.storage.get('phone-image-cfg-rescale') || 0);
@@ -872,15 +874,37 @@ export class SettingsApp {
             </div>
 
             <div class="setting-section">
-                <div class="setting-section-title">⚙️ 通用参数</div>
+                <div class="setting-section-title">⚙️ 尺寸与通用参数</div>
+
+                <div class="setting-item">
+                    <div class="setting-label">各 App 生图尺寸</div>
+                    <div class="setting-desc">蜜语默认使用 NAI 竖图；微信保留聊天图竖图；微博默认方图。</div>
+                    <div style="display: grid; grid-template-columns: 72px 1fr 1fr; gap: 8px; align-items: center; margin-top: 8px;">
+                        <div style="font-size: 11px; color: #777;">App</div>
+                        <div style="font-size: 11px; color: #777;">宽度</div>
+                        <div style="font-size: 11px; color: #777;">高度</div>
+
+                        <div style="font-size: 12px; color: #333;">蜜语</div>
+                        <input type="number" id="phone-image-honey-width" min="64" max="2048" step="64" value="${honeyWidth}" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box;">
+                        <input type="number" id="phone-image-honey-height" min="64" max="2048" step="64" value="${honeyHeight}" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box;">
+
+                        <div style="font-size: 12px; color: #333;">微信</div>
+                        <input type="number" id="phone-image-wechat-width" min="64" max="2048" step="64" value="${wechatWidth}" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box;">
+                        <input type="number" id="phone-image-wechat-height" min="64" max="2048" step="64" value="${wechatHeight}" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box;">
+
+                        <div style="font-size: 12px; color: #333;">微博</div>
+                        <input type="number" id="phone-image-weibo-width" min="64" max="2048" step="64" value="${weiboWidth}" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box;">
+                        <input type="number" id="phone-image-weibo-height" min="64" max="2048" step="64" value="${weiboHeight}" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box;">
+                    </div>
+                </div>
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                     <div class="setting-item">
-                        <div class="setting-label">宽度</div>
+                        <div class="setting-label">全局兜底宽度</div>
                         <input type="number" id="phone-image-width" min="64" max="2048" step="64" value="${width}" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
                     </div>
                     <div class="setting-item">
-                        <div class="setting-label">高度</div>
+                        <div class="setting-label">全局兜底高度</div>
                         <input type="number" id="phone-image-height" min="64" max="2048" step="64" value="${height}" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
                     </div>
                     <div class="setting-item">
@@ -1693,6 +1717,12 @@ export class SettingsApp {
         });
 
         [
+            ['phone-image-honey-width', 832, 64, 2048, true],
+            ['phone-image-honey-height', 1216, 64, 2048, true],
+            ['phone-image-wechat-width', 768, 64, 2048, true],
+            ['phone-image-wechat-height', 1024, 64, 2048, true],
+            ['phone-image-weibo-width', 768, 64, 2048, true],
+            ['phone-image-weibo-height', 768, 64, 2048, true],
             ['phone-image-width', 832, 64, 2048, true],
             ['phone-image-height', 1216, 64, 2048, true],
             ['phone-image-steps', 28, 1, 50, true],
@@ -1747,6 +1777,14 @@ export class SettingsApp {
         const honeyTtsModeSelect = document.getElementById('phone-honey-tts-mode');
         const honeyTtsCacheEnabledToggle = document.getElementById('phone-honey-tts-cache-enabled');
         const getSelectedTtsProvider = () => String(ttsProvider?.value || this._getCurrentTtsProvider()).trim() || 'minimax_cn';
+        const inferTtsProviderFromUrl = (urlValue, fallback = '') => {
+            const url = String(urlValue || '').trim().toLowerCase();
+            if (url.includes('minimaxi.com')) return 'minimax_cn';
+            if (url.includes('minimax.chat')) return 'minimax_intl';
+            if (url.includes('openspeech.bytedance.com')) return 'volcengine';
+            if (url.includes('api.openai.com') || /\/audio\/speech\b/.test(url)) return 'openai';
+            return String(fallback || '').trim() || 'minimax_cn';
+        };
         const setTtsProviderField = async (field, value, legacyKey = '') => {
             const provider = getSelectedTtsProvider();
             const safeValue = String(value || '').trim();
@@ -1762,16 +1800,19 @@ export class SettingsApp {
                 await this.storage.set(legacyKey, safeValue);
             }
         };
-        const addTtsVoiceHistory = async (voiceValue) => {
+        const addTtsVoiceHistory = async (voiceValue, {
+            historyKey = 'phone-tts-voice-history',
+            presetSelector = '#phone-tts-voice-preset'
+        } = {}) => {
             const val = String(voiceValue || '').trim();
             if (!val) return;
 
             let history = [];
-            try { history = JSON.parse(this.storage.get('phone-tts-voice-history') || '[]'); } catch(e) {}
+            try { history = JSON.parse(this.storage.get(historyKey) || '[]'); } catch(e) {}
             if (!history.includes(val)) {
                 history.push(val);
-                await this.storage.set('phone-tts-voice-history', JSON.stringify(history));
-                document.querySelectorAll('#phone-tts-voice-preset, #phone-tts-volc-voice-preset').forEach((preset) => {
+                await this.storage.set(historyKey, JSON.stringify(history));
+                document.querySelectorAll(presetSelector).forEach((preset) => {
                     const opt = document.createElement('option');
                     opt.value = val;
                     opt.textContent = val;
@@ -1782,14 +1823,20 @@ export class SettingsApp {
         const saveTtsVoice = async (voiceValue) => {
             const val = String(voiceValue || '').trim();
             if (ttsVoice) ttsVoice.value = val;
-            await setTtsProviderField('voice', val, 'phone-tts-voice');
-            await addTtsVoiceHistory(val);
+            await setTtsProviderField('voice', val);
+            await addTtsVoiceHistory(val, {
+                historyKey: 'phone-tts-voice-history',
+                presetSelector: '#phone-tts-voice-preset'
+            });
         };
         const saveVolcTtsVoice = async (voiceValue) => {
             const val = String(voiceValue || '').trim();
             if (ttsVolcVoice) ttsVolcVoice.value = val;
-            await setVolcTtsField('voice', val, 'phone-tts-voice');
-            await addTtsVoiceHistory(val);
+            await setVolcTtsField('voice', val);
+            await addTtsVoiceHistory(val, {
+                historyKey: 'phone-tts-volc-voice-history',
+                presetSelector: '#phone-tts-volc-voice-preset'
+            });
         };
         const setCloneResult = (message, isError = false) => {
             if (!ttsVolcCloneResult) return;
@@ -1857,7 +1904,7 @@ export class SettingsApp {
             if (ttsUrl) { ttsUrl.value = nextUrl; await this.storage.set('phone-tts-url', nextUrl); }
             if (ttsKey) { ttsKey.value = nextKey; await this.storage.set('phone-tts-key', nextKey); }
             if (ttsModel) { ttsModel.value = nextModel; await this.storage.set('phone-tts-model', nextModel); }
-            if (ttsVoice) { ttsVoice.value = nextVoice; await this.storage.set('phone-tts-voice', nextVoice); }
+            if (ttsVoice) { ttsVoice.value = nextVoice; }
             if (val === 'volcengine') {
                 if (ttsVolcKey) ttsVolcKey.value = nextKey;
                 if (ttsVolcVoice) ttsVolcVoice.value = nextVoice;
@@ -1878,6 +1925,9 @@ export class SettingsApp {
         if (ttsUrlPreset) ttsUrlPreset.addEventListener('change', async (e) => {
             const val = e.target.value;
             if (!val) return;
+            const inferredProvider = inferTtsProviderFromUrl(val, getSelectedTtsProvider());
+            await this.storage.set('phone-tts-provider', inferredProvider);
+            if (ttsProvider) ttsProvider.value = inferredProvider;
             if (ttsUrl) { ttsUrl.value = val; await setTtsProviderField('url', val, 'phone-tts-url'); }
             e.target.value = ''; // 重置下拉为占位项
         });
@@ -1913,7 +1963,9 @@ export class SettingsApp {
         }
         if (ttsPreviewBtn) {
             ttsPreviewBtn.addEventListener('click', async () => {
-                const provider = getSelectedTtsProvider();
+                const provider = inferTtsProviderFromUrl(ttsUrl?.value || '', getSelectedTtsProvider());
+                await this.storage.set('phone-tts-provider', provider);
+                if (ttsProvider) ttsProvider.value = provider;
                 const voice = String(ttsVoice?.value || '').trim();
                 await saveTtsVoice(voice);
                 await playTtsPreview(provider, voice || undefined, ttsPreviewBtn);
@@ -2064,7 +2116,7 @@ export class SettingsApp {
                     // 如果当前使用的就是被删的，清空输入框
                     if (ttsVoice && ttsVoice.value === selectedVal) {
                         ttsVoice.value = '';
-                        await setTtsProviderField('voice', '', 'phone-tts-voice');
+                        await setTtsProviderField('voice', '');
                     }
                 }, 800);
             });
@@ -2112,7 +2164,7 @@ export class SettingsApp {
 
                 // 清空输入框和存储
                 if (ttsVoice) ttsVoice.value = '';
-                await setTtsProviderField('voice', '', 'phone-tts-voice');
+                await setTtsProviderField('voice', '');
 
                 this.phoneShell.showNotification('已删除', `音色「${currentVoice}」已移除`, '🗑️');
             });
@@ -2129,11 +2181,11 @@ export class SettingsApp {
                 if (!confirm(`确定删除豆包音色「${currentVoice}」？`)) return;
 
                 let history = [];
-                try { history = JSON.parse(this.storage.get('phone-tts-voice-history') || '[]'); } catch(e) {}
+                try { history = JSON.parse(this.storage.get('phone-tts-volc-voice-history') || '[]'); } catch(e) {}
                 history = history.filter(v => v !== currentVoice);
-                await this.storage.set('phone-tts-voice-history', JSON.stringify(history));
+                await this.storage.set('phone-tts-volc-voice-history', JSON.stringify(history));
 
-                document.querySelectorAll('#phone-tts-voice-preset, #phone-tts-volc-voice-preset').forEach((preset) => {
+                document.querySelectorAll('#phone-tts-volc-voice-preset').forEach((preset) => {
                     const opt = preset.querySelector(`option[value="${CSS.escape(currentVoice)}"]`);
                     if (opt) opt.remove();
                     preset.value = '';
@@ -2141,7 +2193,7 @@ export class SettingsApp {
 
                 if (ttsVolcVoice) ttsVolcVoice.value = '';
                 if (ttsVolcCloneSpeakerId?.value === currentVoice) ttsVolcCloneSpeakerId.value = '';
-                await setVolcTtsField('voice', '', 'phone-tts-voice');
+                await setVolcTtsField('voice', '');
 
                 this.phoneShell.showNotification('已删除', `豆包音色「${currentVoice}」已移除`, '🗑️');
             });

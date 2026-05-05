@@ -843,10 +843,11 @@ export class WechatData {
         const contact = this.findContactByNameLoose(name, { includeChats });
         const globalProvider = String(this.storage?.get?.('phone-tts-provider') || 'minimax_cn').trim() || 'minimax_cn';
         const boundProvider = String(contact?.ttsProvider || '').trim();
-        const provider = boundProvider || globalProvider;
         const providerVoices = (contact?.ttsVoices && typeof contact.ttsVoices === 'object')
             ? contact.ttsVoices
             : {};
+        const globalProviderVoice = String(providerVoices?.[globalProvider] || '').trim();
+        const provider = globalProviderVoice ? globalProvider : (boundProvider || globalProvider);
         const providerVoice = String(providerVoices?.[provider] || '').trim();
         const hasProviderVoiceConfig = Object.values(providerVoices).some(value => String(value || '').trim());
         const voice = providerVoice || (hasProviderVoiceConfig ? '' : String(contact?.ttsVoice || '').trim());

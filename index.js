@@ -4352,7 +4352,12 @@ if (window.GGP_Loaded) {
                 if (!finalTime || !finalTime.match(/^\d{1,2}:\d{2}$/)) {
                     // 🔥 慢速步进：避免 AI 一次多条消息把时间推得过快
                     let minutesToAdd = 1;
-                    if (timeManager && typeof timeManager.getWechatMessageMinutesToAdd === 'function') {
+                    if (msg.type === 'voice') {
+                        const durationSeconds = Number.parseInt(String(msg.duration || '').replace(/[^\d]/g, ''), 10)
+                            || Math.ceil(String(msg.voiceText || msg.content || '语音').length / 3)
+                            || 2;
+                        minutesToAdd = Math.ceil(Math.max(2, durationSeconds) / 60);
+                    } else if (timeManager && typeof timeManager.getWechatMessageMinutesToAdd === 'function') {
                         minutesToAdd = timeManager.getWechatMessageMinutesToAdd(msg.content, { inBatch: true });
                     } else {
                         const contentLength = String(msg.content || '').trim().length;

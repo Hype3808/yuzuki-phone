@@ -2707,9 +2707,7 @@ export class HoneyView {
             try {
                 const result = await imageManager.generate({
                     app: 'honey',
-                    prompt,
-                    width: Number(this.app?.storage?.get?.('phone-image-width') || 832),
-                    height: Number(this.app?.storage?.get?.('phone-image-height') || 1216)
+                    prompt
                 });
                 this.currentSceneData = {
                     ...(this.currentSceneData || scene),

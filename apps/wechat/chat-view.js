@@ -39,6 +39,9 @@ export class ChatView {
         this._aiReplyTimeCursor = null;
         this._aiReplyRequestStartedAt = 0;
         this._isMessageInlineEditing = false;
+        this._wechatTtsCache = new Map();
+        this._wechatTtsCacheOrder = [];
+        this._wechatTtsCacheLimit = 80;
         this.customEmojiSelectionMode = false;
         this.selectedCustomEmojiIds = new Set();
     }
@@ -316,7 +319,48 @@ export class ChatView {
     }
 
     _getGlobalTtsVoice() {
-        return String(window.VirtualPhone?.storage?.get('phone-tts-voice') || '').trim();
+        const storage = window.VirtualPhone?.storage;
+        const provider = String(storage?.get?.('phone-tts-provider') || 'minimax_cn').trim() || 'minimax_cn';
+        const scopedVoice = String(storage?.get?.(`phone-tts-${provider}-voice`) || '').trim();
+        if (scopedVoice) return scopedVoice;
+        if (provider !== 'volcengine') {
+            return String(storage?.get?.('phone-tts-voice') || '').trim();
+        }
+        return '';
+    }
+
+    _buildWechatTtsCacheKey({ messageId = '', provider = '', voice = '', text = '' } = {}) {
+        return [
+            String(messageId || '').trim(),
+            String(provider || '').trim(),
+            String(voice || '').trim(),
+            String(text || '').trim()
+        ].join('\u001f');
+    }
+
+    _touchWechatTtsCacheKey(cacheKey = '') {
+        if (!cacheKey) return;
+        this._wechatTtsCacheOrder = this._wechatTtsCacheOrder.filter(key => key !== cacheKey);
+        this._wechatTtsCacheOrder.push(cacheKey);
+    }
+
+    _storeWechatTtsCache(cacheKey = '', blobUrl = '') {
+        if (!cacheKey || !blobUrl) return;
+        const existed = this._wechatTtsCache.get(cacheKey);
+        if (existed && existed !== blobUrl) {
+            try { URL.revokeObjectURL(existed); } catch (e) { /* ignore */ }
+        }
+        this._wechatTtsCache.set(cacheKey, blobUrl);
+        this._touchWechatTtsCacheKey(cacheKey);
+
+        while (this._wechatTtsCacheOrder.length > this._wechatTtsCacheLimit) {
+            const oldKey = this._wechatTtsCacheOrder.shift();
+            const oldUrl = this._wechatTtsCache.get(oldKey);
+            this._wechatTtsCache.delete(oldKey);
+            if (oldUrl) {
+                try { URL.revokeObjectURL(oldUrl); } catch (e) { /* ignore */ }
+            }
+        }
     }
 
     _resolveWechatBoundVoiceByName(name, { allowGlobalFallback = false } = {}) {
@@ -1264,12 +1308,14 @@ renderChatRoom(chat) {
         const storage = window.VirtualPhone?.storage || this.app?.storage;
         const apiKey = String(storage?.get('siliconflow_api_key') || '').trim();
         const model = String(storage?.get('image_generation_model') || '').trim() || 'Kwai-Kolors/Kolors';
+        const width = Math.max(64, Math.min(2048, Number(storage?.get('phone-image-wechat-width') || 768) || 768));
+        const height = Math.max(64, Math.min(2048, Number(storage?.get('phone-image-wechat-height') || 1024) || 1024));
 
         return {
             apiKey,
             model,
             endpoint: 'https://api.siliconflow.cn/v1/images/generations',
-            imageSize: '768x1024',
+            imageSize: `${Math.round(width)}x${Math.round(height)}`,
             batchSize: 1,
             numInferenceSteps: 16,
             guidanceScale: 6.5,
@@ -3371,6 +3417,13 @@ renderChatRoom(chat) {
                 }
                 const voice = finalVoice;
                 const provider = finalProvider;
+                const messageId = String(bubble.id || '').replace(/^voice-bubble-/, '');
+                const cacheKey = this._buildWechatTtsCacheKey({
+                    messageId,
+                    provider,
+                    voice,
+                    text: textToSpeak
+                });
 
                 try {
                     bubble.style.opacity = '0.5'; // 加载中视觉反馈
@@ -3379,7 +3432,13 @@ renderChatRoom(chat) {
                         const prevBubble = document.getElementById(this.currentPlayingMsgId);
                         if (prevBubble) prevBubble.classList.remove('voice-playing');
                     }
-                    const blobUrl = await ttsManager.requestTTS(textToSpeak, { provider: provider || undefined, voice: voice || undefined });
+                    let blobUrl = this._wechatTtsCache.get(cacheKey) || '';
+                    if (blobUrl) {
+                        this._touchWechatTtsCacheKey(cacheKey);
+                    } else {
+                        blobUrl = await ttsManager.requestTTS(textToSpeak, { provider: provider || undefined, voice: voice || undefined });
+                        this._storeWechatTtsCache(cacheKey, blobUrl);
+                    }
 
                     // 播放音频
                     this.audioPlayer.src = blobUrl;
@@ -3388,7 +3447,6 @@ renderChatRoom(chat) {
                     this.audioPlayer.onended = () => {
                         bubble.classList.remove('voice-playing');
                         bubble.style.opacity = '1';
-                        URL.revokeObjectURL(blobUrl);
                     };
 
                     await this.audioPlayer.play();
