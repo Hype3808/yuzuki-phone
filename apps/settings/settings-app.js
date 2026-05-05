@@ -21,6 +21,7 @@ import {
 } from '../../config/tag-filter.js';
 
 const DEFAULT_DOUBAO_CLONE_WORKER_URL = '';
+const SETTINGS_FOLD_ARROW_HTML = '<span class="settings-fold-arrow" aria-hidden="true"><i class="fa-solid fa-chevron-right"></i></span>';
 
 export class SettingsApp {
     constructor(phoneShell, storage, settings) {
@@ -68,6 +69,20 @@ export class SettingsApp {
         return String(this.storage.get('phone-tts-provider') || 'minimax_cn').trim() || 'minimax_cn';
     }
 
+    _getCurrentMainTtsProvider() {
+        const scoped = String(this.storage.get('phone-tts-main-provider') || '').trim();
+        if (['minimax_cn', 'minimax_intl', 'openai'].includes(scoped)) return scoped;
+
+        const current = this._getCurrentTtsProvider();
+        if (['minimax_cn', 'minimax_intl', 'openai'].includes(current)) return current;
+
+        const legacyUrl = String(this.storage.get('phone-tts-url') || '').trim().toLowerCase();
+        if (legacyUrl.includes('minimaxi.com')) return 'minimax_cn';
+        if (legacyUrl.includes('minimax.chat')) return 'minimax_intl';
+        if (legacyUrl.includes('api.openai.com') || /\/audio\/speech\b/.test(legacyUrl)) return 'openai';
+        return 'minimax_cn';
+    }
+
     // 🔥 处理滑动返回
     handleSwipeBack() {
         // 仅当前前台图层是设置页时才响应，避免历史隐藏层误触发
@@ -81,7 +96,7 @@ export class SettingsApp {
     render() {
         const context = this.storage.getContext();
         const charName = context?.name2 || context?.characterId || '未知';
-        const currentTtsProvider = this._getCurrentTtsProvider();
+        const currentTtsProvider = this._getCurrentMainTtsProvider();
         const currentTtsDefaults = this._getTtsProviderDefaults(currentTtsProvider);
         const currentTtsUrl = this._getTtsProviderValue(currentTtsProvider, 'url', 'phone-tts-url') || currentTtsDefaults.url || '';
         const currentTtsKey = this._getTtsProviderValue(currentTtsProvider, 'key', 'phone-tts-key');
@@ -111,6 +126,31 @@ export class SettingsApp {
         const globalTextColor = this.storage.get('phone-global-text') || '#000000';
         const html = `
             <div class="settings-app">
+                <style>
+                    .settings-app details > summary::-webkit-details-marker { display: none; }
+                    .settings-app details > summary::marker { content: ''; }
+                    .settings-fold-arrow {
+                        width: 26px;
+                        height: 26px;
+                        flex: 0 0 26px;
+                        display: inline-flex;
+                        align-items: center;
+                        justify-content: center;
+                        color: #8a8a8a;
+                        border-radius: 999px;
+                        background: rgba(0,0,0,0.04);
+                        transition: transform 0.18s ease, background 0.18s ease, color 0.18s ease;
+                    }
+                    .settings-fold-arrow i {
+                        font-size: 11px;
+                        line-height: 1;
+                    }
+                    .settings-app details[open] > summary .settings-fold-arrow {
+                        transform: rotate(90deg);
+                        color: #222;
+                        background: rgba(0,0,0,0.07);
+                    }
+                </style>
                 <div class="settings-app-header" style="background: #f7f7f7; color: #000; border-bottom: 0.5px solid #d8d8d8; display: flex; align-items: center; justify-content: center; position: sticky; top: 0; z-index: 100; height: 78px; min-height: 78px; padding: 34px 14px 0; box-sizing: border-box; flex-shrink: 0;">
                     <h2 style="color: #000; font-size: 17px; font-weight: 500; margin: 0;">设置</h2>
                 </div>
@@ -139,7 +179,7 @@ export class SettingsApp {
                         <details data-settings-fold-key="phone-settings-general-interaction-open" ${isGeneralInteractionOpen ? 'open' : ''} style="margin: 12px 0 8px; border: 1px solid #ececec; border-radius: 10px; background: #fff; overflow: hidden;">
                             <summary style="height: 38px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; list-style: none; font-size: 13px; font-weight: 700; color: #333; background: #fafafa;">
                                 <span>📡 互动模式</span>
-                                <span style="font-size: 11px; color: #888; font-weight: 500;">点击展开/折叠</span>
+                                ${SETTINGS_FOLD_ARROW_HTML}
                             </summary>
                             <div style="padding: 10px 10px 4px;">
 
@@ -183,7 +223,7 @@ export class SettingsApp {
                         <details data-settings-fold-key="phone-settings-general-limits-open" ${isGeneralLimitsOpen ? 'open' : ''} style="margin: 8px 0 8px; border: 1px solid #ececec; border-radius: 10px; background: #fff; overflow: hidden;">
                             <summary style="height: 38px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; list-style: none; font-size: 13px; font-weight: 700; color: #333; background: #fafafa;">
                                 <span>📨 注入/记录条数</span>
-                                <span style="font-size: 11px; color: #888; font-weight: 500;">点击展开/折叠</span>
+                                ${SETTINGS_FOLD_ARROW_HTML}
                             </summary>
                             <div style="padding: 10px 10px 4px;">
 
@@ -514,7 +554,7 @@ export class SettingsApp {
                             <details data-tts-fold-key="phone-tts-minimax-section-open" ${isTtsMiniMaxSectionOpen ? 'open' : ''} style="margin: 12px 0 8px; border: 1px solid #ececec; border-radius: 10px; background: #fff; overflow: hidden;">
                                 <summary style="height: 38px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; list-style: none; font-size: 13px; font-weight: 700; color: #333; background: #fafafa;">
                                     <span>MiniMax / OpenAI</span>
-                                    <span style="font-size: 11px; color: #888; font-weight: 500;">点击展开/折叠</span>
+                                    ${SETTINGS_FOLD_ARROW_HTML}
                                 </summary>
                                 <div style="padding: 10px 10px 4px;">
                                     <div class="setting-item">
@@ -586,7 +626,7 @@ export class SettingsApp {
                             <details data-tts-fold-key="phone-tts-volc-section-open" ${isTtsVolcSectionOpen ? 'open' : ''} style="margin: 8px 0 8px; border: 1px solid #ececec; border-radius: 10px; background: #fff; overflow: hidden;">
                                 <summary style="height: 38px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; list-style: none; font-size: 13px; font-weight: 700; color: #333; background: #fafafa;">
                                     <span>火山引擎（豆包）</span>
-                                    <span style="font-size: 11px; color: #888; font-weight: 500;">点击展开/折叠</span>
+                                    ${SETTINGS_FOLD_ARROW_HTML}
                                 </summary>
                                 <div style="padding: 10px 10px 4px;">
                                     <div class="setting-item" style="display: flex; align-items: center; justify-content: space-between;">
@@ -697,7 +737,7 @@ export class SettingsApp {
                             <details data-tts-fold-key="phone-tts-wechat-section-open" ${isTtsWechatSectionOpen ? 'open' : ''} style="margin: 8px 0 8px; border: 1px solid #ececec; border-radius: 10px; background: #fff; overflow: hidden;">
                                 <summary style="height: 38px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; list-style: none; font-size: 13px; font-weight: 700; color: #333; background: #fafafa;">
                                     <span>微信语音/视频通话</span>
-                                    <span style="font-size: 11px; color: #888; font-weight: 500;">点击展开/折叠</span>
+                                    ${SETTINGS_FOLD_ARROW_HTML}
                                 </summary>
                                 <div style="padding: 10px 10px 4px;">
                                     <div class="setting-item setting-toggle" style="margin-top: 0;">
@@ -716,7 +756,7 @@ export class SettingsApp {
                             <details data-tts-fold-key="phone-tts-honey-section-open" ${isTtsHoneySectionOpen ? 'open' : ''} style="margin: 8px 0 8px; border: 1px solid #ececec; border-radius: 10px; background: #fff; overflow: hidden;">
                                 <summary style="height: 38px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; list-style: none; font-size: 13px; font-weight: 700; color: #333; background: #fafafa;">
                                     <span>蜜语 TTS 配置</span>
-                                    <span style="font-size: 11px; color: #888; font-weight: 500;">点击展开/折叠</span>
+                                    ${SETTINGS_FOLD_ARROW_HTML}
                                 </summary>
                                 <div class="setting-item" style="margin-top: 0; padding: 10px 10px 4px;">
 
@@ -1909,6 +1949,7 @@ export class SettingsApp {
         const honeyTtsModeSelect = document.getElementById('phone-honey-tts-mode');
         const honeyTtsCacheEnabledToggle = document.getElementById('phone-honey-tts-cache-enabled');
         const getSelectedTtsProvider = () => String(ttsProvider?.value || this._getCurrentTtsProvider()).trim() || 'minimax_cn';
+        const getSelectedMainTtsProvider = () => String(ttsProvider?.value || this._getCurrentMainTtsProvider()).trim() || 'minimax_cn';
         const inferTtsProviderFromUrl = (urlValue, fallback = '') => {
             const url = String(urlValue || '').trim().toLowerCase();
             if (url.includes('minimaxi.com')) return 'minimax_cn';
@@ -1921,6 +1962,17 @@ export class SettingsApp {
             const provider = getSelectedTtsProvider();
             const safeValue = String(value || '').trim();
             await this.storage.set(this._getTtsProviderConfigKey(provider, field), safeValue);
+            if (legacyKey && provider === this._getCurrentTtsProvider()) {
+                await this.storage.set(legacyKey, safeValue);
+            }
+        };
+        const setMainTtsProviderField = async (field, value, legacyKey = '') => {
+            const provider = inferTtsProviderFromUrl(ttsUrl?.value || '', getSelectedMainTtsProvider());
+            const safeValue = String(value || '').trim();
+            await this.storage.set(this._getTtsProviderConfigKey(provider, field), safeValue);
+            if (['minimax_cn', 'minimax_intl', 'openai'].includes(provider)) {
+                await this.storage.set('phone-tts-main-provider', provider);
+            }
             if (legacyKey && provider === this._getCurrentTtsProvider()) {
                 await this.storage.set(legacyKey, safeValue);
             }
@@ -1955,7 +2007,7 @@ export class SettingsApp {
         const saveTtsVoice = async (voiceValue) => {
             const val = String(voiceValue || '').trim();
             if (ttsVoice) ttsVoice.value = val;
-            await setTtsProviderField('voice', val);
+            await setMainTtsProviderField('voice', val);
             await addTtsVoiceHistory(val, {
                 historyKey: 'phone-tts-voice-history',
                 presetSelector: '#phone-tts-voice-preset'
@@ -2057,10 +2109,10 @@ export class SettingsApp {
         if (ttsUrlPreset) ttsUrlPreset.addEventListener('change', async (e) => {
             const val = e.target.value;
             if (!val) return;
-            const inferredProvider = inferTtsProviderFromUrl(val, getSelectedTtsProvider());
-            await this.storage.set('phone-tts-provider', inferredProvider);
+            const inferredProvider = inferTtsProviderFromUrl(val, getSelectedMainTtsProvider());
+            await this.storage.set('phone-tts-main-provider', inferredProvider);
             if (ttsProvider) ttsProvider.value = inferredProvider;
-            if (ttsUrl) { ttsUrl.value = val; await setTtsProviderField('url', val, 'phone-tts-url'); }
+            if (ttsUrl) { ttsUrl.value = val; await setMainTtsProviderField('url', val, 'phone-tts-url'); }
             e.target.value = ''; // 重置下拉为占位项
         });
 
@@ -2068,19 +2120,19 @@ export class SettingsApp {
         if (ttsModelPreset) ttsModelPreset.addEventListener('change', async (e) => {
             const val = e.target.value;
             if (!val) return;
-            if (ttsModel) { ttsModel.value = val; await setTtsProviderField('model', val, 'phone-tts-model'); }
+            if (ttsModel) { ttsModel.value = val; await setMainTtsProviderField('model', val, 'phone-tts-model'); }
             e.target.value = ''; // 重置下拉为占位项
         });
 
-        if (ttsUrl) ttsUrl.addEventListener('change', async (e) => { await setTtsProviderField('url', e.target.value, 'phone-tts-url'); });
-        if (ttsKey) ttsKey.addEventListener('change', async (e) => { await setTtsProviderField('key', e.target.value, 'phone-tts-key'); });
+        if (ttsUrl) ttsUrl.addEventListener('change', async (e) => { await setMainTtsProviderField('url', e.target.value, 'phone-tts-url'); });
+        if (ttsKey) ttsKey.addEventListener('change', async (e) => { await setMainTtsProviderField('key', e.target.value, 'phone-tts-key'); });
         if (ttsVolcKey) ttsVolcKey.addEventListener('change', async (e) => { await setVolcTtsField('key', e.target.value, 'phone-tts-key'); });
         if (ttsVolcAppId) ttsVolcAppId.addEventListener('change', async (e) => { await setVolcTtsField('app-id', e.target.value, 'phone-tts-volc-app-id'); });
         if (ttsVolcResourceId) ttsVolcResourceId.addEventListener('change', async (e) => { await setVolcTtsField('resource-id', e.target.value, 'phone-tts-volc-resource-id'); });
         if (ttsVolcCloneWorkerUrl) ttsVolcCloneWorkerUrl.addEventListener('change', async (e) => { await setVolcTtsField('clone-worker-url', e.target.value, 'phone-tts-volc-clone-worker-url'); });
         if (ttsVolcCloneAccessToken) ttsVolcCloneAccessToken.addEventListener('change', async (e) => { await setVolcTtsField('clone-access-token', e.target.value, 'phone-tts-volc-clone-access-token'); });
         if (ttsVolcCloneAppId) ttsVolcCloneAppId.addEventListener('change', async (e) => { await setVolcTtsField('clone-app-id', e.target.value, 'phone-tts-volc-clone-app-id'); });
-        if (ttsModel) ttsModel.addEventListener('change', async (e) => { await setTtsProviderField('model', e.target.value, 'phone-tts-model'); });
+        if (ttsModel) ttsModel.addEventListener('change', async (e) => { await setMainTtsProviderField('model', e.target.value, 'phone-tts-model'); });
         if (ttsVolcCloneAudioPickBtn && ttsVolcCloneAudio) {
             ttsVolcCloneAudioPickBtn.addEventListener('click', () => {
                 ttsVolcCloneAudio.click();
@@ -2095,9 +2147,7 @@ export class SettingsApp {
         }
         if (ttsPreviewBtn) {
             ttsPreviewBtn.addEventListener('click', async () => {
-                const provider = inferTtsProviderFromUrl(ttsUrl?.value || '', getSelectedTtsProvider());
-                await this.storage.set('phone-tts-provider', provider);
-                if (ttsProvider) ttsProvider.value = provider;
+                const provider = inferTtsProviderFromUrl(ttsUrl?.value || '', getSelectedMainTtsProvider());
                 const voice = String(ttsVoice?.value || '').trim();
                 await saveTtsVoice(voice);
                 await playTtsPreview(provider, voice || undefined, ttsPreviewBtn);
@@ -2107,9 +2157,8 @@ export class SettingsApp {
             ttsVolcPreviewBtn.addEventListener('click', async () => {
                 const voice = String(ttsVolcVoice?.value || '').trim();
                 const volcDefaults = this._getTtsProviderDefaults('volcengine');
-                await this.storage.set('phone-tts-provider', 'volcengine');
-                await setVolcTtsField('url', volcDefaults.url, 'phone-tts-url');
-                await setVolcTtsField('model', volcDefaults.model, 'phone-tts-model');
+                await setVolcTtsField('url', volcDefaults.url);
+                await setVolcTtsField('model', volcDefaults.model);
                 if (ttsVolcResourceId && /^S_[A-Za-z0-9_-]+$/.test(voice)) {
                     ttsVolcResourceId.value = 'seed-icl-2.0';
                     await setVolcTtsField('resource-id', 'seed-icl-2.0', 'phone-tts-volc-resource-id');
