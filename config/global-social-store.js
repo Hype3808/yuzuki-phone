@@ -196,6 +196,30 @@ export class GlobalSocialStore {
         return true;
     }
 
+    removeAppContactsByPredicate(app = '', predicate = null) {
+        const safeApp = String(app || '').trim().toLowerCase();
+        if (!safeApp || typeof predicate !== 'function') return 0;
+
+        const list = this.getContactsByApp(safeApp);
+        let removed = 0;
+        list.forEach((entry) => {
+            let shouldRemove = false;
+            try {
+                shouldRemove = !!predicate(entry);
+            } catch (e) {
+                shouldRemove = false;
+            }
+            if (shouldRemove && this.removeAppContact(safeApp, entry.appContactId)) {
+                removed += 1;
+            }
+        });
+        return removed;
+    }
+
+    removeAllAppContacts(app = '') {
+        return this.removeAppContactsByPredicate(app, () => true);
+    }
+
     _createConversationSkeleton({ app = '', appConversationId = '', name = '', type = 'single', participantContactIds = [] } = {}) {
         const now = Date.now();
         return {

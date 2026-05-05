@@ -4532,7 +4532,9 @@ renderChatRoom(chat) {
 
 
             // 🔥 新增：读取世界书/角色书条目（character_book）
-            if (char.data && char.data.character_book && char.data.character_book.entries) {
+            const wechatWorldbookRaw = window.VirtualPhone?.storage?.get?.('wechat-use-worldbook');
+            const useWechatWorldbook = wechatWorldbookRaw !== false && wechatWorldbookRaw !== 'false';
+            if (useWechatWorldbook && char.data && char.data.character_book && char.data.character_book.entries) {
                 const entries = char.data.character_book.entries;
                 if (entries.length > 0) {
                     let worldInfo = '【世界书/角色书信息】\n';

@@ -31,6 +31,30 @@ export class HoneyData {
         return (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) ? SillyTavern.getContext() : null;
     }
 
+    _buildCharacterBookWorldInfoMessage() {
+        const enabledRaw = this.storage?.get?.('phone-honey-use-worldbook');
+        const enabled = enabledRaw === true || enabledRaw === 'true';
+        if (!enabled) return null;
+
+        const context = this._getContext();
+        const char = context?.characters?.[context?.characterId];
+        const entries = char?.data?.character_book?.entries;
+        if (!Array.isArray(entries) || entries.length === 0) return null;
+
+        const parts = entries
+            .filter(entry => entry?.content && entry.enabled !== false)
+            .map(entry => String(entry.content || '').trim())
+            .filter(Boolean);
+        if (parts.length === 0) return null;
+
+        return {
+            role: 'system',
+            content: `【世界书/角色书信息】\n${parts.join('\n---\n')}`,
+            name: 'SYSTEM (世界书)',
+            isPhoneMessage: true
+        };
+    }
+
     _sanitizeInlineText(value, maxLen = 260) {
         return String(value || '')
             .replace(/<[^>]*>/g, ' ')
@@ -121,12 +145,18 @@ export class HoneyData {
 
     _syncHoneyPeopleToGlobalStore(list = [], scope = 'friend') {
         const safeList = Array.isArray(list) ? list : [];
+        const targetScope = scope === 'friend' ? 'friend' : 'request';
+        const keepIds = new Set();
+
         safeList.forEach((item) => {
             const person = this._normalizeHoneySocialPerson(item, scope === 'friend' ? '好友' : '直播间');
             if (!person?.name) return;
+            const appContactId = this._getHoneyGlobalContactId(person);
+            if (!appContactId) return;
+            keepIds.add(appContactId);
             this.globalSocialStore?.upsertContact?.({
                 app: 'honey',
-                appContactId: this._getHoneyGlobalContactId(person),
+                appContactId,
                 name: person.name,
                 avatar: person.avatarUrl || '',
                 relation: scope === 'friend' ? '蜜语好友' : '蜜语候选好友',
@@ -140,6 +170,18 @@ export class HoneyData {
                     honeyScope: scope
                 }
             });
+        });
+
+        const globalList = this.globalSocialStore?.getContactsByApp?.('honey') || [];
+        globalList.forEach((entry) => {
+            const relationText = String(entry?.relation || '').trim();
+            const inferredScope = relationText.includes('候选') ? 'request' : 'friend';
+            const scopeTag = String(entry?.extra?.honeyScope || inferredScope).trim().toLowerCase();
+            if (scopeTag !== targetScope) return;
+            const appContactId = String(entry?.appContactId || '').trim();
+            if (appContactId && !keepIds.has(appContactId)) {
+                this.globalSocialStore?.removeAppContact?.('honey', appContactId);
+            }
         });
     }
 
@@ -1154,6 +1196,7 @@ export class HoneyData {
             ? list.map(item => this._normalizeHoneySocialPerson(item, '好友')).filter(Boolean)
             : [];
         this._syncHoneyPeopleToGlobalStore(safeList, 'friend');
+        this._removeStored('honey_my_friends');
         // 全局主库模式：不再持续写入会话键，避免污染聊天会话。
         return safeList;
     }
@@ -1172,6 +1215,7 @@ export class HoneyData {
             ? list.map(item => this._normalizeHoneySocialPerson(item, '直播间')).filter(Boolean)
             : [];
         this._syncHoneyPeopleToGlobalStore(safeList, 'request');
+        this._removeStored('honey_my_friend_requests');
         // 全局主库模式：不再持续写入会话键，避免污染聊天会话。
         return safeList;
     }
@@ -1311,7 +1355,7 @@ export class HoneyData {
         return nextRequests;
     }
 
-    removeHoneyFriend(name) {
+    removeHoneyFriend(name, options = {}) {
         const safeName = this._sanitizeInlineText(name || '', 24);
         if (!safeName) return null;
 
@@ -1324,11 +1368,13 @@ export class HoneyData {
         this.saveHoneyFriends(nextFriends);
         this.globalSocialStore?.removeAppContact?.('honey', this._getHoneyGlobalContactId(removedFriend));
 
-        const wechatData = this._getWechatDataBridge();
-        const linkedContact = wechatData.getContacts()
-            .find(item => this._normalizeHostNameKey(item?.name || '') === targetKey);
-        if (linkedContact?.id) {
-            wechatData.deleteContactAndChat(linkedContact.id);
+        if (options?.skipWechatDelete !== true) {
+            const wechatData = this._getWechatDataBridge();
+            const linkedContact = wechatData.getContacts()
+                .find(item => this._normalizeHostNameKey(item?.name || '') === targetKey);
+            if (linkedContact?.id) {
+                wechatData.deleteContactAndChat(linkedContact.id);
+            }
         }
 
         return removedFriend;
@@ -2229,6 +2275,8 @@ export class HoneyData {
                 isPhoneMessage: true
             }
         ];
+        const worldInfoMessage = this._buildCharacterBookWorldInfoMessage();
+        if (worldInfoMessage) messages.push(worldInfoMessage);
 
         if (mode === 'continue') {
             messages.push({
@@ -2460,6 +2508,8 @@ export class HoneyData {
 
         const context = this._getContext();
         const messages = [{ role: 'system', content: systemPrompt, isPhoneMessage: true }];
+        const worldInfoMessage = this._buildCharacterBookWorldInfoMessage();
+        if (worldInfoMessage) messages.push(worldInfoMessage);
         if (instructionSystemPrompt) {
             messages.push({ role: 'system', content: instructionSystemPrompt, isPhoneMessage: true });
         }

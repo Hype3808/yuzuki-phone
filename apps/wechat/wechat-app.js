@@ -4194,6 +4194,8 @@ export class WechatApp {
         }
         const shellBg = this._getMainShellBackgroundConfig();
         const settingsContentStyle = shellBg.contentBgStyle || 'background: #ededed;';
+        const wechatWorldbookRaw = window.VirtualPhone?.storage?.get('wechat-use-worldbook');
+        const useWechatWorldbook = wechatWorldbookRaw !== false && wechatWorldbookRaw !== 'false';
 
         const html = `
         <div class="${shellBg.appClass}" style="${shellBg.appStyle}">
@@ -4219,6 +4221,25 @@ export class WechatApp {
     </div>
 </div>
                 
+                <!-- 生成上下文设置 -->
+                <div style="background: #fff; border-radius: 12px; margin: 15px; padding: 15px;">
+                    <div style="font-size: 14px; font-weight: 600; color: #333; margin-bottom: 12px;">
+                        生成上下文
+                    </div>
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                        <div style="min-width: 0;">
+                            <div style="font-size: 14px; color: #222;">使用酒馆世界书</div>
+                            <div style="font-size: 12px; color: #888; line-height: 1.45; margin-top: 4px;">
+                                开启后，微信生成会注入角色卡内的世界书/角色书条目。
+                            </div>
+                        </div>
+                        <label class="toggle-switch" style="flex: 0 0 auto;">
+                            <input type="checkbox" id="wechat-use-worldbook" ${useWechatWorldbook ? 'checked' : ''}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+
                 <!-- 功能提示词设置 -->
                 <div style="background: #fff; border-radius: 12px; margin: 15px; padding: 15px;">
                     <div style="font-size: 14px; font-weight: 600; color: #333; margin-bottom: 15px;">
@@ -4565,6 +4586,16 @@ export class WechatApp {
         if (avatarManagerBtn) avatarManagerBtn.onclick = () => {
             this.showAvatarManager();
         };
+
+        document.getElementById('wechat-use-worldbook')?.addEventListener('change', async (e) => {
+            const enabled = !!e.target.checked;
+            await window.VirtualPhone?.storage?.set('wechat-use-worldbook', enabled);
+            this.phoneShell.showNotification(
+                enabled ? '已开启' : '已关闭',
+                `微信生成${enabled ? '会' : '不会'}注入酒馆世界书`,
+                enabled ? '✅' : 'ℹ️'
+            );
+        });
 
         // 保存 ALAPI Token
         const saveAlapiBtn = document.getElementById('save-alapi-token-btn');

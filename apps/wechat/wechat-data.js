@@ -449,6 +449,8 @@ export class WechatData {
         // 1. 删除每个聊天的独立消息存储键
         const chatIds = Array.isArray(this.data.chats) ? this.data.chats.map(c => c.id) : [];
         this._removeMessageStoresByChatIds(chatIds);
+        this.globalSocialStore?.removeAllAppContacts?.('wechat');
+        this._clearLinkedHoneyFriendsForWechatReset();
 
         // 2. 清空内存中的懒加载标记
         this._messagesLoaded = {};
@@ -2145,6 +2147,7 @@ parseAIResponse(text) {
         this.data.contacts = this.data.contacts.filter(c => c.id !== contactId);
         if (this._isHoneySyncedContact(removedContact)) {
             this.globalSocialStore?.removeAppContact?.('wechat', String(contactId || '').trim());
+            this._removeLinkedHoneyFriend(removedContact);
         }
         if (this.data.contactGenderMap && typeof this.data.contactGenderMap === 'object') {
             delete this.data.contactGenderMap[contactId];
@@ -2155,6 +2158,75 @@ parseAIResponse(text) {
 
         // 3. 保存数据
         this.saveData();
+    }
+
+    _removeLinkedHoneyFriend(contact) {
+        const safeName = String(contact?.name || '').trim();
+        if (!safeName) return;
+        try {
+            const honeyData = window.VirtualPhone?.honeyApp?.honeyData || null;
+            if (honeyData && typeof honeyData.removeHoneyFriend === 'function') {
+                honeyData.removeHoneyFriend(safeName, { skipWechatDelete: true });
+                return;
+            }
+
+            const globalHoneyContacts = this.globalSocialStore?.getContactsByApp?.('honey') || [];
+            const match = globalHoneyContacts.find(item => this._normalizeContactNameKey(item?.name || '') === this._normalizeContactNameKey(safeName));
+            if (match?.appContactId) {
+                this.globalSocialStore?.removeAppContact?.('honey', match.appContactId);
+            }
+            this._removeLegacyHoneyFriendByName(safeName);
+        } catch (e) {
+            console.warn('⚠️ 删除微信蜜语联系人时同步清理蜜语好友失败:', e);
+        }
+    }
+
+    _clearLinkedHoneyFriendsForWechatReset() {
+        try {
+            const honeyContacts = this.globalSocialStore?.getContactsByApp?.('honey') || [];
+            honeyContacts
+                .filter(item => this._isHoneySyncedContact(item))
+                .forEach(item => {
+                    if (item?.appContactId) {
+                        this.globalSocialStore?.removeAppContact?.('honey', item.appContactId);
+                    }
+                });
+
+            const honeyData = window.VirtualPhone?.honeyApp?.honeyData || null;
+            if (honeyData && typeof honeyData.saveHoneyFriends === 'function') {
+                honeyData.saveHoneyFriends([]);
+            }
+            this._removeLegacyHoneyFriendByName('');
+        } catch (e) {
+            console.warn('⚠️ 微信全清时同步清理蜜语好友失败:', e);
+        }
+    }
+
+    _removeLegacyHoneyFriendByName(name = '') {
+        const targetKey = this._normalizeContactNameKey(name);
+        const keys = ['global_honey_my_friends', 'honey_my_friends'];
+        keys.forEach((key) => {
+            try {
+                const raw = this.storage?.get?.(key);
+                if (!raw) return;
+                const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+                if (!Array.isArray(parsed)) {
+                    this.storage?.remove?.(key);
+                    return;
+                }
+                const next = targetKey
+                    ? parsed.filter(item => this._normalizeContactNameKey(item?.name || item?.nickname || '') !== targetKey)
+                    : [];
+                if (next.length > 0) {
+                    this.storage?.set?.(key, JSON.stringify(next));
+                } else {
+                    this.storage?.remove?.(key);
+                }
+            } catch (e) {
+                // 旧格式无法解析时直接移除，避免继续回灌幽灵蜜语好友
+                this.storage?.remove?.(key);
+            }
+        });
     }
 
     // ========================================

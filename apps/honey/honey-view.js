@@ -1883,6 +1883,8 @@ export class HoneyView {
         const bgVideoStatus = bgVideoUrl
             ? '背景已上传'
             : '当前未设置动态背景。';
+        const honeyWorldbookRaw = this.app?.storage?.get?.('phone-honey-use-worldbook');
+        const useHoneyWorldbook = honeyWorldbookRaw === true || honeyWorldbookRaw === 'true';
 
         const html = `
             <div class="honey-app honey-page-settings">
@@ -1938,6 +1940,20 @@ export class HoneyView {
                         <div class="honey-settings-actions">
                             <label for="honey-live-video-upload" class="honey-settings-btn honey-settings-btn-primary" style="display: flex; align-items: center; justify-content: center; cursor: pointer;">
                                 <i class="fa-solid fa-video" style="margin-right: 6px;"></i> 上传视频
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="honey-settings-card">
+                        <div class="honey-settings-card-title">生成上下文</div>
+                        <div class="honey-settings-row">
+                            <div>
+                                <div class="honey-settings-label">使用酒馆世界书</div>
+                                <div class="honey-settings-desc">开启后，蜜语生成会注入角色卡内的世界书/角色书条目。</div>
+                            </div>
+                            <label class="honey-toggle-switch">
+                                <input type="checkbox" id="phone-honey-use-worldbook" ${useHoneyWorldbook ? 'checked' : ''}>
+                                <span class="honey-toggle-slider"></span>
                             </label>
                         </div>
                     </div>
@@ -3326,6 +3342,16 @@ export class HoneyView {
         root.querySelector('#honey-cancel-recharge')?.addEventListener('click', closeRechargeModal);
         root.querySelector('[data-action="close-recharge"]')?.addEventListener('click', closeRechargeModal);
         rechargeInput?.addEventListener('input', updateRechargePreview);
+
+        root.querySelector('#phone-honey-use-worldbook')?.addEventListener('change', async (e) => {
+            const enabled = !!e.target.checked;
+            await this.app?.storage?.set?.('phone-honey-use-worldbook', enabled);
+            this.app.phoneShell.showNotification(
+                enabled ? '已开启' : '已关闭',
+                `蜜语生成${enabled ? '会' : '不会'}注入酒馆世界书`,
+                enabled ? '✅' : 'ℹ️'
+            );
+        });
 
         root.querySelector('#honey-confirm-recharge')?.addEventListener('click', () => {
             const yuan = Number.parseFloat(rechargeInput?.value || '0');
