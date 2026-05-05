@@ -3712,6 +3712,64 @@ if (window.GGP_Loaded) {
         return getCurrentWechatRecipientAliases().includes(key);
     }
 
+    function getWechatRuntimeSnapshot() {
+        const chats = [];
+        const contacts = [];
+        const pushList = (target, list) => {
+            if (!Array.isArray(list)) return;
+            list.forEach(item => {
+                if (item && typeof item === 'object') target.push(item);
+            });
+        };
+
+        try {
+            const data = window.VirtualPhone?.wechatApp?.wechatData;
+            pushList(chats, data?.getChatList?.());
+            pushList(contacts, data?.getContacts?.());
+        } catch (e) { }
+
+        try {
+            const data = window.VirtualPhone?.cachedWechatData;
+            pushList(chats, data?.getChatList?.());
+            pushList(contacts, data?.getContacts?.());
+        } catch (e) { }
+
+        try {
+            const rawData = storage?.get?.('wechat_data', false);
+            if (rawData) {
+                const parsed = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
+                pushList(chats, parsed?.chats);
+                pushList(contacts, parsed?.contacts);
+            }
+        } catch (e) { }
+
+        return { chats, contacts };
+    }
+
+    function getWechatKnownGroupByName(name) {
+        const key = normalizeWechatRecipientKey(name);
+        if (!key) return null;
+        const { chats } = getWechatRuntimeSnapshot();
+        return chats.find(chat =>
+            chat?.type === 'group' &&
+            normalizeWechatRecipientKey(chat?.name) === key
+        ) || null;
+    }
+
+    function isWechatKnownGroupName(name) {
+        return !!getWechatKnownGroupByName(name);
+    }
+
+    function isWechatRecipientAllowed(recipient, { contact, chatType } = {}) {
+        if (isWechatRecipientCurrentUser(recipient)) return true;
+
+        const recipientKey = normalizeWechatRecipientKey(recipient);
+        const contactKey = normalizeWechatRecipientKey(contact);
+        if (!recipientKey || !contactKey || recipientKey !== contactKey) return false;
+
+        return chatType === 'group' || isWechatKnownGroupName(contact);
+    }
+
     // 🔥 新版：解析轻量级XML格式微信标签（支持 ---联系人--- 分隔多人）
     function parseLightweightWechatTag(text) {
         if (!text || !isPhoneFeatureEnabled()) return [];
@@ -3780,12 +3838,16 @@ if (window.GGP_Loaded) {
             let currentRecipientExplicit = false;
             let currentMessages = [];
             let groupMembers = [];
+            let knownGroupMembers = [];
 
             // 🔥 辅助函数：保存当前联系人的消息
             const saveCurrentContact = () => {
                 if (currentContact && currentMessages.length > 0) {
                     const shouldCheckRecipient = isOfflineCommentTag || currentRecipientExplicit;
-                    if (shouldCheckRecipient && !isWechatRecipientCurrentUser(currentRecipient)) {
+                    if (shouldCheckRecipient && !isWechatRecipientAllowed(currentRecipient, {
+                        contact: currentContact,
+                        chatType: currentChatType
+                    })) {
                         console.warn('⚠️ [微信] 跳过非用户接收人的线下微信消息:', {
                             contact: currentContact,
                             recipient: currentRecipient || '(未填写)'
@@ -3801,7 +3863,7 @@ if (window.GGP_Loaded) {
                         date: currentDate,
                         recipient: currentRecipient || '',
                         messages: [...currentMessages],
-                        members: currentChatType === 'group' ? [...groupMembers] : [],
+                        members: currentChatType === 'group' ? Array.from(new Set([...knownGroupMembers, ...groupMembers])) : [],
                         status: 'online',
                         notification: `${currentContact}: ${currentMessages[0].content.substring(0, 20)}...`
                     });
@@ -3829,6 +3891,11 @@ if (window.GGP_Loaded) {
                     currentRecipientExplicit = false;
                     currentMessages = [];
                     groupMembers = [];
+                    const knownGroup = getWechatKnownGroupByName(currentContact);
+                    knownGroupMembers = Array.isArray(knownGroup?.members) ? [...knownGroup.members] : [];
+                    if (knownGroup) {
+                        currentChatType = 'group';
+                    }
                     continue;
                 }
 
@@ -3863,12 +3930,15 @@ if (window.GGP_Loaded) {
                     currentRecipientExplicit = false;
                     currentMessages = [];
                     groupMembers = [];
+                    knownGroupMembers = [];
                     continue;
                 }
 
                 // 🔥🔥🔥 群聊格式：[21:30] 发送者: 消息内容
                 // 🔥 严格限制发送者名称，防止把正文里带冒号的句子（如时间10:30）误判为发送者
-                const senderMessageRegex = /^\[([0-9A-Za-z:：]+)\]\s*([^\s:：，。,\.!?！？\[\]【】()（）]{1,20})[：:]\s*(.+)$/;
+                const senderMessageRegex = currentChatType === 'group'
+                    ? /^\[([0-9A-Za-z:：]+)\]\s*([^:：]{1,40})[：:]\s*(.+)$/
+                    : /^\[([0-9A-Za-z:：]+)\]\s*([^\s:：，。,\.!?！？\[\]【】()（）]{1,20})[：:]\s*(.+)$/;
                 const senderMatch = senderMessageRegex.exec(trimmedLine);
 
                 if (senderMatch) {
