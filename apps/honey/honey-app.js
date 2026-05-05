@@ -9,8 +9,8 @@
  * 
  * Copyright (c) yuzuki. All rights reserved.
  * ======================================================== */
-import { HoneyView } from './honey-view.js';
-import { HoneyData } from './honey-data.js';
+import { HoneyView } from './honey-view.js?v=20260506-nai-debug';
+import { HoneyData } from './honey-data.js?v=20260506-nai-debug';
 
 export class HoneyApp {
     constructor(phoneShell, storage) {
@@ -69,4 +69,3 @@ export class HoneyApp {
         this.honeyView?.removePhoneChromeTheme?.();
     }
 }
-

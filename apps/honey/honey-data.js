@@ -63,6 +63,40 @@ export class HoneyData {
             .slice(0, maxLen);
     }
 
+    _extractNaiPrompt(source) {
+        const text = String(source || '').replace(/\r/g, '').trim();
+        if (!text) return '';
+
+        const candidates = [];
+        const push = (value) => {
+            let cleaned = String(value || '')
+                .replace(/^\s*[\[【（(]+/, '')
+                .replace(/[\]】）)]+\s*$/, '')
+                .replace(/^\s*(?:NAI|NovelAI)\s*(?:英文\s*)?(?:tag\s*)?(?:提示词|prompt)?\s*[:：]?\s*/i, '')
+                .replace(/^\s*画面\s*[:：]\s*/i, '')
+                .trim();
+            cleaned = cleaned
+                .replace(/\s*(?:供前端调用|其他推荐内容|好友申请|联播|榜单|打赏记录|直播剧情描写|评论区)[\s\S]*$/i, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+            if (!cleaned || /^(?:无|暂无|等待|生成中|N\/A|null|undefined)$/i.test(cleaned)) return;
+            candidates.push(cleaned.slice(0, 1200));
+        };
+
+        [
+            /\[\s*(?:NAI|NovelAI)\s*(?:英文\s*)?(?:tag\s*)?(?:提示词|prompt)\s*[:：]\s*([^\]\n]+)/ig,
+            /(?:NAI|NovelAI)\s*(?:英文\s*)?(?:tag\s*)?(?:提示词|prompt)\s*[:：]\s*([^\]\n]+)/ig,
+            /(?:^|\n)\s*画面\s*[:：]\s*\[\s*(?:NAI|NovelAI)\s*(?:英文\s*)?(?:tag\s*)?(?:提示词|prompt)\s*[:：]\s*([^\]\n]+)/ig,
+            /(?:^|\n)\s*画面\s*[:：]\s*([^\n]+)/ig
+        ].forEach((pattern) => {
+            for (const match of text.matchAll(pattern)) {
+                push(match?.[1] || '');
+            }
+        });
+
+        return candidates[0] || '';
+    }
+
     _normalizeHostNameKey(name) {
         return String(name || '')
             .replace(/\s+/g, '')
@@ -2114,7 +2148,7 @@ export class HoneyData {
                 collabCost: Math.max(0, Number.parseInt(String(live?.collabCost || 0), 10) || 0),
                 leaderboard: [],
                 intro: this._sanitizeInlineText(live?.intro || profile.intro || '', 120) || profile.intro || '',
-                naiPrompt: '',
+                naiPrompt: this._extractNaiPrompt(live?.naiPrompt || live?.imageGenerationPrompt || live?.imagePrompt || payload?.naiPrompt || payload?.imageGenerationPrompt || ''),
                 description: String(live?.description || live?.scene || live?.story || '').trim()
                     || (this._normalizeCollabValue(live?.collab || live?.collabUser || live?.collabName || '无') !== '无'
                         ? '联播已接通，互动正在持续推进。'
@@ -2215,7 +2249,7 @@ export class HoneyData {
             collabCost,
             leaderboard: [],
             intro: this._sanitizeInlineText(introMatch?.[1] || profile.intro || '', 120) || profile.intro || '',
-            naiPrompt: '',
+            naiPrompt: this._extractNaiPrompt(text),
             description: cleanedStory
                 || (collab !== '无'
                     ? '联播已接通，互动正在持续推进。'
@@ -2664,8 +2698,8 @@ export class HoneyData {
             data.leaderboard = this._parseLeaderboardSection(leaderboardSection, 3);
         }
 
-        const naiMatch = liveSection.match(/NAI提示词\s*[：:]\s*([^\]\n]+)/i);
-        if (naiMatch) data.naiPrompt = naiMatch[1].trim();
+        const naiPrompt = this._extractNaiPrompt(liveSection);
+        if (naiPrompt) data.naiPrompt = naiPrompt;
 
         const introMatch = liveSection.match(/(?:^|\n)\s*简介\s*[：:]\s*([^\n]+)\s*(?:\n|$)/i);
         if (introMatch) data.intro = introMatch[1].trim();

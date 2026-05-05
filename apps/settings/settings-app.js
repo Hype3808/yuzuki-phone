@@ -752,7 +752,24 @@ export class SettingsApp {
         const novelaiSite = String(this.storage.get('phone-image-novelai-site') || 'official').trim() || 'official';
         const novelaiUrl = String(this.storage.get('phone-image-novelai-url') || '').trim();
         const sampler = String(this.storage.get('phone-image-novelai-sampler') || 'k_euler').trim() || 'k_euler';
-        const schedule = String(this.storage.get('phone-image-novelai-schedule') || 'karras').trim() || 'karras';
+        const schedule = String(this.storage.get('phone-image-novelai-schedule') || 'native').trim() || 'native';
+        const novelaiSamplers = [
+            ['k_euler', 'Euler'],
+            ['ddim_v3', 'DDIM'],
+            ['k_dpmpp_2s_ancestral', 'DPM++ 2S Ancestral'],
+            ['k_dpmpp_2m', 'DPM++ 2M'],
+            ['k_euler_ancestral', 'Euler Ancestral'],
+            ['k_dpmpp_2m_sde', 'DPM++ 2M SDE'],
+            ['k_dpmpp_sde', 'DPM++ SDE']
+        ];
+        const novelaiSchedules = [
+            ['native', 'native'],
+            ['exponential', 'exponential'],
+            ['polyexponential', 'polyexponential'],
+            ['karras', 'karras']
+        ];
+        const samplerValue = novelaiSamplers.some(([value]) => value === sampler) ? sampler : 'k_euler';
+        const scheduleValue = novelaiSchedules.some(([value]) => value === schedule) ? schedule : 'native';
         const width = Number(this.storage.get('phone-image-width') || 832);
         const height = Number(this.storage.get('phone-image-height') || 1216);
         const honeyWidth = Number(this.storage.get('phone-image-honey-width') || 832);
@@ -762,9 +779,10 @@ export class SettingsApp {
         const weiboWidth = Number(this.storage.get('phone-image-weibo-width') || 768);
         const weiboHeight = Number(this.storage.get('phone-image-weibo-height') || 768);
         const steps = Number(this.storage.get('phone-image-steps') || 28);
-        const scale = Number(this.storage.get('phone-image-scale') || 5);
+        const scale = Number(this.storage.get('phone-image-scale') || 7);
         const cfgRescale = Number(this.storage.get('phone-image-cfg-rescale') || 0);
         const seed = Number(this.storage.get('phone-image-seed') ?? -1);
+        const debugPayload = this.storage.get('phone-image-debug-payload') === true || this.storage.get('phone-image-debug-payload') === 'true';
         const fixedPrompt = this._escapeHtml(this.storage.get('phone-image-fixed-prompt') || '');
         const fixedPromptEnd = this._escapeHtml(this.storage.get('phone-image-fixed-prompt-end') || '');
         const negativePrompt = this._escapeHtml(this.storage.get('phone-image-negative-prompt') || '');
@@ -808,6 +826,24 @@ export class SettingsApp {
                            style="width: 150px; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa;">
                 </div>
 
+                <div class="setting-item">
+                    <button id="phone-image-test-novelai" class="settings-btn primary" style="width: 100%; height: 34px; border: none; border-radius: 8px; background: #7c3aed; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;">
+                        测试 NAI 生图连接
+                    </button>
+                    <div class="setting-desc" id="phone-image-test-novelai-result" style="margin-top: 6px;">使用蜜语尺寸和当前 NovelAI 参数生成一张测试图。</div>
+                </div>
+
+                <div class="setting-item setting-toggle">
+                    <div>
+                        <div class="setting-label">控制台调试 NAI 参数</div>
+                        <div class="setting-desc">开启后每次 NAI 生图会在浏览器控制台输出完整 payload，不包含 API Key。</div>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="phone-image-debug-payload" ${debugPayload ? 'checked' : ''}>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
                 <div class="setting-item" style="display: flex; align-items: center; justify-content: space-between;">
                     <span style="font-size: 14px; color: #000;">接口站点</span>
                     <select id="phone-image-novelai-site" style="width: 150px; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa;">
@@ -832,6 +868,7 @@ export class SettingsApp {
                             <option value="nai-diffusion-4-5-full">NAI Diffusion 4.5 Full</option>
                             <option value="nai-diffusion-4-5-curated">NAI Diffusion 4.5 Curated</option>
                             <option value="nai-diffusion-4-full">NAI Diffusion 4 Full</option>
+                            <option value="nai-diffusion-4-curated-preview">NAI Diffusion 4 Curated Preview</option>
                             <option value="nai-diffusion-3">NAI Diffusion 3</option>
                         </select>
                     </div>
@@ -844,11 +881,15 @@ export class SettingsApp {
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                     <div class="setting-item">
                         <div class="setting-label">采样器</div>
-                        <input type="text" id="phone-image-novelai-sampler" value="${this._escapeHtml(sampler)}" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                        <select id="phone-image-novelai-sampler" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                            ${novelaiSamplers.map(([value, label]) => `<option value="${value}" ${samplerValue === value ? 'selected' : ''}>${label}</option>`).join('')}
+                        </select>
                     </div>
                     <div class="setting-item">
                         <div class="setting-label">Schedule</div>
-                        <input type="text" id="phone-image-novelai-schedule" value="${this._escapeHtml(schedule)}" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                        <select id="phone-image-novelai-schedule" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                            ${novelaiSchedules.map(([value, label]) => `<option value="${value}" ${scheduleValue === value ? 'selected' : ''}>${label}</option>`).join('')}
+                        </select>
                     </div>
                 </div>
             </div>
@@ -927,16 +968,19 @@ export class SettingsApp {
 
                 <div class="setting-item">
                     <div class="setting-label">固定前置提示词</div>
+                    <div class="setting-desc">放质量词和通用画风。画师串如果要全局生效，一般放这里。</div>
                     <textarea id="phone-image-fixed-prompt" style="width: 100%; min-height: 58px; padding: 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; resize: vertical; margin-top: 6px;">${fixedPrompt}</textarea>
                 </div>
 
                 <div class="setting-item">
                     <div class="setting-label">固定后置提示词</div>
+                    <div class="setting-desc">放补充画风或角色稳定词，会拼在 AI 本轮提示词后面。</div>
                     <textarea id="phone-image-fixed-prompt-end" style="width: 100%; min-height: 58px; padding: 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; resize: vertical; margin-top: 6px;">${fixedPromptEnd}</textarea>
                 </div>
 
                 <div class="setting-item">
                     <div class="setting-label">负面提示词</div>
+                    <div class="setting-desc">只放不想出现的内容，例如 low quality、bad hands、text、watermark。</div>
                     <textarea id="phone-image-negative-prompt" style="width: 100%; min-height: 70px; padding: 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; resize: vertical; margin-top: 6px;">${negativePrompt}</textarea>
                 </div>
             </div>
@@ -1668,6 +1712,67 @@ export class SettingsApp {
             await this.storage.set('phone-image-novelai-key', String(e.target.value || '').trim());
         });
 
+        document.getElementById('phone-image-debug-payload')?.addEventListener('change', async (e) => {
+            await this.storage.set('phone-image-debug-payload', !!e.target.checked);
+        });
+
+        document.getElementById('phone-image-test-novelai')?.addEventListener('click', async (e) => {
+            const btn = e.currentTarget;
+            const resultEl = document.getElementById('phone-image-test-novelai-result');
+            const setResult = (text, color = '#666') => {
+                if (resultEl) {
+                    resultEl.textContent = text;
+                    resultEl.style.color = color;
+                }
+            };
+            const oldText = btn?.textContent || '测试 NAI 生图连接';
+            try {
+                await this.storage.set('phone-image-provider', 'novelai');
+                await this.storage.set('phone-image-enabled', true);
+                await this.storage.set('phone-image-novelai-key', String(document.getElementById('phone-image-novelai-key')?.value || '').trim());
+                await this.storage.set('phone-image-novelai-site', String(document.getElementById('phone-image-novelai-site')?.value || 'official').trim() || 'official');
+                await this.storage.set('phone-image-novelai-url', String(document.getElementById('phone-image-novelai-url')?.value || '').trim());
+                await this.storage.set('phone-image-novelai-model', String(document.getElementById('phone-image-novelai-model')?.value || '').trim() || 'nai-diffusion-4-5-full');
+                await this.storage.set('phone-image-novelai-sampler', String(document.getElementById('phone-image-novelai-sampler')?.value || '').trim() || 'k_euler');
+                await this.storage.set('phone-image-novelai-schedule', String(document.getElementById('phone-image-novelai-schedule')?.value || '').trim() || 'native');
+
+                const imageManager = window.VirtualPhone?.imageGenerationManager;
+                if (!imageManager?.generate) throw new Error('生图管理器未初始化');
+
+                if (btn) {
+                    btn.disabled = true;
+                    btn.textContent = '测试中...';
+                }
+                setResult('正在请求 NovelAI...', '#7c3aed');
+                const result = await imageManager.generate({
+                    app: 'honey',
+                    provider: 'novelai',
+                    prompt: '1girl, solo, anime illustration, live streaming, looking at viewer',
+                    width: 832,
+                    height: 1216,
+                    ignoreEnabled: true
+                });
+                if (!result?.imageUrl && !result?.imageData) throw new Error('NovelAI 未返回图片');
+                const detail = [
+                    result.width && result.height ? `${result.width}x${result.height}` : '',
+                    result.steps ? `${result.steps} steps` : '',
+                    result.sampler || '',
+                    result.schedule || ''
+                ].filter(Boolean).join(' · ');
+                setResult(`NAI 连接成功，已收到图片数据${detail ? `：${detail}` : '。'}`, '#0f9f6e');
+                this.phoneShell?.showNotification?.('生图测试', detail ? `NAI 连接成功 ${detail}` : 'NAI 连接成功', '✅');
+            } catch (err) {
+                const message = err?.message || String(err || '测试失败');
+                setResult(`测试失败：${message}`, '#d33');
+                this.phoneShell?.showNotification?.('生图测试失败', message, '❌');
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = oldText;
+                }
+            }
+        });
+
         imageNovelaiSite?.addEventListener('change', async (e) => {
             const site = String(e.target.value || 'official').trim() || 'official';
             await this.storage.set('phone-image-novelai-site', site);
@@ -1698,7 +1803,7 @@ export class SettingsApp {
         });
 
         document.getElementById('phone-image-novelai-schedule')?.addEventListener('change', async (e) => {
-            const value = String(e.target.value || '').trim() || 'karras';
+            const value = String(e.target.value || '').trim() || 'native';
             e.target.value = value;
             await this.storage.set('phone-image-novelai-schedule', value);
         });
@@ -1726,13 +1831,18 @@ export class SettingsApp {
             ['phone-image-width', 832, 64, 2048, true],
             ['phone-image-height', 1216, 64, 2048, true],
             ['phone-image-steps', 28, 1, 50, true],
-            ['phone-image-scale', 5, 0, 50, false],
+            ['phone-image-scale', 7, 0, 50, false],
             ['phone-image-cfg-rescale', 0, 0, 1, false],
             ['phone-image-seed', -1, -1, 4294967295, true]
         ].forEach(([id, fallback, min, max, integer]) => {
-            document.getElementById(id)?.addEventListener('change', async (e) => {
+            const input = document.getElementById(id);
+            if (!input) return;
+            const saveNumberInput = async (e) => {
                 await this.storage.set(id, clampNumberInput(e.target, fallback, min, max, integer));
-            });
+            };
+            input.addEventListener('input', saveNumberInput);
+            input.addEventListener('change', saveNumberInput);
+            input.addEventListener('blur', saveNumberInput);
         });
 
         [
@@ -1740,9 +1850,14 @@ export class SettingsApp {
             'phone-image-fixed-prompt-end',
             'phone-image-negative-prompt'
         ].forEach(id => {
-            document.getElementById(id)?.addEventListener('change', async (e) => {
+            const input = document.getElementById(id);
+            if (!input) return;
+            const saveTextInput = async (e) => {
                 await this.storage.set(id, String(e.target.value || '').trim());
-            });
+            };
+            input.addEventListener('input', saveTextInput);
+            input.addEventListener('change', saveTextInput);
+            input.addEventListener('blur', saveTextInput);
         });
 
         // 🔊 TTS 设置事件绑定

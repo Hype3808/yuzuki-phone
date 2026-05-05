@@ -28,11 +28,37 @@ export class ImageGenerationManager {
     }
 
     _getNumber(key, fallback, min = null, max = null) {
-        const value = Number(this.storage?.get?.(key));
+        const raw = this.storage?.get?.(key);
+        if (raw === null || raw === undefined || raw === '') return fallback;
+        const value = Number(raw);
         let result = Number.isFinite(value) ? value : fallback;
         if (min !== null) result = Math.max(min, result);
         if (max !== null) result = Math.min(max, result);
         return result;
+    }
+
+    _normalizeNovelAISampler(value) {
+        const sampler = String(value || '').trim();
+        const allowed = new Set([
+            'k_euler',
+            'ddim_v3',
+            'k_dpmpp_2s_ancestral',
+            'k_dpmpp_2m',
+            'k_euler_ancestral',
+            'k_dpmpp_2m_sde',
+            'k_dpmpp_sde'
+        ]);
+        return allowed.has(sampler) ? sampler : 'k_euler';
+    }
+
+    _normalizeNovelAISchedule(value) {
+        const schedule = String(value || '').trim();
+        const allowed = new Set(['native', 'exponential', 'polyexponential', 'karras']);
+        return allowed.has(schedule) ? schedule : 'native';
+    }
+
+    _isNovelAIV4Model(model) {
+        return /^nai-diffusion-4(?:-|$)/i.test(String(model || '').trim());
     }
 
     _getAppDefaultSize(app) {
@@ -66,9 +92,23 @@ export class ImageGenerationManager {
 
     getConfig(overrides = {}) {
         const provider = String(overrides.provider || this._get('phone-image-provider', 'novelai')).trim() || 'novelai';
+        const appKey = String(overrides.app || '').trim().toLowerCase();
         const legacySiliconflowKey = String(this._get('siliconflow_api_key', '') || '').trim();
         const legacySiliconflowModel = String(this._get('image_generation_model', '') || '').trim();
-        const size = this.getSizeForApp(overrides.app || '');
+        const appDefaults = this._getAppDefaultSize(appKey);
+        const rawSize = this.getSizeForApp(appKey);
+        const size = { ...rawSize };
+        const rawSteps = this._getNumber('phone-image-steps', 28, 1, 50);
+
+        if (appKey === 'honey') {
+            if (size.width < 512 || size.height < 768) {
+                size.width = appDefaults.width;
+                size.height = appDefaults.height;
+            }
+        }
+        const steps = appKey === 'honey' && provider === 'novelai' && rawSteps < 20
+            ? 28
+            : rawSteps;
 
         return {
             enabled: overrides.enabled ?? this._getBool('phone-image-enabled', false),
@@ -77,17 +117,18 @@ export class ImageGenerationManager {
             site: String(overrides.site || this._get('phone-image-novelai-site', 'official')).trim() || 'official',
             customUrl: String(overrides.customUrl || this._get('phone-image-novelai-url', '')).trim(),
             model: String(overrides.model || this._get(`phone-image-${provider}-model`, '') || (provider === 'novelai' ? 'nai-diffusion-4-5-full' : legacySiliconflowModel || 'Kwai-Kolors/Kolors')).trim(),
-            sampler: String(overrides.sampler || this._get('phone-image-novelai-sampler', 'k_euler')).trim() || 'k_euler',
-            schedule: String(overrides.schedule || this._get('phone-image-novelai-schedule', 'karras')).trim() || 'karras',
+            sampler: this._normalizeNovelAISampler(overrides.sampler || this._get('phone-image-novelai-sampler', 'k_euler')),
+            schedule: this._normalizeNovelAISchedule(overrides.schedule || this._get('phone-image-novelai-schedule', 'native')),
             width: size.width,
             height: size.height,
-            steps: this._getNumber('phone-image-steps', 28, 1, 50),
-            scale: this._getNumber('phone-image-scale', 5, 0, 50),
+            steps,
+            scale: this._getNumber('phone-image-scale', appKey === 'honey' ? 7 : 5, 0, 50),
             cfgRescale: this._getNumber('phone-image-cfg-rescale', 0, 0, 1),
             seed: this._getNumber('phone-image-seed', -1, -1, 4294967295),
             fixedPrompt: String(overrides.fixedPrompt ?? this._get('phone-image-fixed-prompt', '')).trim(),
             fixedPromptEnd: String(overrides.fixedPromptEnd ?? this._get('phone-image-fixed-prompt-end', '')).trim(),
             negativePrompt: String(overrides.negativePrompt ?? this._get('phone-image-negative-prompt', '')).trim(),
+            debugPayload: this._getBool('phone-image-debug-payload', false),
             saveToBackgrounds: this._getBool('phone-image-save-backgrounds', false)
         };
     }
@@ -111,6 +152,206 @@ export class ImageGenerationManager {
             .map(item => String(item || '').trim())
             .filter(Boolean)
             .join(separator);
+    }
+
+    _normalizeHoneyScenePrompt(prompt) {
+        const blocked = new Set([
+            'masterpiece',
+            'best quality',
+            'very aesthetic',
+            'highres',
+            'sharp focus',
+            'cinematic lighting',
+            'detailed anime illustration',
+            'clean lineart',
+            'lineart',
+            'loose soft lineart',
+            'sketch',
+            'sketchy',
+            'sketchy delicate lines',
+            'rough sketch',
+            'pencil sketch',
+            'pencil lines',
+            'draft',
+            'unfinished',
+            'flat color',
+            'pale color',
+            'low contrast',
+            'wispy outlines',
+            'outline',
+            'simple background',
+            'empty background',
+            'blank background',
+            'white background',
+            'rating:general',
+            'rating:questionable',
+            'sfw'
+        ]);
+        return String(prompt || '')
+            .split(',')
+            .map(tag => tag.trim())
+            .filter(tag => {
+                if (!tag) return false;
+                const lower = tag.toLowerCase();
+                if (blocked.has(lower)) return false;
+                if (/^rating\s*:\s*(?:general|safe|questionable)$/i.test(tag)) return false;
+                return true;
+            })
+            .join(', ');
+    }
+
+    _buildHoneyPromptPrompt(scenePrompt, fixedPrompt = '', fixedPromptEnd = '') {
+        const base = this._normalizeHoneyScenePrompt(scenePrompt);
+        const fixedStart = this._normalizeHoneyScenePrompt(fixedPrompt);
+        const fixedEnd = this._normalizeHoneyScenePrompt(fixedPromptEnd);
+        const lowerBase = base.toLowerCase();
+        const hasExplicitMarker = /\b(?:rating\s*:\s*explicit|nsfw|explicit|nude|naked|penis|pussy|sex|fellatio|paizuri|masturbation|handjob|footjob|cum)\b/.test(lowerBase);
+        const adultLiveBase = [
+            hasExplicitMarker ? '' : 'rating:explicit',
+            hasExplicitMarker ? '' : 'nsfw',
+            hasExplicitMarker ? '' : 'adult erotic live stream',
+            base
+        ].filter(Boolean).join(', ');
+        const quality = [
+            'masterpiece',
+            'best quality',
+            'very aesthetic',
+            'highres',
+            'sharp focus',
+            'detailed face'
+        ].join(', ');
+        return this._joinPrompt([quality, adultLiveBase, fixedStart, fixedEnd]);
+    }
+
+    _buildHoneyNegativePrompt(negativePrompt) {
+        const qualityNegative = [
+            'lowres',
+            'bad anatomy',
+            'bad hands',
+            'missing fingers',
+            'extra fingers',
+            'fused fingers',
+            'poorly drawn hands',
+            'poorly drawn face',
+            'deformed',
+            'mutated',
+            'extra limbs',
+            'cropped',
+            'out of frame',
+            'blurry',
+            'motion blur',
+            'jpeg artifacts',
+            'text',
+            'watermark',
+            'logo',
+            'username',
+            'signature',
+            'sketch',
+            'sketchy',
+            'rough sketch',
+            'pencil sketch',
+            'lineart',
+            'loose lineart',
+            'unfinished',
+            'draft',
+            'flat color',
+            'low contrast',
+            'simple background',
+            'empty background',
+            'blank background',
+            'white background',
+            'child',
+            'teen',
+            'minor',
+            'loli',
+            'shota',
+            'underage'
+        ].join(', ');
+        return this._joinPrompt([qualityNegative, negativePrompt]);
+    }
+
+    _debugNovelAIRequest({ endpoint, payload, config, options }) {
+        if (!config?.debugPayload) return;
+        const originalPrompt = String(options?.prompt || '').trim();
+        const scenePrompt = String(options?.app || '').trim().toLowerCase() === 'honey'
+            ? this._normalizeHoneyScenePrompt(originalPrompt)
+            : originalPrompt;
+        const debugInfo = {
+            endpoint,
+            provider: 'novelai',
+            app: String(options?.app || '').trim(),
+            model: config.model,
+            sampler: config.sampler,
+            schedule: config.schedule,
+            width: payload?.parameters?.width,
+            height: payload?.parameters?.height,
+            steps: payload?.parameters?.steps,
+            scale: payload?.parameters?.scale,
+            cfgRescale: payload?.parameters?.cfg_rescale,
+            seed: payload?.parameters?.seed,
+            originalPrompt,
+            scenePrompt,
+            positivePrompt: payload?.input || '',
+            negativePrompt: payload?.parameters?.negative_prompt || '',
+            payload
+        };
+        try {
+            if (typeof window !== 'undefined') {
+                window.__lastNovelAIRequest = debugInfo;
+            }
+        } catch (e) {}
+        try {
+            const plainText = [
+                '[NovelAI Debug] 本次生图参数',
+                `App: ${debugInfo.app || '-'}`,
+                `模型: ${debugInfo.model}`,
+                `尺寸: ${debugInfo.width}x${debugInfo.height}`,
+                `Steps: ${debugInfo.steps}`,
+                `Sampler: ${debugInfo.sampler}`,
+                `Schedule: ${debugInfo.schedule}`,
+                `Scale: ${debugInfo.scale}`,
+                `CFG Rescale: ${debugInfo.cfgRescale}`,
+                `Seed: ${debugInfo.seed}`,
+                '',
+                'AI 画面 tag（已移除通用质量词，实际参与拼接）:',
+                debugInfo.scenePrompt || '(空)',
+                debugInfo.originalPrompt !== debugInfo.scenePrompt
+                    ? `\nAI 原始返回 tag:\n${debugInfo.originalPrompt || '(空)'}`
+                    : '',
+                '',
+                '最终发送给 NAI 的正面提示词:',
+                debugInfo.positivePrompt || '(空)',
+                '',
+                '最终发送给 NAI 的负面提示词:',
+                debugInfo.negativePrompt || '(空)',
+                '',
+                '完整 payload 已保存到 window.__lastNovelAIRequest',
+                '复制完整调试信息: copy(JSON.stringify(window.__lastNovelAIRequest, null, 2))'
+            ].join('\n');
+            console.log(plainText);
+            console.groupCollapsed('[NovelAI Debug] generate-image payload');
+            console.info('summary', {
+                endpoint: debugInfo.endpoint,
+                app: debugInfo.app,
+                model: debugInfo.model,
+                size: `${debugInfo.width}x${debugInfo.height}`,
+                steps: debugInfo.steps,
+                sampler: debugInfo.sampler,
+                schedule: debugInfo.schedule,
+                scale: debugInfo.scale,
+                cfgRescale: debugInfo.cfgRescale,
+                seed: debugInfo.seed
+            });
+            console.info('AI 画面 tag（已移除通用质量词）', debugInfo.scenePrompt);
+            if (debugInfo.originalPrompt !== debugInfo.scenePrompt) {
+                console.info('AI 原始返回 tag', debugInfo.originalPrompt);
+            }
+            console.info('positive prompt', debugInfo.positivePrompt);
+            console.info('negative prompt', debugInfo.negativePrompt);
+            console.info('full payload', debugInfo.payload);
+            console.info('copy helper', 'copy(JSON.stringify(window.__lastNovelAIRequest, null, 2))');
+            console.groupEnd();
+        } catch (e) {}
     }
 
     _resolveNovelAIEndpoint(config) {
@@ -157,7 +398,13 @@ export class ImageGenerationManager {
 
         if (window.JSZip) {
             const zip = await window.JSZip.loadAsync(arrayBuffer);
-            const imageFile = Object.values(zip.files).find(file => !file.dir && /\.(png|jpg|jpeg|webp)$/i.test(file.name));
+            const imageFile = Object.values(zip.files)
+                .filter(file => !file.dir && /\.(png|jpg|jpeg|webp)$/i.test(file.name))
+                .sort((a, b) => {
+                    const sizeA = Number(a?._data?.uncompressedSize || a?._data?.compressedSize || 0);
+                    const sizeB = Number(b?._data?.uncompressedSize || b?._data?.compressedSize || 0);
+                    return sizeB - sizeA;
+                })[0];
             if (!imageFile) throw new Error('NovelAI ZIP 中未找到图片文件');
             const imageBlob = await imageFile.async('blob');
             return await this._blobToDataUrl(imageBlob);
@@ -173,6 +420,41 @@ export class ImageGenerationManager {
             reader.onload = () => resolve(String(reader.result || ''));
             reader.onerror = () => reject(reader.error || new Error('图片读取失败'));
             reader.readAsDataURL(blob);
+        });
+    }
+
+    _waitForImageDecode(src, timeoutMs = 12000) {
+        return new Promise((resolve, reject) => {
+            if (!src) {
+                reject(new Error('图片数据为空'));
+                return;
+            }
+            const image = new Image();
+            let settled = false;
+            const timer = setTimeout(() => {
+                if (settled) return;
+                settled = true;
+                reject(new Error('图片解码超时'));
+            }, timeoutMs);
+            const finish = () => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                resolve({ width: image.naturalWidth || 0, height: image.naturalHeight || 0 });
+            };
+            image.onload = finish;
+            image.onerror = () => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                reject(new Error('图片解码失败'));
+            };
+            image.src = src;
+            if (typeof image.decode === 'function') {
+                image.decode().then(finish).catch(() => {
+                    if (image.complete && image.naturalWidth > 0) finish();
+                });
+            }
         });
     }
 
@@ -199,6 +481,7 @@ export class ImageGenerationManager {
         const view = new DataView(arrayBuffer);
         const decoder = new TextDecoder('utf-8');
         const imageExtPattern = /\.(png|jpg|jpeg|webp)$/i;
+        let bestEntry = null;
 
         for (let offset = 0; offset <= bytes.length - 46; offset++) {
             if (view.getUint32(offset, true) !== 0x02014b50) continue;
@@ -226,10 +509,13 @@ export class ImageGenerationManager {
             const dataStart = localHeaderOffset + 30 + localNameLength + localExtraLength;
             if (dataStart + compressedSize > bytes.length) continue;
 
-            return { name, method, compressedSize, dataStart };
+            const entry = { name, method, compressedSize, dataStart };
+            if (!bestEntry || compressedSize > bestEntry.compressedSize) {
+                bestEntry = entry;
+            }
         }
 
-        return null;
+        return bestEntry || null;
     }
 
     async _inflateRawDeflate(bytes) {
@@ -255,37 +541,96 @@ export class ImageGenerationManager {
     }
 
     _buildNovelAIPayload(options, config) {
-        const prompt = this._joinPrompt([
-            config.fixedPrompt,
-            options.prompt,
-            config.fixedPromptEnd
-        ]);
-        const negativePrompt = this._joinPrompt([
+        const appKey = String(options.app || '').trim().toLowerCase();
+        const rawPrompt = appKey === 'honey'
+            ? String(options.prompt || '').trim()
+            : this._joinPrompt([
+                config.fixedPrompt,
+                options.prompt,
+                config.fixedPromptEnd
+            ]);
+        const rawNegativePrompt = this._joinPrompt([
             config.negativePrompt,
             options.negativePrompt
         ]);
+        const prompt = appKey === 'honey'
+            ? this._buildHoneyPromptPrompt(options.prompt, config.fixedPrompt, config.fixedPromptEnd)
+            : rawPrompt;
+        const negativePrompt = appKey === 'honey' ? this._buildHoneyNegativePrompt(rawNegativePrompt) : rawNegativePrompt;
         const seed = Number(options.seed ?? config.seed);
+        const appDefaults = this._getAppDefaultSize(appKey);
+        let width = Number(options.width || config.width);
+        let height = Number(options.height || config.height);
+        let scale = Number(options.scale ?? config.scale);
+        let steps = Number(options.steps || config.steps);
+        const cfgRescale = Number(options.cfgRescale ?? config.cfgRescale);
+        if (appKey === 'honey') {
+            if (!Number.isFinite(width) || !Number.isFinite(height) || width < 512 || height < 768) {
+                width = appDefaults.width;
+                height = appDefaults.height;
+            }
+            if (!Number.isFinite(steps) || steps < 20) {
+                steps = 28;
+            }
+            if (!Number.isFinite(scale) || scale < 1) {
+                scale = 7;
+            }
+        }
+        const resolvedSeed = Number.isFinite(seed) && seed >= 0
+            ? Math.floor(seed)
+            : Math.floor(Math.random() * 4294967295);
+
+        const parameters = {
+            width,
+            height,
+            scale,
+            sampler: config.sampler,
+            steps,
+            n_samples: 1,
+            ucPreset: 0,
+            qualityToggle: true,
+            sm: false,
+            sm_dyn: false,
+            cfg_rescale: cfgRescale,
+            noise_schedule: config.schedule,
+            seed: resolvedSeed,
+            negative_prompt: negativePrompt
+        };
+
+        if (this._isNovelAIV4Model(config.model)) {
+            Object.assign(parameters, {
+                params_version: 3,
+                dynamic_thresholding: false,
+                controlnet_strength: 1,
+                legacy: false,
+                add_original_image: false,
+                legacy_v3_extend: false,
+                reference_image_multiple: [],
+                reference_information_extracted_multiple: [],
+                reference_strength_multiple: [],
+                v4_prompt: {
+                    caption: {
+                        base_caption: prompt,
+                        char_captions: []
+                    },
+                    use_coords: false,
+                    use_order: true
+                },
+                v4_negative_prompt: {
+                    caption: {
+                        base_caption: negativePrompt,
+                        char_captions: []
+                    },
+                    legacy_uc: false
+                }
+            });
+        }
 
         return {
             input: prompt,
             model: config.model,
             action: 'generate',
-            parameters: {
-                width: Number(options.width || config.width),
-                height: Number(options.height || config.height),
-                scale: Number(options.scale ?? config.scale),
-                sampler: config.sampler,
-                steps: Number(options.steps || config.steps),
-                n_samples: 1,
-                ucPreset: 0,
-                qualityToggle: true,
-                sm: false,
-                sm_dyn: false,
-                cfg_rescale: Number(options.cfgRescale ?? config.cfgRescale),
-                noise_schedule: config.schedule,
-                seed: Number.isFinite(seed) && seed >= 0 ? Math.floor(seed) : Math.floor(Math.random() * 4294967295),
-                negative_prompt: negativePrompt
-            }
+            parameters
         };
     }
 
@@ -294,6 +639,8 @@ export class ImageGenerationManager {
         if (!prompt) throw new Error('缺少生图提示词');
 
         const endpoint = `${this._resolveNovelAIEndpoint(config)}/ai/generate-image`;
+        const payload = this._buildNovelAIPayload(options, config);
+        this._debugNovelAIRequest({ endpoint, payload, config, options });
         const response = await fetch(endpoint, {
             method: 'POST',
             headers: {
@@ -301,12 +648,15 @@ export class ImageGenerationManager {
                 'Content-Type': 'application/json',
                 Accept: 'application/x-zip-compressed, image/png, application/json'
             },
-            body: JSON.stringify(this._buildNovelAIPayload(options, config))
+            body: JSON.stringify(payload)
         });
 
         if (!response.ok) {
             const text = await response.text().catch(() => '');
-            throw new Error(`NovelAI 请求失败 (${response.status})${text ? `: ${text.slice(0, 180)}` : ''}`);
+            const hint = response.status >= 500
+                ? `；当前参数 model=${config.model}, sampler=${config.sampler}, schedule=${config.schedule}，可先用 native + k_euler 测试`
+                : '';
+            throw new Error(`NovelAI 请求失败 (${response.status})${hint}${text ? `: ${text.slice(0, 180)}` : ''}`);
         }
 
         const contentType = String(response.headers.get('content-type') || '').toLowerCase();
@@ -318,10 +668,21 @@ export class ImageGenerationManager {
             imageData = await this._readZipImage(response);
         }
         if (!imageData) throw new Error('NovelAI 未返回可用图片');
+        const imageInfo = await this._waitForImageDecode(imageData).catch((err) => {
+            throw new Error(`NovelAI 返回图片不可用: ${err?.message || err}`);
+        });
         return {
             provider: 'novelai',
             model: config.model,
             prompt,
+            width: imageInfo.width,
+            height: imageInfo.height,
+            requestedWidth: Number(payload?.parameters?.width || config.width),
+            requestedHeight: Number(payload?.parameters?.height || config.height),
+            steps: Number(payload?.parameters?.steps || config.steps),
+            sampler: config.sampler,
+            schedule: config.schedule,
+            scale: Number(payload?.parameters?.scale ?? config.scale),
             imageData,
             imageUrl: imageData
         };

@@ -219,7 +219,7 @@ export class HoneyView {
     }
 
     _loadCSS() {
-        const cssHref = this._getHoneyAssetUrl('honey.css?v=20260409-62');
+        const cssHref = this._getHoneyAssetUrl('honey.css?v=20260506-nai-debug');
         const styleId = 'honey-css-inline';
         const existing = document.getElementById(styleId);
         if (existing?.getAttribute('data-source') === cssHref) {
@@ -1047,15 +1047,18 @@ export class HoneyView {
             return `<span class="honey-meta-audience-avatar ${cls}${photoClass}"${avatarStyle}></span>`;
         }).join('');
         const liveTitleText = this._sanitizeLiveRoomTitle(data.title || activeTopicTitle || '直播间');
-        const liveVideoUrl = this._buildLiveVideoUrl(data);
+        const naiPrompt = this._resolveSceneNaiPrompt(data);
+        const imageStatus = String(data.imageGenerationStatus || '').trim();
+        const generatedImageUrl = String(data.naiImageUrl || data.generatedImageUrl || data.imageUrl || '').trim();
+        const liveVideoUrl = generatedImageUrl ? '' : this._buildLiveVideoUrl(data);
         const liveVideoHtml = liveVideoUrl
             ? `<video id="honey-live-video-el" src="${this._escapeHtml(liveVideoUrl)}" class="honey-live-video" autoplay loop muted playsinline webkit-playsinline preload="auto"></video>`
             : '';
-        const naiPrompt = String(data.naiPrompt || data.imageGenerationPrompt || '').trim();
-        const imageStatus = String(data.imageGenerationStatus || '').trim();
-        const generatedImageUrl = String(data.naiImageUrl || data.generatedImageUrl || data.imageUrl || '').trim();
-        const generatedImageStyle = (!liveVideoUrl && generatedImageUrl)
-            ? this._buildAvatarInlineStyle(generatedImageUrl)
+        const liveGlassHtml = generatedImageUrl
+            ? ''
+            : `<div class="honey-nai-glass" style="${liveVideoUrl ? 'backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(0,0,0,0.1);' : ''}"></div>`;
+        const generatedImageHtml = generatedImageUrl
+            ? `<img class="honey-nai-generated-image" src="${this._escapeHtml(generatedImageUrl)}" alt="">`
             : '';
         const imageButtonLabel = imageStatus === 'loading'
             ? '生成中...'
@@ -1064,7 +1067,7 @@ export class HoneyView {
             ? 'fa-spinner fa-spin'
             : (generatedImageUrl ? 'fa-rotate' : (naiPrompt ? 'fa-wand-magic-sparkles' : 'fa-lock'));
         const imageButtonDisabled = imageStatus === 'loading' || !naiPrompt;
-        const imageStatusHtml = (!liveVideoUrl && imageStatus === 'failed' && data.imageGenerationError)
+        const imageStatusHtml = imageStatus === 'failed' && data.imageGenerationError
             ? `<div class="honey-nai-status is-error">${this._escapeHtml(data.imageGenerationError)}</div>`
             : '';
         const collabNick = this._normalizeLiveCollabName(data.collab);
@@ -1184,8 +1187,8 @@ export class HoneyView {
         const unlockButtonHtml = isUserLive
             ? ''
             : `
-                <button class="honey-unlock-btn ${generatedImageUrl && !liveVideoUrl ? 'is-regenerate' : ''}" id="honey-test-nai-btn" ${imageButtonDisabled ? 'disabled' : ''}>
-                    <i class="fa-solid ${imageButtonIcon}"></i> ${imageButtonLabel}
+                <button class="honey-unlock-btn ${generatedImageUrl ? 'is-regenerate' : ''}" id="honey-test-nai-btn" title="${this._escapeHtml(imageButtonLabel)}" ${imageButtonDisabled ? 'disabled' : ''}>
+                    <i class="fa-solid ${imageButtonIcon}"></i><span class="honey-unlock-label">${this._escapeHtml(imageButtonLabel)}</span>
                 </button>
             `;
         const giftButtonHtml = isUserLive
@@ -1260,10 +1263,10 @@ export class HoneyView {
                             </div>
                         </div>
 
-                        <div class="honey-nai-placeholder ${generatedImageUrl && !liveVideoUrl ? 'has-generated-image' : ''}" style="${liveVideoUrl ? 'background: #000;' : generatedImageStyle}">
+                        <div class="honey-nai-placeholder ${generatedImageUrl ? 'has-generated-image' : ''}" style="${liveVideoUrl ? 'background: #000;' : ''}">
+                            ${generatedImageHtml}
                             ${liveVideoHtml}
-                            <div class="honey-nai-glass" style="${liveVideoUrl ? 'backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(0,0,0,0.1);' : ''}"></div>
-                            ${unlockButtonHtml}
+                            ${liveGlassHtml}
                             ${imageStatusHtml}
                         </div>
 
@@ -1276,6 +1279,7 @@ export class HoneyView {
 
                     <div class="honey-live-bottom">
                         <div class="honey-input-bar">
+                            ${unlockButtonHtml}
                             <input type="text" class="honey-chat-input" id="honey-chat-input" placeholder="${this._escapeHtml(chatPlaceholder)}" ${(honeyEnabled && !this._isGeneratingScene) ? '' : 'disabled'}>
                             <button class="honey-scene-toggle-btn" id="honey-scene-toggle-btn" title="${this.isScenePanelOpen ? '关闭剧情' : '查看剧情'}">
                                 <i class="fa-solid ${this.isScenePanelOpen ? 'fa-xmark' : 'fa-align-left'}"></i>
@@ -2681,7 +2685,7 @@ export class HoneyView {
 
         root.querySelector('#honey-test-nai-btn')?.addEventListener('click', async () => {
             const scene = this.currentSceneData || {};
-            const prompt = String(scene.naiPrompt || scene.imageGenerationPrompt || '').trim();
+            const prompt = this._resolveSceneNaiPrompt(scene);
             if (!prompt) {
                 this.app.phoneShell.showNotification('蜜语', '当前直播没有可用的 NAI 提示词', '⚠️');
                 return;
@@ -2693,9 +2697,38 @@ export class HoneyView {
                 return;
             }
 
-            const provider = String(this.app?.storage?.get?.('phone-image-provider') || 'novelai').trim() || 'novelai';
+            const imageStorage = this.app?.storage || window.VirtualPhone?.storage || null;
+            if (imageStorage && imageManager.storage !== imageStorage) {
+                imageManager.storage = imageStorage;
+            }
+            const readNumber = (key, fallback, min, max, integer = true) => {
+                const value = Number(imageStorage?.get?.(key));
+                let next = Number.isFinite(value) ? value : fallback;
+                next = Math.max(min, Math.min(max, next));
+                return integer ? Math.round(next) : next;
+            };
+            const provider = String(imageStorage?.get?.('phone-image-provider') || 'novelai').trim() || 'novelai';
+            const honeyWidth = readNumber('phone-image-honey-width', 832, 64, 2048, true);
+            const honeyHeight = readNumber('phone-image-honey-height', 1216, 64, 2048, true);
+            const imageSteps = readNumber('phone-image-steps', 28, 1, 50, true);
+            const imageScale = readNumber('phone-image-scale', 7, 0, 50, false);
+            const safeHoneyWidth = honeyWidth < 512 ? 832 : honeyWidth;
+            const safeHoneyHeight = honeyHeight < 768 ? 1216 : honeyHeight;
+            const safeHoneySteps = provider === 'novelai' && imageSteps < 20 ? 28 : imageSteps;
+            const safeHoneyScale = provider === 'novelai' && imageScale < 1 ? 7 : imageScale;
+            console.log([
+                '[Honey NAI] 即将请求直播生图',
+                `尺寸: ${safeHoneyWidth}x${safeHoneyHeight}`,
+                `Steps: ${safeHoneySteps}`,
+                `Scale: ${safeHoneyScale}`,
+                `Provider: ${provider}`,
+                '',
+                'AI 原始画面 tag:',
+                prompt || '(空)'
+            ].join('\n'));
             this.currentSceneData = {
                 ...scene,
+                naiPrompt: prompt,
                 imageGenerationStatus: 'loading',
                 imageGenerationProvider: provider,
                 imageGenerationPrompt: prompt,
@@ -2707,16 +2740,28 @@ export class HoneyView {
             try {
                 const result = await imageManager.generate({
                     app: 'honey',
-                    prompt
+                    prompt,
+                    provider,
+                    width: safeHoneyWidth,
+                    height: safeHoneyHeight,
+                    steps: safeHoneySteps,
+                    scale: safeHoneyScale
                 });
                 this.currentSceneData = {
                     ...(this.currentSceneData || scene),
                     naiImageUrl: result.imageUrl || result.imageData || '',
                     generatedImageUrl: result.imageUrl || result.imageData || '',
+                    naiPrompt: prompt,
                     imageGenerationStatus: 'done',
                     imageGenerationProvider: result.provider || provider,
                     imageGenerationModel: result.model || '',
                     imageGenerationPrompt: prompt,
+                    imageGenerationWidth: Number(result.width || result.requestedWidth || 0) || '',
+                    imageGenerationHeight: Number(result.height || result.requestedHeight || 0) || '',
+                    imageGenerationSteps: Number(result.steps || 0) || '',
+                    imageGenerationSampler: String(result.sampler || '').trim(),
+                    imageGenerationSchedule: String(result.schedule || '').trim(),
+                    imageGenerationScale: Number(result.scale || 0) || '',
                     imageGenerationError: ''
                 };
                 this._persistCurrentScene();
@@ -2726,6 +2771,7 @@ export class HoneyView {
                 const message = err?.message || String(err || '生成失败');
                 this.currentSceneData = {
                     ...(this.currentSceneData || scene),
+                    naiPrompt: prompt,
                     imageGenerationStatus: 'failed',
                     imageGenerationProvider: provider,
                     imageGenerationPrompt: prompt,
@@ -5861,6 +5907,28 @@ export class HoneyView {
         ).trim();
     }
 
+    _resolveSceneNaiPrompt(sceneLike) {
+        const scene = sceneLike || {};
+        const direct = String(
+            scene.naiPrompt
+            || scene.imageGenerationPrompt
+            || scene.imagePrompt
+            || scene.novelaiPrompt
+            || ''
+        ).trim();
+        if (direct) return direct;
+
+        const sourceText = [
+            scene.picture,
+            scene.visual,
+            scene.screen,
+            scene.frame,
+            scene.description,
+            scene.intro
+        ].map(item => String(item || '').trim()).filter(Boolean).join('\n');
+        return this.app?.honeyData?._extractNaiPrompt?.(sourceText) || '';
+    }
+
     _buildBaseScene(topicLike, topicTitle, topicKey = '') {
         const source = topicLike || this._getFallbackTopic();
         const safeTitle = String(topicTitle || source._topicTitle || source.title || '直播间').trim();
@@ -5885,6 +5953,20 @@ export class HoneyView {
             collab: source.collab || '无',
             collabCost: safeCollabCost,
             intro: source.intro || '',
+            naiPrompt: this._resolveSceneNaiPrompt(source),
+            imageGenerationPrompt: String(source.imageGenerationPrompt || '').trim(),
+            naiImageUrl: String(source.naiImageUrl || '').trim(),
+            generatedImageUrl: String(source.generatedImageUrl || source.imageUrl || '').trim(),
+            imageGenerationStatus: String(source.imageGenerationStatus || '').trim(),
+            imageGenerationProvider: String(source.imageGenerationProvider || '').trim(),
+            imageGenerationModel: String(source.imageGenerationModel || '').trim(),
+            imageGenerationWidth: Number(source.imageGenerationWidth || 0) || '',
+            imageGenerationHeight: Number(source.imageGenerationHeight || 0) || '',
+            imageGenerationSteps: Number(source.imageGenerationSteps || 0) || '',
+            imageGenerationSampler: String(source.imageGenerationSampler || '').trim(),
+            imageGenerationSchedule: String(source.imageGenerationSchedule || '').trim(),
+            imageGenerationScale: Number(source.imageGenerationScale || 0) || '',
+            imageGenerationError: String(source.imageGenerationError || '').trim(),
             description: source.description || this._getRecommendRefreshHintText(),
             comments: Array.isArray(source.comments) ? source.comments : [],
             lastUserComment: String(source.lastUserComment || '').trim(),
@@ -5931,6 +6013,19 @@ export class HoneyView {
                     fans: scene.fans || this.recommendTopics[idx].fans,
                     collab: scene.collab || this.recommendTopics[idx].collab,
                     intro: scene.intro || this.recommendTopics[idx].intro,
+                    naiPrompt: scene.naiPrompt || this.recommendTopics[idx].naiPrompt,
+                    imageGenerationPrompt: scene.imageGenerationPrompt || this.recommendTopics[idx].imageGenerationPrompt,
+                    naiImageUrl: scene.naiImageUrl || this.recommendTopics[idx].naiImageUrl,
+                    generatedImageUrl: scene.generatedImageUrl || this.recommendTopics[idx].generatedImageUrl,
+                    imageGenerationStatus: scene.imageGenerationStatus || this.recommendTopics[idx].imageGenerationStatus,
+                    imageGenerationProvider: scene.imageGenerationProvider || this.recommendTopics[idx].imageGenerationProvider,
+                    imageGenerationModel: scene.imageGenerationModel || this.recommendTopics[idx].imageGenerationModel,
+                    imageGenerationWidth: scene.imageGenerationWidth || this.recommendTopics[idx].imageGenerationWidth,
+                    imageGenerationHeight: scene.imageGenerationHeight || this.recommendTopics[idx].imageGenerationHeight,
+                    imageGenerationSteps: scene.imageGenerationSteps || this.recommendTopics[idx].imageGenerationSteps,
+                    imageGenerationSampler: scene.imageGenerationSampler || this.recommendTopics[idx].imageGenerationSampler,
+                    imageGenerationSchedule: scene.imageGenerationSchedule || this.recommendTopics[idx].imageGenerationSchedule,
+                    imageGenerationScale: scene.imageGenerationScale || this.recommendTopics[idx].imageGenerationScale,
                     description: scene.description || this.recommendTopics[idx].description,
                     comments: Array.isArray(scene.comments) ? scene.comments : this.recommendTopics[idx].comments
                 };

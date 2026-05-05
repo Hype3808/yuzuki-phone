@@ -5916,7 +5916,7 @@ if (window.GGP_Loaded) {
                             phoneShell?.showNotification('错误', '微博模块加载失败', '❌');
                         });
                 } else if (appId === 'honey') {
-                    import('./apps/honey/honey-app.js')
+                    import(`./apps/honey/honey-app.js?v=${ST_PHONE_VERSION}-nai-debug`)
                         .then(module => {
                             try {
                                 if (!window.VirtualPhone.honeyApp) {

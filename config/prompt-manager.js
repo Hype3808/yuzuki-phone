@@ -143,9 +143,64 @@ export class PromptManager {
         return text;
     }
 
+    _getHoneyNaiPromptRules() {
+        return `- 仅为“当前激情直播”生成一条画面用 NovelAI 英文 tag，必须填在当前直播结构里的：画面：[NAI英文tag提示词: ...]。热门推荐、评论区、好友申请都不要生成画面 tag。
+- 严禁输出 <image>、image###、<imgthink>、解释文字、中文或自然语言句子；括号内只能是英文逗号分隔 tag。
+- AI 原始画面 tag 禁止写 masterpiece、best quality、very aesthetic、highres、sharp focus、cinematic lighting、detailed anime illustration 等通用质量/画风词；这些由系统自动拼接。也不要写 specific pose、specific outfit、specific background props、mood tags 这类占位词。
+- tag 必须从直播剧情中截取最值得画的一帧，先判断画面类型：solo performance / close-up / pov / interaction / collab scene。只画当前这一帧，不要把整段剧情流水账都塞进 tag。
+- tag 推荐顺序：rating:explicit 或 nsfw -> 人数与主体关系 -> 构图距离(cowboy shot / upper body / close-up / full body / pov / group shot) -> 角度(from front / from side / from behind / from above / from below) -> 主体锚点(male focus/female focus, 1boy/1girl/2boys/2girls/multiple boys/multiple girls) -> 外貌特征 -> 表情 -> 身体状态 -> 具体动作 -> 服装状态 -> 直播场景道具 -> 光影氛围。
+- 蜜语不限制最多两人。根据直播剧情可生成单人、双人、三人或多人画面；但必须明确主视觉焦点。多人画面优先写 1-2 个核心主体，其余人物用 background crowd、audience silhouettes、extra hands、partial body、multiple boys/multiple girls 等方式表现，避免每个人都详细展开导致特征混乱。
+- 双人或多人画面建议使用 BREAK 隔开核心主体描述块。每个核心主体块开头必须有锚点：male focus, 1boy 或 female focus, 1girl；多人背景块可用 background audience / faceless viewers / silhouettes / extra arms 等概括。同性别多个核心主体必须给出非外貌区分 tag，如 taller / shorter / glasses / lean build / athletic build / scar on cheek。
+- 用 source#动作 标记主动方，用 target#动作 标记被动方，例如 source#touching face, target#blushing。单人直播可用 self# 或直接写动作 tag。
+- 成人直播画面必须写出剧情中真实可见的成人身体状态或成人动作，不能只写 shirtless、abs、chest muscles 这种普通胸像。需要下半身或全身时使用 cowboy shot / full body / legs visible，避免 upper body close-up 裁掉关键画面。
+- 服装必须写状态，不只写衣服名：open shirt、shirt lift、towel slipping、messy clothes、wet clothes、half undressed、underwear only 等。环境必须包含直播属性：phone on tripod、live streaming room、comments overlay、screen glow、bedroom/gym/bathroom 等。
+- 可以用 {{tag}} 或 {{{tag}}} 加权最核心的动作、表情、构图或身体状态，但不要整串都加权。建议 45-90 个 tag。
+- 必须避开 underage、child、teen、loli、shota、minor、school uniform、student 等未成年或校园暗示 tag；角色年龄感必须是 adult character。`;
+    }
+
     _upgradeHoneyLivePromptContent(content) {
         let text = String(content || '');
         if (!text) return text;
+        const honeyNaiRules = this._getHoneyNaiPromptRules();
+
+        text = text.replace(
+            /画面：\[NAI提示词: masterpiece, best quality, very aesthetic, highres, detailed anime illustration, adult character, 1girl\/1boy, live streaming room, portrait composition, clear face, expressive eyes, detailed hair, detailed skin shading, detailed hands, specific pose, specific outfit state, specific background props, cinematic lighting, depth of field, sharp focus, mood tags, scene-specific adult tags\.\.\.\]/g,
+            '画面：[NAI提示词: rating:explicit, nsfw, adult character, 1boy, male focus, cowboy shot, from front, looking at viewer, intense gaze, short black hair, sweat drops on face, muscular body, detailed hands, one hand on waistband, loose towel slipping, nude chest, exposed lower body, visible genitals, bedroom live stream, phone on tripod, comments overlay, warm lamp light, night, intimate atmosphere]'
+        );
+
+        text = text.replace(
+            /- NAI 提示词必须足够具体，禁止只写 nsfw\/live streaming\/specific pose 这类占位词。必须包含：质量词、主体人数与性别、角色年龄感必须为 adult、脸部\/眼睛\/头发\/手部细节、服装状态、明确姿势、镜头距离、背景地点、光影、画面氛围、构图、直播间道具、剧情主题标签。\n- NAI 提示词建议 45-90 个英文 tag，使用逗号分隔，不要写中文，不要写完整句子，不要输出解释。必须避开 underage、child、teen、loli、shota、minor 等未成年相关 tag。\n- 如果需要女性向成人主题，可以加入合适的题材 tag，如 dominant male, muscular male, adult woman, bedroom, live streaming, teasing expression, wet skin, messy clothes, cinematic lighting 等，但要让场景、人物和动作都能被画出来。/g,
+            `- NAI 画面提示词必须以可见画面细节为主体，不要把重点写成画风评价。AI 原始画面 tag 禁止写 masterpiece、best quality、very aesthetic、highres、sharp focus、cinematic lighting、detailed anime illustration 等通用质量/画风词；这些由系统自动拼接。
+- NAI 提示词必须足够具体，禁止只写 nsfw/live streaming/specific pose/specific outfit/mood tags 这类占位词。必须包含：rating:explicit 或 nsfw、adult character、主体人数与性别、镜头距离、构图角度、角色焦点、脸部/眼睛/头发/手部细节、具体表情、可见动作、服装状态、背景地点、直播设备或屏幕光、光影、画面氛围。
+- 当前激情直播是成人内容时，NAI tag 必须写出与直播剧情一致的成人可见部位或成人动作；不要只写 shirtless、abs、chest muscles 这种普通擦边胸像。需要下半身或全身内容时，使用 cowboy shot/full body/legs visible 等构图，避免 upper body close-up 裁掉关键画面。
+- NAI tag 推荐顺序：adult/rating 与人数关系 -> 构图/镜头/角度 -> 核心主体锚点与外貌 -> 表情/动作/姿势 -> 服装状态 -> 场景道具 -> 光影氛围。蜜语不限制最多两人；多人画面要明确主视觉焦点，并用 BREAK 隔开核心主体，背景人群可用 background crowd / silhouettes / extra hands 概括。
+- NAI 提示词建议 45-90 个英文 tag，使用逗号分隔，不要写中文，不要写完整句子，不要输出解释。至少 70% 的 tag 必须是能被画出来的具体画面元素。必须避开 underage、child、teen、loli、shota、minor 等未成年相关 tag。`
+        );
+
+        if (!text.includes('NAI 画面提示词必须以可见画面细节为主体')) {
+            text = `${text}
+
+【NAI 画面提示词强化规则】
+- NAI 画面提示词必须以可见画面细节为主体，不要把重点写成画风评价。AI 原始画面 tag 禁止写 masterpiece、best quality、very aesthetic、highres、sharp focus、cinematic lighting、detailed anime illustration 等通用质量/画风词；这些由系统自动拼接。
+- NAI tag 推荐顺序：adult/rating 与人数 -> 构图/镜头/角度 -> 角色锚点与外貌 -> 表情/动作/姿势 -> 服装状态 -> 场景道具 -> 光影氛围。
+- 当前激情直播是成人内容时，NAI tag 必须写出与直播剧情一致的成人可见部位或成人动作；不要只写 shirtless、abs、chest muscles 这种普通擦边胸像。需要下半身或全身内容时，使用 cowboy shot/full body/legs visible 等构图，避免 upper body close-up 裁掉关键画面。
+- 禁止输出 specific pose、specific outfit、specific background props、mood tags 这类占位词；必须换成当前直播画面里真实可见的具体 tag。
+- 蜜语不限制最多两人；多人画面要明确主视觉焦点，并用 BREAK 隔开核心主体，背景人群可用 background crowd / silhouettes / extra hands 概括。`;
+        }
+
+        text = text
+            .replace(/质量\/画风词最多 4-6 个，且只能放在开头；后续主要写人物、动作、镜头、服装、环境和光影。/g, 'AI 原始画面 tag 禁止写 masterpiece、best quality、very aesthetic、highres、sharp focus、cinematic lighting、detailed anime illustration 等通用质量/画风词；这些由系统自动拼接。')
+            .replace(/少量质量词 -> /g, '');
+
+        const naiRuleSection = text.match(/【二、画面Novel AI 英文提示词生成规则】([\s\S]*?)(?=\n\n【二、直播推荐与平台生态】)/);
+        const naiRuleBody = String(naiRuleSection?.[1] || '').trim();
+        if (/【二、画面Novel AI 英文提示词生成规则】/.test(text)
+            && (!naiRuleBody || naiRuleBody === '${this._getHoneyNaiPromptRules()}')) {
+            text = text.replace(
+                /【二、画面Novel AI 英文提示词生成规则】[\s\S]*?(?=\n\n【二、直播推荐与平台生态】)/,
+                `【二、画面Novel AI 英文提示词生成规则】\n${honeyNaiRules}`
+            );
+        }
 
         if (!text.includes('评论区评论必须露骨、直白、淫欲、下流')) {
             text = `${text}
@@ -1223,7 +1278,7 @@ IP属地：根据故事背景，生成虚拟的命名城市的IP市区
 在线人数:xx
 粉丝:xx
 简介：含主播性癖、性格、线下价格等
-画面：[NAI提示词: 1girl/1boy, nsfw, live streaming, specific poses...]
+画面：[NAI英文tag提示词: ]
 联播（金币：xx）:网友昵称/无
 榜单：
 第一名：网友昵称 xxG
@@ -1254,7 +1309,21 @@ IP属地：根据故事背景，生成虚拟的命名城市的IP市区
 - 联播有对象时写入联播者昵称，无对象时写无。
 - 好友申请为可选区块。仅当当前主播在本轮直播里明显对用户产生继续私聊、加微信、私下接触的意图时才生成，且每次最多 1 条。
 - 可根据用户的关注列表与其好感度,推送用户已关注的主播,但不可只生成关注列表的主播,应该优先生成更多丰富的其他主播类型.
-- 仅为当前激情直播生成画面对应的NAI提示词: 英文逗号分隔的tag] 供前端调用 NovelAI 绘图。其他推荐内容不需要生成NAI提示词。tag为是色情内容的关键词,如：NTR/人妻等等.
+
+【二、画面Novel AI 英文提示词生成规则】
+- 仅为“当前激情直播”生成一条画面用 NovelAI 英文 tag，必须填在当前直播结构里的：画面：[NAI英文tag提示词: ...]。热门推荐、评论区、好友申请都不要生成画面 tag。
+- 严禁输出 <image>、image###、<imgthink>、解释文字、中文或自然语言句子；括号内只能是英文逗号分隔 tag。
+- AI 原始画面 tag 禁止写 masterpiece、best quality、very aesthetic、highres、sharp focus、cinematic lighting、detailed anime illustration 等通用质量/画风词；这些由系统自动拼接。也不要写 specific pose、specific outfit、specific background props、mood tags 这类占位词。
+- tag 必须从直播剧情中截取最值得画的一帧，先判断画面类型：solo performance / close-up / pov / interaction / collab scene。只画当前这一帧，不要把整段剧情流水账都塞进 tag。
+- tag 推荐顺序：rating:explicit 或 nsfw -> 人数与主体关系 -> 构图距离(cowboy shot / upper body / close-up / full body / pov / group shot) -> 角度(from front / from side / from behind / from above / from below) -> 主体锚点(male focus/female focus, 1boy/1girl/2boys/2girls/multiple boys/multiple girls) -> 外貌特征 -> 表情 -> 身体状态 -> 具体动作 -> 服装状态 -> 直播场景道具 -> 光影氛围。
+- 蜜语不限制最多两人。根据直播剧情可生成单人、双人、三人或多人画面；但必须明确主视觉焦点。多人画面优先写 1-2 个核心主体，其余人物用 background crowd、audience silhouettes、extra hands、partial body、multiple boys/multiple girls 等方式表现，避免每个人都详细展开导致特征混乱。
+- 双人或多人画面建议使用 BREAK 隔开核心主体描述块。每个核心主体块开头必须有锚点：male focus, 1boy 或 female focus, 1girl；多人背景块可用 background audience / faceless viewers / silhouettes / extra arms 等概括。同性别多个核心主体必须给出非外貌区分 tag，如 taller / shorter / glasses / lean build / athletic build / scar on cheek。
+- 用 source#动作 标记主动方，用 target#动作 标记被动方，例如 source#touching face, target#blushing。单人直播可用 self# 或直接写动作 tag。
+- 成人直播画面必须写出剧情中真实可见的成人身体状态或成人动作，不能只写 shirtless、abs、chest muscles 这种普通胸像。需要下半身或全身时使用 cowboy shot / full body / legs visible，避免 upper body close-up 裁掉关键画面。
+- 服装必须写状态，不只写衣服名：open shirt、shirt lift、towel slipping、messy clothes、wet clothes、half undressed、underwear only 等。环境必须包含直播属性：phone on tripod、live streaming room、comments overlay、screen glow、bedroom/gym/bathroom 等。
+- 可以用 {{tag}} 或 {{{tag}}} 加权最核心的动作、表情、构图或身体状态，但不要整串都加权。建议 45-90 个 tag。
+- 必须避开 underage、child、teen、loli、shota、minor、school uniform、student 等未成年或校园暗示 tag；角色年龄感必须是 adult character。
+
 
 【二、直播推荐与平台生态】
 - 直播内容必须为女性向服务，主播多为男性（少量女性直播间必须有其他男性在场）。
