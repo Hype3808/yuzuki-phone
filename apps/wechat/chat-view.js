@@ -4683,9 +4683,38 @@ renderChatRoom(chat) {
         }
 
         // ========================================
-        // 4️⃣ 酒馆聊天上下文（使用与记忆插件相同的方式读取）
+        // 🔌 兼容记忆插件的向量检索锚点
+        // 记忆插件会在 Fetch Hijack 时查找此标识，并在其上方插入检索到的向量数据
         // ========================================
         const storage = window.VirtualPhone?.storage;
+        const shouldInjectVectorAnchor = (() => {
+            const basePerms = { allowSummary: false, allowTable: false, allowVector: false, allowPrompt: false };
+            const defaults = { ...basePerms, allowSummary: true, allowVector: true };
+            try {
+                const rawPerms = storage?.get('phone_memory_permissions');
+                const allPerms = rawPerms
+                    ? (typeof rawPerms === 'string' ? JSON.parse(rawPerms) : rawPerms)
+                    : {};
+                const wechatPerms = (allPerms && typeof allPerms.wechat === 'object') ? allPerms.wechat : {};
+                const merged = { ...defaults, ...wechatPerms };
+                return merged.allowVector !== false;
+            } catch (e) {
+                return defaults.allowVector !== false;
+            }
+        })();
+
+        if (shouldInjectVectorAnchor) {
+            messages.push({
+                role: 'system',
+                content: '[Start a new chat]',
+                name: 'SYSTEM (分界线)',
+                isPhoneMessage: true
+            });
+        }
+
+        // ========================================
+        // 4️⃣ 酒馆聊天上下文（使用与记忆插件相同的方式读取）
+        // ========================================
         const contextLimit = storage ? (parseInt(storage.get('phone-context-limit')) || 10) : 10;
 
         if (context.chat && Array.isArray(context.chat) && context.chat.length > 0) {
@@ -4721,35 +4750,6 @@ renderChatRoom(chat) {
                         isPhoneMessage: true
                     });
                 }
-            });
-        }
-
-        // ========================================
-        // 🔌 兼容记忆插件的向量检索锚点
-        // 记忆插件会在 Fetch Hijack 时查找此标识，并在其上方插入检索到的向量数据
-        // ========================================
-        const shouldInjectVectorAnchor = (() => {
-            const basePerms = { allowSummary: false, allowTable: false, allowVector: false, allowPrompt: false };
-            const defaults = { ...basePerms, allowSummary: true, allowVector: true };
-            try {
-                const rawPerms = storage?.get('phone_memory_permissions');
-                const allPerms = rawPerms
-                    ? (typeof rawPerms === 'string' ? JSON.parse(rawPerms) : rawPerms)
-                    : {};
-                const wechatPerms = (allPerms && typeof allPerms.wechat === 'object') ? allPerms.wechat : {};
-                const merged = { ...defaults, ...wechatPerms };
-                return merged.allowVector !== false;
-            } catch (e) {
-                return defaults.allowVector !== false;
-            }
-        })();
-
-        if (shouldInjectVectorAnchor) {
-            messages.push({
-                role: 'system',
-                content: '[Start a new chat]',
-                name: 'SYSTEM (分界线)',
-                isPhoneMessage: true
             });
         }
 
@@ -4833,12 +4833,14 @@ renderChatRoom(chat) {
             });
         }
 
-        messages.push({
-            role: 'system',
-            content: '【当前窗口隔离规则】你现在只能看到并回复当前这个微信窗口。绝对禁止提及、猜测、影射、总结、回应任何不属于当前窗口的好友、群聊、未读消息、其他对话内容。即使用户同时和多个人聊天，你也必须把其他窗口当作完全不可见。',
-            name: 'SYSTEM (窗口隔离)',
-            isPhoneMessage: true
-        });
+        if (isGroupChat) {
+            messages.push({
+                role: 'system',
+                content: '【当前窗口隔离规则】你现在只能看到并回复当前这个微信群窗口。绝对禁止提及、猜测、影射、总结、回应任何不属于当前群聊窗口的好友、私聊、未读消息、其他对话内容。即使用户同时和多个人聊天，你也必须把其他窗口当作完全不可见。',
+                name: 'SYSTEM (窗口隔离)',
+                isPhoneMessage: true
+            });
+        }
 
         // ========================================
         // 5.5️⃣ 手机聊天系统提示词（线上模式）
@@ -5107,7 +5109,11 @@ renderChatRoom(chat) {
             if (latestUserInput) {
                 finalUserContent += `\n\n【用户最新输入】\n${userName}: ${latestUserInput}`;
             }
-            finalUserContent += '\n\n【本轮硬性约束】只输出当前窗口的新增回复，不得重复“手机微信已有消息”中已经存在的任何历史消息；消息时间必须严格承接当前窗口最后一条已存在消息的时间并向后推进。';
+            finalUserContent += '\n\n【本轮约束】';
+            finalUserContent += '\n- 正文/酒馆上下文是当前现实剧情状态的依据；如果正文显示双方已经线下面对面、同处一地、正在现实互动，你必须承认这个状态，必要时用 [转线下] 结束微信，而不是把现实剧情当作不存在。';
+            finalUserContent += '\n- 只输出当前微信窗口的新增回复；不得重复“手机微信已有消息”中已经存在的微信消息，也不得把正文里刚发生的对白原样复读成微信消息。';
+            finalUserContent += '\n- 可以基于正文最新事件、情绪、地点变化作出自然回应，但回复必须是新的微信内容。';
+            finalUserContent += '\n- 消息时间必须承接当前窗口最后一条已存在消息的时间并向后推进。';
         }
 
         // 🔥 把所有待发送的图片代币附加到 user 消息末尾（多模态只能在 user 消息中生效）
