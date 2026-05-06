@@ -1183,8 +1183,8 @@ export class SettingsApp {
         const honeyHeight = Number(this.storage.get('phone-image-honey-height') || 1216);
         const wechatWidth = Number(this.storage.get('phone-image-wechat-width') || 512);
         const wechatHeight = Number(this.storage.get('phone-image-wechat-height') || 512);
-        const weiboWidth = Number(this.storage.get('phone-image-weibo-width') || 768);
-        const weiboHeight = Number(this.storage.get('phone-image-weibo-height') || 768);
+        const weiboWidth = Number(this.storage.get('phone-image-weibo-width') || 1024);
+        const weiboHeight = Number(this.storage.get('phone-image-weibo-height') || 1024);
         const steps = Number(this.storage.get('phone-image-steps') || 28);
         const scale = Number(this.storage.get('phone-image-scale') || 7);
         const cfgRescale = Number(this.storage.get('phone-image-cfg-rescale') || 0);
@@ -2509,8 +2509,8 @@ export class SettingsApp {
             ['phone-image-honey-height', 1216, 64, 2048, true],
             ['phone-image-wechat-width', 512, 64, 2048, true],
             ['phone-image-wechat-height', 512, 64, 2048, true],
-            ['phone-image-weibo-width', 768, 64, 2048, true],
-            ['phone-image-weibo-height', 768, 64, 2048, true],
+            ['phone-image-weibo-width', 1024, 64, 2048, true],
+            ['phone-image-weibo-height', 1024, 64, 2048, true],
             ['phone-image-width', 832, 64, 2048, true],
             ['phone-image-height', 1216, 64, 2048, true],
             ['phone-image-steps', 28, 1, 50, true],

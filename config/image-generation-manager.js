@@ -150,7 +150,7 @@ export class ImageGenerationManager {
             case 'wechat':
                 return { width: 512, height: 512 };
             case 'weibo':
-                return { width: 768, height: 768 };
+                return { width: 1024, height: 1024 };
             default:
                 return { width: 832, height: 1216 };
         }
@@ -722,6 +722,13 @@ export class ImageGenerationManager {
             }
             if (!Number.isFinite(scale) || scale < 1) {
                 scale = 7;
+            }
+        }
+        if (appKey === 'weibo' && this._isNovelAIV4Model(config.model)) {
+            const isSquare = width === height;
+            if (!Number.isFinite(width) || !Number.isFinite(height) || (isSquare && width < 1024)) {
+                width = 1024;
+                height = 1024;
             }
         }
         const resolvedSeed = Number.isFinite(seed) && seed >= 0
