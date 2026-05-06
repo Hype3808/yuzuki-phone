@@ -214,8 +214,9 @@ if (window.GGP_Loaded) {
     }
 
     function isDesktopPhonePanelDragEnabled() {
-        const hasDesktopPointer = !window.matchMedia
-            || window.matchMedia('(hover: hover) and (pointer: fine)').matches
+        if (!window.matchMedia) return true;
+        if (window.matchMedia('(pointer: coarse)').matches) return false;
+        const hasDesktopPointer = window.matchMedia('(hover: hover) and (pointer: fine)').matches
             || window.matchMedia('(any-hover: hover) and (any-pointer: fine)').matches;
         return !!hasDesktopPointer;
     }

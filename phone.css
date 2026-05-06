@@ -343,7 +343,7 @@
     box-sizing: border-box !important;
 }
 
-@media (hover: hover) and (pointer: fine), (any-hover: hover) and (any-pointer: fine) {
+@media (hover: hover) and (pointer: fine) {
     #phone-panel.drawer-content {
         padding-left: max(18px, env(safe-area-inset-left, 0px)) !important;
         padding-right: max(18px, env(safe-area-inset-right, 0px)) !important;

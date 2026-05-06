@@ -1,3 +1,5 @@
+import { DurableObject } from 'cloudflare:workers';
+
 const CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
@@ -34,9 +36,10 @@ function normalizeTask(input = {}) {
     return { keyHash, userId, taskId, token };
 }
 
-export class NaiQueueDO {
-    constructor(state, env) {
-        this.state = state;
+export class NaiQueueDO extends DurableObject {
+    constructor(ctx, env) {
+        super(ctx, env);
+        this.state = ctx;
         this.env = env;
     }
 
