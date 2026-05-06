@@ -401,6 +401,9 @@ if (window.GGP_Loaded) {
             suppressNextClick = true;
             currentX = Number.isFinite(currentX) ? currentX : event.clientX;
             currentY = Number.isFinite(currentY) ? currentY : event.clientY;
+            phoneBody.style.removeProperty('transform');
+            phoneBody.style.removeProperty('transition');
+            phoneBody.style.removeProperty('opacity');
             dragStartRect = phoneBody.getBoundingClientRect();
             panel.classList.add('phone-panel-desktop-dragging');
             panel.style.setProperty('--phone-panel-drag-x', `${Math.round(currentX - startX)}px`);

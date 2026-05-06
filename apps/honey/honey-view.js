@@ -965,21 +965,34 @@ export class HoneyView {
         const currentSceneTopicTitle = String(this.currentSceneData?._topicTitle || this.currentSceneData?.title || '').trim();
         const currentSceneTopicKey = String(this.currentSceneData?._topicKey || '').trim();
         const isSameTopic = (!!activeTopicKey && !!currentSceneTopicKey && activeTopicKey === currentSceneTopicKey)
-            || (!activeTopicKey && !currentSceneTopicKey && activeTopicTitle && currentSceneTopicTitle && activeTopicTitle === currentSceneTopicTitle);
+            || (activeTopicTitle && currentSceneTopicTitle && activeTopicTitle === currentSceneTopicTitle);
 
         if (!isSameTopic) {
             const cached = this.app.honeyData?.getTopicScene?.(activeTopicKey || activeTopicTitle, activeTopicTitle);
             if (cached && typeof cached === 'object') {
                 this.currentSceneData = { ...cached, _topicTitle: activeTopicTitle, _topicKey: activeTopicKey };
             } else {
-                this.currentSceneData = this._buildBaseScene(topic || this._getFallbackTopic(), activeTopicTitle, activeTopicKey);
+                const lastScene = this.app.honeyData?.getLastSceneData?.();
+                const lastSceneTitle = String(lastScene?._topicTitle || lastScene?.title || '').trim();
+                const lastSceneKey = String(lastScene?._topicKey || '').trim();
+                const canRestoreLastScene = lastScene && typeof lastScene === 'object'
+                    && ((activeTopicKey && lastSceneKey && activeTopicKey === lastSceneKey)
+                        || (activeTopicTitle && lastSceneTitle && activeTopicTitle === lastSceneTitle));
+                this.currentSceneData = canRestoreLastScene
+                    ? { ...lastScene, _topicTitle: activeTopicTitle, _topicKey: activeTopicKey || lastSceneKey }
+                    : this._buildBaseScene(topic || this._getFallbackTopic(), activeTopicTitle, activeTopicKey);
                 this.currentSceneData.title = activeTopicTitle;
-                this.currentSceneData.description = this._getRecommendRefreshHintText();
-                this.currentSceneData.comments = [];
-                this.currentSceneData.lastUserComment = '';
-                this.currentSceneData.userChats = [];
-                this.currentSceneData.promptTurns = [];
-                this.currentSceneData.gifts = [];
+                if (!canRestoreLastScene) {
+                    this.currentSceneData.description = this._getRecommendRefreshHintText();
+                    this.currentSceneData.comments = [];
+                    this.currentSceneData.lastUserComment = '';
+                    this.currentSceneData.userChats = [];
+                    this.currentSceneData.promptTurns = [];
+                    this.currentSceneData.gifts = [];
+                    this.currentSceneData.audienceGiftTotals = {};
+                    this.currentSceneData.leaderboard = [];
+                    this.currentSceneData.userGiftRank = null;
+                }
                 this._persistCurrentScene();
             }
         }
@@ -5771,6 +5784,7 @@ export class HoneyView {
         if (text === this._getUserLiveIdleHintText()) return false;
         if (text === '暂无剧情描写。') return false;
         if (text === '暂无剧情描写，点击刷新后自动生成。') return false;
+        if (text === '正在根据主题生成直播内容...') return false;
         if (text === '正在连线中...') return false;
         if (text === 'AI 正在根据你的弹幕继续推进直播剧情...') return false;
         return true;
@@ -6195,26 +6209,50 @@ export class HoneyView {
                 this.recommendTopics[idx] = {
                     ...this.recommendTopics[idx],
                     _topicKey: this.recommendTopics[idx]._topicKey || topicKey,
+                    _topicTitle: scene._topicTitle || topicTitle,
+                    title: scene.title || this.recommendTopics[idx].title,
                     host: scene.host || this.recommendTopics[idx].host,
                     viewers: scene.viewers || this.recommendTopics[idx].viewers,
+                    playCount: scene.playCount || this.recommendTopics[idx].playCount,
                     fans: scene.fans || this.recommendTopics[idx].fans,
                     collab: scene.collab || this.recommendTopics[idx].collab,
+                    collabCost: scene.collabCost ?? this.recommendTopics[idx].collabCost,
                     intro: scene.intro || this.recommendTopics[idx].intro,
                     naiPrompt: scene.naiPrompt || this.recommendTopics[idx].naiPrompt,
                     imageGenerationPrompt: scene.imageGenerationPrompt || this.recommendTopics[idx].imageGenerationPrompt,
                     naiImageUrl: scene.naiImageUrl || this.recommendTopics[idx].naiImageUrl,
                     generatedImageUrl: scene.generatedImageUrl || this.recommendTopics[idx].generatedImageUrl,
+                    imageUrl: scene.imageUrl || this.recommendTopics[idx].imageUrl,
                     imageGenerationStatus: scene.imageGenerationStatus || this.recommendTopics[idx].imageGenerationStatus,
                     imageGenerationProvider: scene.imageGenerationProvider || this.recommendTopics[idx].imageGenerationProvider,
                     imageGenerationModel: scene.imageGenerationModel || this.recommendTopics[idx].imageGenerationModel,
                     imageGenerationWidth: scene.imageGenerationWidth || this.recommendTopics[idx].imageGenerationWidth,
                     imageGenerationHeight: scene.imageGenerationHeight || this.recommendTopics[idx].imageGenerationHeight,
                     imageGenerationSteps: scene.imageGenerationSteps || this.recommendTopics[idx].imageGenerationSteps,
+                    imageGenerationSeed: scene.imageGenerationSeed || this.recommendTopics[idx].imageGenerationSeed,
                     imageGenerationSampler: scene.imageGenerationSampler || this.recommendTopics[idx].imageGenerationSampler,
                     imageGenerationSchedule: scene.imageGenerationSchedule || this.recommendTopics[idx].imageGenerationSchedule,
                     imageGenerationScale: scene.imageGenerationScale || this.recommendTopics[idx].imageGenerationScale,
+                    imageGenerationError: scene.imageGenerationError || this.recommendTopics[idx].imageGenerationError,
                     description: scene.description || this.recommendTopics[idx].description,
-                    comments: Array.isArray(scene.comments) ? scene.comments : this.recommendTopics[idx].comments
+                    comments: Array.isArray(scene.comments) ? scene.comments : this.recommendTopics[idx].comments,
+                    lastUserComment: scene.lastUserComment || this.recommendTopics[idx].lastUserComment,
+                    userChats: Array.isArray(scene.userChats) ? scene.userChats : this.recommendTopics[idx].userChats,
+                    promptTurns: Array.isArray(scene.promptTurns) ? scene.promptTurns : this.recommendTopics[idx].promptTurns,
+                    gifts: Array.isArray(scene.gifts) ? scene.gifts : this.recommendTopics[idx].gifts,
+                    leaderboard: Array.isArray(scene.leaderboard) ? scene.leaderboard : this.recommendTopics[idx].leaderboard,
+                    audienceGiftTotals: scene.audienceGiftTotals && typeof scene.audienceGiftTotals === 'object'
+                        ? scene.audienceGiftTotals
+                        : this.recommendTopics[idx].audienceGiftTotals,
+                    userGiftRank: scene.userGiftRank && typeof scene.userGiftRank === 'object'
+                        ? scene.userGiftRank
+                        : this.recommendTopics[idx].userGiftRank,
+                    collabRequests: Array.isArray(scene.collabRequests) ? scene.collabRequests : this.recommendTopics[idx].collabRequests,
+                    collabRequestInfo: scene.collabRequestInfo && typeof scene.collabRequestInfo === 'object'
+                        ? scene.collabRequestInfo
+                        : this.recommendTopics[idx].collabRequestInfo,
+                    favorability: scene.favorability ?? this.recommendTopics[idx].favorability,
+                    isUserLive: scene.isUserLive === true || this.recommendTopics[idx].isUserLive === true
                 };
                 this.recommendTopics = this._normalizeRecommendTopics(this.recommendTopics);
                 this.app?.honeyData?.saveRecommendTopics?.(this.recommendTopics);

@@ -1967,7 +1967,8 @@
     display: block;
     filter: none;
     -webkit-filter: none;
-    pointer-events: none;
+    pointer-events: auto;
+    cursor: zoom-in;
 }
 
 /* 直播间动态私密视频层 */

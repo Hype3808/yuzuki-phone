@@ -484,6 +484,7 @@ export class HoneyData {
         if (text === '输入开场白后回车开播。未点击结束直播前，这场直播会一直保留。') return false;
         if (text === '暂无剧情描写。') return false;
         if (text === '暂无剧情描写，点击刷新后自动生成。') return false;
+        if (text === '正在根据主题生成直播内容...') return false;
         if (text === '正在连线中...') return false;
         if (text === 'AI 正在根据你的弹幕继续推进直播剧情...') return false;
         return true;
@@ -1936,6 +1937,76 @@ export class HoneyData {
         this._scheduleFlushChatPersistence();
     }
 
+    _mergeSceneDataForRestore(currentSceneData, topicScene) {
+        const current = (currentSceneData && typeof currentSceneData === 'object') ? currentSceneData : {};
+        const topic = (topicScene && typeof topicScene === 'object') ? topicScene : {};
+        const merged = { ...topic, ...current };
+
+        const currentDesc = current.description;
+        const topicDesc = topic.description;
+        merged.description = this._isMeaningfulDescription(currentDesc)
+            ? currentDesc
+            : (this._isMeaningfulDescription(topicDesc) ? topicDesc : (currentDesc || topicDesc || ''));
+
+        [
+            'comments',
+            'gifts',
+            'userChats',
+            'promptTurns',
+            'leaderboard',
+            'collabRequests',
+            'friendRequests',
+            'interactionRecords'
+        ].forEach((key) => {
+            if ((!Array.isArray(current[key]) || current[key].length === 0)
+                && Array.isArray(topic[key]) && topic[key].length > 0) {
+                merged[key] = topic[key];
+            }
+        });
+
+        [
+            'audienceGiftTotals',
+            'userGiftRank',
+            'collabRequestInfo'
+        ].forEach((key) => {
+            const currentObj = current[key] && typeof current[key] === 'object' ? current[key] : null;
+            const topicObj = topic[key] && typeof topic[key] === 'object' ? topic[key] : null;
+            const currentHasValue = currentObj && Object.keys(currentObj).length > 0;
+            if (!currentHasValue && topicObj && Object.keys(topicObj).length > 0) {
+                merged[key] = topicObj;
+            }
+        });
+
+        [
+            'lastUserComment',
+            'naiPrompt',
+            'imageGenerationPrompt',
+            'naiImageUrl',
+            'generatedImageUrl',
+            'imageUrl',
+            'imageGenerationStatus',
+            'imageGenerationProvider',
+            'imageGenerationModel',
+            'imageGenerationWidth',
+            'imageGenerationHeight',
+            'imageGenerationSteps',
+            'imageGenerationSeed',
+            'imageGenerationSampler',
+            'imageGenerationSchedule',
+            'imageGenerationScale',
+            'imageGenerationError'
+        ].forEach((key) => {
+            const currentValue = current[key];
+            const topicValue = topic[key];
+            if ((currentValue === null || currentValue === undefined || currentValue === '')
+                && topicValue !== null && topicValue !== undefined && topicValue !== '') {
+                merged[key] = topicValue;
+            }
+        });
+
+        return merged;
+    }
+
     loadSessionState() {
         const recommendTopics = this.getRecommendTopics();
         const selectedTopicKey = this.getSelectedTopicKey();
@@ -1946,23 +2017,7 @@ export class HoneyData {
             if (!currentSceneData && topicScene) {
                 currentSceneData = topicScene;
             } else if (currentSceneData && topicScene) {
-                const merged = { ...topicScene, ...currentSceneData };
-                const currentDesc = currentSceneData.description;
-                const topicDesc = topicScene.description;
-                merged.description = this._isMeaningfulDescription(currentDesc)
-                    ? currentDesc
-                    : (this._isMeaningfulDescription(topicDesc) ? topicDesc : (currentDesc || topicDesc || ''));
-
-                if ((!Array.isArray(currentSceneData.comments) || currentSceneData.comments.length === 0)
-                    && Array.isArray(topicScene.comments) && topicScene.comments.length > 0) {
-                    merged.comments = topicScene.comments;
-                }
-                if ((!Array.isArray(currentSceneData.gifts) || currentSceneData.gifts.length === 0)
-                    && Array.isArray(topicScene.gifts) && topicScene.gifts.length > 0) {
-                    merged.gifts = topicScene.gifts;
-                }
-
-                currentSceneData = merged;
+                currentSceneData = this._mergeSceneDataForRestore(currentSceneData, topicScene);
             }
         }
         return {

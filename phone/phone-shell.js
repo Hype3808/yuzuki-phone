@@ -403,6 +403,13 @@ export class PhoneShell {
         let mouseSlideTarget = null;
 
         phoneBody.addEventListener('mousedown', (e) => {
+            // PC 端移动小手机使用外壳/摄像头区域；右滑返回只在屏幕内容内生效，避免两套 transform 互相抢。
+            if (!e.target?.closest?.('.phone-screen')) {
+                isMouseDown = false;
+                mouseSlideTarget = null;
+                return;
+            }
+
             // 🔥 核心修复：如果点击的是输入框或文本域，不激活鼠标拖拽返回
             const mouseEditableHost = resolveEditableHost(e.target);
             if (isTextEditableElement(mouseEditableHost)) {
@@ -418,6 +425,13 @@ export class PhoneShell {
 
         document.addEventListener('mousemove', (e) => {
             if (!isMouseDown) return;
+            if (document.getElementById('phone-panel')?.classList?.contains('phone-panel-desktop-dragging')) {
+                isMouseDown = false;
+                this.isSwiping = false;
+                this.swipeAction = null;
+                mouseSlideTarget = null;
+                return;
+            }
             const deltaX = e.clientX - mouseStartX;
             const deltaY = Math.abs(e.clientY - mouseStartY);
 
