@@ -1477,6 +1477,16 @@ export class HoneyView {
             ? '当前暂无联播'
             : `当前联播：${collabNick}${collabInfo?.hostType ? `｜${collabInfo.hostType}` : ''}${collabInfo?.rankHint ? `｜${collabInfo.rankHint}` : ''}`;
         const { introInnerHtml, hasIntro, giftListHtml } = this._buildLiveTickerMarkup(data);
+        const naiPrompt = this._resolveSceneNaiPrompt(data);
+        const imageStatus = String(data.imageGenerationStatus || '').trim();
+        const generatedImageUrl = String(data.naiImageUrl || data.generatedImageUrl || data.imageUrl || '').trim();
+        const liveVideoUrl = generatedImageUrl ? '' : this._buildLiveVideoUrl(data);
+        const imageButtonLabel = imageStatus === 'loading'
+            ? '生成中...'
+            : (generatedImageUrl ? '重新生成图片' : (naiPrompt ? '生成直播图片' : '等待 NAI 提示词'));
+        const imageButtonIcon = imageStatus === 'loading'
+            ? 'fa-spinner fa-spin'
+            : (generatedImageUrl ? 'fa-rotate' : (naiPrompt ? 'fa-wand-magic-sparkles' : 'fa-lock'));
 
         const titleEl = root.querySelector('#honey-ui-title-top');
         if (titleEl) titleEl.textContent = liveTitleText;
@@ -1519,6 +1529,53 @@ export class HoneyView {
         const giftsWrap = root.querySelector('#honey-live-gifts');
         if (giftsWrap) {
             giftsWrap.innerHTML = giftListHtml;
+        }
+
+        const naiPlaceholder = root.querySelector('.honey-nai-placeholder');
+        if (naiPlaceholder) {
+            naiPlaceholder.classList.toggle('has-generated-image', !!generatedImageUrl);
+            naiPlaceholder.style.background = liveVideoUrl ? '#000' : '';
+
+            let generatedImg = naiPlaceholder.querySelector('.honey-nai-generated-image');
+            if (generatedImageUrl) {
+                if (!generatedImg) {
+                    generatedImg = document.createElement('img');
+                    generatedImg.className = 'honey-nai-generated-image';
+                    generatedImg.alt = '';
+                    naiPlaceholder.prepend(generatedImg);
+                }
+                generatedImg.src = generatedImageUrl;
+            } else if (generatedImg) {
+                generatedImg.remove();
+            }
+
+            const statusEl = naiPlaceholder.querySelector('.honey-nai-status');
+            if (imageStatus === 'failed' && data.imageGenerationError) {
+                if (statusEl) {
+                    statusEl.textContent = String(data.imageGenerationError || '').trim();
+                    statusEl.classList.add('is-error');
+                } else {
+                    const nextStatus = document.createElement('div');
+                    nextStatus.className = 'honey-nai-status is-error';
+                    nextStatus.textContent = String(data.imageGenerationError || '').trim();
+                    naiPlaceholder.appendChild(nextStatus);
+                }
+            } else if (statusEl) {
+                statusEl.remove();
+            }
+        }
+
+        const naiBtn = root.querySelector('#honey-test-nai-btn');
+        if (naiBtn) {
+            naiBtn.disabled = imageStatus === 'loading' || !naiPrompt;
+            naiBtn.title = imageButtonLabel;
+            naiBtn.classList.toggle('is-regenerate', !!generatedImageUrl);
+            const iconEl = naiBtn.querySelector('i');
+            if (iconEl) {
+                iconEl.className = `fa-solid ${imageButtonIcon}`;
+            }
+            const labelEl = naiBtn.querySelector('.honey-unlock-label');
+            if (labelEl) labelEl.textContent = imageButtonLabel;
         }
 
         const sceneText = String(data.description || '暂无文字描写。').trim() || '暂无文字描写。';
