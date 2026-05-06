@@ -759,9 +759,10 @@ export class SettingsApp {
                                     <select id="phone-api-profile-select" style="width: 100%; padding: 8px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 13px; background: #fff; box-sizing: border-box;">
                                         <option value="">-- 选择预设 --</option>
                                     </select>
-                                    <div style="display: flex; gap: 8px; margin-top: 8px;">
-                                        <button id="phone-api-profile-save" style="flex: 1; padding: 8px; background: #17a2b8; color: #fff; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer;">💾 存为预设</button>
-                                        <button id="phone-api-profile-delete" style="flex: 1; padding: 8px; background: #ff3b30; color: #fff; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer;">🗑️ 删除预设</button>
+                                    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 8px;">
+                                        <button id="phone-api-profile-save-current" style="padding: 8px 4px; background: #fff; color: #333; border: 1px solid #dcdfe6; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer;">保存当前</button>
+                                        <button id="phone-api-profile-save" style="padding: 8px 4px; background: #fff; color: #333; border: 1px solid #dcdfe6; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer;">新建预设</button>
+                                        <button id="phone-api-profile-delete" style="padding: 8px 4px; background: #fff; color: #d93025; border: 1px solid #f1c7c3; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer;">删除预设</button>
                                     </div>
                                 </div>
 
@@ -3394,30 +3395,22 @@ export class SettingsApp {
             });
         });
 
-        // 2.6 存为预设
+        // 2.6 新建预设
         const apiProfileSaveBtn = document.getElementById('phone-api-profile-save');
         if (apiProfileSaveBtn) {
             apiProfileSaveBtn.onclick = async () => {
-                const currentName = (() => {
-                    const sel = document.getElementById('phone-api-profile-select');
-                    const idx = sel ? parseInt(sel.value, 10) : -1;
-                    const cfg = readApiConfig();
-                    if (Number.isInteger(idx) && idx >= 0 && cfg.profiles[idx]) return cfg.profiles[idx].name;
-                    return '';
-                })();
-                const name = String(prompt('请输入 API 预设名称', currentName || '') || '').trim();
+                const name = String(prompt('请输入新的 API 预设名称', '') || '').trim();
                 if (!name) return;
 
                 const config = readApiConfig();
-                const profile = { name, ...collectConfigFromForm() };
                 const existingIdx = config.profiles.findIndex(p => p.name === name);
                 if (existingIdx >= 0) {
-                    if (!confirm(`预设“${name}”已存在，是否覆盖？`)) return;
-                    config.profiles[existingIdx] = profile;
-                } else {
-                    config.profiles.push(profile);
+                    alert(`预设“${name}”已存在。请换一个名称，或选择该预设后点“保存当前”。`);
+                    return;
                 }
 
+                const profile = { name, ...collectConfigFromForm() };
+                config.profiles.push(profile);
                 Object.assign(config, profile);
                 config.activeProfileName = name;
                 const saved = await saveApiConfig(config);
@@ -3428,7 +3421,36 @@ export class SettingsApp {
                     const idx = saved.profiles.findIndex(p => p.name === name);
                     if (idx >= 0) select.value = String(idx);
                 }
-                alert('✅ API 预设已保存');
+                alert('✅ API 预设已新建');
+            };
+        }
+
+        // 2.6.1 保存当前预设
+        const apiProfileSaveCurrentBtn = document.getElementById('phone-api-profile-save-current');
+        if (apiProfileSaveCurrentBtn) {
+            apiProfileSaveCurrentBtn.onclick = async () => {
+                const select = document.getElementById('phone-api-profile-select');
+                const idx = select ? parseInt(select.value, 10) : -1;
+                if (!Number.isInteger(idx) || idx < 0) {
+                    alert('请先选择一个要保存的预设；如果要创建新预设，请点“新建预设”。');
+                    return;
+                }
+
+                const config = readApiConfig();
+                const target = config.profiles[idx];
+                if (!target) return;
+                if (!confirm(`确定覆盖保存预设“${target.name}”吗？`)) return;
+
+                const formConfig = collectConfigFromForm();
+                config.profiles[idx] = { ...target, ...formConfig, name: target.name };
+                Object.assign(config, config.profiles[idx]);
+                config.activeProfileName = target.name;
+                const saved = await saveApiConfig(config);
+                renderProfileSelect(saved);
+                renderAppRouteSelects(saved);
+                const nextSelect = document.getElementById('phone-api-profile-select');
+                if (nextSelect) nextSelect.value = String(idx);
+                alert('✅ 当前 API 预设已保存');
             };
         }
 
@@ -3475,7 +3497,9 @@ export class SettingsApp {
                 const saved = await saveApiConfig(config);
                 renderProfileSelect(saved);
                 renderAppRouteSelects(saved);
-                alert('✅ 手机专属 API 配置已保存！');
+                alert(Number.isInteger(idx) && idx >= 0
+                    ? '✅ 手机专属 API 配置已保存，并已同步到当前选中预设。'
+                    : '✅ 手机专属 API 配置已保存。');
             };
         }
 
@@ -3508,7 +3532,7 @@ export class SettingsApp {
                     }];
                     const result = await apiManager.callAI(testMessages, {
                         appId: 'phone_online',
-                        max_tokens: 16,
+                        max_tokens: tempConfig.maxTokens || 8192,
                         overrideApiConfig: tempConfig
                     });
 

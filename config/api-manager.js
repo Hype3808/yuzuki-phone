@@ -1017,7 +1017,10 @@ export class ApiManager {
                 };
             }
             if (reasoning && String(reasoning).trim()) {
-                throw new Error('API 只返回了 reasoning_content，未返回正文内容');
+                const suffix = finishReason === 'length'
+                    ? '，可能是 max_tokens 太小，模型把输出额度用在思考过程里'
+                    : '';
+                throw new Error(`API 只返回了 reasoning_content，未返回正文内容${suffix}`);
             }
             throw new Error('API 返回流式分片但正文为空');
         }
@@ -1103,7 +1106,10 @@ export class ApiManager {
             return { success: true, summary };
         }
         if (fullReasoning && String(fullReasoning).trim()) {
-            throw new Error('API 只返回了 reasoning_content，未返回正文内容');
+            const suffix = isTruncated
+                ? '，可能是 max_tokens 太小，模型把输出额度用在思考过程里'
+                : '';
+            throw new Error(`API 只返回了 reasoning_content，未返回正文内容${suffix}`);
         }
         throw new Error('API 返回流式分片但正文为空');
     }
@@ -1160,7 +1166,7 @@ export class ApiManager {
 
             let summary = String(fullText || '').replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/^[\s\S]*?<\/think>/i, '').trim();
             if (!summary && fullReasoning && String(fullReasoning).trim()) {
-                throw new Error('API 只返回了 reasoning_content，未返回正文内容');
+                throw new Error(`API 只返回了 reasoning_content，未返回正文内容${isTruncated ? '，可能是 max_tokens 太小，模型把输出额度用在思考过程里' : ''}`);
             }
             if (isTruncated && summary) {
                 summary += '\n\n[⚠️ 内容已因达到最大Token限制而截断]';
