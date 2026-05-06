@@ -3879,6 +3879,15 @@ renderChatRoom(chat) {
                 const right = normalizeWechatSingleName(b);
                 return !!left && !!right && left === right;
             };
+            const normalizeInlineSingleReply = (message) => {
+                if (!message || isGroupChat) return message;
+                const expectedSender = String(savedChatName || context.name2 || '').trim();
+                if (!expectedSender) return message;
+
+                const next = { ...message, sender: expectedSender };
+                next.content = String(next.content || '').trim();
+                return next;
+            };
 
             // 如果AI使用了跨聊天多开标签 <wechat> 或包含了 --- 分隔符
             if (aiRawText.includes('---')) {
@@ -4051,6 +4060,11 @@ renderChatRoom(chat) {
             Object.keys(backgroundMessages).forEach(chatName => {
                 backgroundMessages[chatName] = expandMixedSpecialList(backgroundMessages[chatName]);
             });
+            if (!isGroupChat) {
+                parsedMessages = parsedMessages
+                    .map(normalizeInlineSingleReply)
+                    .filter(item => String(item?.content || item?.specialMessage?.content || '').trim() || item?.specialMessage);
+            }
 
             // 处理后台窗口消息 (静默存入，红点提示)
             for (const [targetName, msgs] of Object.entries(backgroundMessages)) {
@@ -4542,6 +4556,15 @@ renderChatRoom(chat) {
         // 1️⃣ 获取角色名和用户名（参考记忆插件）
         // ========================================
         const userName = context.name1 || '用户';
+        const wechatUserName = String(this.app?.wechatData?.getUserInfo?.()?.name || '').trim();
+        if (wechatUserName && wechatUserName !== userName) {
+            messages.push({
+                role: 'system',
+                content: `【用户身份别名】酒馆正文中的“${userName}”与小手机微信昵称“${wechatUserName}”是同一个人，均指代{{user}}。微信聊天记录里“${wechatUserName}”发出的内容等同于“${userName}”发出的内容，不要把这两个名字当成两个人。`,
+                name: 'SYSTEM (用户身份别名)',
+                isPhoneMessage: true
+            });
+        }
         let charName = targetChat?.name || context.name2 || '角色';
 
         // 优先使用 characterId 获取真实角色名
@@ -5110,6 +5133,13 @@ renderChatRoom(chat) {
                 finalUserContent += `\n\n【用户最新输入】\n${userName}: ${latestUserInput}`;
             }
             finalUserContent += '\n\n【本轮约束】';
+            if (!isGroupChat) {
+                finalUserContent += `\n- 【方向锁定】当前微信单聊窗口是“${targetChat?.name || charName}”；手机主人/用户本人是“${userName}”。你只能扮演“${targetChat?.name || charName}”给“${userName}”发新增微信消息。`;
+                finalUserContent += `\n- 即使角色卡主角、酒馆 assistant 或正文叙事视角不是“${targetChat?.name || charName}”，当前微信单聊也必须以“${targetChat?.name || charName}”的身份和口吻回复；角色卡和正文只作为背景参考。`;
+                finalUserContent += `\n- 【用户最新输入】是“${userName}”刚刚发出的消息，只能作为被回复的内容；禁止把“${userName}”当成聊天对象、联系人、窗口名或回复发送者，禁止输出“${userName}:”、用户:、玩家:。`;
+                finalUserContent += '\n- 单聊输出区块必须是当前窗口名，且每条消息发送者必须是当前聊天对象；禁止让其他人或{{user}}在当前单聊里发言。';
+                finalUserContent += '\n- 微信消息内容必须是角色真实打进聊天框里的文字；禁止写动作、环境、神态、心理、写字过程、语气说明，禁止出现“顿了顿/指尖悬停/又补了一条/语气里”等叙事句。';
+            }
             finalUserContent += '\n- 正文/酒馆上下文是当前现实剧情状态的依据；如果正文显示双方已经线下面对面、同处一地、正在现实互动，你必须承认这个状态，必要时用 [转线下] 结束微信，而不是把现实剧情当作不存在。';
             finalUserContent += '\n- 只输出当前微信窗口的新增回复；不得重复“手机微信已有消息”中已经存在的微信消息，也不得把正文里刚发生的对白原样复读成微信消息。';
             finalUserContent += '\n- 可以基于正文最新事件、情绪、地点变化作出自然回应，但回复必须是新的微信内容。';

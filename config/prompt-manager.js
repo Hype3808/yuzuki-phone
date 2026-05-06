@@ -320,6 +320,14 @@ export class PromptManager {
         let text = String(content || '');
         if (!text) return text;
         const wechatImagePromptRule = '💡 图片描述规则：当你要发送图片时，必须使用 [图片]（English NovelAI tags） 格式。括号内只能写英文逗号分隔的 NAI 生图 tag，不要写中文、解释或完整句子；必须描述可见画面细节，如 subject count, gender, adult character, anime illustration, pose, expression, clothing, setting, camera angle, lighting。若内容涉及人物或拟人对象，必须用 1girl/1boy/2girls/2boys、female focus/male focus 等英文 tag 明确主体。';
+        const wechatSingleDirectionRule = `【单聊方向锁定】
+- 当前微信窗口的聊天对象永远是 {{chatName}}，不是 {{user}}。
+- {{user}} 只代表手机主人/玩家/用户本人，绝对不能作为聊天对象、联系人、窗口名或回复发送者。
+- 单聊模式下你只能代替 {{chatName}} 给 {{user}} 发送新增微信消息。
+- 即使角色卡主角、酒馆 assistant、正文叙事视角不是 {{chatName}}，在当前微信单聊里也必须以 {{chatName}} 的身份和口吻回复；角色卡和正文只作为世界观、关系、事件背景参考。
+- 输出区块必须是 ---{{chatName}}---，发送者也必须是 {{chatName}}；禁止输出 {{user}}:、用户:、玩家: 或其他角色名作为发送者。
+- 【用户最新输入】是 {{user}} 刚刚发出的消息，只能作为被回复的内容，禁止把它当成聊天对象或让 {{user}} 再次发言。
+- 微信消息内容必须是角色真实打进聊天框里的文字。禁止把动作、环境、神态、心理、写字过程、语气说明写进消息内容；禁止出现“她顿了顿/指尖悬停/又补了一条/语气里”等叙事句。如果需要表现迟疑，只拆成多条短微信。`;
 
         // 清理历史版本里“单聊多窗口”段落，避免与当前窗口输出范围冲突
         if (text.includes('💡 聊天多窗口回复：')) {
@@ -368,6 +376,20 @@ ${wechatImagePromptRule}`
 💡 当前窗口输出范围：单聊模式下只输出当前窗口 ---{{chatName}}--- 的新增消息；系统提供的共同群聊、其他记录和正文剧情可以作为关系与现实状态参考，但不能直接生成其他窗口。`;
         }
 
+        if (!text.includes('【单聊方向锁定】')) {
+            text = text.replace(
+                '📋 【当前聊天窗口名】：{{chatName}}',
+                `📋 【当前聊天窗口名】：{{chatName}}
+
+${wechatSingleDirectionRule}`
+            );
+            if (!text.includes('【单聊方向锁定】')) {
+                text = `${text}
+
+${wechatSingleDirectionRule}`;
+            }
+        }
+
         return text;
     }
 
@@ -406,6 +428,19 @@ ${wechatImagePromptRule}`
                 .replace(/(---张三---\n)(date:)/g, '$1接收人：{{user}}\n$2')
                 .replace(/(---李四---\n)(date:)/g, '$1接收人：{{user}}\n$2')
                 .replace(/(---群名---\n)(type:group)/g, '$1接收人：{{user}}\n$2');
+        }
+
+        if (!text.includes('[手机来电通话]接听人：{{user}}')) {
+            text = text
+                .replace(
+                    '在剧情中，仅当其他角色使用手机给{{user}}拨打电话时，必须在正文末尾输出该电话来电标签。注意⚠️：凡非{{user}}作为接收方的通话，一律严禁使用<Phone>标签，不需要在正文下输出任何标签。其中包括{{char}}与NPC之间、NPC与NPC之间，以及任何未拨打到{{user}}手机的通话。',
+                    '在剧情中，仅当其他角色使用手机给{{user}}拨打电话时，必须在正文末尾输出该电话来电标签。注意⚠️：凡非{{user}}作为接听人/接收方的通话，一律严禁使用<Phone>标签，不需要在正文下输出任何标签。其中包括{{char}}与NPC之间、NPC与NPC之间，以及任何未拨打到{{user}}手机的通话。'
+                )
+                .replace(
+                    '[手机来电通话]呼叫方：姓名。',
+                    `[手机来电通话]接听人：{{user}}
+[手机来电通话]呼叫方：姓名。`
+                );
         }
 
         return text;
@@ -581,8 +616,9 @@ date:{{STORY_DATE}}
 </回复xx>
 
 【手机来电】
-在剧情中，仅当其他角色使用手机给{{user}}拨打电话时，必须在正文末尾输出该电话来电标签。注意⚠️：凡非{{user}}作为接收方的通话，一律严禁使用<Phone>标签，不需要在正文下输出任何标签。其中包括{{char}}与NPC之间、NPC与NPC之间，以及任何未拨打到{{user}}手机的通话。
+在剧情中，仅当其他角色使用手机给{{user}}拨打电话时，必须在正文末尾输出该电话来电标签。注意⚠️：凡非{{user}}作为接听人/接收方的通话，一律严禁使用<Phone>标签，不需要在正文下输出任何标签。其中包括{{char}}与NPC之间、NPC与NPC之间，以及任何未拨打到{{user}}手机的通话。
 <Phone>
+[手机来电通话]接听人：{{user}}
 [手机来电通话]呼叫方：姓名。
 </Phone>
 

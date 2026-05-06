@@ -86,6 +86,8 @@ if (window.GGP_Loaded) {
     let _phoneViewportResizeTimer = null;
     let _phoneViewportSettleTimer = null;
     let _phoneKeyboardLikelyOpenUntil = 0;
+    const PHONE_PANEL_DESKTOP_SIDE_KEY = 'phone-panel-desktop-side';
+    const PHONE_PANEL_DESKTOP_DRAG_PRESS_MS = 520;
     // 🔥 防重放护盾：仅允许被显式标记的旧楼层重新解析（用于 Swipe/Regenerate）
     const _forcedReplayFloors = new Map(); // key: `${chatId}:${floor}`, value: expireAt
 
@@ -209,6 +211,189 @@ if (window.GGP_Loaded) {
         _phoneViewportSettleTimer = setTimeout(() => {
             updatePhonePanelViewportHeight(options);
         }, settleDelay);
+    }
+
+    function isDesktopPhonePanelDragEnabled() {
+        const width = window.innerWidth || document.documentElement?.clientWidth || 0;
+        const hasMouseLikePointer = !window.matchMedia || window.matchMedia('(any-pointer: fine)').matches;
+        return width > 900 && hasMouseLikePointer;
+    }
+
+    function normalizePhonePanelDesktopSide(value) {
+        return value === 'left' ? 'left' : 'right';
+    }
+
+    function applyPhonePanelDesktopSide(side) {
+        const panel = document.getElementById('phone-panel');
+        if (!panel) return;
+
+        const normalizedSide = normalizePhonePanelDesktopSide(side);
+        panel.classList.toggle('phone-panel-desktop-left', normalizedSide === 'left');
+        panel.classList.toggle('phone-panel-desktop-right', normalizedSide !== 'left');
+        panel.dataset.desktopSide = normalizedSide;
+    }
+
+    function loadPhonePanelDesktopSide() {
+        const storedSide = storage?.get?.(PHONE_PANEL_DESKTOP_SIDE_KEY, 'right');
+        return normalizePhonePanelDesktopSide(storedSide);
+    }
+
+    async function savePhonePanelDesktopSide(side) {
+        const normalizedSide = normalizePhonePanelDesktopSide(side);
+        applyPhonePanelDesktopSide(normalizedSide);
+        try {
+            await storage?.set?.(PHONE_PANEL_DESKTOP_SIDE_KEY, normalizedSide);
+        } catch (e) {
+            console.warn('[PhonePanel] 保存桌面停靠位置失败:', e);
+        }
+    }
+
+    function bindPhonePanelDesktopDockDrag(panel) {
+        if (!panel || panel.dataset.desktopDockDragBound === '1') return;
+        panel.dataset.desktopDockDragBound = '1';
+
+        let pressTimer = null;
+        let activePointerId = null;
+        let startX = 0;
+        let startY = 0;
+        let currentX = 0;
+        let currentY = 0;
+        let isDragging = false;
+        let suppressNextClick = false;
+
+        const clearPressTimer = () => {
+            if (pressTimer) {
+                clearTimeout(pressTimer);
+                pressTimer = null;
+            }
+        };
+
+        const resetDragState = () => {
+            clearPressTimer();
+            activePointerId = null;
+            startX = 0;
+            startY = 0;
+            currentX = 0;
+            currentY = 0;
+            isDragging = false;
+        };
+
+        const isBlockedDragTarget = (target) => {
+            if (!target || typeof target.closest !== 'function') return false;
+            return !!target.closest([
+                'input',
+                'textarea',
+                'select',
+                '[contenteditable="true"]',
+                '[contenteditable="plaintext-only"]',
+                '.chat-input',
+                '.chat-input-area textarea',
+                '.chat-input-area input'
+            ].join(','));
+        };
+
+        const getPhoneBodyFromEvent = (event) => {
+            const path = typeof event.composedPath === 'function' ? event.composedPath() : [];
+            return path.find(el => el?.classList?.contains?.('phone-body-panel'))
+                || event.target?.closest?.('.phone-body-panel')
+                || null;
+        };
+
+        const startDragging = (event, phoneBody) => {
+            if (activePointerId !== event.pointerId || !phoneBody || !isDesktopPhonePanelDragEnabled()) return;
+
+            isDragging = true;
+            suppressNextClick = true;
+            currentX = Number.isFinite(currentX) ? currentX : event.clientX;
+            currentY = Number.isFinite(currentY) ? currentY : event.clientY;
+            panel.classList.add('phone-panel-desktop-dragging');
+            panel.style.setProperty('--phone-panel-drag-x', `${Math.round(currentX - startX)}px`);
+            panel.style.setProperty('--phone-panel-drag-y', `${Math.round(currentY - startY)}px`);
+
+            if (navigator.vibrate) navigator.vibrate(20);
+        };
+
+        panel.addEventListener('pointerdown', (event) => {
+            if (!isDesktopPhonePanelDragEnabled()) return;
+            if (event.button !== undefined && event.button !== 0) return;
+            if (event.pointerType && event.pointerType !== 'mouse') return;
+
+            const phoneBody = getPhoneBodyFromEvent(event);
+            if (!phoneBody || isBlockedDragTarget(event.target)) return;
+
+            resetDragState();
+            activePointerId = event.pointerId;
+            startX = event.clientX;
+            startY = event.clientY;
+            currentX = startX;
+            currentY = startY;
+            pressTimer = setTimeout(() => {
+                startDragging(event, phoneBody);
+            }, PHONE_PANEL_DESKTOP_DRAG_PRESS_MS);
+        });
+
+        panel.addEventListener('pointermove', (event) => {
+            if (activePointerId !== event.pointerId) return;
+
+            const deltaX = event.clientX - startX;
+            const deltaY = event.clientY - startY;
+
+            currentX = event.clientX;
+            currentY = event.clientY;
+
+            if (!isDragging) return;
+
+            event.preventDefault();
+            event.stopPropagation();
+            panel.style.setProperty('--phone-panel-drag-x', `${Math.round(deltaX)}px`);
+            panel.style.setProperty('--phone-panel-drag-y', `${Math.round(deltaY)}px`);
+        }, { passive: false });
+
+        const finishPointer = async (event) => {
+            if (activePointerId !== event.pointerId) return;
+
+            const shouldSave = isDragging;
+            const nextSide = currentX < (window.innerWidth || document.documentElement?.clientWidth || 0) / 2
+                ? 'left'
+                : 'right';
+
+            if (isDragging) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+
+            panel.classList.remove('phone-panel-desktop-dragging');
+            panel.style.removeProperty('--phone-panel-drag-x');
+            panel.style.removeProperty('--phone-panel-drag-y');
+            resetDragState();
+
+            if (shouldSave) {
+                suppressNextClick = true;
+                savePhonePanelDesktopSide(nextSide);
+                setTimeout(() => {
+                    suppressNextClick = false;
+                }, 120);
+            }
+        };
+
+        panel.addEventListener('pointerup', finishPointer);
+        panel.addEventListener('pointercancel', (event) => {
+            if (activePointerId !== event.pointerId) return;
+            panel.classList.remove('phone-panel-desktop-dragging');
+            panel.style.removeProperty('--phone-panel-drag-x');
+            panel.style.removeProperty('--phone-panel-drag-y');
+            resetDragState();
+            setTimeout(() => {
+                suppressNextClick = false;
+            }, 80);
+        });
+
+        panel.addEventListener('click', (event) => {
+            if (!suppressNextClick) return;
+            suppressNextClick = false;
+            event.preventDefault();
+            event.stopPropagation();
+        }, true);
     }
 
     function bindPhonePanelViewportGuards() {
@@ -362,7 +547,8 @@ if (window.GGP_Loaded) {
     const LEGACY_WECHAT_TAG = /<wechat\s+chatId="([^"]+)"\s+from="([^"]+)">([\s\S]*?)<\/wechat>/gi;
 
     // 来电标签正则
-    const PHONE_CALL_REGEX = /\[手机来电通话\]呼叫方[：:\s]+([^<。\.\n\r]+)/;
+    const PHONE_CALL_REGEX = /\[手机来电通话\]\s*呼叫方[：:\s]+([^<。\.\n\r]+)/i;
+    const PHONE_RECIPIENT_REGEX = /(?:接听人|接收人|被叫方|recipient|receiver)\s*[:：]\s*([^<。\.\n\r]+)/i;
 
     // 音乐标签正则（新版完整卡片格式，兼容大小写/空格/属性）
     const MUSIC_TAG_REGEX = /<\s*music\b[^>]*>([\s\S]*?)<\/\s*music\s*>/gi;
@@ -3072,6 +3258,9 @@ if (window.GGP_Loaded) {
         const drawerPanel = document.getElementById('phone-panel');
         const triggerTarget = drawerEntry || drawerIcon;
 
+        applyPhonePanelDesktopSide(loadPhonePanelDesktopSide());
+        bindPhonePanelDesktopDockDrag(drawerPanel);
+
         // 🔥 新增：长按控制全局主开关逻辑
         if (triggerTarget && drawerIcon && drawerPanel) {
             let pressTimer;
@@ -3180,6 +3369,8 @@ if (window.GGP_Loaded) {
         if (!panel || !icon) return;
 
         updatePhonePanelViewportHeight({ force: true });
+        applyPhonePanelDesktopSide(loadPhonePanelDesktopSide());
+        bindPhonePanelDesktopDockDrag(panel);
         panel.classList.add('phone-panel-open');
         panel.classList.remove('phone-panel-hidden');
         panel.style.cssText = '';
@@ -3193,6 +3384,10 @@ if (window.GGP_Loaded) {
 
     // 🔥 处理面板点击事件：点击手机外部关闭手机
     function handlePanelClick(e) {
+        if (isDesktopPhonePanelDragEnabled()) {
+            return;
+        }
+
         // 【核心修复】：使用 e.composedPath() 获取真实点击路径。
         // 防止微信局部刷新导致旧 DOM 被销毁时被误判为“点击了外部”
         const path = e.composedPath();
@@ -5139,8 +5334,14 @@ if (window.GGP_Loaded) {
                 if (phoneTagMatch) {
                     const phoneContent = phoneTagMatch[1];
                     const callMatch = phoneContent.match(PHONE_CALL_REGEX);
+                    const recipientMatch = phoneContent.match(PHONE_RECIPIENT_REGEX);
+                    const recipientText = String(recipientMatch?.[1] || '').trim();
+                    const canTriggerPhoneCall = !!recipientText && isWechatRecipientCurrentUser(recipientText);
+                    if (!canTriggerPhoneCall) {
+                        console.warn('⚠️ [Phone] 跳过非用户接听人的电话标签:', recipientText || '(未填写)');
+                    }
                     // 旧楼层重放/刷新时只保留通话记录数据，不应再次触发来电弹窗。
-                    if (callMatch && !isHistoryReplay) handleIncomingPhoneCall(callMatch[1].trim());
+                    if (callMatch && canTriggerPhoneCall && !isHistoryReplay) handleIncomingPhoneCall(callMatch[1].trim());
                 }
 
                 // 兼容旧版微信标签
@@ -5788,12 +5989,15 @@ if (window.GGP_Loaded) {
 
                 const app = currentApps.find(a => a.id === appId);
                 if (app) {
+                    const prevBadge = app.badge || 0;
                     if (appId !== 'wechat') {
                         app.badge = 0;
                     }
                     totalNotifications = currentApps.reduce((sum, a) => sum + (a.badge || 0), 0);
                     updateNotificationBadge(totalNotifications);
-                    saveData();
+                    if (prevBadge !== (app.badge || 0)) {
+                        saveData();
+                    }
                 }
 
                 // 打开对应的APP
@@ -6336,6 +6540,7 @@ if (window.GGP_Loaded) {
                             // 🔥 核心修改：仅在微信在线模式开启时，才收集并注入微信线下上下文
                             if (storage && isPhoneEnabled && isWechatOnlineEnabled) {
                                 try {
+                                    let userAliasNotice = '';
                                     // 🔥 性能优化：优先从内存中读取已有的 wechatApp 实例，避免全量 JSON.parse
                                     let wechatDataParsed = null;
                                     const wechatDataInstance =
@@ -6364,8 +6569,16 @@ if (window.GGP_Loaded) {
                                         // 🔥 性能优化：在循环外获取context和limit配置，避免重复调用
                                         const ctx = getContext();
                                         const userName = ctx?.name1 || '用户';
+                                        const wechatUserName = String(wechatDataParsed?.userInfo?.name || '').trim();
+                                        userAliasNotice = wechatUserName && wechatUserName !== userName
+                                            ? `【用户身份别名】酒馆正文中的“${userName}”与小手机微信昵称“${wechatUserName}”是同一个人，均指代{{user}}。解析微信/电话/微博/朋友圈等手机内容时，不要把这两个名字当成两个人。\n\n`
+                                            : '';
                                         const singleLimit = parseInt(storage.get('offline-single-chat-limit')) || 5;
                                         const groupLimit = parseInt(storage.get('offline-group-chat-limit')) || 10;
+                                        const singleInjectRaw = storage.get('offline-single-chat-enabled');
+                                        const groupInjectRaw = storage.get('offline-group-chat-enabled');
+                                        const includeSingleOffline = singleInjectRaw !== false && singleInjectRaw !== 'false';
+                                        const includeGroupOffline = groupInjectRaw !== false && groupInjectRaw !== 'false';
                                         const includeHoneyOfflineRaw = storage.get('offline-honey-chat-enabled');
                                         const includeHoneyOffline = includeHoneyOfflineRaw === true || includeHoneyOfflineRaw === 'true' || includeHoneyOfflineRaw === 1;
                                         const contacts = Array.isArray(wechatDataParsed.contacts) ? wechatDataParsed.contacts : [];
@@ -6429,6 +6642,13 @@ if (window.GGP_Loaded) {
                                             if (!includeHoneyOffline && isHoneyChat) {
                                                 return;
                                             }
+                                            const isGroup = chat.type === 'group';
+                                            if (isGroup && !includeGroupOffline) {
+                                                return;
+                                            }
+                                            if (!isGroup && !includeSingleOffline) {
+                                                return;
+                                            }
 
                                             let chatMessages = [];
 
@@ -6461,7 +6681,6 @@ if (window.GGP_Loaded) {
                                             }
 
                                             if (chatMessages && chatMessages.length > 0) {
-                                                const isGroup = chat.type === 'group';
                                                 const limit = isGroup ? groupLimit : singleLimit;
                                                 const recentMessages = [...chatMessages]
                                                     .map((msg, index) => ({
@@ -6702,7 +6921,7 @@ if (window.GGP_Loaded) {
                                         try {
                                             const corePrompt = promptManager.getPromptForFeature('core');
                                             if (corePrompt) {
-                                                phoneRulesContent += `【手机系统】\n${corePrompt}\n\n`;
+                                                phoneRulesContent += `【手机系统】\n${corePrompt}\n\n${userAliasNotice}`;
                                             }
                                         } catch (e) {
                                             console.warn('⚠️ [手机] 获取核心提示词失败');

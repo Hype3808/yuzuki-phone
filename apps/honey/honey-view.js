@@ -5856,10 +5856,24 @@ export class HoneyView {
         const honeyHeight = readNumber('phone-image-honey-height', 1216, 64, 2048, true);
         const imageSteps = readNumber('phone-image-steps', 28, 1, 50, true);
         const imageScale = readNumber('phone-image-scale', 7, 0, 50, false);
+        const globalSeed = readNumber('phone-image-seed', -1, -1, 4294967295, true);
         const safeHoneyWidth = honeyWidth < 512 ? 832 : honeyWidth;
         const safeHoneyHeight = honeyHeight < 768 ? 1216 : honeyHeight;
         const safeHoneySteps = provider === 'novelai' && imageSteps < 20 ? 28 : imageSteps;
         const safeHoneyScale = provider === 'novelai' && imageScale < 1 ? 7 : imageScale;
+        const requestSeed = -1;
+        const promptPreview = typeof imageManager.previewFinalPrompt === 'function'
+            ? imageManager.previewFinalPrompt({
+                app: 'honey',
+                prompt: normalizedPrompt,
+                provider,
+                width: safeHoneyWidth,
+                height: safeHoneyHeight,
+                steps: safeHoneySteps,
+                scale: safeHoneyScale,
+                seed: requestSeed
+            })
+            : null;
 
         console.log([
             auto ? '[Honey NAI] 自动请求直播生图' : '[Honey NAI] 即将请求直播生图',
@@ -5867,9 +5881,22 @@ export class HoneyView {
             `Steps: ${safeHoneySteps}`,
             `Scale: ${safeHoneyScale}`,
             `Provider: ${provider}`,
+            `Seed: 随机（已忽略全局 Seed=${globalSeed}，避免重刷同图）`,
             '',
             'AI 原始画面 tag:',
-            normalizedPrompt || '(空)'
+            normalizedPrompt || '(空)',
+            '',
+            '固定前置提示词:',
+            promptPreview?.fixedPrompt || '(空)',
+            '',
+            '固定后置提示词:',
+            promptPreview?.fixedPromptEnd || '(空)',
+            '',
+            '最终正向提示词:',
+            promptPreview?.positivePrompt || normalizedPrompt || '(空)',
+            '',
+            '最终负面提示词:',
+            promptPreview?.negativePrompt || '(空)'
         ].join('\n'));
 
         this.currentSceneData = {
@@ -5906,7 +5933,8 @@ export class HoneyView {
                 width: safeHoneyWidth,
                 height: safeHoneyHeight,
                 steps: safeHoneySteps,
-                scale: safeHoneyScale
+                scale: safeHoneyScale,
+                seed: requestSeed
             });
             this.currentSceneData = {
                 ...(this.currentSceneData || baseScene),
@@ -5920,6 +5948,7 @@ export class HoneyView {
                 imageGenerationWidth: Number(result.width || result.requestedWidth || 0) || '',
                 imageGenerationHeight: Number(result.height || result.requestedHeight || 0) || '',
                 imageGenerationSteps: Number(result.steps || 0) || '',
+                imageGenerationSeed: Number(result.seed ?? requestSeed),
                 imageGenerationSampler: String(result.sampler || '').trim(),
                 imageGenerationSchedule: String(result.schedule || '').trim(),
                 imageGenerationScale: Number(result.scale || 0) || '',

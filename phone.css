@@ -343,6 +343,82 @@
     box-sizing: border-box !important;
 }
 
+@media (min-width: 901px) and (any-pointer: fine) {
+    #phone-panel.drawer-content {
+        padding-left: max(18px, env(safe-area-inset-left, 0px)) !important;
+        padding-right: max(18px, env(safe-area-inset-right, 0px)) !important;
+        pointer-events: none !important;
+    }
+
+    #phone-panel.drawer-content #phone-panel-content,
+    #phone-panel.drawer-content #phone-panel-content .phone-in-panel {
+        pointer-events: none !important;
+    }
+
+    #phone-panel.drawer-content #phone-panel-content .phone-body-panel {
+        pointer-events: auto !important;
+    }
+
+    #phone-panel.drawer-content.phone-panel-desktop-left #phone-panel-content {
+        align-items: flex-start !important;
+    }
+
+    #phone-panel.drawer-content.phone-panel-desktop-left #phone-panel-content .phone-in-panel {
+        align-items: flex-start !important;
+    }
+
+    #phone-panel.drawer-content.phone-panel-desktop-left #phone-panel-content .phone-body-panel {
+        margin-left: 0 !important;
+        margin-right: auto !important;
+    }
+
+    #phone-panel.drawer-content.phone-panel-desktop-right #phone-panel-content {
+        align-items: flex-end !important;
+    }
+
+    #phone-panel.drawer-content.phone-panel-desktop-right #phone-panel-content .phone-in-panel {
+        align-items: flex-end !important;
+    }
+
+    #phone-panel.drawer-content.phone-panel-desktop-right #phone-panel-content .phone-body-panel {
+        margin-left: auto !important;
+        margin-right: 0 !important;
+    }
+
+    #phone-panel.drawer-content #phone-panel-content .phone-body-panel {
+        cursor: grab !important;
+    }
+
+    #phone-panel.drawer-content #phone-panel-content .phone-body-panel :is(
+        input,
+        textarea,
+        select,
+        [contenteditable="true"],
+        [contenteditable="plaintext-only"]
+    ) {
+        cursor: text !important;
+    }
+
+    #phone-panel.drawer-content.phone-panel-desktop-dragging #phone-panel-content {
+        cursor: grabbing !important;
+        user-select: none !important;
+    }
+
+    #phone-panel.drawer-content.phone-panel-desktop-dragging .phone-body-panel {
+        cursor: grabbing !important;
+        transform: translate3d(
+            var(--phone-panel-drag-x, 0px),
+            var(--phone-panel-drag-y, 0px),
+            0
+        ) scale(0.985) !important;
+        transition: none !important;
+        box-shadow:
+            inset 0 0 0 1px color-mix(in srgb, var(--phone-frame-color, #1a1a1a) 82%, #ffffff),
+            0 22px 70px rgba(0, 0, 0, 0.48),
+            0 10px 28px rgba(0, 0, 0, 0.34) !important;
+    }
+}
+
 .phone-in-panel {
     /* 🔥 清除尺寸限制，让子元素自适应 */
     width: 100% !important;

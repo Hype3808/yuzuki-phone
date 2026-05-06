@@ -594,6 +594,24 @@ export class ImageGenerationManager {
         };
     }
 
+    previewFinalPrompt(options = {}) {
+        const config = this.getConfig(options);
+        const prompt = String(options.prompt || '').trim();
+        return {
+            provider: config.provider,
+            app: String(options.app || '').trim().toLowerCase(),
+            model: config.model,
+            fixedPrompt: config.fixedPrompt,
+            aiPrompt: prompt,
+            fixedPromptEnd: config.fixedPromptEnd,
+            positivePrompt: config.provider === 'siliconflow'
+                ? this._joinPrompt([config.fixedPrompt, prompt, config.fixedPromptEnd], '，')
+                : this._joinPrompt([config.fixedPrompt, prompt, config.fixedPromptEnd]),
+            negativePrompt: this._joinPrompt([config.negativePrompt, options.negativePrompt]),
+            seed: Number(options.seed ?? config.seed)
+        };
+    }
+
     async _generateNovelAI(options, config) {
         const prompt = String(options.prompt || '').trim();
         if (!prompt) throw new Error('缺少生图提示词');
@@ -643,6 +661,7 @@ export class ImageGenerationManager {
             sampler: config.sampler,
             schedule: config.schedule,
             scale: Number(payload?.parameters?.scale ?? config.scale),
+            seed: Number(payload?.parameters?.seed ?? -1),
             imageData,
             imageUrl: imageData
         };
