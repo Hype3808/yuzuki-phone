@@ -121,9 +121,16 @@ export class SettingsApp {
         const isTtsHoneySectionOpen = this.storage.get('phone-tts-honey-section-open') === true;
         const isGeneralInteractionOpen = this.storage.get('phone-settings-general-interaction-open') === true;
         const isGeneralLimitsOpen = this.storage.get('phone-settings-general-limits-open') === true;
+        const isGeneralPersonalizationOpen = this.storage.get('phone-settings-general-personalization-open') === true;
+        const isGeneralTextColorOpen = this.storage.get('phone-settings-general-text-color-open') === true;
+        const isGeneralTimeOpen = this.storage.get('phone-settings-general-time-open') === true;
+        const isGeneralDataOpen = this.storage.get('phone-settings-general-data-open') === true;
+        const homeLayoutRaw = String(this.storage.get('phone-home-layout') || 'icons');
+        const homeLayout = homeLayoutRaw === 'cards' ? 'cards' : 'icons';
         // 加载壁纸和颜色设置
         const wallpaper = this.imageManager.getWallpaper();
         const globalTextColor = this.storage.get('phone-global-text') || '#000000';
+        const phoneFrameColor = this.storage.get('phone-frame-color') || '#1a1a1a';
         const html = `
             <div class="settings-app">
                 <style>
@@ -150,18 +157,204 @@ export class SettingsApp {
                         color: #222;
                         background: rgba(0,0,0,0.07);
                     }
+                    #tab-general {
+                        box-sizing: border-box;
+                        width: 100%;
+                        max-width: 760px;
+                        margin: 0 auto;
+                    }
+                    #tab-general > details[data-settings-fold-key] {
+                        margin: 10px 0 !important;
+                        border: 1px solid rgba(18, 24, 38, 0.08) !important;
+                        border-radius: 14px !important;
+                        background: #ffffff !important;
+                        box-shadow: 0 8px 24px rgba(18, 24, 38, 0.06), 0 1px 2px rgba(18, 24, 38, 0.04) !important;
+                        overflow: hidden !important;
+                    }
+                    #tab-general > details[data-settings-fold-key] > summary {
+                        min-height: 46px !important;
+                        height: auto !important;
+                        padding: 0 12px 0 14px !important;
+                        display: flex !important;
+                        align-items: center !important;
+                        justify-content: space-between !important;
+                        gap: 10px !important;
+                        background: linear-gradient(180deg, #ffffff 0%, #f7f8fa 100%) !important;
+                        border-bottom: 1px solid transparent !important;
+                        font-size: 13px !important;
+                        font-weight: 700 !important;
+                        color: #1d1d1f !important;
+                    }
+                    #tab-general > details[data-settings-fold-key][open] > summary {
+                        border-bottom-color: rgba(18, 24, 38, 0.07) !important;
+                    }
+                    #tab-general > details[data-settings-fold-key] > summary > span:first-child {
+                        display: inline-flex !important;
+                        min-width: 0 !important;
+                        align-items: center !important;
+                        gap: 7px !important;
+                        overflow: hidden !important;
+                        text-overflow: ellipsis !important;
+                        white-space: nowrap !important;
+                    }
+                    #tab-general > details[data-settings-fold-key] > div {
+                        padding: 6px 10px 10px !important;
+                        background: #fff !important;
+                    }
+                    #tab-general > details[data-settings-fold-key] .setting-item {
+                        min-height: 44px;
+                        padding: 11px 2px !important;
+                        border-bottom: 1px solid rgba(18, 24, 38, 0.07) !important;
+                        background: transparent !important;
+                    }
+                    #tab-general > details[data-settings-fold-key] .setting-item:last-child {
+                        border-bottom: none !important;
+                    }
+                    #tab-general > details[data-settings-fold-key] .setting-item:has(+ .settings-subsection-title),
+                    #tab-general > details[data-settings-fold-key] .setting-info:has(+ .settings-subsection-title) {
+                        border-bottom-color: transparent !important;
+                    }
+                    #tab-general .settings-subsection-title {
+                        margin: 0 !important;
+                        padding: 12px 0 8px !important;
+                        border-top: 1px solid rgba(18, 24, 38, 0.08) !important;
+                        color: #333 !important;
+                        font-size: 12px !important;
+                        font-weight: 700 !important;
+                        line-height: 1.35 !important;
+                    }
+                    #tab-general > details[data-settings-fold-key] .setting-toggle {
+                        display: flex !important;
+                        align-items: center !important;
+                        justify-content: space-between !important;
+                        gap: 14px !important;
+                    }
+                    #tab-general > details[data-settings-fold-key] .setting-toggle > div:first-child,
+                    #tab-general > details[data-settings-fold-key] .setting-item > div:first-child {
+                        min-width: 0;
+                    }
+                    #tab-general > details[data-settings-fold-key] .setting-label {
+                        font-size: 13px !important;
+                        font-weight: 650 !important;
+                        color: #1d1d1f !important;
+                        line-height: 1.3 !important;
+                    }
+                    #tab-general > details[data-settings-fold-key] .setting-desc {
+                        margin-top: 4px !important;
+                        color: #6b7280 !important;
+                        font-size: 11px !important;
+                        line-height: 1.45 !important;
+                    }
+                    #tab-general > details[data-settings-fold-key] .setting-info {
+                        margin: 8px 0 0 !important;
+                        padding: 9px 10px !important;
+                        border: 1px solid rgba(18, 24, 38, 0.06) !important;
+                        border-radius: 10px !important;
+                        background: #f7f8fa !important;
+                        color: #6b7280 !important;
+                        font-size: 11px !important;
+                        line-height: 1.55 !important;
+                    }
+                    #tab-general > details[data-settings-fold-key] input[type="number"] {
+                        width: 68px !important;
+                        height: 32px !important;
+                        border-radius: 9px !important;
+                        border: 1px solid rgba(18, 24, 38, 0.12) !important;
+                        background: #f8fafc !important;
+                        color: #111827 !important;
+                        font-size: 13px !important;
+                    }
+                    #tab-general > details[data-settings-fold-key] .setting-btn {
+                        min-height: 34px !important;
+                        border-radius: 10px !important;
+                        font-size: 12px !important;
+                        font-weight: 650 !important;
+                    }
+                    #tab-general .app-icon-grid,
+                    #tab-general .dock-config-grid {
+                        grid-template-columns: repeat(auto-fit, minmax(52px, 1fr)) !important;
+                        gap: 10px !important;
+                    }
+                    @media (max-width: 380px) {
+                        #tab-general > details[data-settings-fold-key] > summary {
+                            min-height: 44px !important;
+                            padding-left: 12px !important;
+                        }
+                        #tab-general > details[data-settings-fold-key] > div {
+                            padding-left: 9px !important;
+                            padding-right: 9px !important;
+                        }
+                        #tab-general > details[data-settings-fold-key] .setting-toggle {
+                            gap: 10px !important;
+                        }
+                    }
+                    @media (min-width: 700px) {
+                        #tab-general {
+                            padding-left: 8px;
+                            padding-right: 8px;
+                        }
+                        #tab-general > details[data-settings-fold-key] > summary {
+                            min-height: 50px !important;
+                        }
+                        #tab-general > details[data-settings-fold-key] > div {
+                            padding: 8px 14px 14px !important;
+                        }
+                    }
+                    .settings-app .toggle-switch {
+                        position: relative !important;
+                        display: inline-block !important;
+                        width: 42px !important;
+                        min-width: 42px !important;
+                        height: 26px !important;
+                        flex: 0 0 42px !important;
+                        border-radius: 999px !important;
+                    }
+                    .settings-app .toggle-switch input {
+                        opacity: 0 !important;
+                        width: 0 !important;
+                        height: 0 !important;
+                    }
+                    .settings-app .toggle-slider {
+                        position: absolute !important;
+                        inset: 0 !important;
+                        cursor: pointer !important;
+                        border-radius: 999px !important;
+                        background: #dfe3ea !important;
+                        box-shadow: inset 0 1px 2px rgba(0,0,0,0.14) !important;
+                        transition: background .2s ease, box-shadow .2s ease !important;
+                    }
+                    .settings-app .toggle-slider::before {
+                        content: "" !important;
+                        position: absolute !important;
+                        width: 22px !important;
+                        height: 22px !important;
+                        left: 2px !important;
+                        top: 2px !important;
+                        bottom: auto !important;
+                        border-radius: 50% !important;
+                        background: #fff !important;
+                        box-shadow: 0 2px 5px rgba(0,0,0,0.22) !important;
+                        transition: transform .2s ease !important;
+                    }
+                    .settings-app .toggle-switch input:checked + .toggle-slider {
+                        background: #30c46b !important;
+                        box-shadow: inset 0 1px 2px rgba(0,0,0,0.12), 0 0 0 1px rgba(48,196,107,0.16) !important;
+                    }
+                    .settings-app .toggle-switch input:checked + .toggle-slider::before {
+                        transform: translateX(16px) !important;
+                    }
                 </style>
                 <div class="settings-app-header" style="background: #f7f7f7; color: #000; border-bottom: 0.5px solid #d8d8d8; display: flex; align-items: center; justify-content: center; position: sticky; top: 0; z-index: 100; height: 78px; min-height: 78px; padding: 34px 14px 0; box-sizing: border-box; flex-shrink: 0;">
                     <h2 style="color: #000; font-size: 17px; font-weight: 500; margin: 0;">设置</h2>
                 </div>
 
-                <div class="settings-tabs" style="position: sticky; top: 78px; z-index: 99; background: rgba(247,247,247,0.96); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 0.5px solid #d8d8d8; height: 39px; min-height: 39px; box-sizing: border-box; flex-shrink: 0;">
-                    <div style="display: flex; position: relative; height: 39px;">
-                        <button class="settings-tab-btn ${this.currentTab === 'general' ? 'active' : ''}" data-tab="general" style="flex: 1; border: none; background: ${this.currentTab === 'general' ? 'rgba(0,0,0,0.06)' : 'transparent'}; height: 38px; min-height: 38px; padding: 0; line-height: 38px; font-size: 13px; font-weight: ${this.currentTab === 'general' ? '600' : '500'}; color: ${this.currentTab === 'general' ? '#111' : '#666'}; border-radius: 8px 8px 0 0; transition: all .2s ease;">常规设置</button>
-                        <button class="settings-tab-btn ${this.currentTab === 'memory' ? 'active' : ''}" data-tab="memory" style="flex: 1; border: none; background: ${this.currentTab === 'memory' ? 'rgba(0,0,0,0.06)' : 'transparent'}; height: 38px; min-height: 38px; padding: 0; line-height: 38px; font-size: 13px; font-weight: ${this.currentTab === 'memory' ? '600' : '500'}; color: ${this.currentTab === 'memory' ? '#111' : '#666'}; border-radius: 8px 8px 0 0; transition: all .2s ease;">联动记录</button>
-                        <button class="settings-tab-btn ${this.currentTab === 'llm' ? 'active' : ''}" data-tab="llm" style="flex: 1; border: none; background: ${this.currentTab === 'llm' ? 'rgba(0,0,0,0.06)' : 'transparent'}; height: 38px; min-height: 38px; padding: 0; line-height: 38px; font-size: 13px; font-weight: ${this.currentTab === 'llm' ? '600' : '500'}; color: ${this.currentTab === 'llm' ? '#111' : '#666'}; border-radius: 8px 8px 0 0; transition: all .2s ease;">聊天 API</button>
-                        <button class="settings-tab-btn ${this.currentTab === 'tts' ? 'active' : ''}" data-tab="tts" style="flex: 1; border: none; background: ${this.currentTab === 'tts' ? 'rgba(0,0,0,0.06)' : 'transparent'}; height: 38px; min-height: 38px; padding: 0; line-height: 38px; font-size: 13px; font-weight: ${this.currentTab === 'tts' ? '600' : '500'}; color: ${this.currentTab === 'tts' ? '#111' : '#666'}; border-radius: 8px 8px 0 0; transition: all .2s ease;">语音 TTS</button>
-                        <button class="settings-tab-btn ${this.currentTab === 'image' ? 'active' : ''}" data-tab="image" style="flex: 1; border: none; background: ${this.currentTab === 'image' ? 'rgba(0,0,0,0.06)' : 'transparent'}; height: 38px; min-height: 38px; padding: 0; line-height: 38px; font-size: 13px; font-weight: ${this.currentTab === 'image' ? '600' : '500'}; color: ${this.currentTab === 'image' ? '#111' : '#666'}; border-radius: 8px 8px 0 0; transition: all .2s ease;">生图</button>
+                <div class="settings-tabs" style="position: sticky; top: 78px; z-index: 99; background: rgba(247,247,247,0.96); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 0.5px solid #d8d8d8; min-height: 48px; padding: 7px 10px 8px; box-sizing: border-box; flex-shrink: 0;">
+                    <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; position: relative; height: 33px; padding: 3px; border-radius: 13px; background: rgba(0,0,0,0.045); box-sizing: border-box;">
+                        <button class="settings-tab-btn ${this.currentTab === 'general' ? 'active' : ''}" data-tab="general" style="min-width: 0; border: none; background: ${this.currentTab === 'general' ? '#fff' : 'transparent'}; height: 27px; padding: 0; line-height: 27px; font-size: 12px; font-weight: ${this.currentTab === 'general' ? '700' : '500'}; color: ${this.currentTab === 'general' ? '#111' : '#666'}; border-radius: 10px; box-shadow: ${this.currentTab === 'general' ? '0 1px 4px rgba(0,0,0,0.12)' : 'none'}; transition: all .18s ease; white-space: nowrap;">常规</button>
+                        <button class="settings-tab-btn ${this.currentTab === 'memory' ? 'active' : ''}" data-tab="memory" style="min-width: 0; border: none; background: ${this.currentTab === 'memory' ? '#fff' : 'transparent'}; height: 27px; padding: 0; line-height: 27px; font-size: 12px; font-weight: ${this.currentTab === 'memory' ? '700' : '500'}; color: ${this.currentTab === 'memory' ? '#111' : '#666'}; border-radius: 10px; box-shadow: ${this.currentTab === 'memory' ? '0 1px 4px rgba(0,0,0,0.12)' : 'none'}; transition: all .18s ease; white-space: nowrap;">联动</button>
+                        <button class="settings-tab-btn ${this.currentTab === 'llm' ? 'active' : ''}" data-tab="llm" style="min-width: 0; border: none; background: ${this.currentTab === 'llm' ? '#fff' : 'transparent'}; height: 27px; padding: 0; line-height: 27px; font-size: 12px; font-weight: ${this.currentTab === 'llm' ? '700' : '500'}; color: ${this.currentTab === 'llm' ? '#111' : '#666'}; border-radius: 10px; box-shadow: ${this.currentTab === 'llm' ? '0 1px 4px rgba(0,0,0,0.12)' : 'none'}; transition: all .18s ease; white-space: nowrap;">API</button>
+                        <button class="settings-tab-btn ${this.currentTab === 'tts' ? 'active' : ''}" data-tab="tts" style="min-width: 0; border: none; background: ${this.currentTab === 'tts' ? '#fff' : 'transparent'}; height: 27px; padding: 0; line-height: 27px; font-size: 12px; font-weight: ${this.currentTab === 'tts' ? '700' : '500'}; color: ${this.currentTab === 'tts' ? '#111' : '#666'}; border-radius: 10px; box-shadow: ${this.currentTab === 'tts' ? '0 1px 4px rgba(0,0,0,0.12)' : 'none'}; transition: all .18s ease; white-space: nowrap;">TTS</button>
+                        <button class="settings-tab-btn ${this.currentTab === 'image' ? 'active' : ''}" data-tab="image" style="min-width: 0; border: none; background: ${this.currentTab === 'image' ? '#fff' : 'transparent'}; height: 27px; padding: 0; line-height: 27px; font-size: 12px; font-weight: ${this.currentTab === 'image' ? '700' : '500'}; color: ${this.currentTab === 'image' ? '#111' : '#666'}; border-radius: 10px; box-shadow: ${this.currentTab === 'image' ? '0 1px 4px rgba(0,0,0,0.12)' : 'none'}; transition: all .18s ease; white-space: nowrap;">生图</button>
                     </div>
                 </div>
 
@@ -222,7 +415,7 @@ export class SettingsApp {
 
                         <details data-settings-fold-key="phone-settings-general-limits-open" ${isGeneralLimitsOpen ? 'open' : ''} style="margin: 8px 0 8px; border: 1px solid #ececec; border-radius: 10px; background: #fff; overflow: hidden;">
                             <summary style="height: 38px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; list-style: none; font-size: 13px; font-weight: 700; color: #333; background: #fafafa;">
-                                <span>📨 注入/记录条数</span>
+                                <span>📨 注入设置</span>
                                 ${SETTINGS_FOLD_ARROW_HTML}
                             </summary>
                             <div style="padding: 10px 10px 4px;">
@@ -234,8 +427,7 @@ export class SettingsApp {
                                        style="width: 55px; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; text-align: center; font-size: 14px; background: #fafafa;">
                             </div>
 
-                            <div style="height: 1px; background: #ececec; margin: 10px 0;"></div>
-                            <div style="font-size: 12px; font-weight: 700; color: #333; margin: 0 0 6px;">📱 线上模式（手机内聊天）</div>
+                            <div class="settings-subsection-title">📱 线上模式（手机内聊天）</div>
 
                             <div class="setting-item" style="display: flex; align-items: center; justify-content: space-between;">
                                 <span style="font-size: 14px; color: #000;">单聊发送条数</span>
@@ -251,8 +443,7 @@ export class SettingsApp {
                                        style="width: 55px; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; text-align: center; font-size: 14px; background: #fafafa;">
                             </div>
 
-                            <div style="height: 1px; background: #ececec; margin: 10px 0;"></div>
-                            <div style="font-size: 12px; font-weight: 700; color: #333; margin: 0 0 6px;">📞 电话通话</div>
+                            <div class="settings-subsection-title">📞 电话通话</div>
 
                             <div class="setting-item" style="display: flex; align-items: center; justify-content: space-between;">
                                 <span style="font-size: 14px; color: #000;">通话发送条数</span>
@@ -261,8 +452,7 @@ export class SettingsApp {
                                        style="width: 55px; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; text-align: center; font-size: 14px; background: #fafafa;">
                             </div>
 
-                            <div style="height: 1px; background: #ececec; margin: 10px 0;"></div>
-                            <div style="font-size: 12px; font-weight: 700; color: #333; margin: 0 0 6px;">🧾 微博注入（线下模式）</div>
+                            <div class="settings-subsection-title">🧾 微博注入（线下模式）</div>
 
                             <div class="setting-item setting-toggle">
                                 <div>
@@ -286,8 +476,7 @@ export class SettingsApp {
                                 同时附带注入微博最新热搜条目（不注入热搜正文详情）
                             </div>
 
-                            <div style="height: 1px; background: #ececec; margin: 10px 0;"></div>
-                            <div style="font-size: 12px; font-weight: 700; color: #333; margin: 0 0 6px;">📴 线下模式（酒馆正文注入）</div>
+                            <div class="settings-subsection-title">📴 线下模式（酒馆正文注入）</div>
 
                             <div class="setting-item setting-toggle">
                                 <div>
@@ -295,7 +484,7 @@ export class SettingsApp {
                                     <div class="setting-desc">关闭后，{{DIARY_HISTORY}} 不会替换为日记内容，隐藏日记也始终不注入</div>
                                 </div>
                                 <label class="toggle-switch">
-                                    <input type="checkbox" id="offline-diary-history-enabled" ${(this.storage.get('offline-diary-history-enabled') === false || this.storage.get('offline-diary-history-enabled') === 'false') ? '' : 'checked'}>
+                                    <input type="checkbox" id="offline-diary-history-enabled" ${(this.storage.get('offline-diary-history-enabled') === true || this.storage.get('offline-diary-history-enabled') === 'true') ? 'checked' : ''}>
                                     <span class="toggle-slider"></span>
                                 </label>
                             </div>
@@ -306,7 +495,7 @@ export class SettingsApp {
                                     <div class="setting-desc">关闭后，所有标记为蜜语的微信会话都不再注入酒馆正文</div>
                                 </div>
                                 <label class="toggle-switch">
-                                    <input type="checkbox" id="offline-honey-chat-enabled" ${(this.storage.get('offline-honey-chat-enabled') === false || this.storage.get('offline-honey-chat-enabled') === 'false') ? '' : 'checked'}>
+                                    <input type="checkbox" id="offline-honey-chat-enabled" ${(this.storage.get('offline-honey-chat-enabled') === true || this.storage.get('offline-honey-chat-enabled') === 'true') ? 'checked' : ''}>
                                     <span class="toggle-slider"></span>
                                 </label>
                             </div>
@@ -327,9 +516,38 @@ export class SettingsApp {
                             </div>
                         </details>
 
-                        <!-- 个性化设置 -->
-                        <div class="setting-section">
-                            <div class="setting-section-title">🎨 个性化</div>
+                        <details data-settings-fold-key="phone-settings-general-personalization-open" ${isGeneralPersonalizationOpen ? 'open' : ''} style="margin: 8px 0 8px; border: 1px solid #ececec; border-radius: 10px; background: #fff; overflow: hidden;">
+                            <summary style="height: 38px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; list-style: none; font-size: 13px; font-weight: 700; color: #333; background: #fafafa;">
+                                <span>🎨 个性化</span>
+                                ${SETTINGS_FOLD_ARROW_HTML}
+                            </summary>
+                            <div style="padding: 10px 10px 4px;">
+
+                            <div class="setting-item">
+                                <div class="setting-toggle">
+                                    <div>
+                                        <div class="setting-label">桌面布局</div>
+                                        <div class="setting-desc">图标布局为默认桌面；卡片布局显示桌面组件</div>
+                                    </div>
+                                    <select id="phone-home-layout" style="width: 112px; height: 34px; padding: 0 8px; border: 1px solid rgba(18, 24, 38, 0.12); border-radius: 10px; background: #f8fafc; color: #111827; font-size: 12px;">
+                                        <option value="icons" ${homeLayout === 'icons' ? 'selected' : ''}>图标布局</option>
+                                        <option value="cards" ${homeLayout === 'cards' ? 'selected' : ''}>卡片布局</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="setting-item">
+                                <div class="setting-toggle">
+                                    <div>
+                                        <div class="setting-label">手机边框颜色</div>
+                                        <div class="setting-desc">调整小手机外壳边框颜色，默认黑色</div>
+                                    </div>
+                                    <input type="color"
+                                           id="phone-frame-color-picker"
+                                           value="${phoneFrameColor}"
+                                           class="color-picker-input">
+                                </div>
+                            </div>
 
                             <!-- 壁纸设置 -->
                             <div class="setting-item">
@@ -372,11 +590,15 @@ export class SettingsApp {
                                     ${this.renderDockConfig()}
                                 </div>
                             </div>
-                        </div>
+                            </div>
+                        </details>
 
-                        <!-- 🎨 文字颜色设置 -->
-                        <div class="setting-section">
-                            <div class="setting-section-title">🎨 文字颜色</div>
+                        <details data-settings-fold-key="phone-settings-general-text-color-open" ${isGeneralTextColorOpen ? 'open' : ''} style="margin: 8px 0 8px; border: 1px solid #ececec; border-radius: 10px; background: #fff; overflow: hidden;">
+                            <summary style="height: 38px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; list-style: none; font-size: 13px; font-weight: 700; color: #333; background: #fafafa;">
+                                <span>🎨 文字颜色</span>
+                                ${SETTINGS_FOLD_ARROW_HTML}
+                            </summary>
+                            <div style="padding: 10px 10px 4px;">
 
                             <div class="setting-item">
                                 <div class="setting-toggle">
@@ -390,11 +612,15 @@ export class SettingsApp {
                                            class="color-picker-input">
                                 </div>
                             </div>
-                        </div>
+                            </div>
+                        </details>
 
-                        <!-- 时间管理 -->
-                        <div class="setting-section">
-                            <div class="setting-section-title">⏰ 时间管理</div>
+                        <details data-settings-fold-key="phone-settings-general-time-open" ${isGeneralTimeOpen ? 'open' : ''} style="margin: 8px 0 8px; border: 1px solid #ececec; border-radius: 10px; background: #fff; overflow: hidden;">
+                            <summary style="height: 38px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; list-style: none; font-size: 13px; font-weight: 700; color: #333; background: #fafafa;">
+                                <span>⏰ 时间管理</span>
+                                ${SETTINGS_FOLD_ARROW_HTML}
+                            </summary>
+                            <div style="padding: 10px 10px 4px;">
 
                             <div class="setting-item">
                                 <div>
@@ -412,11 +638,15 @@ export class SettingsApp {
                             <div class="setting-info">
                                 💡 从酒馆正文最后一条消息抓取时间，同步到手机
                             </div>
-                        </div>
+                            </div>
+                        </details>
 
-                        <!-- 数据管理 -->
-                        <div class="setting-section">
-                            <div class="setting-section-title">💾 数据管理</div>
+                        <details data-settings-fold-key="phone-settings-general-data-open" ${isGeneralDataOpen ? 'open' : ''} style="margin: 8px 0 8px; border: 1px solid #ececec; border-radius: 10px; background: #fff; overflow: hidden;">
+                            <summary style="height: 38px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; list-style: none; font-size: 13px; font-weight: 700; color: #333; background: #fafafa;">
+                                <span>💾 数据管理</span>
+                                ${SETTINGS_FOLD_ARROW_HTML}
+                            </summary>
+                            <div style="padding: 10px 10px 4px;">
 
                             <div class="setting-item setting-button">
                                 <button class="setting-btn" id="clear-current-data" style="padding: 4px 10px; font-size: 11px; background: rgba(255,255,255,0.9); backdrop-filter: blur(8px); border: none; border-radius: 4px; color: #ff9500; box-shadow: 0 1px 4px rgba(0,0,0,0.12);">
@@ -429,16 +659,15 @@ export class SettingsApp {
                                     清空所有角色数据
                                 </button>
                             </div>
-                        </div>
-
-                        <!-- 关于 -->
-                        <div class="setting-section">
-                            <div class="setting-section-title">ℹ️ 关于</div>
-                            <div class="setting-item">
-                                <div class="setting-label">版本</div>
-                                <div class="setting-value">v1.0.3</div>
                             </div>
-                            <div class="setting-info">
+                        </details>
+
+                        <div class="setting-section" style="padding: 12px 14px; border-radius: 14px;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                                <div class="setting-label">版本</div>
+                                <div class="setting-value">v1.0.4</div>
+                            </div>
+                            <div class="setting-desc" style="margin-top: 8px;">
                                 每个聊天会话窗口独立存储<br>
                                 蜜语数据全局共享
                             </div>
@@ -799,6 +1028,68 @@ export class SettingsApp {
         this.bindEvents();
     }
 
+    _getImagePromptAppDefs() {
+        return [
+            { id: 'honey', name: '蜜语' },
+            { id: 'wechat', name: '微信' },
+            { id: 'weibo', name: '微博' }
+        ];
+    }
+
+    _normalizeImagePromptApp(app) {
+        const value = String(app || '').trim().toLowerCase();
+        return this._getImagePromptAppDefs().some(def => def.id === value) ? value : 'honey';
+    }
+
+    _getImagePromptDraft(app) {
+        const appKey = this._normalizeImagePromptApp(app);
+        return {
+            fixedPrompt: String(this.storage.get(`phone-image-${appKey}-fixed-prompt`) || ''),
+            fixedPromptEnd: String(this.storage.get(`phone-image-${appKey}-fixed-prompt-end`) || ''),
+            negativePrompt: String(this.storage.get(`phone-image-${appKey}-negative-prompt`) || '')
+        };
+    }
+
+    _getImagePromptPresetMap() {
+        const raw = this.storage.get('phone-image-prompt-presets-by-app');
+        let parsed = {};
+        try {
+            parsed = typeof raw === 'string' ? JSON.parse(raw || '{}') : raw;
+        } catch (e) {
+            parsed = {};
+        }
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    }
+
+    _getImagePromptPresets(app = 'honey') {
+        const appKey = this._normalizeImagePromptApp(app);
+        const presetMap = this._getImagePromptPresetMap();
+        const parsed = Array.isArray(presetMap[appKey]) ? presetMap[appKey] : [];
+
+        const seen = new Set();
+        return parsed.map((preset) => {
+            const id = String(preset?.id || '').trim();
+            const name = String(preset?.name || '').trim();
+            if (!id || !name || seen.has(id)) return null;
+            seen.add(id);
+            return {
+                id,
+                name,
+                fixedPrompt: String(preset?.fixedPrompt || ''),
+                fixedPromptEnd: String(preset?.fixedPromptEnd || ''),
+                negativePrompt: String(preset?.negativePrompt || ''),
+                updatedAt: Number(preset?.updatedAt || 0) || Date.now()
+            };
+        }).filter(Boolean);
+    }
+
+    async _saveImagePromptPresets(app, presets) {
+        const appKey = this._normalizeImagePromptApp(app);
+        const presetMap = this._getImagePromptPresetMap();
+        presetMap[appKey] = Array.isArray(presets) ? presets : [];
+        await this.storage.set('phone-image-prompt-presets-by-app', JSON.stringify(presetMap));
+    }
+
     renderImageGenerationSection() {
         const provider = String(this.storage.get('phone-image-provider') || 'novelai').trim() || 'novelai';
         const enabled = this.storage.get('phone-image-enabled') === true || this.storage.get('phone-image-enabled') === 'true';
@@ -831,8 +1122,8 @@ export class SettingsApp {
         const height = Number(this.storage.get('phone-image-height') || 1216);
         const honeyWidth = Number(this.storage.get('phone-image-honey-width') || 832);
         const honeyHeight = Number(this.storage.get('phone-image-honey-height') || 1216);
-        const wechatWidth = Number(this.storage.get('phone-image-wechat-width') || 768);
-        const wechatHeight = Number(this.storage.get('phone-image-wechat-height') || 1024);
+        const wechatWidth = Number(this.storage.get('phone-image-wechat-width') || 512);
+        const wechatHeight = Number(this.storage.get('phone-image-wechat-height') || 512);
         const weiboWidth = Number(this.storage.get('phone-image-weibo-width') || 768);
         const weiboHeight = Number(this.storage.get('phone-image-weibo-height') || 768);
         const steps = Number(this.storage.get('phone-image-steps') || 28);
@@ -840,9 +1131,26 @@ export class SettingsApp {
         const cfgRescale = Number(this.storage.get('phone-image-cfg-rescale') || 0);
         const seed = Number(this.storage.get('phone-image-seed') ?? -1);
         const debugPayload = this.storage.get('phone-image-debug-payload') === true || this.storage.get('phone-image-debug-payload') === 'true';
-        const fixedPrompt = this._escapeHtml(this.storage.get('phone-image-fixed-prompt') || '');
-        const fixedPromptEnd = this._escapeHtml(this.storage.get('phone-image-fixed-prompt-end') || '');
-        const negativePrompt = this._escapeHtml(this.storage.get('phone-image-negative-prompt') || '');
+        const imagePromptAppDefs = this._getImagePromptAppDefs();
+        const activeImagePromptApp = this._normalizeImagePromptApp(this.storage.get('phone-image-active-prompt-app') || 'honey');
+        const imagePromptDraft = this._getImagePromptDraft(activeImagePromptApp);
+        const fixedPrompt = this._escapeHtml(imagePromptDraft.fixedPrompt);
+        const fixedPromptEnd = this._escapeHtml(imagePromptDraft.fixedPromptEnd);
+        const negativePrompt = this._escapeHtml(imagePromptDraft.negativePrompt);
+        const imagePromptPresets = this._getImagePromptPresets(activeImagePromptApp);
+        const activeImagePromptPresetId = String(this.storage.get(`phone-image-${activeImagePromptApp}-active-prompt-preset`) || '').trim();
+        const activeImagePromptPreset = imagePromptPresets.find(preset => preset.id === activeImagePromptPresetId) || null;
+        const activeImagePromptPresetName = this._escapeHtml(activeImagePromptPreset?.name || '');
+        const imagePromptAppOptions = imagePromptAppDefs.map((def) => {
+            const safeId = this._escapeHtml(def.id);
+            const safeName = this._escapeHtml(def.name);
+            return `<option value="${safeId}" ${def.id === activeImagePromptApp ? 'selected' : ''}>${safeName}</option>`;
+        }).join('');
+        const imagePromptPresetOptions = imagePromptPresets.map((preset) => {
+            const safeId = this._escapeHtml(preset.id);
+            const safeName = this._escapeHtml(preset.name);
+            return `<option value="${safeId}" ${preset.id === activeImagePromptPresetId ? 'selected' : ''}>${safeName}</option>`;
+        }).join('');
         const novelaiDisplay = provider === 'novelai' ? '' : 'display: none;';
         const siliconflowDisplay = provider === 'siliconflow' ? '' : 'display: none;';
 
@@ -877,14 +1185,19 @@ export class SettingsApp {
 
                 <div class="setting-item" style="display: flex; align-items: center; justify-content: space-between;">
                     <span style="font-size: 14px; color: #000;">API Key</span>
-                    <input type="password" id="phone-image-novelai-key"
-                           value="${this._escapeHtml(novelaiKey)}"
-                           placeholder="NovelAI API Key"
-                           style="width: 150px; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa;">
+                    <div style="display: flex; align-items: center; width: 150px; height: 30px; border: 1px solid #e0e0e0; border-radius: 8px; background: #fafafa; overflow: hidden;">
+                        <input type="password" id="phone-image-novelai-key"
+                               value="${this._escapeHtml(novelaiKey)}"
+                               placeholder="NovelAI API Key"
+                               style="flex: 1; min-width: 0; height: 100%; padding: 0 4px 0 8px; border: none; outline: none; font-size: 12px; background: transparent;">
+                        <button type="button" class="phone-password-toggle" data-toggle-password-target="phone-image-novelai-key" aria-label="显示或隐藏 API Key" style="width: 30px; height: 100%; border: none; background: transparent; color: #777; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;">
+                            <i class="fa-solid fa-eye"></i>
+                        </button>
+                    </div>
                 </div>
 
                 <div class="setting-item">
-                    <button id="phone-image-test-novelai" class="settings-btn primary" style="width: 100%; height: 34px; border: none; border-radius: 8px; background: #7c3aed; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;">
+                    <button id="phone-image-test-novelai" class="phone-image-test-btn" style="width: 100%; height: 34px; border: none; border-radius: 8px; background: #7c3aed !important; color: #fff !important; font-size: 13px; font-weight: 600; cursor: pointer;">
                         测试 NAI 生图连接
                     </button>
                     <div class="setting-desc" id="phone-image-test-novelai-result" style="margin-top: 6px;">使用蜜语尺寸和当前 NovelAI 参数生成一张测试图。</div>
@@ -956,10 +1269,15 @@ export class SettingsApp {
 
                 <div class="setting-item" style="display: flex; align-items: center; justify-content: space-between;">
                     <span style="font-size: 14px; color: #000;">API Key</span>
-                    <input type="password" id="siliconflow-api-key"
-                           value="${this._escapeHtml(siliconflowKey)}"
-                           placeholder="SiliconFlow API Key"
-                           style="width: 150px; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa;">
+                    <div style="display: flex; align-items: center; width: 150px; height: 30px; border: 1px solid #e0e0e0; border-radius: 8px; background: #fafafa; overflow: hidden;">
+                        <input type="password" id="siliconflow-api-key"
+                               value="${this._escapeHtml(siliconflowKey)}"
+                               placeholder="SiliconFlow API Key"
+                               style="flex: 1; min-width: 0; height: 100%; padding: 0 4px 0 8px; border: none; outline: none; font-size: 12px; background: transparent;">
+                        <button type="button" class="phone-password-toggle" data-toggle-password-target="siliconflow-api-key" aria-label="显示或隐藏 API Key" style="width: 30px; height: 100%; border: none; background: transparent; color: #777; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;">
+                            <i class="fa-solid fa-eye"></i>
+                        </button>
+                    </div>
                 </div>
 
                 <div class="setting-item">
@@ -976,7 +1294,7 @@ export class SettingsApp {
 
                 <div class="setting-item">
                     <div class="setting-label">各 App 生图尺寸</div>
-                    <div class="setting-desc">蜜语默认使用 NAI 竖图；微信保留聊天图竖图；微博默认方图。</div>
+                    <div class="setting-desc">蜜语默认使用 NAI 竖图；微信默认小方图；微博默认方图。</div>
                     <div style="display: grid; grid-template-columns: 72px 1fr 1fr; gap: 8px; align-items: center; margin-top: 8px;">
                         <div style="font-size: 11px; color: #777;">App</div>
                         <div style="font-size: 11px; color: #777;">宽度</div>
@@ -1024,20 +1342,41 @@ export class SettingsApp {
                 </div>
 
                 <div class="setting-item">
+                    <div class="setting-label">提示词设定</div>
+                    <div class="setting-desc">先选择 App 大类，再为该 App 保存多套前置、后置、负面提示词。</div>
+                    <select id="phone-image-prompt-app-select" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                        ${imagePromptAppOptions}
+                    </select>
+                    <select id="phone-image-prompt-preset-select" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                        <option value="">未选择设定</option>
+                        ${imagePromptPresetOptions}
+                    </select>
+                    <input type="text" id="phone-image-prompt-preset-name"
+                           value="${activeImagePromptPresetName}"
+                           placeholder="设定名称，例如：画师串A / 厚涂 / 漫画风"
+                           style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 8px;">
+                        <button id="phone-image-prompt-preset-save" class="setting-btn" style="height: 30px; padding: 0 8px; font-size: 12px; background: #07c160; color: #fff; border: none; border-radius: 8px; cursor: pointer;">保存</button>
+                        <button id="phone-image-prompt-preset-new" class="setting-btn" style="height: 30px; padding: 0 8px; font-size: 12px; background: #f2f2f2; color: #222; border: 1px solid #d8d8d8; border-radius: 8px; cursor: pointer;">新建</button>
+                        <button id="phone-image-prompt-preset-delete" class="setting-btn" style="height: 30px; padding: 0 8px; font-size: 12px; background: #fff; color: #d33; border: 1px solid rgba(211,51,51,0.28); border-radius: 8px; cursor: pointer;">删除</button>
+                    </div>
+                </div>
+
+                <div class="setting-item">
                     <div class="setting-label">固定前置提示词</div>
-                    <div class="setting-desc">放质量词和通用画风。画师串如果要全局生效，一般放这里。</div>
+                    <div class="setting-desc">只对当前选择的 App 生效。画师串可放这里。</div>
                     <textarea id="phone-image-fixed-prompt" style="width: 100%; min-height: 58px; padding: 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; resize: vertical; margin-top: 6px;">${fixedPrompt}</textarea>
                 </div>
 
                 <div class="setting-item">
                     <div class="setting-label">固定后置提示词</div>
-                    <div class="setting-desc">放补充画风或角色稳定词，会拼在 AI 本轮提示词后面。</div>
+                    <div class="setting-desc">只对当前选择的 App 生效，会拼在 AI 本轮提示词后面。</div>
                     <textarea id="phone-image-fixed-prompt-end" style="width: 100%; min-height: 58px; padding: 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; resize: vertical; margin-top: 6px;">${fixedPromptEnd}</textarea>
                 </div>
 
                 <div class="setting-item">
                     <div class="setting-label">负面提示词</div>
-                    <div class="setting-desc">只放不想出现的内容，例如 low quality、bad hands、text、watermark。</div>
+                    <div class="setting-desc">只对当前选择的 App 生效，例如 low quality、bad hands、text、watermark。</div>
                     <textarea id="phone-image-negative-prompt" style="width: 100%; min-height: 70px; padding: 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; resize: vertical; margin-top: 6px;">${negativePrompt}</textarea>
                 </div>
             </div>
@@ -1150,6 +1489,7 @@ export class SettingsApp {
     }
 
     renderMemoryPermissionSection() {
+        const isMemoryPermissionOpen = this.storage.get('phone-settings-memory-permission-open') === true;
         const appDefs = [
             { id: 'wechat', name: '微信', desc: '聊天与社交场景' },
             { id: 'weibo', name: '微博', desc: '动态与评论场景' },
@@ -1160,44 +1500,49 @@ export class SettingsApp {
         const allPerms = this._getMemoryPermissionMap();
 
         return `
-            <div class="setting-section">
-                <div class="setting-section-title">🛂 记忆插件联动权限管理</div>
-                <div class="setting-info">
-                    控制手机各 App 对记忆插件的 API 权限通行证 (Signal) 下发。线下被动注入由记忆插件自身策略决定，不在此处配置。
-                </div>
+            <details data-settings-fold-key="phone-settings-memory-permission-open" ${isMemoryPermissionOpen ? 'open' : ''} style="margin: 12px 0 8px; border: 1px solid #ececec; border-radius: 10px; background: #fff; overflow: hidden;">
+                <summary style="height: 38px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; list-style: none; font-size: 13px; font-weight: 700; color: #333; background: #fafafa;">
+                    <span>🛂 权限管理</span>
+                    ${SETTINGS_FOLD_ARROW_HTML}
+                </summary>
+                <div style="padding: 10px 10px 4px;">
+                    <div class="setting-info">
+                        控制手机各 App 对记忆插件的 API 权限通行证 (Signal) 下发。线下被动注入由记忆插件自身策略决定，不在此处配置。
+                    </div>
 
-                ${appDefs.map(def => {
-                    const merged = {
-                        ...this._getMemoryPermissionDefaults(def.id),
-                        ...(allPerms[def.id] || {})
-                    };
+                    ${appDefs.map(def => {
+                        const merged = {
+                            ...this._getMemoryPermissionDefaults(def.id),
+                            ...(allPerms[def.id] || {})
+                        };
 
-                    return `
-                        <div class="setting-item">
-                            <div class="setting-label" style="font-size: 14px; color: #111;">${def.name}</div>
-                            <div class="setting-desc">${def.desc}</div>
-                            <div style="display: grid; grid-template-columns: repeat(2, minmax(120px, 1fr)); gap: 8px 10px; margin-top: 8px;">
-                                <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:#333;">
-                                    <input type="checkbox" class="phone-memory-perm" data-app-id="${def.id}" data-perm-key="allowSummary" ${merged.allowSummary ? 'checked' : ''}>
-                                    总结
-                                </label>
-                                <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:#333;">
-                                    <input type="checkbox" class="phone-memory-perm" data-app-id="${def.id}" data-perm-key="allowTable" ${merged.allowTable ? 'checked' : ''}>
-                                    表格数据
-                                </label>
-                                <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:#333;">
-                                    <input type="checkbox" class="phone-memory-perm" data-app-id="${def.id}" data-perm-key="allowPrompt" ${merged.allowPrompt ? 'checked' : ''}>
-                                    实时提示词
-                                </label>
-                                <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:#333;">
-                                    <input type="checkbox" class="phone-memory-perm" data-app-id="${def.id}" data-perm-key="allowVector" ${merged.allowVector ? 'checked' : ''}>
-                                    向量检索
-                                </label>
+                        return `
+                            <div class="setting-item">
+                                <div class="setting-label" style="font-size: 14px; color: #111;">${def.name}</div>
+                                <div class="setting-desc">${def.desc}</div>
+                                <div style="display: grid; grid-template-columns: repeat(2, minmax(120px, 1fr)); gap: 8px 10px; margin-top: 8px;">
+                                    <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:#333;">
+                                        <input type="checkbox" class="phone-memory-perm" data-app-id="${def.id}" data-perm-key="allowSummary" ${merged.allowSummary ? 'checked' : ''}>
+                                        总结
+                                    </label>
+                                    <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:#333;">
+                                        <input type="checkbox" class="phone-memory-perm" data-app-id="${def.id}" data-perm-key="allowTable" ${merged.allowTable ? 'checked' : ''}>
+                                        表格数据
+                                    </label>
+                                    <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:#333;">
+                                        <input type="checkbox" class="phone-memory-perm" data-app-id="${def.id}" data-perm-key="allowPrompt" ${merged.allowPrompt ? 'checked' : ''}>
+                                        实时提示词
+                                    </label>
+                                    <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:#333;">
+                                        <input type="checkbox" class="phone-memory-perm" data-app-id="${def.id}" data-perm-key="allowVector" ${merged.allowVector ? 'checked' : ''}>
+                                        向量检索
+                                    </label>
+                                </div>
                             </div>
-                        </div>
-                    `;
-                }).join('')}
-            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </details>
         `;
     }
 
@@ -1252,6 +1597,7 @@ export class SettingsApp {
     renderTagFilterSection() {
         const cfg = readPhoneTagFilterConfig(this.storage);
         const hasMemoryFilter = hasGaigaiTagFilter();
+        const isTagFilterOpen = this.storage.get('phone-settings-memory-tag-filter-open') === true;
 
         const blacklist = this._escapeHtml(cfg.blacklist);
         const whitelist = this._escapeHtml(cfg.whitelist);
@@ -1260,8 +1606,12 @@ export class SettingsApp {
             : '⚠️ 未检测到记忆插件过滤器（可启用下方本地过滤）';
 
         return `
-            <div class="setting-section">
-                <div class="setting-section-title">🏷️ 标签过滤（黑白名单）</div>
+            <details data-settings-fold-key="phone-settings-memory-tag-filter-open" ${isTagFilterOpen ? 'open' : ''} style="margin: 8px 0 8px; border: 1px solid #ececec; border-radius: 10px; background: #fff; overflow: hidden;">
+                <summary style="height: 38px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; list-style: none; font-size: 13px; font-weight: 700; color: #333; background: #fafafa;">
+                    <span>🏷️ 标签过滤</span>
+                    ${SETTINGS_FOLD_ARROW_HTML}
+                </summary>
+                <div style="padding: 10px 10px 4px;">
 
                 <div class="setting-item setting-toggle">
                     <div>
@@ -1300,7 +1650,8 @@ export class SettingsApp {
                     过滤逻辑：先黑名单删除，再白名单提取。<br>
                     标签格式：尖括号标签填标签名（如 think），方括号标签请完整填（如 [歌曲]），HTML 注释填 !--。
                 </div>
-            </div>
+                </div>
+            </details>
         `;
     }
 
@@ -1525,6 +1876,23 @@ export class SettingsApp {
             
             alert('✅ 壁纸已删除！');
         });
+
+        document.getElementById('phone-home-layout')?.addEventListener('change', async (e) => {
+            const value = String(e.target.value || 'icons') === 'cards' ? 'cards' : 'icons';
+            await this.storage.set('phone-home-layout', value);
+            window.VirtualPhone?.home?.render?.({ forceDomRefresh: true });
+        });
+
+        document.getElementById('phone-frame-color-picker')?.addEventListener('input', (e) => {
+            const color = e.target.value || '#1a1a1a';
+            document.documentElement.style.setProperty('--phone-frame-color', color);
+        });
+
+        document.getElementById('phone-frame-color-picker')?.addEventListener('change', async (e) => {
+            const color = e.target.value || '#1a1a1a';
+            await this.storage.set('phone-frame-color', color);
+            document.documentElement.style.setProperty('--phone-frame-color', color);
+        });
         
         // APP图标上传 - 支持裁剪和PNG透明
         document.querySelectorAll('.app-icon-upload').forEach(input => {
@@ -1739,6 +2107,15 @@ export class SettingsApp {
         const imageNovelaiUrlRow = document.getElementById('phone-image-novelai-url-row');
         const imageNovelaiModel = document.getElementById('phone-image-novelai-model');
         const imageNovelaiModelPreset = document.getElementById('phone-image-novelai-model-preset');
+        const imagePromptAppSelect = document.getElementById('phone-image-prompt-app-select');
+        const imagePromptPresetSelect = document.getElementById('phone-image-prompt-preset-select');
+        const imagePromptPresetName = document.getElementById('phone-image-prompt-preset-name');
+        const imageFixedPromptInput = document.getElementById('phone-image-fixed-prompt');
+        const imageFixedPromptEndInput = document.getElementById('phone-image-fixed-prompt-end');
+        const imageNegativePromptInput = document.getElementById('phone-image-negative-prompt');
+        const imagePromptPresetSaveBtn = document.getElementById('phone-image-prompt-preset-save');
+        const imagePromptPresetNewBtn = document.getElementById('phone-image-prompt-preset-new');
+        const imagePromptPresetDeleteBtn = document.getElementById('phone-image-prompt-preset-delete');
         const setImageProviderVisibility = () => {
             const provider = String(imageProvider?.value || 'novelai').trim() || 'novelai';
             if (imageNovelaiSection) imageNovelaiSection.style.display = provider === 'novelai' ? '' : 'none';
@@ -1754,6 +2131,68 @@ export class SettingsApp {
             input.value = String(value);
             return value;
         };
+        const getImagePromptForm = () => ({
+            fixedPrompt: String(imageFixedPromptInput?.value || '').trim(),
+            fixedPromptEnd: String(imageFixedPromptEndInput?.value || '').trim(),
+            negativePrompt: String(imageNegativePromptInput?.value || '').trim()
+        });
+        let currentImagePromptApp = this._normalizeImagePromptApp(this.storage.get('phone-image-active-prompt-app') || imagePromptAppSelect?.value || 'honey');
+        const getActiveImagePromptApp = () => this._normalizeImagePromptApp(currentImagePromptApp || imagePromptAppSelect?.value || this.storage.get('phone-image-active-prompt-app') || 'honey');
+        const saveImagePromptDraft = async (app, form = getImagePromptForm()) => {
+            const appKey = this._normalizeImagePromptApp(app);
+            await this.storage.set(`phone-image-${appKey}-fixed-prompt`, String(form.fixedPrompt || '').trim());
+            await this.storage.set(`phone-image-${appKey}-fixed-prompt-end`, String(form.fixedPromptEnd || '').trim());
+            await this.storage.set(`phone-image-${appKey}-negative-prompt`, String(form.negativePrompt || '').trim());
+        };
+        const setImagePromptForm = async (preset) => {
+            const fixedPromptValue = String(preset?.fixedPrompt || '');
+            const fixedPromptEndValue = String(preset?.fixedPromptEnd || '');
+            const negativePromptValue = String(preset?.negativePrompt || '');
+            if (imageFixedPromptInput) imageFixedPromptInput.value = fixedPromptValue;
+            if (imageFixedPromptEndInput) imageFixedPromptEndInput.value = fixedPromptEndValue;
+            if (imageNegativePromptInput) imageNegativePromptInput.value = negativePromptValue;
+            await saveImagePromptDraft(getActiveImagePromptApp(), {
+                fixedPrompt: fixedPromptValue,
+                fixedPromptEnd: fixedPromptEndValue,
+                negativePrompt: negativePromptValue
+            });
+        };
+        const fillImagePromptPresetSelect = (presets, activeId = '') => {
+            if (!imagePromptPresetSelect) return;
+            imagePromptPresetSelect.innerHTML = '<option value="">未选择设定</option>';
+            presets.forEach((preset) => {
+                const opt = document.createElement('option');
+                opt.value = preset.id;
+                opt.textContent = preset.name;
+                opt.selected = preset.id === activeId;
+                imagePromptPresetSelect.appendChild(opt);
+            });
+        };
+        const createImagePromptPresetId = () => `preset-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+        const refreshImagePromptAppPanel = (appKey) => {
+            const normalizedApp = this._normalizeImagePromptApp(appKey);
+            const presets = this._getImagePromptPresets(normalizedApp);
+            let activeId = String(this.storage.get(`phone-image-${normalizedApp}-active-prompt-preset`) || '').trim();
+            const activePreset = presets.find(item => item.id === activeId);
+            if (!activePreset) activeId = '';
+            fillImagePromptPresetSelect(presets, activeId);
+            if (imagePromptPresetSelect) imagePromptPresetSelect.value = activeId;
+
+            const draft = activePreset || this._getImagePromptDraft(normalizedApp);
+            if (imagePromptPresetName) imagePromptPresetName.value = activePreset?.name || '';
+            if (imageFixedPromptInput) imageFixedPromptInput.value = String(draft.fixedPrompt || '');
+            if (imageFixedPromptEndInput) imageFixedPromptEndInput.value = String(draft.fixedPromptEnd || '');
+            if (imageNegativePromptInput) imageNegativePromptInput.value = String(draft.negativePrompt || '');
+        };
+
+        imagePromptAppSelect?.addEventListener('change', async (e) => {
+            const previousApp = currentImagePromptApp;
+            const appKey = this._normalizeImagePromptApp(e.target.value);
+            await saveImagePromptDraft(previousApp);
+            currentImagePromptApp = appKey;
+            await this.storage.set('phone-image-active-prompt-app', appKey);
+            refreshImagePromptAppPanel(appKey);
+        });
 
         imageEnabled?.addEventListener('change', async (e) => {
             await this.storage.set('phone-image-enabled', !!e.target.checked);
@@ -1767,6 +2206,20 @@ export class SettingsApp {
 
         document.getElementById('phone-image-novelai-key')?.addEventListener('change', async (e) => {
             await this.storage.set('phone-image-novelai-key', String(e.target.value || '').trim());
+        });
+
+        document.querySelectorAll('[data-toggle-password-target]').forEach((button) => {
+            button.addEventListener('click', () => {
+                const targetId = String(button.dataset.togglePasswordTarget || '').trim();
+                const input = targetId ? document.getElementById(targetId) : null;
+                if (!input) return;
+                const nextVisible = input.type === 'password';
+                input.type = nextVisible ? 'text' : 'password';
+                const icon = button.querySelector('i');
+                if (icon) {
+                    icon.className = nextVisible ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye';
+                }
+            });
         });
 
         document.getElementById('phone-image-debug-payload')?.addEventListener('change', async (e) => {
@@ -1865,6 +2318,85 @@ export class SettingsApp {
             await this.storage.set('phone-image-novelai-schedule', value);
         });
 
+        imagePromptPresetSelect?.addEventListener('change', async (e) => {
+            const presetId = String(e.target.value || '').trim();
+            const appKey = getActiveImagePromptApp();
+            await this.storage.set(`phone-image-${appKey}-active-prompt-preset`, presetId);
+            const presets = this._getImagePromptPresets(appKey);
+            const preset = presets.find(item => item.id === presetId);
+            if (!preset) {
+                if (imagePromptPresetName) imagePromptPresetName.value = '';
+                return;
+            }
+            if (imagePromptPresetName) imagePromptPresetName.value = preset.name;
+            await setImagePromptForm(preset);
+            this.phoneShell?.showNotification?.('已切换生图设定', preset.name, '🎨');
+        });
+
+        imagePromptPresetSaveBtn?.addEventListener('click', async () => {
+            const name = String(imagePromptPresetName?.value || '').trim();
+            if (!name) {
+                this.phoneShell?.showNotification?.('保存失败', '请先填写设定名称', '⚠️');
+                imagePromptPresetName?.focus?.();
+                return;
+            }
+
+            const appKey = getActiveImagePromptApp();
+            const now = Date.now();
+            const presets = this._getImagePromptPresets(appKey);
+            let activeId = String(imagePromptPresetSelect?.value || this.storage.get(`phone-image-${appKey}-active-prompt-preset`) || '').trim();
+            let target = presets.find(preset => preset.id === activeId);
+            if (!target) {
+                activeId = createImagePromptPresetId();
+                target = { id: activeId, name, fixedPrompt: '', fixedPromptEnd: '', negativePrompt: '', updatedAt: now };
+                presets.push(target);
+            }
+
+            const form = getImagePromptForm();
+            target.name = name;
+            target.fixedPrompt = form.fixedPrompt;
+            target.fixedPromptEnd = form.fixedPromptEnd;
+            target.negativePrompt = form.negativePrompt;
+            target.updatedAt = now;
+
+            await saveImagePromptDraft(appKey, form);
+            await this._saveImagePromptPresets(appKey, presets);
+            await this.storage.set(`phone-image-${appKey}-active-prompt-preset`, activeId);
+            fillImagePromptPresetSelect(presets, activeId);
+            this.phoneShell?.showNotification?.('已保存生图设定', name, '✅');
+        });
+
+        imagePromptPresetNewBtn?.addEventListener('click', async () => {
+            const appKey = getActiveImagePromptApp();
+            if (imagePromptPresetSelect) imagePromptPresetSelect.value = '';
+            if (imagePromptPresetName) {
+                imagePromptPresetName.value = '';
+                imagePromptPresetName.focus();
+            }
+            await this.storage.set(`phone-image-${appKey}-active-prompt-preset`, '');
+            this.phoneShell?.showNotification?.('新建生图设定', '填写名称后点击保存', '✏️');
+        });
+
+        imagePromptPresetDeleteBtn?.addEventListener('click', async () => {
+            const appKey = getActiveImagePromptApp();
+            const activeId = String(imagePromptPresetSelect?.value || this.storage.get(`phone-image-${appKey}-active-prompt-preset`) || '').trim();
+            if (!activeId) {
+                this.phoneShell?.showNotification?.('删除失败', '请先选择要删除的设定', '⚠️');
+                return;
+            }
+            const presets = this._getImagePromptPresets(appKey);
+            const target = presets.find(preset => preset.id === activeId);
+            if (!target) return;
+            if (!confirm(`删除生图提示词设定「${target.name}」？`)) return;
+
+            const nextPresets = presets.filter(preset => preset.id !== activeId);
+            await this._saveImagePromptPresets(appKey, nextPresets);
+            await this.storage.set(`phone-image-${appKey}-active-prompt-preset`, '');
+            fillImagePromptPresetSelect(nextPresets, '');
+            if (imagePromptPresetName) imagePromptPresetName.value = '';
+            this.phoneShell?.showNotification?.('已删除生图设定', target.name, '🗑️');
+        });
+
         document.getElementById('siliconflow-api-key')?.addEventListener('change', async (e) => {
             const value = String(e.target.value || '').trim();
             await this.storage.set('phone-image-siliconflow-key', value);
@@ -1881,8 +2413,8 @@ export class SettingsApp {
         [
             ['phone-image-honey-width', 832, 64, 2048, true],
             ['phone-image-honey-height', 1216, 64, 2048, true],
-            ['phone-image-wechat-width', 768, 64, 2048, true],
-            ['phone-image-wechat-height', 1024, 64, 2048, true],
+            ['phone-image-wechat-width', 512, 64, 2048, true],
+            ['phone-image-wechat-height', 512, 64, 2048, true],
             ['phone-image-weibo-width', 768, 64, 2048, true],
             ['phone-image-weibo-height', 768, 64, 2048, true],
             ['phone-image-width', 832, 64, 2048, true],
@@ -1909,8 +2441,8 @@ export class SettingsApp {
         ].forEach(id => {
             const input = document.getElementById(id);
             if (!input) return;
-            const saveTextInput = async (e) => {
-                await this.storage.set(id, String(e.target.value || '').trim());
+            const saveTextInput = async () => {
+                await saveImagePromptDraft(getActiveImagePromptApp());
             };
             input.addEventListener('input', saveTextInput);
             input.addEventListener('change', saveTextInput);

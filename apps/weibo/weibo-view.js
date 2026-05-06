@@ -2268,20 +2268,24 @@ export class WeiboView {
                 const currentState = this._getWeiboPostImageState(post, index);
                 if (currentState?.status === 'loading') return;
 
-                const config = this._getSiliconflowImageConfig();
-                if (!config.apiKey) {
+                const imageManager = window.VirtualPhone?.imageGenerationManager;
+                if (!imageManager || typeof imageManager.generate !== 'function') {
                     this._setWeiboPostImageState(post, index, {
                         status: 'failed',
-                        error: '请先在设置里填写 SiliconFlow API Key',
+                        error: '生图管理器未初始化',
                         prompt: promptText,
                         mediaType,
-                        imageModel: config.model,
-                        imageProvider: 'siliconflow'
+                        imageModel: '',
+                        imageProvider: ''
                     });
                     this._persistPostMediaTarget(posts, source, post);
                     this._refreshPostMediaUI(postId);
-                    this.app.phoneShell.showNotification('提示', '请先在微信设置里填写 SiliconFlow API Key', '⚠️');
+                    this.app.phoneShell.showNotification('生图失败', '生图管理器未初始化', '❌');
                     return;
+                }
+                const imageStorage = this.app?.storage || window.VirtualPhone?.storage || null;
+                if (imageStorage && imageManager.storage !== imageStorage) {
+                    imageManager.storage = imageStorage;
                 }
 
                 this._setWeiboPostImageState(post, index, {
@@ -2289,48 +2293,18 @@ export class WeiboView {
                     error: '',
                     prompt: promptText,
                     mediaType,
-                    imageModel: config.model,
-                    imageProvider: 'siliconflow'
+                    imageModel: '',
+                    imageProvider: String(imageStorage?.get?.('phone-image-provider') || '').trim()
                 });
                 this._persistPostMediaTarget(posts, source, post);
                 this._refreshPostMediaUI(postId);
 
                 try {
-                    const response = await fetch(config.endpoint, {
-                        method: 'POST',
-                        headers: {
-                            Authorization: `Bearer ${config.apiKey}`,
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            model: config.model,
-                            prompt: this._buildSiliconflowPositivePrompt(promptText, config),
-                            negative_prompt: this._buildSiliconflowNegativePrompt(promptText, config.negativePrompt, config.noPeopleNegativePrompt),
-                            image_size: config.imageSize,
-                            batch_size: config.batchSize,
-                            num_inference_steps: config.numInferenceSteps,
-                            guidance_scale: config.guidanceScale
-                        })
+                    const result = await imageManager.generate({
+                        app: 'weibo',
+                        prompt: promptText
                     });
-
-                    const rawText = await response.text();
-                    let payload = null;
-                    if (rawText) {
-                        try { payload = JSON.parse(rawText); } catch (parseError) { payload = null; }
-                    }
-
-                    if (!response.ok) {
-                        const serverMsg = String(
-                            payload?.message ||
-                            payload?.error?.message ||
-                            payload?.error ||
-                            rawText ||
-                            ''
-                        ).trim();
-                        throw new Error(`SiliconFlow 请求失败 (${response.status})${serverMsg ? `: ${serverMsg.slice(0, 160)}` : ''}`);
-                    }
-
-                    const imageUrl = String(payload?.images?.[0]?.url || '').trim();
+                    const imageUrl = String(result?.imageUrl || result?.imageData || '').trim();
                     if (!imageUrl) throw new Error('生图成功但未返回图片URL');
 
                     // 🔥 替换原有的图片数组中的 prompt 为真实的 URL (带上前缀以便区分是否带视频小标)
@@ -2342,8 +2316,10 @@ export class WeiboView {
                         prompt: promptText,
                         mediaType,
                         generatedImageUrl: imageUrl,
-                        imageModel: config.model,
-                        imageProvider: 'siliconflow'
+                        imageModel: String(result?.model || '').trim(),
+                        imageProvider: String(result?.provider || '').trim(),
+                        imageGenerationWidth: Number(result?.width || result?.requestedWidth || 0) || '',
+                        imageGenerationHeight: Number(result?.height || result?.requestedHeight || 0) || ''
                     });
 
                     this._persistPostMediaTarget(posts, source, post);
@@ -2357,8 +2333,8 @@ export class WeiboView {
                         error: friendlyMessage,
                         prompt: promptText,
                         mediaType,
-                        imageModel: config.model,
-                        imageProvider: 'siliconflow'
+                        imageModel: '',
+                        imageProvider: String(imageStorage?.get?.('phone-image-provider') || '').trim()
                     });
                     this._persistPostMediaTarget(posts, source, post);
                     this._refreshPostMediaUI(postId);

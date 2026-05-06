@@ -56,17 +56,10 @@ export class HomeScreen {
             : '';
 
         const html = `
-            <div class="home-screen"${renderKeyAttr}>
+            <div class="home-screen home-layout-${this.getHomeLayout()}"${renderKeyAttr}>
                 <div class="wallpaper" style="${wallpaperStyle}"></div>
 
-                <div class="home-time">
-                    <div class="time-large">${this.getCurrentTime()}</div>
-                    <div class="date">${this.getCurrentDate()}</div>
-                </div>
-
-                <div class="app-grid">
-                    ${this.apps.map(app => this.renderAppIcon(app)).join('')}
-                </div>
+                ${this.getHomeLayout() === 'cards' ? this.renderCardLayout() : this.renderIconLayout()}
 
                 <div class="dock">
                     ${this.renderDock()}
@@ -76,6 +69,162 @@ export class HomeScreen {
 
         this.phoneShell.setContent(html);
         this.bindEvents();
+    }
+
+    getHomeLayout() {
+        const layout = String(window.VirtualPhone?.storage?.get('phone-home-layout') || 'icons');
+        return layout === 'cards' ? 'cards' : 'icons';
+    }
+
+    renderIconLayout() {
+        return `
+            <div class="home-time">
+                <div class="time-large">${this.getCurrentTime()}</div>
+                <div class="date">${this.getCurrentDate()}</div>
+            </div>
+            <div class="app-grid">
+                ${this.apps.map(app => this.renderAppIcon(app)).join('')}
+            </div>
+        `;
+    }
+
+    renderCardLayout() {
+        return `
+            <div class="home-dashboard">
+                <section class="home-time-card">
+                    <div class="time-large">${this.getCurrentTime()}</div>
+                    <div class="date">${this.getCurrentDate()}</div>
+                </section>
+
+                <div class="home-top-grid">
+                    ${this.renderMusicCard()}
+                    ${this.renderQuickAppsCard()}
+                </div>
+
+                ${this.renderDiaryCard()}
+
+                <div class="home-feature-grid">
+                    ${this.renderFeatureCard('mofo')}
+                    ${this.renderFeatureCard('games')}
+                </div>
+
+                ${this.renderSettingsCard()}
+            </div>
+        `;
+    }
+
+    getAppById(appId) {
+        return this.apps.find(app => app.id === appId) || null;
+    }
+
+    _escapeHtml(text) {
+        return String(text ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    _getCustomIcon(appId) {
+        try {
+            if (window.VirtualPhone?.imageManager) {
+                return window.VirtualPhone.imageManager.getAppIcon(appId);
+            }
+        } catch (e) {
+            console.warn('获取APP图标失败:', e);
+        }
+        return null;
+    }
+
+    renderAppGlyph(app, className = 'home-widget-icon') {
+        if (!app) return '';
+        const customIcon = this._getCustomIcon(app.id);
+        if (customIcon) {
+            return `<span class="${className} custom-icon" style="background-image:url('${customIcon}');"></span>`;
+        }
+        return `<span class="${className}" style="--app-color:${app.color};">${this._escapeHtml(app.icon)}</span>`;
+    }
+
+    renderAppBadge(app) {
+        return app?.badge > 0 ? `<span class="app-badge">${app.badge}</span>` : '';
+    }
+
+    renderMusicCard() {
+        const app = this.getAppById('music');
+        if (!app) return '';
+        return `
+            <section class="app-icon home-widget-card home-music-card" data-app="${app.id}" style="--app-color:${app.color};">
+                <div class="home-card-main">
+                    ${this.renderAppGlyph(app, 'home-widget-icon')}
+                    <div class="home-card-title">${this._escapeHtml(app.name)}</div>
+                </div>
+                <div class="home-music-controls" aria-hidden="true">
+                    <span>⏮</span>
+                    <span>⏸</span>
+                    <span>⏭</span>
+                </div>
+                ${this.renderAppBadge(app)}
+            </section>
+        `;
+    }
+
+    renderQuickAppsCard() {
+        const quickIds = ['wechat', 'weibo', 'honey', 'phone'];
+        const quickApps = quickIds.map(id => this.getAppById(id)).filter(Boolean);
+        return `
+            <section class="home-quick-card">
+                ${quickApps.map(app => `
+                    <div class="app-icon home-mini-app" data-app="${app.id}" style="--app-color:${app.color};">
+                        ${this.renderAppGlyph(app, 'home-mini-icon')}
+                        ${this.renderAppBadge(app)}
+                        <div class="home-mini-name">${this._escapeHtml(app.name)}</div>
+                    </div>
+                `).join('')}
+            </section>
+        `;
+    }
+
+    renderDiaryCard() {
+        const app = this.getAppById('diary');
+        if (!app) return '';
+        return `
+            <section class="app-icon home-diary-card" data-app="${app.id}" style="--app-color:${app.color};">
+                ${this.renderAppGlyph(app, 'home-diary-icon')}
+                <div class="home-diary-copy">
+                    <div class="home-card-title">${this._escapeHtml(app.name)}</div>
+                    <div class="home-card-desc">记录今天的片段、心情和那些没说出口的话。</div>
+                </div>
+                ${this.renderAppBadge(app)}
+            </section>
+        `;
+    }
+
+    renderFeatureCard(appId) {
+        const app = this.getAppById(appId);
+        if (!app) return '';
+        return `
+            <section class="app-icon home-feature-card" data-app="${app.id}" style="--app-color:${app.color};">
+                ${this.renderAppGlyph(app, 'home-feature-icon')}
+                ${this.renderAppBadge(app)}
+                <div class="home-card-title">${this._escapeHtml(app.name)}</div>
+            </section>
+        `;
+    }
+
+    renderSettingsCard() {
+        const app = this.getAppById('settings');
+        if (!app) return '';
+        return `
+            <section class="app-icon home-settings-card" data-app="${app.id}" style="--app-color:${app.color};">
+                <div class="home-settings-left">
+                    ${this.renderAppGlyph(app, 'home-settings-icon')}
+                    <div class="home-settings-title">${this._escapeHtml(app.name)}</div>
+                </div>
+                <div class="home-settings-chevron">›</div>
+                ${this.renderAppBadge(app)}
+            </section>
+        `;
     }
 
     // 🔥 获取快捷栏配置
@@ -104,14 +253,7 @@ export class HomeScreen {
 
         return dockApps.map(app => {
             // 获取自定义图标
-            let customIcon = null;
-            try {
-                if (window.VirtualPhone?.imageManager) {
-                    customIcon = window.VirtualPhone.imageManager.getAppIcon(app.id);
-                }
-            } catch (e) {
-                console.warn('获取dock图标失败:', e);
-            }
+            const customIcon = this._getCustomIcon(app.id);
 
             const iconStyle = customIcon
                 ? `background-image: url('${customIcon}'); background-size: contain; background-position: center; background-repeat: no-repeat;`

@@ -16,6 +16,7 @@
 :root {
     /* 🔥 新版：统一的全局文字颜色 */
     --phone-global-text: #000000;
+    --phone-frame-color: #1a1a1a;
     /* 📏 手机壳缩放：宽度保持原样，高度缩小 5% */
     --phone-shell-width-scale: 1;
     --phone-shell-height-scale: 0.95;
@@ -387,14 +388,14 @@
 
     margin: 0 auto;
     /* 🎨 极窄边框 - 深色金属质感 */
-    background: #1a1a1a;
+    background: var(--phone-frame-color, #1a1a1a);
     /* 🎨 圆润的全面屏圆角 */
     border-radius: 40px !important;
 
     /* 🎨 简洁的边框效果 */
     box-shadow:
         /* 细边框 */
-        inset 0 0 0 1px #2a2a2a,
+        inset 0 0 0 1px color-mix(in srgb, var(--phone-frame-color, #1a1a1a) 82%, #ffffff),
         /* 外部阴影 */
         0 15px 50px rgba(0, 0, 0, 0.4),
         0 5px 20px rgba(0, 0, 0, 0.3);
@@ -799,6 +800,255 @@
     border-radius: inherit !important;
 }
 
+.home-dashboard {
+    position: relative;
+    z-index: 1;
+    min-height: 100%;
+    box-sizing: border-box;
+    padding: 11.2% 6.2% 18%;
+    display: flex;
+    flex-direction: column;
+    gap: min(10px, 1.65vh);
+}
+
+.home-time-card,
+.home-widget-card,
+.home-quick-card,
+.home-diary-card,
+.home-feature-card,
+.home-settings-card {
+    position: relative;
+    box-sizing: border-box;
+    border-radius: 18px !important;
+    border: none;
+    background: rgba(255, 255, 255, 0.48);
+    backdrop-filter: blur(28px) saturate(170%);
+    -webkit-backdrop-filter: blur(28px) saturate(170%);
+    box-shadow:
+        0 10px 28px rgba(30, 43, 62, 0.12),
+        inset 0 1px 0 rgba(255, 255, 255, 0.38),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.12);
+    color: #263241;
+}
+
+.home-time-card {
+    height: min(58px, 9.2vh);
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 10px 4px;
+    overflow: hidden;
+}
+
+.home-top-grid,
+.home-feature-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: min(10px, 3vw);
+}
+
+.home-widget-card,
+.home-quick-card {
+    min-height: min(106px, 16.8vh);
+}
+
+.home-widget-card {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: min(13px, 3.2vw);
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.44);
+    gap: 14px;
+}
+
+.home-card-main {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.home-card-title {
+    color: #263241;
+    font-size: min(13.5px, 3.45vw, 1.72vh);
+    line-height: 1.2;
+}
+
+.home-widget-icon,
+.home-mini-icon,
+.home-diary-icon,
+.home-feature-icon,
+.home-settings-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    border-radius: 12px !important;
+    background: rgba(255,255,255,0.78);
+    box-shadow: 0 6px 16px rgba(31, 45, 65, 0.12);
+    font-size: min(22px, 5.8vw, 2.8vh);
+    line-height: 1;
+    background-size: contain;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+.home-widget-icon {
+    width: min(34px, 9.6vw, 4.3vh);
+    height: min(34px, 9.6vw, 4.3vh);
+}
+
+.home-widget-icon.custom-icon,
+.home-mini-icon.custom-icon,
+.home-diary-icon.custom-icon,
+.home-feature-icon.custom-icon,
+.home-settings-icon.custom-icon {
+    color: transparent;
+    background-color: transparent;
+    box-shadow: none;
+}
+
+.home-music-controls {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    color: color-mix(in srgb, var(--app-color, #4096ff) 82%, #1f2a3a);
+    font-size: min(13px, 3.5vw, 1.62vh);
+    line-height: 1;
+}
+
+.home-quick-card {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: min(9px, 2.8vw);
+    padding: min(12px, 3vw);
+}
+
+.home-mini-app {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    cursor: pointer;
+}
+
+.home-mini-icon {
+    width: min(30px, 8.6vw, 3.75vh);
+    height: min(30px, 8.6vw, 3.75vh);
+    font-size: min(16px, 4.6vw, 2vh);
+}
+
+.home-mini-name {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #3f4856;
+    font-size: min(9.5px, 2.65vw, 1.18vh);
+    line-height: 1.1;
+}
+
+.home-diary-card {
+    min-height: min(62px, 9.7vh);
+    display: flex;
+    align-items: center;
+    gap: min(12px, 3.4vw);
+    padding: min(13px, 3.4vw);
+}
+
+.home-diary-icon {
+    width: min(42px, 11.5vw, 5.25vh);
+    height: min(42px, 11.5vw, 5.25vh);
+    font-size: min(21px, 5.8vw, 2.65vh);
+}
+
+.home-diary-copy {
+    min-width: 0;
+    flex: 1;
+}
+
+.home-card-desc {
+    margin-top: 3px;
+    color: #6b7481;
+    font-size: min(10.8px, 3vw, 1.34vh);
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.home-feature-card {
+    min-height: min(76px, 11.8vh);
+    padding: min(12px, 3.2vw);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.home-feature-icon {
+    width: min(34px, 9.6vw, 4.25vh);
+    height: min(34px, 9.6vw, 4.25vh);
+    font-size: min(19px, 5.4vw, 2.35vh);
+}
+
+.home-settings-card {
+    min-height: min(50px, 7.8vh);
+    padding: min(11px, 3vw) min(14px, 3.8vw);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+}
+
+.home-settings-left {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: min(10px, 2.8vw);
+}
+
+.home-settings-icon {
+    width: min(32px, 8.8vw, 4vh);
+    height: min(32px, 8.8vw, 4vh);
+    font-size: min(17px, 4.7vw, 2.12vh);
+}
+
+.home-settings-title {
+    color: #222936;
+    font-size: min(16px, 4.45vw, 2vh);
+    line-height: 1;
+}
+
+.home-settings-chevron {
+    color: rgba(95, 105, 118, 0.62);
+    font-size: min(24px, 6.4vw, 3vh);
+    font-weight: 300;
+    line-height: 1;
+}
+
+.home-dashboard .app-icon {
+    width: auto;
+    transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
+}
+
+.home-dashboard .app-icon:hover {
+    transform: translateY(-2px);
+}
+
+.home-dashboard .app-icon:active {
+    transform: scale(0.98);
+}
+
 .home-time {
     position: relative;
     z-index: 1;
@@ -810,36 +1060,33 @@
 
 .time-large {
     /* 🔥 使用相对尺寸自适应 */
-    font-size: min(52px, 14vw, 6.5vh);
-    font-weight: 100;
-    letter-spacing: -2px;
+    font-size: min(31px, 8.5vw, 3.85vh);
+    font-weight: 300;
+    letter-spacing: 0;
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
-    margin-bottom: 5px;
-    /* 🎨 新增：呼吸光效 */
-    animation: timeGlow 4s ease-in-out infinite;
-}
-
-@keyframes timeGlow {
-    0%, 100% {
-        text-shadow:
-            0 4px 20px rgba(0, 0, 0, 0.4),
-            0 2px 8px rgba(0, 0, 0, 0.3),
-            0 0 30px rgba(255, 255, 255, 0.2);
-    }
-    50% {
-        text-shadow:
-            0 4px 25px rgba(0, 0, 0, 0.5),
-            0 2px 10px rgba(0, 0, 0, 0.4),
-            0 0 40px rgba(255, 255, 255, 0.3);
-    }
+    margin-bottom: 1px;
+    line-height: 1;
+    color: #2b3a4f;
 }
 
 .date {
     /* 🔥 使用相对尺寸自适应 */
-    font-size: min(14px, 3.8vw, 1.8vh);
+    font-size: min(10.5px, 2.9vw, 1.3vh);
     font-weight: 400;
-    opacity: 0.95;
-    margin-top: 6px;
+    color: #7a8490;
+    opacity: 1;
+    margin-top: 1px;
+    line-height: 1;
+}
+
+.home-layout-icons .home-time .time-large {
+    margin-bottom: 7px;
+    line-height: 1.08;
+}
+
+.home-layout-icons .home-time .date {
+    margin-top: 0;
+    line-height: 1.25;
 }
 
 /* ========================================
@@ -961,7 +1208,6 @@
     margin-top: 4px;
     /* 🔥 使用相对尺寸自适应 */
     font-size: min(9.5px, 2.8vw, 1.3vh);
-    font-weight: 500;
     /* 🔥 使用新的全局文字颜色变量 */
     color: var(--phone-global-text);
     text-align: center;
@@ -969,6 +1215,209 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+/* 卡片式首页需要继续复用 .app-icon 的点击逻辑，这里只覆盖布局表现 */
+.home-dashboard .home-widget-card {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: auto !important;
+}
+
+.home-dashboard .home-diary-card {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    width: auto !important;
+}
+
+.home-dashboard .home-feature-card {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: auto !important;
+}
+
+.home-dashboard .home-settings-card {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    width: auto !important;
+}
+
+.home-dashboard .home-mini-app {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: auto !important;
+}
+
+.home-dashboard .home-time-card,
+.home-dashboard .home-widget-card,
+.home-dashboard .home-quick-card,
+.home-dashboard .home-diary-card,
+.home-dashboard .home-feature-card,
+.home-dashboard .home-settings-card {
+    border-radius: 18px !important;
+}
+
+.home-dashboard .home-widget-icon,
+.home-dashboard .home-mini-icon,
+.home-dashboard .home-diary-icon,
+.home-dashboard .home-feature-icon,
+.home-dashboard .home-settings-icon {
+    border-radius: 12px !important;
+}
+
+@media (max-width: 520px), (max-height: 760px) {
+    .home-dashboard {
+        padding: 11.4% 5.5% 18%;
+        gap: 9px;
+    }
+
+    .home-time-card {
+        height: 58px;
+        min-height: 0;
+        padding: 6px 10px 4px;
+    }
+
+    .time-large {
+        font-size: 30px;
+    }
+
+    .date {
+        font-size: 10.5px;
+        margin-top: 1px;
+    }
+
+    .home-top-grid,
+    .home-feature-grid {
+        gap: 10px;
+    }
+
+    .home-widget-card,
+    .home-quick-card {
+        min-height: 108px;
+    }
+
+    .home-widget-card {
+        padding: 13px;
+    }
+
+    .home-widget-icon {
+        width: 34px;
+        height: 34px;
+        font-size: 18px;
+    }
+
+    .home-card-main {
+        gap: 12px;
+    }
+
+    .home-card-title {
+        font-size: 14px;
+    }
+
+    .home-music-controls {
+        font-size: 13px;
+    }
+
+    .home-quick-card {
+        padding: 12px 10px;
+        gap: 8px;
+    }
+
+    .home-mini-icon {
+        width: 31px;
+        height: 31px;
+        font-size: 17px;
+    }
+
+    .home-mini-name {
+        font-size: 10px;
+    }
+
+    .home-diary-card {
+        min-height: 64px;
+        padding: 13px;
+    }
+
+    .home-diary-icon {
+        width: 42px;
+        height: 42px;
+        font-size: 21px;
+    }
+
+    .home-card-desc {
+        font-size: 11px;
+        line-height: 1.35;
+    }
+
+    .home-feature-card {
+        min-height: 78px;
+        gap: 8px;
+    }
+
+    .home-feature-icon {
+        width: 35px;
+        height: 35px;
+        font-size: 19px;
+    }
+
+    .home-settings-card {
+        min-height: 50px;
+        padding: 10px 14px;
+    }
+
+    .home-settings-icon {
+        width: 33px;
+        height: 33px;
+        font-size: 18px;
+    }
+
+    .home-settings-title {
+        font-size: 16px;
+    }
+}
+
+@media (max-width: 900px), (pointer: coarse) {
+    .home-dashboard {
+        padding-top: 13.2%;
+    }
+
+    .home-time-card {
+        height: 56px;
+        min-height: 0;
+        padding: 6px 10px 4px;
+    }
+
+    .time-large {
+        font-size: 29px;
+        line-height: 1;
+        margin-bottom: 1px;
+    }
+
+    .date {
+        font-size: 10px;
+        line-height: 1;
+        margin-top: 1px;
+    }
+
+    .home-settings-icon {
+        width: 33px;
+        height: 33px;
+        font-size: 18px;
+    }
+
+    .home-settings-title {
+        font-size: 16px;
+    }
 }
 
 /* ========================================

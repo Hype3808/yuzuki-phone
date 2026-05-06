@@ -30,7 +30,13 @@ const ST_PHONE_CURRENT_UPDATE = {
     date: '2026-05-05',
     items: [
         '聊天 API 支持按 App 绑定不同预设，可让蜜语使用 Gemini、微信使用 GPT 等不同请求配置。',
-        '生图功能已接通 NovelAI / NAI，蜜语直播可按设置生成图片，并支持新剧情自动生图。'
+        '生图功能已接通 NovelAI / NAI，蜜语直播可按设置生成图片，并支持新剧情自动生图。',
+        '生图提示词支持按蜜语、微信、微博分开管理，每个 App 都可以保存多套自定义设定。',
+        '微信和微博生图支持 NAI：AI 或用户发出的中文图片描述会自动转成英文 NovelAI tag 后再请求生图。',
+        '生图设置新增控制台参数调试，可查看尺寸、步数、采样器、最终正负提示词与完整 payload。',
+        '设置 App 的常规、联动、个性化、权限、生图等区域优化为折叠式布局，移动端和桌面端显示更统一。',
+        '个性化设置新增桌面布局切换，可在默认图标布局和卡片布局之间切换。',
+        '个性化设置新增手机边框颜色，可自定义小手机外壳边框颜色。'
     ]
 };
 
@@ -688,19 +694,16 @@ if (window.GGP_Loaded) {
         return {
             version: String(version || '新版'),
             date: '',
-            items: [
-                '检测到远程仓库已有新版小手机。',
-                '请前往扩展管理或插件页面手动更新。',
-                '更新后首次启动会展示该版本的本地更新公告。'
-            ]
+            items: []
         };
     }
 
     function showPhoneUpdateModal(mode, updateInfo, options = {}) {
         const data = updateInfo || getKnownUpdateNotes();
         const version = String(data.version || ST_PHONE_VERSION);
-        const items = Array.isArray(data.items) && data.items.length ? data.items : getKnownUpdateNotes(version).items;
-        const title = mode === 'remote' ? '发现小手机新版' : '小手机已更新';
+        const fallbackItems = mode === 'local' ? getKnownUpdateNotes(version).items : [];
+        const items = Array.isArray(data.items) && data.items.length ? data.items : fallbackItems;
+        const title = mode === 'remote' ? '发现新版本' : '已更新';
         const subtitle = mode === 'remote'
             ? `当前版本 ${ST_PHONE_VERSION}，最新版本 ${version}`
             : `版本 ${version}${data.date ? ` · ${data.date}` : ''}`;
@@ -731,9 +734,9 @@ if (window.GGP_Loaded) {
                     <div class="st-phone-update-kicker">${mode === 'remote' ? '需要手动更新' : '本次更新内容'}</div>
                     <div class="st-phone-update-title" id="st-phone-update-title">${title}</div>
                     <div class="st-phone-update-subtitle">${subtitle}</div>
-                    <ul class="st-phone-update-list">
+                    ${items.length ? `<ul class="st-phone-update-list">
                         ${items.map(item => `<li>${String(item || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</li>`).join('')}
-                    </ul>
+                    </ul>` : ''}
                     ${mode === 'remote' ? '<div class="st-phone-update-note">请在酒馆扩展管理中更新，或手动替换插件文件。</div>' : ''}
                     <div class="st-phone-update-actions">
                         <button type="button" class="st-phone-update-btn st-phone-update-btn-primary">${primaryText}</button>
@@ -803,12 +806,6 @@ if (window.GGP_Loaded) {
         if (acknowledged === latestVersion) return;
 
         const notes = await fetchRemoteUpdateNotes(latestVersion, now);
-        if (remoteManifest?.description && notes.version !== ST_PHONE_CURRENT_UPDATE.version) {
-            notes.items = [
-                `远程版本说明：${remoteManifest.description}`,
-                ...notes.items
-            ];
-        }
         showPhoneUpdateModal('remote', notes, {
             rememberKey: 'phone-update-remote-ack-version'
         });
@@ -5564,9 +5561,11 @@ if (window.GGP_Loaded) {
     function initColors() {
         // 只读取全局文字颜色（默认黑色）
         const globalTextColor = storage.get('phone-global-text') || '#000000';
+        const phoneFrameColor = storage.get('phone-frame-color') || '#1a1a1a';
 
         // 设置CSS变量
         document.documentElement.style.setProperty('--phone-global-text', globalTextColor);
+        document.documentElement.style.setProperty('--phone-frame-color', phoneFrameColor);
 
     }
 
@@ -6367,12 +6366,7 @@ if (window.GGP_Loaded) {
                                         const singleLimit = parseInt(storage.get('offline-single-chat-limit')) || 5;
                                         const groupLimit = parseInt(storage.get('offline-group-chat-limit')) || 10;
                                         const includeHoneyOfflineRaw = storage.get('offline-honey-chat-enabled');
-                                        const includeHoneyOffline = !(
-                                            includeHoneyOfflineRaw === false ||
-                                            includeHoneyOfflineRaw === 'false' ||
-                                            includeHoneyOfflineRaw === 0 ||
-                                            includeHoneyOfflineRaw === '0'
-                                        );
+                                        const includeHoneyOffline = includeHoneyOfflineRaw === true || includeHoneyOfflineRaw === 'true' || includeHoneyOfflineRaw === 1;
                                         const contacts = Array.isArray(wechatDataParsed.contacts) ? wechatDataParsed.contacts : [];
                                         const customEmojis = Array.isArray(wechatDataParsed.customEmojis) ? wechatDataParsed.customEmojis : [];
                                         const contactMap = new Map(
@@ -6510,7 +6504,10 @@ if (window.GGP_Loaded) {
                                                         }
                                                     }
 
-                                                    if (msg.type === 'image') {
+                                                    if (msg.from === 'system' || msg.type === 'system') {
+                                                        speaker = '系统';
+                                                        content = String(msg.content || '撤回了一条消息').trim();
+                                                    } else if (msg.type === 'image') {
                                                         // 线下主聊天注入走 system 文本，Markdown 图片常被当普通文本忽略
                                                         // 这里改为显式文本标记，确保“发过图”信息稳定进入上下文
                                                         const imgUrl = String(msg.content || '').trim();
@@ -6622,6 +6619,7 @@ if (window.GGP_Loaded) {
                                                     } else if (msg.type !== 'text') {
                                                         const typeMap = {
                                                             'image_prompt': `[图片]（${String(msg.imagePrompt || msg.content || '待生成图片').trim()}）`,
+                                                            'sticker': `[表情包](${String(msg.keyword || msg.content || '表情').trim() || '表情'})`,
                                                             'voice': `[语音 ${msg.duration || '3秒'}]`,
                                                             'video': '[视频通话]',
                                                             'transfer': `[转账 ¥${msg.amount}]`,
@@ -6780,12 +6778,7 @@ if (window.GGP_Loaded) {
                                     // 2.6️⃣ 日记线下变量注入（隐藏日记不注入）
                                     try {
                                         const diaryInjectEnabledRaw = storage?.get('offline-diary-history-enabled');
-                                        const diaryInjectEnabled = !(
-                                            diaryInjectEnabledRaw === false ||
-                                            diaryInjectEnabledRaw === 'false' ||
-                                            diaryInjectEnabledRaw === 0 ||
-                                            diaryInjectEnabledRaw === '0'
-                                        );
+                                        const diaryInjectEnabled = diaryInjectEnabledRaw === true || diaryInjectEnabledRaw === 'true' || diaryInjectEnabledRaw === 1;
                                         if (diaryInjectEnabled) {
                                             let diaryData = window.VirtualPhone?.diaryApp?.diaryData || null;
                                             if (!diaryData) {

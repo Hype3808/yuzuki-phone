@@ -61,12 +61,92 @@ export class ImageGenerationManager {
         return /^nai-diffusion-4(?:-|$)/i.test(String(model || '').trim());
     }
 
+    _containsCjk(text) {
+        return /[\u3400-\u9fff\u3000-\u303f\uff00-\uffef]/.test(String(text || ''));
+    }
+
+    _cleanNovelAITagText(text) {
+        return String(text || '')
+            .replace(/<think>[\s\S]*?<\/think>/gi, '')
+            .replace(/```[\s\S]*?```/g, (block) => block.replace(/```[a-z]*|```/gi, ''))
+            .replace(/^\s*(?:prompt|positive prompt|tags?|nai tags?|english tags?|提示词|正面提示词)\s*[:：]/i, '')
+            .replace(/[\r\n;；]+/g, ', ')
+            .replace(/[，、]/g, ', ')
+            .replace(/[。！？]/g, '')
+            .replace(/\s*,\s*/g, ', ')
+            .replace(/\s{2,}/g, ' ')
+            .replace(/^["'“”‘’\s]+|["'“”‘’\s]+$/g, '')
+            .trim();
+    }
+
+    async _translatePromptForNovelAI(rawPrompt, appKey = '') {
+        const source = String(rawPrompt || '').trim();
+        if (!source || !this._containsCjk(source)) return source;
+
+        const apiManager = (typeof window !== 'undefined') ? window.VirtualPhone?.apiManager : null;
+        if (!apiManager || typeof apiManager.callAI !== 'function') {
+            return source;
+        }
+
+        const appName = ['wechat', 'weibo'].includes(appKey) ? appKey : 'phone_online';
+        const messages = [
+            {
+                role: 'system',
+                content: [
+                    'You convert Chinese image descriptions into NovelAI positive prompt tags.',
+                    'Output only English comma-separated tags.',
+                    'Do not add explanations, Markdown, Chinese, or full sentences.',
+                    'Preserve visible subject, gender, count, pose, expression, clothing, setting, camera distance, angle, atmosphere, and anime illustration style.',
+                    'If the source implies people or humanoids, include clear tags such as 1girl, 1boy, adult character, male focus, or female focus when appropriate.',
+                    'Do not add unrelated quality tags unless they are clearly requested by the source.'
+                ].join('\n')
+            },
+            {
+                role: 'user',
+                content: `Chinese source description:\n${source}\n\nEnglish NovelAI tags only:`
+            }
+        ];
+
+        try {
+            const result = await apiManager.callAI(messages, {
+                appId: appName,
+                max_tokens: 360,
+                stream: false
+            });
+            const translated = this._cleanNovelAITagText(result?.summary || result?.content || result?.text || '');
+            if (translated && !this._containsCjk(translated)) {
+                return translated;
+            }
+        } catch (e) {
+            console.warn('[NovelAI] 中文提示词自动转英文失败，已回退原描述:', e);
+        }
+        return source;
+    }
+
+    async _prepareNovelAIOptions(options = {}) {
+        const appKey = String(options?.app || '').trim().toLowerCase();
+        if (!['wechat', 'weibo'].includes(appKey)) return options;
+
+        const rawPrompt = String(options.prompt || '').trim();
+        if (!this._containsCjk(rawPrompt)) return options;
+
+        const translatedPrompt = await this._translatePromptForNovelAI(rawPrompt, appKey);
+        if (!translatedPrompt || translatedPrompt === rawPrompt) return options;
+
+        return {
+            ...options,
+            rawPrompt,
+            prompt: translatedPrompt,
+            translatedPrompt
+        };
+    }
+
     _getAppDefaultSize(app) {
         switch (String(app || '').trim().toLowerCase()) {
             case 'honey':
                 return { width: 832, height: 1216 };
             case 'wechat':
-                return { width: 768, height: 1024 };
+                return { width: 512, height: 512 };
             case 'weibo':
                 return { width: 768, height: 768 };
             default:
@@ -99,6 +179,7 @@ export class ImageGenerationManager {
         const rawSize = this.getSizeForApp(appKey);
         const size = { ...rawSize };
         const rawSteps = this._getNumber('phone-image-steps', 28, 1, 50);
+        const promptAppKey = ['honey', 'wechat', 'weibo'].includes(appKey) ? appKey : '';
 
         if (appKey === 'honey') {
             if (size.width < 512 || size.height < 768) {
@@ -125,9 +206,9 @@ export class ImageGenerationManager {
             scale: this._getNumber('phone-image-scale', appKey === 'honey' ? 7 : 5, 0, 50),
             cfgRescale: this._getNumber('phone-image-cfg-rescale', 0, 0, 1),
             seed: this._getNumber('phone-image-seed', -1, -1, 4294967295),
-            fixedPrompt: String(overrides.fixedPrompt ?? this._get('phone-image-fixed-prompt', '')).trim(),
-            fixedPromptEnd: String(overrides.fixedPromptEnd ?? this._get('phone-image-fixed-prompt-end', '')).trim(),
-            negativePrompt: String(overrides.negativePrompt ?? this._get('phone-image-negative-prompt', '')).trim(),
+            fixedPrompt: String(overrides.fixedPrompt ?? (promptAppKey ? this._get(`phone-image-${promptAppKey}-fixed-prompt`, '') : '')).trim(),
+            fixedPromptEnd: String(overrides.fixedPromptEnd ?? (promptAppKey ? this._get(`phone-image-${promptAppKey}-fixed-prompt-end`, '') : '')).trim(),
+            negativePrompt: String(overrides.negativePrompt ?? (promptAppKey ? this._get(`phone-image-${promptAppKey}-negative-prompt`, '') : '')).trim(),
             debugPayload: this._getBool('phone-image-debug-payload', false),
             saveToBackgrounds: this._getBool('phone-image-save-backgrounds', false)
         };
@@ -142,7 +223,8 @@ export class ImageGenerationManager {
             return this._generateSiliconflow(options, config);
         }
         if (config.provider === 'novelai') {
-            return this._generateNovelAI(options, config);
+            const novelAIOptions = await this._prepareNovelAIOptions(options);
+            return this._generateNovelAI(novelAIOptions, config);
         }
         throw new Error(`暂不支持的生图服务商：${config.provider}`);
     }
@@ -156,7 +238,8 @@ export class ImageGenerationManager {
 
     _debugNovelAIRequest({ endpoint, payload, config, options }) {
         if (!config?.debugPayload) return;
-        const originalPrompt = String(options?.prompt || '').trim();
+        const originalPrompt = String(options?.rawPrompt || options?.prompt || '').trim();
+        const translatedPrompt = String(options?.translatedPrompt || '').trim();
         const debugInfo = {
             endpoint,
             provider: 'novelai',
@@ -171,6 +254,7 @@ export class ImageGenerationManager {
             cfgRescale: payload?.parameters?.cfg_rescale,
             seed: payload?.parameters?.seed,
             originalPrompt,
+            translatedPrompt,
             positivePrompt: payload?.input || '',
             negativePrompt: payload?.parameters?.negative_prompt || '',
             payload
@@ -195,6 +279,11 @@ export class ImageGenerationManager {
                 '',
                 'AI 画面 tag（原样）:',
                 debugInfo.originalPrompt || '(空)',
+                ...(debugInfo.translatedPrompt ? [
+                    '',
+                    '自动转英文后的 NAI tag:',
+                    debugInfo.translatedPrompt
+                ] : []),
                 '',
                 '最终发送给 NAI 的正面提示词:',
                 debugInfo.positivePrompt || '(空)',
@@ -220,6 +309,7 @@ export class ImageGenerationManager {
                 seed: debugInfo.seed
             });
             console.info('AI 画面 tag（原样）', debugInfo.originalPrompt);
+            if (debugInfo.translatedPrompt) console.info('自动转英文后的 NAI tag', debugInfo.translatedPrompt);
             console.info('positive prompt', debugInfo.positivePrompt);
             console.info('negative prompt', debugInfo.negativePrompt);
             console.info('full payload', debugInfo.payload);
@@ -591,6 +681,12 @@ export class ImageGenerationManager {
             provider: 'siliconflow',
             model: config.model,
             prompt,
+            width: Number(options.width || config.width),
+            height: Number(options.height || config.height),
+            requestedWidth: Number(options.width || config.width),
+            requestedHeight: Number(options.height || config.height),
+            steps: Number(options.steps || config.steps),
+            scale: Number(options.scale ?? config.scale),
             imageData: imageUrl,
             imageUrl
         };

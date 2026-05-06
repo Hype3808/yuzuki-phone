@@ -1308,8 +1308,8 @@ renderChatRoom(chat) {
         const storage = window.VirtualPhone?.storage || this.app?.storage;
         const apiKey = String(storage?.get('siliconflow_api_key') || '').trim();
         const model = String(storage?.get('image_generation_model') || '').trim() || 'Kwai-Kolors/Kolors';
-        const width = Math.max(64, Math.min(2048, Number(storage?.get('phone-image-wechat-width') || 768) || 768));
-        const height = Math.max(64, Math.min(2048, Number(storage?.get('phone-image-wechat-height') || 1024) || 1024));
+        const width = Math.max(64, Math.min(2048, Number(storage?.get('phone-image-wechat-width') || 512) || 512));
+        const height = Math.max(64, Math.min(2048, Number(storage?.get('phone-image-wechat-height') || 512) || 512));
 
         return {
             apiKey,
@@ -1414,10 +1414,14 @@ renderChatRoom(chat) {
             return;
         }
 
-        const config = this._getSiliconflowImageConfig();
-        if (!config.apiKey) {
-            this.app.phoneShell?.showNotification('提示', '请先在设置里填写 SiliconFlow API Key', '⚠️');
+        const imageManager = window.VirtualPhone?.imageGenerationManager;
+        if (!imageManager || typeof imageManager.generate !== 'function') {
+            this.app.phoneShell?.showNotification('生图失败', '生图管理器未初始化', '❌');
             return;
+        }
+        const storage = this.app?.storage || window.VirtualPhone?.storage || null;
+        if (storage && imageManager.storage !== storage) {
+            imageManager.storage = storage;
         }
 
         this.app.wechatData.updateMessageById(chatId, safeMessageId, {
@@ -1428,45 +1432,11 @@ renderChatRoom(chat) {
         this._refreshVisibleChatMessages(chatId);
 
         try {
-            const response = await fetch(config.endpoint, {
-                method: 'POST',
-                headers: {
-                    Authorization: `Bearer ${config.apiKey}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    model: config.model,
-                    prompt: this._buildSiliconflowPositivePrompt(promptText, config),
-                    negative_prompt: this._buildSiliconflowNegativePrompt(promptText, config.negativePrompt, config.noPeopleNegativePrompt),
-                    image_size: config.imageSize,
-                    batch_size: config.batchSize,
-                    num_inference_steps: config.numInferenceSteps,
-                    guidance_scale: config.guidanceScale
-                })
+            const result = await imageManager.generate({
+                app: 'wechat',
+                prompt: promptText
             });
-
-            const rawText = await response.text();
-            let payload = null;
-            if (rawText) {
-                try {
-                    payload = JSON.parse(rawText);
-                } catch (parseError) {
-                    payload = null;
-                }
-            }
-
-            if (!response.ok) {
-                const serverMessage = String(
-                    payload?.message ||
-                    payload?.error?.message ||
-                    payload?.error ||
-                    rawText ||
-                    ''
-                ).trim();
-                throw new Error(`SiliconFlow 请求失败 (${response.status})${serverMessage ? `: ${serverMessage.slice(0, 160)}` : ''}`);
-            }
-
-            const imageUrl = String(payload?.images?.[0]?.url || '').trim();
+            const imageUrl = String(result?.imageUrl || result?.imageData || '').trim();
             if (!imageUrl) {
                 throw new Error('接口返回成功，但没有拿到图片地址');
             }
@@ -1476,8 +1446,10 @@ renderChatRoom(chat) {
                 generatedImageUrl: imageUrl,
                 imageGenStatus: 'done',
                 imageGenError: '',
-                imageModel: config.model,
-                imageProvider: 'siliconflow'
+                imageModel: String(result?.model || '').trim(),
+                imageProvider: String(result?.provider || '').trim(),
+                imageGenerationWidth: Number(result?.width || result?.requestedWidth || 0) || '',
+                imageGenerationHeight: Number(result?.height || result?.requestedHeight || 0) || ''
             });
             this._refreshVisibleChatMessages(chatId);
         } catch (error) {

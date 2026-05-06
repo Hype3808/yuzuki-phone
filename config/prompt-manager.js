@@ -90,7 +90,7 @@ export class PromptManager {
 
                 const wechatOnlineContent = parsed?.wechat?.online?.content;
                 if (typeof wechatOnlineContent === 'string') {
-                    const upgraded = this._upgradeWechatOnlinePromptContent(wechatOnlineContent);
+                    const upgraded = this._upgradeCallSocialReactionPromptContent(this._upgradeWechatOnlinePromptContent(wechatOnlineContent));
                     if (upgraded !== wechatOnlineContent) {
                         parsed.wechat.online.content = upgraded;
                         isUpdated = true;
@@ -98,7 +98,7 @@ export class PromptManager {
                 }
                 const wechatOfflineContent = parsed?.wechat?.offline?.content;
                 if (typeof wechatOfflineContent === 'string') {
-                    const upgraded = this._upgradeWechatOfflinePromptContent(wechatOfflineContent);
+                    const upgraded = this._upgradeCallSocialReactionPromptContent(this._upgradeWechatOfflinePromptContent(wechatOfflineContent));
                     if (upgraded !== wechatOfflineContent) {
                         parsed.wechat.offline.content = upgraded;
                         isUpdated = true;
@@ -106,12 +106,38 @@ export class PromptManager {
                 }
                 const wechatGroupChatContent = parsed?.wechat?.groupChat?.content;
                 if (typeof wechatGroupChatContent === 'string') {
-                    const upgraded = this._upgradeWechatGroupChatPromptContent(wechatGroupChatContent);
+                    const upgraded = this._upgradeCallSocialReactionPromptContent(this._upgradeWechatGroupChatPromptContent(wechatGroupChatContent));
                     if (upgraded !== wechatGroupChatContent) {
                         parsed.wechat.groupChat.content = upgraded;
                         isUpdated = true;
                     }
                 }
+                ['voiceCall', 'videoCall', 'groupVoiceCall', 'groupVideoCall'].forEach((feature) => {
+                    const callContent = parsed?.wechat?.[feature]?.content;
+                    if (typeof callContent !== 'string') return;
+                    const upgraded = this._upgradeCallSocialReactionPromptContent(callContent);
+                    if (upgraded !== callContent) {
+                        parsed.wechat[feature].content = upgraded;
+                        isUpdated = true;
+                    }
+                });
+                const phoneCallContent = parsed?.phone?.call?.content;
+                if (typeof phoneCallContent === 'string') {
+                    const upgraded = this._upgradeCallSocialReactionPromptContent(phoneCallContent);
+                    if (upgraded !== phoneCallContent) {
+                        parsed.phone.call.content = upgraded;
+                        isUpdated = true;
+                    }
+                }
+                ['recommend', 'hotSearch'].forEach((feature) => {
+                    const weiboContent = parsed?.weibo?.[feature]?.content;
+                    if (typeof weiboContent !== 'string') return;
+                    const upgraded = this._upgradeWeiboImagePromptContent(weiboContent);
+                    if (upgraded !== weiboContent) {
+                        parsed.weibo[feature].content = upgraded;
+                        isUpdated = true;
+                    }
+                });
 
                 // 🔥 修复：如果有更新，直接使用 storage.set 保存，而不是调用 savePrompts
                 // 因为此时 this.prompts 还未赋值
@@ -293,6 +319,7 @@ export class PromptManager {
     _upgradeWechatOnlinePromptContent(content) {
         let text = String(content || '');
         if (!text) return text;
+        const wechatImagePromptRule = '💡 图片描述规则：当你要发送图片时，必须使用 [图片]（English NovelAI tags） 格式。括号内只能写英文逗号分隔的 NAI 生图 tag，不要写中文、解释或完整句子；必须描述可见画面细节，如 subject count, gender, adult character, anime illustration, pose, expression, clothing, setting, camera angle, lighting。若内容涉及人物或拟人对象，必须用 1girl/1boy/2girls/2boys、female focus/male focus 等英文 tag 明确主体。';
 
         // 清理历史版本里“单聊多窗口”段落，避免与当前窗口输出范围冲突
         if (text.includes('💡 聊天多窗口回复：')) {
@@ -312,11 +339,11 @@ export class PromptManager {
             '💡 当前窗口输出范围：单聊模式下只输出当前窗口 ---{{chatName}}--- 的新增消息；系统提供的共同群聊、其他记录和正文剧情可以作为关系与现实状态参考，但不能直接生成其他窗口。'
         );
 
-        if (!text.includes('使用 [图片]（描述）')) {
+        if (!text.includes('使用 [图片]（English NovelAI tags）')) {
             text = text.replace(
                 '发送者: [表情包](关键词) （直接发送表情包）',
                 `发送者: [表情包](关键词) （直接发送表情包）
-发送者: [图片]（图片描述）`
+发送者: [图片]（English NovelAI tags）`
             );
         }
 
@@ -325,9 +352,10 @@ export class PromptManager {
                 '💡 当你主动给{{user}}打微信语音或视频时，先输出：发送者: [拨打微信语音] 或 [拨打微信视频]。\n💡 当你要主动给{{user}}打微信语音时，先输出：发送者: [拨打微信语音]。如果你要补充“接通后会说的话”，就在后续继续按普通消息行输出（系统会在接通界面展示；若对方拒绝则不会展示这些后续行）。',
                 `💡 当你主动给{{user}}打微信语音或视频时，先输出：发送者: [拨打微信语音] 或 [拨打微信视频]。
 💡 当你要主动给{{user}}打微信语音时，先输出：发送者: [拨打微信语音]。如果你要补充“接通后会说的话”，就在后续继续按普通消息行输出（系统会在接通界面展示；若对方拒绝则不会展示这些后续行）。
-💡 图片描述规则：当你要发送图片时，必须使用 [图片]（描述） 格式。只要描述里出现人物、角色、拟人对象、少年、少女、男生、女生、男人、女人、帅哥、美女、老师、同学、主播、偶像、精灵、猫娘、狐娘等任何有人形特征的对象，就必须明确写出性别，至少出现“男/男性/男生/少年”或“女/女性/女生/少女”等词之一，绝对禁止性别模糊。图片默认应为二次元插画、动漫、游戏CG风格，禁止真人照片、禁止写实摄影感。如果当前拿不准性别，就不要发送 [图片] 标签，改用普通文字。`
+${wechatImagePromptRule}`
             );
         }
+        text = text.replace(/💡 图片描述规则：当你要发送图片时，必须使用 \[图片\][^\n]+/g, wechatImagePromptRule);
 
         if (!text.includes('{{customEmojiList}}')) {
             text = `${text}
@@ -386,6 +414,7 @@ export class PromptManager {
     _upgradeWechatGroupChatPromptContent(content) {
         let text = String(content || '');
         if (!text) return text;
+        const wechatImagePromptRule = '💡 图片描述规则：当你要发送图片时，必须使用 [图片]（English NovelAI tags） 格式。括号内只能写英文逗号分隔的 NAI 生图 tag，不要写中文、解释或完整句子；必须描述可见画面细节，如 subject count, gender, adult character, anime illustration, pose, expression, clothing, setting, camera angle, lighting。若内容涉及人物或拟人对象，必须用 1girl/1boy/2girls/2boys、female focus/male focus 等英文 tag 明确主体。';
 
         // 清理历史版本里“群聊跨窗口私聊”段落，默认强制单窗口输出
         if (text.includes('💡 跨聊天多窗口回复：')) {
@@ -411,6 +440,11 @@ export class PromptManager {
 💡 当剧情需要时，你可以主动发起群语音/视频通话，格式为：发送者: [拨打微信群语音] 或 发送者: [拨打微信群视频]。`
             );
         }
+        text = text.replace(/💡 图片描述规则：当你要发送图片时，必须使用 \[图片\][^\n]+/g, wechatImagePromptRule);
+        if (text.includes('发送者: [图片]') && !text.includes('English NovelAI tags')) {
+            text = `${text}
+${wechatImagePromptRule}`;
+        }
 
         if (!text.includes('{{customEmojiList}}')) {
             text = `${text}
@@ -419,6 +453,32 @@ export class PromptManager {
         }
 
         return text;
+    }
+
+    _upgradeWeiboImagePromptContent(content) {
+        let text = String(content || '');
+        if (!text) return text;
+        const weiboImagePromptRule = '配图占位：格式为[图片]（English NovelAI tags），括号内只能写英文逗号分隔 NAI 生图 tag，不要写中文、解释或完整句子；必须描述可见画面细节，如 subject count, gender, adult character, anime illustration, pose, expression, clothing, setting, camera angle, lighting。例如：[图片]（1girl, adult character, street snapshot, casual outfit, looking at phone, city background, anime illustration）。';
+        text = text.replace(/配图占位：\s*格式为\[图片\][^\n]+/g, weiboImagePromptRule);
+        text = text.replace(/配图：\[图片\]（文字描述）\[图片\]（文字描述）/g, '配图：[图片]（English NovelAI tags）[图片]（English NovelAI tags）');
+        text = text.replace(/配图：\[图片\]（文字描述）/g, '配图：[图片]（English NovelAI tags）');
+        if (text.includes('配图：') && !text.includes('English NovelAI tags')) {
+            text = text.replace('【微博账号与内容分布】', `${weiboImagePromptRule}\n【微博账号与内容分布】`);
+            text = text.replace('【账号与内容分布】', `${weiboImagePromptRule}\n【账号与内容分布】`);
+        }
+        return text;
+    }
+
+    _upgradeCallSocialReactionPromptContent(content) {
+        let text = String(content || '');
+        if (!text || text.includes('通话社交反应规则')) return text;
+        return `${text}
+
+【通话社交反应规则】
+- 通话记录是重要社交事件，不能当作无意义系统记录忽略。
+- 如果{{user}}拨打语音/视频/电话后很快挂断、接通后十几秒内没有说话、通话记录里没有有效对话，角色必须结合关系与当时情绪做出自然反应：担心、疑惑、试探、生气、委屈、以为{{user}}手滑、以为{{user}}在赌气、以为信号不好，或回拨/发微信追问。
+- 亲密关系优先表现主动关心或带情绪追问；暧昧/敏感关系可误会为冷落、生气、吃醋或试探；普通关系可简短问“刚才怎么了/是不是打错了/信号不好？”。
+- 如果下一轮剧情或微信回复发生在短通话之后，应主动承接这件事，例如“刚才怎么打了又不说话？”、“你是不是不高兴了？”、“我回拨你没接，出什么事了吗？”，而不是完全无视。`;
     }
     
    // 默认提示词
@@ -606,9 +666,10 @@ from:林晓雨: 在呢
 发送者: [语音] 语音转化出的文字内容
 发送者: 直接发送emoji（如 😀😭😅）
 发送者: [表情包](表情名称) 
-发送者: [图片]（图片描述）
+发送者: [图片]（English NovelAI tags）
 💡 当你要主动给{{user}}打微信语音时，先输出：发送者: [拨打微信语音]。如果你要补充“接通后会说的话”，就在后续继续按普通消息行输出（系统会在接通界面展示；若对方拒绝则不会展示这些后续行）。
-💡 图片描述规则：当你要发送图片时，必须使用 [图片]（描述） 格式。如描述里出现人物或拟人（如男女老少、职业、年龄、精灵、猫娘、狐娘）等任何有人形特征的对象，必须明确写出性别，至少出现“男/男性/男生/少年”或“女/女性/女生/少女”等词之一，绝对禁止性别模糊。图片默认应为二次元插画、动漫、游戏CG风格，禁止真人照片、禁止写实摄影感.
+💡 图片描述规则：当你要发送图片时，必须使用 [图片]（English NovelAI tags） 格式。括号内只能写英文逗号分隔的 NAI 生图 tag，不要写中文、解释或完整句子；必须描述可见画面细节，如 subject count, gender, adult character, anime illustration, pose, expression, clothing, setting, camera angle, lighting。若内容涉及人物或拟人对象，必须用 1girl/1boy/2girls/2boys、female focus/male focus 等英文 tag 明确主体。
+💡 通话社交反应规则：如果{{user}}刚才拨打语音/视频后很快挂断、接通后十几秒内没有说话、或通话记录没有有效对话，必须把它当成社交事件自然承接。根据关系表现担心、疑惑、试探、生气、委屈、以为手滑/信号不好/在赌气，必要时可回拨或发微信追问，例如“刚才怎么打了又不说话？”、“你是不是不高兴了？”。
 💡 你可以使用用户上传的本地专属表情包，格式：发送者: [表情包](表情名称)；当角色想使用表情包时，若清单里没有合适项，可自行简洁描写表情包名称，后台会自行匹配。
  根据语境和角色人设及性格使用一下表情包的清单：{{customEmojiList}}
 
@@ -620,7 +681,7 @@ from:林晓雨: 在呢
 时间：[发布时间，如：3分钟前 / 10月24日 14:00]
 来自：[手机型号，如：iPhone 15 Pro / 微博网页版]
 正文：[微博正文内容，需符合账号人设，带适当的#话题#和@提及]
-配图：[图片]（文字描述）[图片]（文字描述）（注：配图为可选，如果该微博是纯文字，请直接省略“配图：”这一整行）
+配图：[图片]（English NovelAI tags）[图片]（English NovelAI tags）（注：配图为可选，如果该微博是纯文字，请直接省略“配图：”这一整行）
 数据：转发 [数字] | 评论[数字，必须等于下方实际评论数] | 点赞 [数字]
 评论区：
 1. [网友昵称1] (ip[市区])：内容1
@@ -770,6 +831,7 @@ from:林晓雨: 在呢
 4. 每次可回复1-10句话,每句话都换行。
 5. 回复必须使用<wechat>标签
 6. 如果要回复多句，必须分行输出（也可用 ||| 分隔），禁止把多句挤在同一行
+7. 通话社交反应规则：如果{{user}}接通后长时间不说话、十几秒内就挂断、或上一条通话记录没有有效对话，必须像真人一样自然反应：追问是不是手滑/信号不好/不高兴了，也可根据关系表现担心、生气、委屈或试探。
 
 ✅ 【正确回复格式】：
 <wechat>
@@ -801,6 +863,7 @@ from:林晓雨: 在呢
 5. 必须使用标签<wechat>输出内容。
 6. 不要输出说话者名字前缀或替代{{user}}回复.
 7. 如果要回复多句，必须分行输出（也可用 ||| 分隔），禁止把多句挤在同一行
+8. 通话社交反应规则：如果{{user}}接通后长时间不说话、十几秒内就挂断、或上一条通话记录没有有效对话，必须像真人一样自然反应：追问是不是手滑/信号不好/不高兴了，也可根据关系表现担心、生气、委屈或试探。
 
 ✅ 【正确回复格式】：
 <wechat>
@@ -837,6 +900,7 @@ from:林晓雨: 在呢
 6. 群语音允许 1-4 个成员轮流发言，每人 1-3 句，内容要像真实多人语音通话。
 7. 如果无人接听或大家都不方便，可以只回复“拒绝”。
 8. 如果接听，可先单独写一行“接听”，后续再写群成员发言；也可以直接写群成员发言。
+9. 通话社交反应规则：如果{{user}}发起群语音后很快挂断、接通后没有说话、或上一条通话记录没有有效对话，群成员应像真人一样追问“刚才怎么了/是不是手滑/信号不好”，关系亲近者可担心或吐槽。
 
 ✅ 正确格式：
 <wechat>
@@ -876,6 +940,7 @@ from:林晓雨: 在呢
 6. 群视频允许 1-4 个成员轮流发言，像真实多人视频会议/群聊视频。
 7. 如果无人接听或大家都不方便，可以只回复“拒绝”。
 8. 如果接听，可先单独写一行“接听”，后续再写群成员发言；也可以直接写群成员发言。
+9. 通话社交反应规则：如果{{user}}发起群视频后很快挂断、接通后没有说话、或上一条通话记录没有有效对话，群成员应像真人一样追问“刚才怎么了/是不是手滑/信号不好”，关系亲近者可担心或吐槽。
 
 ✅ 正确格式：
 <wechat>
@@ -946,7 +1011,7 @@ from:林晓雨: 在呢
 发送者: [转账](金额：xx元)
 发送者: [红包](金额：xx元)
 发送者: [语音] 语音转化出的文字内容
-发送者: [图片](图片描述)
+发送者: [图片](English NovelAI tags)
 发送者: 直接发送emoji（如 😀😭😅）
 发送者: [表情包](关键词) （直接发送表情包）
 发送者: [拨打微信群语音]
@@ -1029,6 +1094,7 @@ from:林晓雨: 在呢
 请根据剧情，演绎符合角色性格和语气的口语化回复，像真实的电话对话。
 严禁输出非对话的文字，严禁输出旁白或动作描写。
 必须使用<Call>标签，并标注通话人姓名，每句话之间换行即可。
+通话社交反应规则：如果{{user}}接通后长时间不说话、十几秒内就挂断、或上一条通话记录没有有效对话，必须像真人一样自然反应：追问是不是手滑/信号不好/不高兴了，也可根据关系表现担心、生气、委屈或试探。
 <Call>
 ---{{callerName}}---
 你好
@@ -1061,7 +1127,7 @@ from:林晓雨: 在呢
 必须使用真实的微博网感语言（如：吃瓜、塌房、抱走不约、kswl、绝绝子、蹲一个回应、纯路人等），并带有符合情境的 Emoji
 表情，另需体现地域IP属性。
 微博的内容不得仅围绕剧情和历史记录，可推送更多有趣好玩的社交活动和好玩的地点及八卦，内容可以是与剧情相关的衍生话题，也可以是一些个人博主的日常动态，但必须符合微博平台的内容生态和用户兴趣。
-配图占位： 格式为[图片]（文字描述），例如： [图片]（一张模糊的两人并肩路透照）。
+配图占位：格式为[图片]（English NovelAI tags），括号内只能写英文逗号分隔 NAI 生图 tag，不要写中文、解释或完整句子；例如：[图片]（2girls, adult character, street snapshot, casual outfits, walking side by side, blurred city background, anime illustration）。
 【微博账号与内容分布】
 官方微博： 命名格式如"XX工作室"、"XX游戏官方微博"、"各类新闻"。语气需官方、冷硬或带有公关话术。
 各大超话（明星/游戏/CP/社会等）：
@@ -1086,7 +1152,7 @@ IP属地：根据故事背景，生成虚拟的命名城市的IP市区
 时间：[发布时间，如：3分钟前 / 10月24日 14:00]
 来自：[手机型号，如：iPhone 15 Pro / 微博网页版]
 正文：[微博正文内容，需符合账号人设，带适当的#话题#和@提及]
-配图：[图片]（文字描述）[图片]（文字描述）（注：配图为可选，如果该微博是纯文字，请直接省略“配图：”这一整行）
+配图：[图片]（English NovelAI tags）[图片]（English NovelAI tags）（注：配图为可选，如果该微博是纯文字，请直接省略“配图：”这一整行）
 数据：转发 [数字] | 评论[数字，必须等于下方实际评论数] | 点赞 [数字]
 评论区：
 1. [网友昵称1] (ip[市区])：内容1
@@ -1098,7 +1164,7 @@ IP属地：根据故事背景，生成虚拟的命名城市的IP市区
 时间：[发布时间，如：3分钟前 / 10月24日 14:00]
 来自：[手机型号，如：iPhone 15 Pro / 微博网页版]
 正文：[微博正文内容，需符合账号人设，带适当的#话题#和@提及]
-配图：[图片]（文字描述）（注：配图为可选，如果该微博是纯文字，请直接省略“配图：”这一整行）
+配图：[图片]（English NovelAI tags）（注：配图为可选，如果该微博是纯文字，请直接省略“配图：”这一整行）
 数据：转发 [数字] | 评论[数字，必须等于下方实际评论数] | 点赞 [数字]
 评论区：
 1. [网友昵称1] (ip[市区])：内容1
@@ -1121,7 +1187,7 @@ IP属地：根据故事背景，生成虚拟的命名城市的IP市区
 平台真实感：
 必须使用真实的微博网感语言（如：吃瓜、塌房、抱走不约、kswl、绝绝子、蹲一个回应、纯路人等），并带有符合情境的 Emoji
 表情。需体现地域IP属性。
-配图占位： 格式为[图片]（文字描述），例如： [图片]（一张模糊的两人并肩路透照）。
+配图占位：格式为[图片]（English NovelAI tags），括号内只能写英文逗号分隔 NAI 生图 tag，不要写中文、解释或完整句子；例如：[图片]（2girls, adult character, street snapshot, casual outfits, walking side by side, blurred city background, anime illustration）。
 【账号与内容分布】（需涵盖以下类型）
 官方微博： 命名格式如"XX工作室"、"XX游戏官方微博"。语气需官方、冷硬或带有公关话术。
 各大超话（明星/游戏/CP/社会等）：
@@ -1139,7 +1205,7 @@ IP属地：根据故事背景，生成虚拟的命名城市的IP市区
 时间：[发布时间，如：3分钟前 / 10月24日 14:00]
 来自：[手机型号，如：iPhone 15 Pro / 微博网页版]
 正文：[微博正文内容，需符合账号人设，必须带热搜#话题#]
-配图：[图片]（文字描述）[图片]（文字描述）（注：配图为可选，如果该微博是纯文字，请直接省略“配图：”这一整行）
+配图：[图片]（English NovelAI tags）[图片]（English NovelAI tags）（注：配图为可选，如果该微博是纯文字，请直接省略“配图：”这一整行）
 数据：转发 [数字] | 评论[数字，必须等于下方实际评论数] | 点赞 [数字]
 评论区（IP属地）：
 1. [网友昵称1] (来自[省份])：内容1
@@ -1151,7 +1217,7 @@ IP属地：根据故事背景，生成虚拟的命名城市的IP市区
 时间：[发布时间，如：3分钟前 / 10月24日 14:00]
 来自：[手机型号，如：iPhone 15 Pro / 微博网页版]
 正文：[微博正文内容，需符合账号人设，必须带热搜#话题#]
-配图：[图片]（文字描述）（注：配图为可选，如果该微博是纯文字，请直接省略“配图：”这一整行）
+配图：[图片]（English NovelAI tags）（注：配图为可选，如果该微博是纯文字，请直接省略“配图：”这一整行）
 数据：转发 [数字] | 评论[数字，必须等于下方实际评论数] | 点赞 [数字]
 评论区（IP属地）：
 1. [网友昵称1] (来自[省份])：内容1
