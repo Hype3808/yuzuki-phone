@@ -7037,62 +7037,67 @@ if (window.GGP_Loaded) {
 
                                     // 3.5️⃣ 添加通话记录
                                     try {
-                                        let callHistory = null;
-                                        if (window.VirtualPhone?.phoneApp?.phoneCallData) {
-                                            callHistory = window.VirtualPhone.phoneApp.phoneCallData.getCallHistory();
-                                        } else {
-                                            const savedCallHistory = storage?.get('phone_call_history', null);
-                                            if (savedCallHistory) {
-                                                callHistory = typeof savedCallHistory === 'string' ? JSON.parse(savedCallHistory) : savedCallHistory;
+                                        const callHistoryEnabledRaw = storage?.get('offline-phone-call-history-enabled');
+                                        const callHistoryEnabled = callHistoryEnabledRaw === true || callHistoryEnabledRaw === 'true';
+
+                                        if (callHistoryEnabled) {
+                                            let callHistory = null;
+                                            if (window.VirtualPhone?.phoneApp?.phoneCallData) {
+                                                callHistory = window.VirtualPhone.phoneApp.phoneCallData.getCallHistory();
+                                            } else {
+                                                const savedCallHistory = storage?.get('phone_call_history', null);
+                                                if (savedCallHistory) {
+                                                    callHistory = typeof savedCallHistory === 'string' ? JSON.parse(savedCallHistory) : savedCallHistory;
+                                                }
                                             }
-                                        }
 
-                                        if (callHistory && callHistory.length > 0) {
-                                            const callLimit = storage ? (parseInt(storage.get('phone-call-limit')) || 10) : 10;
-                                            const userName = context?.name1 || '用户';
-                                            const parseCallDateTimeToTs = (dateText, timeText) => {
-                                                const dateRaw = String(dateText || '').trim();
-                                                const timeRaw = String(timeText || '').trim().replace('：', ':');
-                                                if (!dateRaw || !timeRaw) return NaN;
-                                                const dateMatch = dateRaw.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
-                                                const timeMatch = timeRaw.match(/(\d{1,2}):(\d{2})/);
-                                                if (!dateMatch || !timeMatch) return NaN;
-                                                const year = Number(dateMatch[1]);
-                                                const month = Number(dateMatch[2]);
-                                                const day = Number(dateMatch[3]);
-                                                const hour = Number(timeMatch[1]);
-                                                const minute = Number(timeMatch[2]);
-                                                if (![year, month, day, hour, minute].every(Number.isFinite)) return NaN;
-                                                return new Date(year, month - 1, day, hour, minute).getTime();
-                                            };
-                                            const parseCallSortTs = (record, fallbackIndex) => {
-                                                const idTs = Number(record?.id || 0);
-                                                if (Number.isFinite(idTs) && idTs > 0) return idTs;
-                                                const fallbackTs = parseCallDateTimeToTs(record?.date, record?.time);
-                                                if (Number.isFinite(fallbackTs) && fallbackTs > 0) return fallbackTs;
-                                                return Number(fallbackIndex) || 0;
-                                            };
-                                            const answeredCalls = callHistory
-                                                .map((record, index) => ({ record, index, sortTs: parseCallSortTs(record, index) }))
-                                                .filter(item => item.record?.status === 'answered' && item.record?.transcript && item.record.transcript.length > 0)
-                                                .sort((a, b) => {
-                                                    if (a.sortTs !== b.sortTs) return a.sortTs - b.sortTs;
-                                                    return a.index - b.index;
-                                                })
-                                                .map(item => item.record);
+                                            if (callHistory && callHistory.length > 0) {
+                                                const callLimit = storage ? (parseInt(storage.get('phone-call-limit')) || 10) : 10;
+                                                const userName = context?.name1 || '用户';
+                                                const parseCallDateTimeToTs = (dateText, timeText) => {
+                                                    const dateRaw = String(dateText || '').trim();
+                                                    const timeRaw = String(timeText || '').trim().replace('：', ':');
+                                                    if (!dateRaw || !timeRaw) return NaN;
+                                                    const dateMatch = dateRaw.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
+                                                    const timeMatch = timeRaw.match(/(\d{1,2}):(\d{2})/);
+                                                    if (!dateMatch || !timeMatch) return NaN;
+                                                    const year = Number(dateMatch[1]);
+                                                    const month = Number(dateMatch[2]);
+                                                    const day = Number(dateMatch[3]);
+                                                    const hour = Number(timeMatch[1]);
+                                                    const minute = Number(timeMatch[2]);
+                                                    if (![year, month, day, hour, minute].every(Number.isFinite)) return NaN;
+                                                    return new Date(year, month - 1, day, hour, minute).getTime();
+                                                };
+                                                const parseCallSortTs = (record, fallbackIndex) => {
+                                                    const idTs = Number(record?.id || 0);
+                                                    if (Number.isFinite(idTs) && idTs > 0) return idTs;
+                                                    const fallbackTs = parseCallDateTimeToTs(record?.date, record?.time);
+                                                    if (Number.isFinite(fallbackTs) && fallbackTs > 0) return fallbackTs;
+                                                    return Number(fallbackIndex) || 0;
+                                                };
+                                                const answeredCalls = callHistory
+                                                    .map((record, index) => ({ record, index, sortTs: parseCallSortTs(record, index) }))
+                                                    .filter(item => item.record?.status === 'answered' && item.record?.transcript && item.record.transcript.length > 0)
+                                                    .sort((a, b) => {
+                                                        if (a.sortTs !== b.sortTs) return a.sortTs - b.sortTs;
+                                                        return a.index - b.index;
+                                                    })
+                                                    .map(item => item.record);
 
-                                            if (answeredCalls.length > 0) {
-                                                phoneHistoryContent += `【 手机通话记录】\n`;
-                                                answeredCalls.forEach(record => {
-                                                    const recentTranscript = record.transcript.slice(-callLimit);
-                                                    phoneHistoryContent += `━━━ 与 ${record.caller} 的通话 ━━━\n`;
-                                                    if (record.date || record.time) phoneHistoryContent += `${record.date || ''} ${record.time || ''}\n`;
-                                                    recentTranscript.forEach(msg => {
-                                                        const speaker = msg.from === 'me' ? userName : record.caller;
-                                                        phoneHistoryContent += `${speaker}: ${msg.text}\n`;
+                                                if (answeredCalls.length > 0) {
+                                                    phoneHistoryContent += `【 手机通话记录】\n`;
+                                                    answeredCalls.forEach(record => {
+                                                        const recentTranscript = record.transcript.slice(-callLimit);
+                                                        phoneHistoryContent += `━━━ 与 ${record.caller} 的通话 ━━━\n`;
+                                                        if (record.date || record.time) phoneHistoryContent += `${record.date || ''} ${record.time || ''}\n`;
+                                                        recentTranscript.forEach(msg => {
+                                                            const speaker = msg.from === 'me' ? userName : record.caller;
+                                                            phoneHistoryContent += `${speaker}: ${msg.text}\n`;
+                                                        });
+                                                        phoneHistoryContent += `\n`;
                                                     });
-                                                    phoneHistoryContent += `\n`;
-                                                });
+                                                }
                                             }
                                         }
                                     } catch (e) {

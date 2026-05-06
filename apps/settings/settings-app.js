@@ -512,6 +512,17 @@ export class SettingsApp {
 
                             <div class="settings-subsection-title">📓 其他线下记录</div>
 
+                            <div class="setting-item setting-toggle">
+                                <div>
+                                    <div class="setting-label">电话通话记录注入线下</div>
+                                    <div class="setting-desc">关闭后，电话通话记录不会注入酒馆正文</div>
+                                </div>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="offline-phone-call-history-enabled" ${(this.storage.get('offline-phone-call-history-enabled') === true || this.storage.get('offline-phone-call-history-enabled') === 'true') ? 'checked' : ''}>
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+
                             <div class="setting-item" style="display: flex; align-items: center; justify-content: space-between;">
                                 <div>
                                     <div class="setting-label">电话通话记录条数</div>
@@ -2137,6 +2148,11 @@ export class SettingsApp {
             const validLimit = Math.max(1, Math.min(9999, limit));
             e.target.value = validLimit;
             await this.storage.set('offline-diary-history-limit', validLimit);
+        });
+
+        // 📞 线下通话记录注入开关
+        document.getElementById('offline-phone-call-history-enabled')?.addEventListener('change', async (e) => {
+            await this.storage.set('offline-phone-call-history-enabled', !!e.target.checked);
         });
 
         // 📞 通话发送条数设置
