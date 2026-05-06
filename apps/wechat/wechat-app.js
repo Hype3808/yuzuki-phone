@@ -4476,17 +4476,34 @@ export class WechatApp {
                         🖼️ 表情包 API 密钥
                     </div>
                     <div style="display: flex; gap: 6px;">
-                        <input type="text" id="alapi-token-input" placeholder="输入 ALAPI Token"
-                               value="${window.VirtualPhone?.storage?.get('global_alapi_token') || ''}" style="
-                            flex: 1;
-                            min-width: 0;
-                            padding: 8px;
-                            border: 1px solid #e5e5e5;
-                            border-radius: 6px;
-                            font-size: 12px;
-                            outline: none;
-                            box-sizing: border-box;
-                        ">
+                        <div style="display: flex; align-items: center; flex: 1; min-width: 0; border: 1px solid #e5e5e5; border-radius: 6px; background: #fff; overflow: hidden;">
+                            <input type="password" id="alapi-token-input" placeholder="输入 ALAPI Token"
+                                   value="${window.VirtualPhone?.storage?.get('global_alapi_token') || ''}" style="
+                                flex: 1;
+                                min-width: 0;
+                                padding: 8px 4px 8px 8px;
+                                border: none;
+                                font-size: 12px;
+                                outline: none;
+                                box-sizing: border-box;
+                                background: transparent;
+                            ">
+                            <button type="button" id="toggle-alapi-token-visibility" aria-label="显示或隐藏表情包 API 密钥" style="
+                                width: 30px;
+                                align-self: stretch;
+                                border: none;
+                                background: transparent;
+                                color: #777;
+                                cursor: pointer;
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                                padding: 0;
+                                flex-shrink: 0;
+                            ">
+                                <i class="fa-solid fa-eye"></i>
+                            </button>
+                        </div>
                         <button id="save-alapi-token-btn" style="
                             padding: 8px 12px;
                             background: #07c160;
@@ -4609,6 +4626,18 @@ export class WechatApp {
                 enabled ? '✅' : 'ℹ️'
             );
         });
+
+        const toggleAlapiTokenBtn = document.getElementById('toggle-alapi-token-visibility');
+        if (toggleAlapiTokenBtn) toggleAlapiTokenBtn.onclick = () => {
+            const input = document.getElementById('alapi-token-input');
+            if (!input) return;
+            const nextVisible = input.type === 'password';
+            input.type = nextVisible ? 'text' : 'password';
+            const icon = toggleAlapiTokenBtn.querySelector('i');
+            if (icon) {
+                icon.className = nextVisible ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye';
+            }
+        };
 
         // 保存 ALAPI Token
         const saveAlapiBtn = document.getElementById('save-alapi-token-btn');

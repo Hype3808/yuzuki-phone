@@ -803,7 +803,12 @@ export class SettingsApp {
 
                                 <div style="margin-bottom: 12px;">
                                     <div style="font-size: 12px; color: #666; margin-bottom: 4px;">API 密钥 (Key)</div>
-                                    <input type="password" id="phone-api-key" placeholder="sk-..." style="width: 100%; padding: 8px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 13px; background: #fff; box-sizing: border-box;">
+                                    <div style="display: flex; align-items: center; width: 100%; border: 1px solid #e0e0e0; border-radius: 6px; background: #fff; box-sizing: border-box; overflow: hidden;">
+                                        <input type="password" id="phone-api-key" placeholder="sk-..." style="flex: 1; min-width: 0; padding: 8px 4px 8px 8px; border: none; outline: none; font-size: 13px; background: transparent; box-sizing: border-box;">
+                                        <button type="button" class="phone-password-toggle" data-toggle-password-target="phone-api-key" aria-label="显示或隐藏 API Key" style="width: 32px; align-self: stretch; border: none; background: transparent; color: #777; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; flex-shrink: 0;">
+                                            <i class="fa-solid fa-eye"></i>
+                                        </button>
+                                    </div>
                                 </div>
 
                                 <div style="margin-bottom: 12px;">

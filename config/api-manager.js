@@ -541,7 +541,8 @@ export class ApiManager {
                             : '';
                 throw new Error(`${label} 失败 ${response.status}${tip}: ${errText.substring(0, 1000)}`);
             }
-            if (requestStream && response.body) {
+            const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+            if (requestStream && response.body && contentType.includes('text/event-stream')) {
                 return await this._readUniversalStream(response.body, `[${label}]`);
             }
             const text = await response.text();
@@ -590,11 +591,9 @@ export class ApiManager {
                     instruction_mode: 'chat'
                 };
 
-                // 动态鉴权头处理
-                // Custom模式下，酒馆后端不读取 proxy_password，只从 custom_include_headers 合并
-                // 所以我们必须手动把 Key 塞进 Header 里
-                // 但如果是 openai/compatible 模式，酒馆会自动处理，绝对不能手动注入防止双重 Header 报错 400
-                if (targetSource === 'custom' && authHeader) {
+                // 与记忆插件保持一致：同时提供 proxy_password 和 Authorization，
+                // 兼容部分 OP/中转后端只读取 custom_include_headers 的情况。
+                if (authHeader) {
                     proxyPayload.custom_include_headers["Authorization"] = authHeader;
                 }
                 if (modelLower.includes('gemini')) {
@@ -604,6 +603,7 @@ export class ApiManager {
                     proxyPayload.safetySettings = safetyConfig;
                 }
 
+                console.log(`🌐 [ApiManager][后端代理] 目标: ${apiUrl} | 模式: ${targetSource} | 模型: ${model || '未指定'} | 流式: ${enableStream ? '开' : '关'}`);
                 const csrfToken = await this._getCsrfToken();
                 const proxyResponse = await fetch('/api/backends/chat-completions/generate', {
                     method: 'POST',
@@ -624,6 +624,50 @@ export class ApiManager {
 
             // 针对 proxy_only/compatible 做 OpenAI 协议降级重试（兼容 OP/Build 端口）
             if (provider === 'proxy_only' || provider === 'compatible') {
+                if (provider === 'compatible') {
+                    try {
+                        const customPayload = {
+                            chat_completion_source: 'custom',
+                            reverse_proxy: apiUrl,
+                            custom_url: apiUrl,
+                            proxy_password: apiKey,
+                            custom_include_headers: { 'Content-Type': 'application/json' },
+                            model,
+                            messages: cleanMessages,
+                            temperature,
+                            max_tokens: maxTokens,
+                            stream: enableStream,
+                            mode: 'chat',
+                            instruction_mode: 'chat'
+                        };
+                        if (authHeader) {
+                            customPayload.custom_include_headers.Authorization = authHeader;
+                        }
+                        if (modelLower.includes('gemini')) {
+                            const safetyConfig = buildSafetyConfig();
+                            customPayload.gemini_safety_settings = safetyConfig;
+                            customPayload.safety_settings = safetyConfig;
+                            customPayload.safetySettings = safetyConfig;
+                        }
+
+                        console.log(`🌐 [ApiManager][后端代理-降级Custom] 目标: ${apiUrl} | 模型: ${model || '未指定'} | 流式: ${enableStream ? '开' : '关'}`);
+                        const csrfToken = await this._getCsrfToken();
+                        const customResponse = await fetch('/api/backends/chat-completions/generate', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                            body: JSON.stringify(customPayload),
+                            credentials: 'include',
+                            signal: options.signal
+                        });
+                        const customResult = await parseProxyResponse(customResponse, customPayload.stream && enableStream, '后端代理-降级Custom');
+                        this._setProxyRouteHint(provider, apiUrl, 'custom');
+                        return customResult;
+                    } catch (customErr) {
+                        proxyError = customErr;
+                        if (options.signal?.aborted) return { success: false, error: '已中断发送', aborted: true };
+                    }
+                }
+
                 try {
                     // 1. 修正 URL，确保有 /v1
                     let v1Url = apiUrl;
@@ -644,6 +688,7 @@ export class ApiManager {
                         stream: enableStream
                     };
 
+                    console.log(`🌐 [ApiManager][后端代理-降级OpenAI] 目标: ${v1Url} | 模型: ${model || '未指定'} | 流式: ${enableStream ? '开' : '关'}`);
                     const csrfToken = await this._getCsrfToken();
                     const retryResponse = await fetch('/api/backends/chat-completions/generate', {
                         method: 'POST',
@@ -805,7 +850,10 @@ export class ApiManager {
         const reasoning = chunk.choices?.[0]?.delta?.reasoning_content || '';
         let content = '';
         if (chunk.choices?.[0]?.delta?.content) content = chunk.choices[0].delta.content;
+        else if (chunk.choices?.[0]?.message?.content) content = chunk.choices[0].message.content;
+        else if (chunk.data?.choices?.[0]?.message?.content) content = chunk.data.choices[0].message.content;
         else if (chunk.choices?.[0]?.text) content = chunk.choices[0].text;
+        else if (chunk.data?.choices?.[0]?.text) content = chunk.data.choices[0].text;
         else if (chunk.candidates?.[0]?.content?.parts?.[0]?.text) content = chunk.candidates[0].content.parts[0].text;
         else if (chunk.delta?.text) content = chunk.delta.text;
         else if (chunk.content_block?.text) content = chunk.content_block.text;
