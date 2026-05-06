@@ -2286,6 +2286,19 @@ export class WeiboView {
                 await this._generateWeiboPostImage({ postId, index, promptText, mediaType, clearPreviousImage: true });
             };
         });
+
+        document.querySelectorAll('.weibo-post-img-real').forEach(img => {
+            img.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const imageUrl = e.currentTarget?.getAttribute('src') || '';
+                if (imageUrl) {
+                    this.app?.phoneShell?.showImageViewer?.(imageUrl, {
+                        alt: e.currentTarget?.getAttribute('alt') || '微博图片'
+                    });
+                }
+            };
+        });
     }
 
     async _generateWeiboPostImage({ postId, index, promptText, mediaType = '图片', clearPreviousImage = false } = {}) {

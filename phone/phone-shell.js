@@ -236,6 +236,7 @@ export class PhoneShell {
                 '.weibo-forward-overlay', '.weibo-forward-dialog', '.weibo-forward-dialog-compose', '.weibo-forward-list',
                 '#wechat-weibo-preview-modal', '#wechat-weibo-preview-modal > div',
                 '.wechat-call-transcript-overlay', '.wechat-call-transcript-panel', '.wechat-call-transcript-body',
+                '.phone-image-viewer-overlay', '.phone-image-viewer-stage',
                 '.phone-call-history-list', '.phone-call-main', '.phone-call-transcript', '#phone-call-transcript-messages',
                 '.phone-call-settings', '.phone-call-settings-body', '.phone-call-settings-section',
                 '.phone-call-prompt-textarea', '#phone-call-call-prompt',
@@ -591,6 +592,44 @@ export class PhoneShell {
         if (this.container) {
             this.container.classList.toggle('screen-off');
         }
+    }
+
+    showImageViewer(imageUrl, options = {}) {
+        const safeUrl = String(imageUrl || '').trim();
+        if (!safeUrl || !this.container) return;
+
+        const phoneBody = this.container.querySelector('.phone-body-panel') || this.container;
+        phoneBody.querySelector('#phone-image-viewer-overlay')?.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'phone-image-viewer-overlay';
+        overlay.className = 'phone-image-viewer-overlay';
+        overlay.setAttribute('role', 'dialog');
+        overlay.setAttribute('aria-modal', 'true');
+        overlay.innerHTML = `
+            <button class="phone-image-viewer-close" type="button" aria-label="关闭图片预览">
+                <i class="fa-solid fa-chevron-left"></i>
+            </button>
+            <div class="phone-image-viewer-stage">
+                <img class="phone-image-viewer-img" alt="">
+            </div>
+        `;
+
+        const img = overlay.querySelector('.phone-image-viewer-img');
+        img.src = safeUrl;
+        img.alt = String(options.alt || '图片预览');
+
+        const close = () => overlay.remove();
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay || e.target?.classList?.contains('phone-image-viewer-stage')) {
+                close();
+            }
+        });
+        overlay.querySelector('.phone-image-viewer-close')?.addEventListener('click', close);
+        overlay.addEventListener('wheel', (e) => e.stopPropagation(), { passive: true });
+        overlay.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
+
+        phoneBody.appendChild(overlay);
     }
     
     setContent(html, viewId = null) {

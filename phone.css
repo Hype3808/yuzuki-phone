@@ -343,7 +343,7 @@
     box-sizing: border-box !important;
 }
 
-@media (min-width: 901px) and (any-pointer: fine) {
+@media (hover: hover) and (pointer: fine), (any-hover: hover) and (any-pointer: fine) {
     #phone-panel.drawer-content {
         padding-left: max(18px, env(safe-area-inset-left, 0px)) !important;
         padding-right: max(18px, env(safe-area-inset-right, 0px)) !important;
@@ -359,30 +359,20 @@
         pointer-events: auto !important;
     }
 
-    #phone-panel.drawer-content.phone-panel-desktop-left #phone-panel-content {
-        align-items: flex-start !important;
+    #phone-panel.drawer-content.phone-panel-desktop-positioned #phone-panel-content,
+    #phone-panel.drawer-content.phone-panel-desktop-positioned #phone-panel-content .phone-in-panel {
+        display: block !important;
+        align-items: initial !important;
+        justify-content: initial !important;
+        position: static !important;
     }
 
-    #phone-panel.drawer-content.phone-panel-desktop-left #phone-panel-content .phone-in-panel {
-        align-items: flex-start !important;
-    }
-
-    #phone-panel.drawer-content.phone-panel-desktop-left #phone-panel-content .phone-body-panel {
-        margin-left: 0 !important;
-        margin-right: auto !important;
-    }
-
-    #phone-panel.drawer-content.phone-panel-desktop-right #phone-panel-content {
-        align-items: flex-end !important;
-    }
-
-    #phone-panel.drawer-content.phone-panel-desktop-right #phone-panel-content .phone-in-panel {
-        align-items: flex-end !important;
-    }
-
-    #phone-panel.drawer-content.phone-panel-desktop-right #phone-panel-content .phone-body-panel {
-        margin-left: auto !important;
-        margin-right: 0 !important;
+    #phone-panel.drawer-content.phone-panel-desktop-positioned #phone-panel-content .phone-body-panel {
+        position: fixed !important;
+        left: var(--phone-panel-desktop-x, 18px) !important;
+        top: var(--phone-panel-desktop-y, 18px) !important;
+        margin: 0 !important;
+        transform: none !important;
     }
 
     #phone-panel.drawer-content #phone-panel-content .phone-body-panel {
@@ -3110,6 +3100,73 @@ input:checked + .toggle-slider:before {
     overflow-y: auto !important;
     overflow-x: hidden !important;
     -webkit-overflow-scrolling: touch !important;
+}
+
+/* 手机内图片查看器：微信/微博/蜜语生成图统一放大查看 */
+.phone-image-viewer-overlay {
+    position: absolute !important;
+    inset: 0 !important;
+    z-index: 9800 !important;
+    background: rgba(0, 0, 0, 0.96) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    border-radius: inherit !important;
+    touch-action: none !important;
+}
+
+.phone-image-viewer-stage {
+    width: 100% !important;
+    height: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 52px 10px 34px !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    touch-action: none !important;
+}
+
+.phone-image-viewer-img {
+    max-width: 100% !important;
+    max-height: 100% !important;
+    width: auto !important;
+    height: auto !important;
+    object-fit: contain !important;
+    display: block !important;
+    border-radius: 2px !important;
+    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.42) !important;
+    user-select: none !important;
+    -webkit-user-drag: none !important;
+}
+
+.phone-image-viewer-close {
+    position: absolute !important;
+    top: 32px !important;
+    left: 12px !important;
+    z-index: 2 !important;
+    width: 34px !important;
+    height: 34px !important;
+    border: none !important;
+    border-radius: 999px !important;
+    background: rgba(255, 255, 255, 0.13) !important;
+    color: #fff !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 16px !important;
+    cursor: pointer !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+}
+
+.honey-nai-generated-image,
+.message-image,
+.message-image-prompt-front-panel img,
+.weibo-post-img-real {
+    cursor: zoom-in;
 }
 
 /* 微博转发弹窗手势豁免：联系人列表与弹窗内容区域允许稳定纵向手势 */

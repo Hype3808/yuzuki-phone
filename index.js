@@ -27,17 +27,13 @@ const ST_PHONE_UPDATE_LOG_URLS = [
 ];
 const ST_PHONE_CURRENT_UPDATE = {
     version: ST_PHONE_VERSION,
-    date: '2026-05-06',
+    date: '2026-05-07',
     items: [
-        '聊天 API 支持按 App 绑定不同预设，可让蜜语使用 Gemini、微信使用 GPT 等不同请求配置。',
-        '生图功能已接通 NovelAI / NAI，蜜语直播可按设置生成图片，并支持新剧情自动生图。',
-        '生图提示词支持按蜜语、微信、微博分开管理，每个 App 都可以保存多套自定义设定。',
-        '微信和微博生图支持 NAI：AI 或用户发出的中文图片描述会自动转成英文 NovelAI tag 后再请求生图。',
-        '生图设置新增控制台参数调试，可查看尺寸、步数、采样器、最终正负提示词与完整 payload。',
-        '设置 App 的常规、联动、个性化、权限、生图等区域优化为折叠式布局，移动端和桌面端显示更统一。',
-        '个性化设置新增桌面布局切换，可在默认图标布局和卡片布局之间切换。',
-        '个性化设置新增手机边框颜色，可自定义小手机外壳边框颜色。',
-        '日记线下注入新增最近篇数设置：先取最近指定篇数，再过滤其中隐藏日记，不会用更早日记补足。'
+        '电脑端小手机支持自由拖动到任意位置，并记忆下次打开的位置，方便边聊天边操作手机。',
+        '优化蜜语、微信、微博等场景的提示词约束，让回复和生图描述更稳定。',
+        '新增提示词预设页面，支持按功能管理和切换不同提示词设定。',
+        '微信和微博图片卡片新增重新生图，可清理旧图并替换为新生成结果。',
+        '蜜语、微信、微博生成图片支持点击放大查看，像手机相册一样居中预览。'
     ]
 };
 
@@ -87,6 +83,7 @@ if (window.GGP_Loaded) {
     let _phoneViewportSettleTimer = null;
     let _phoneKeyboardLikelyOpenUntil = 0;
     const PHONE_PANEL_DESKTOP_SIDE_KEY = 'phone-panel-desktop-side';
+    const PHONE_PANEL_DESKTOP_POSITION_KEY = 'phone-panel-desktop-position';
     const PHONE_PANEL_DESKTOP_DRAG_PRESS_MS = 520;
     // 🔥 防重放护盾：仅允许被显式标记的旧楼层重新解析（用于 Swipe/Regenerate）
     const _forcedReplayFloors = new Map(); // key: `${chatId}:${floor}`, value: expireAt
@@ -189,6 +186,10 @@ if (window.GGP_Loaded) {
         root.style.setProperty('--phone-panel-top', `${Math.round(Math.max(visualTop, 0))}px`);
         root.style.setProperty('--phone-panel-left', `${Math.round(Math.max(visualLeft, 0))}px`);
         root.style.setProperty('--phone-keyboard-anchor-top', `${Math.round(safeKeyboardAnchorTop)}px`);
+
+        if (!keyboardOpen && panel?.classList?.contains('phone-panel-open')) {
+            applyPhonePanelDesktopPosition();
+        }
     }
 
     function schedulePhonePanelViewportUpdate(options = {}) {
@@ -214,23 +215,94 @@ if (window.GGP_Loaded) {
     }
 
     function isDesktopPhonePanelDragEnabled() {
-        const width = window.innerWidth || document.documentElement?.clientWidth || 0;
-        const hasMouseLikePointer = !window.matchMedia || window.matchMedia('(any-pointer: fine)').matches;
-        return width > 900 && hasMouseLikePointer;
+        const hasDesktopPointer = !window.matchMedia
+            || window.matchMedia('(hover: hover) and (pointer: fine)').matches
+            || window.matchMedia('(any-hover: hover) and (any-pointer: fine)').matches;
+        return !!hasDesktopPointer;
+    }
+
+    function getPhonePanelDesktopViewport() {
+        const viewport = window.visualViewport;
+        return {
+            width: Math.max(320, Math.round(viewport?.width || window.innerWidth || document.documentElement?.clientWidth || 360)),
+            height: Math.max(320, Math.round(viewport?.height || window.innerHeight || document.documentElement?.clientHeight || 640)),
+            left: Math.round(viewport?.offsetLeft || 0),
+            top: Math.round(viewport?.offsetTop || 0)
+        };
+    }
+
+    function getPhonePanelDesktopBodySize() {
+        const panel = document.getElementById('phone-panel');
+        const body = panel?.querySelector?.('.phone-body-panel');
+        const rect = body?.getBoundingClientRect?.();
+        return {
+            width: Math.max(220, Math.round(rect?.width || 300)),
+            height: Math.max(360, Math.round(rect?.height || 620))
+        };
+    }
+
+    function clampPhonePanelDesktopPosition(position, bodySize = null) {
+        const viewport = getPhonePanelDesktopViewport();
+        const size = bodySize || getPhonePanelDesktopBodySize();
+        const margin = 8;
+        const minX = viewport.left + margin;
+        const minY = viewport.top + margin;
+        const maxX = viewport.left + Math.max(margin, viewport.width - size.width - margin);
+        const maxY = viewport.top + Math.max(margin, viewport.height - size.height - margin);
+        const rawX = Number(position?.x);
+        const rawY = Number(position?.y);
+        return {
+            x: Math.round(Math.max(minX, Math.min(maxX, Number.isFinite(rawX) ? rawX : maxX))),
+            y: Math.round(Math.max(minY, Math.min(maxY, Number.isFinite(rawY) ? rawY : Math.max(minY, (viewport.top + viewport.height - size.height) / 2))))
+        };
     }
 
     function normalizePhonePanelDesktopSide(value) {
         return value === 'left' ? 'left' : 'right';
     }
 
-    function applyPhonePanelDesktopSide(side) {
+    function readPhonePanelDesktopPositionRaw() {
+        const raw = storage?.get?.(PHONE_PANEL_DESKTOP_POSITION_KEY, null);
+        if (!raw) return null;
+        if (typeof raw === 'object') return raw;
+        try {
+            return JSON.parse(String(raw));
+        } catch {
+            return null;
+        }
+    }
+
+    function applyPhonePanelDesktopPosition(position = null) {
         const panel = document.getElementById('phone-panel');
         if (!panel) return;
 
-        const normalizedSide = normalizePhonePanelDesktopSide(side);
-        panel.classList.toggle('phone-panel-desktop-left', normalizedSide === 'left');
-        panel.classList.toggle('phone-panel-desktop-right', normalizedSide !== 'left');
-        panel.dataset.desktopSide = normalizedSide;
+        if (!isDesktopPhonePanelDragEnabled()) {
+            panel.classList.remove('phone-panel-desktop-positioned', 'phone-panel-desktop-left', 'phone-panel-desktop-right');
+            panel.style.removeProperty('--phone-panel-desktop-x');
+            panel.style.removeProperty('--phone-panel-desktop-y');
+            return;
+        }
+
+        const bodySize = getPhonePanelDesktopBodySize();
+        const storedPosition = position || readPhonePanelDesktopPositionRaw();
+        let nextPosition = storedPosition ? clampPhonePanelDesktopPosition(storedPosition, bodySize) : null;
+        if (!nextPosition) {
+            const side = loadPhonePanelDesktopSide();
+            const viewport = getPhonePanelDesktopViewport();
+            nextPosition = clampPhonePanelDesktopPosition({
+                x: side === 'left'
+                    ? viewport.left + 18
+                    : viewport.left + viewport.width - bodySize.width - 18,
+                y: viewport.top + Math.max(8, (viewport.height - bodySize.height) / 2)
+            }, bodySize);
+        }
+
+        panel.classList.add('phone-panel-desktop-positioned');
+        panel.classList.remove('phone-panel-desktop-left', 'phone-panel-desktop-right');
+        panel.style.setProperty('--phone-panel-desktop-x', `${nextPosition.x}px`);
+        panel.style.setProperty('--phone-panel-desktop-y', `${nextPosition.y}px`);
+        panel.dataset.desktopX = String(nextPosition.x);
+        panel.dataset.desktopY = String(nextPosition.y);
     }
 
     function loadPhonePanelDesktopSide() {
@@ -238,13 +310,14 @@ if (window.GGP_Loaded) {
         return normalizePhonePanelDesktopSide(storedSide);
     }
 
-    async function savePhonePanelDesktopSide(side) {
-        const normalizedSide = normalizePhonePanelDesktopSide(side);
-        applyPhonePanelDesktopSide(normalizedSide);
+    async function savePhonePanelDesktopPosition(position) {
+        const nextPosition = clampPhonePanelDesktopPosition(position);
+        applyPhonePanelDesktopPosition(nextPosition);
         try {
-            await storage?.set?.(PHONE_PANEL_DESKTOP_SIDE_KEY, normalizedSide);
+            await storage?.set?.(PHONE_PANEL_DESKTOP_POSITION_KEY, JSON.stringify(nextPosition));
+            await storage?.set?.(PHONE_PANEL_DESKTOP_SIDE_KEY, nextPosition.x < (getPhonePanelDesktopViewport().left + getPhonePanelDesktopViewport().width / 2) ? 'left' : 'right');
         } catch (e) {
-            console.warn('[PhonePanel] 保存桌面停靠位置失败:', e);
+            console.warn('[PhonePanel] 保存桌面位置失败:', e);
         }
     }
 
@@ -252,6 +325,7 @@ if (window.GGP_Loaded) {
         if (!panel || panel.dataset.desktopDockDragBound === '1') return;
         panel.dataset.desktopDockDragBound = '1';
 
+        const dragDoc = panel.ownerDocument || document;
         let pressTimer = null;
         let activePointerId = null;
         let startX = 0;
@@ -260,6 +334,8 @@ if (window.GGP_Loaded) {
         let currentY = 0;
         let isDragging = false;
         let suppressNextClick = false;
+        let dragStartRect = null;
+        let activePhoneBody = null;
 
         const clearPressTimer = () => {
             if (pressTimer) {
@@ -276,6 +352,8 @@ if (window.GGP_Loaded) {
             currentX = 0;
             currentY = 0;
             isDragging = false;
+            dragStartRect = null;
+            activePhoneBody = null;
         };
 
         const isBlockedDragTarget = (target) => {
@@ -299,13 +377,27 @@ if (window.GGP_Loaded) {
                 || null;
         };
 
+        const bindDocumentDragEvents = () => {
+            dragDoc.addEventListener('pointermove', handlePointerMove, { passive: false });
+            dragDoc.addEventListener('pointerup', finishPointer);
+            dragDoc.addEventListener('pointercancel', cancelPointer);
+        };
+
+        const unbindDocumentDragEvents = () => {
+            dragDoc.removeEventListener('pointermove', handlePointerMove);
+            dragDoc.removeEventListener('pointerup', finishPointer);
+            dragDoc.removeEventListener('pointercancel', cancelPointer);
+        };
+
         const startDragging = (event, phoneBody) => {
             if (activePointerId !== event.pointerId || !phoneBody || !isDesktopPhonePanelDragEnabled()) return;
 
+            clearPressTimer();
             isDragging = true;
             suppressNextClick = true;
             currentX = Number.isFinite(currentX) ? currentX : event.clientX;
             currentY = Number.isFinite(currentY) ? currentY : event.clientY;
+            dragStartRect = phoneBody.getBoundingClientRect();
             panel.classList.add('phone-panel-desktop-dragging');
             panel.style.setProperty('--phone-panel-drag-x', `${Math.round(currentX - startX)}px`);
             panel.style.setProperty('--phone-panel-drag-y', `${Math.round(currentY - startY)}px`);
@@ -323,16 +415,19 @@ if (window.GGP_Loaded) {
 
             resetDragState();
             activePointerId = event.pointerId;
+            activePhoneBody = phoneBody;
             startX = event.clientX;
             startY = event.clientY;
             currentX = startX;
             currentY = startY;
+            bindDocumentDragEvents();
+            phoneBody.setPointerCapture?.(event.pointerId);
             pressTimer = setTimeout(() => {
                 startDragging(event, phoneBody);
             }, PHONE_PANEL_DESKTOP_DRAG_PRESS_MS);
         });
 
-        panel.addEventListener('pointermove', (event) => {
+        const handlePointerMove = (event) => {
             if (activePointerId !== event.pointerId) return;
 
             const deltaX = event.clientX - startX;
@@ -341,21 +436,33 @@ if (window.GGP_Loaded) {
             currentX = event.clientX;
             currentY = event.clientY;
 
+            if (!isDragging && (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10)) {
+                startDragging(event, activePhoneBody);
+            }
             if (!isDragging) return;
 
             event.preventDefault();
             event.stopPropagation();
             panel.style.setProperty('--phone-panel-drag-x', `${Math.round(deltaX)}px`);
             panel.style.setProperty('--phone-panel-drag-y', `${Math.round(deltaY)}px`);
-        }, { passive: false });
+        };
 
         const finishPointer = async (event) => {
             if (activePointerId !== event.pointerId) return;
+            unbindDocumentDragEvents();
 
             const shouldSave = isDragging;
-            const nextSide = currentX < (window.innerWidth || document.documentElement?.clientWidth || 0) / 2
-                ? 'left'
-                : 'right';
+            const deltaX = currentX - startX;
+            const deltaY = currentY - startY;
+            const nextPosition = dragStartRect
+                ? {
+                    x: dragStartRect.left + deltaX,
+                    y: dragStartRect.top + deltaY
+                }
+                : {
+                    x: currentX,
+                    y: currentY
+                };
 
             if (isDragging) {
                 event.preventDefault();
@@ -369,16 +476,16 @@ if (window.GGP_Loaded) {
 
             if (shouldSave) {
                 suppressNextClick = true;
-                savePhonePanelDesktopSide(nextSide);
+                savePhonePanelDesktopPosition(nextPosition);
                 setTimeout(() => {
                     suppressNextClick = false;
                 }, 120);
             }
         };
 
-        panel.addEventListener('pointerup', finishPointer);
-        panel.addEventListener('pointercancel', (event) => {
+        const cancelPointer = (event) => {
             if (activePointerId !== event.pointerId) return;
+            unbindDocumentDragEvents();
             panel.classList.remove('phone-panel-desktop-dragging');
             panel.style.removeProperty('--phone-panel-drag-x');
             panel.style.removeProperty('--phone-panel-drag-y');
@@ -386,7 +493,7 @@ if (window.GGP_Loaded) {
             setTimeout(() => {
                 suppressNextClick = false;
             }, 80);
-        });
+        };
 
         panel.addEventListener('click', (event) => {
             if (!suppressNextClick) return;
@@ -3258,7 +3365,7 @@ if (window.GGP_Loaded) {
         const drawerPanel = document.getElementById('phone-panel');
         const triggerTarget = drawerEntry || drawerIcon;
 
-        applyPhonePanelDesktopSide(loadPhonePanelDesktopSide());
+        applyPhonePanelDesktopPosition();
         bindPhonePanelDesktopDockDrag(drawerPanel);
 
         // 🔥 新增：长按控制全局主开关逻辑
@@ -3369,7 +3476,7 @@ if (window.GGP_Loaded) {
         if (!panel || !icon) return;
 
         updatePhonePanelViewportHeight({ force: true });
-        applyPhonePanelDesktopSide(loadPhonePanelDesktopSide());
+        applyPhonePanelDesktopPosition();
         bindPhonePanelDesktopDockDrag(panel);
         panel.classList.add('phone-panel-open');
         panel.classList.remove('phone-panel-hidden');

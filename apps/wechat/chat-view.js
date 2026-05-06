@@ -1475,6 +1475,12 @@ renderChatRoom(chat) {
         }
     }
 
+    _openPhoneImageViewer(imageUrl, alt = '') {
+        const safeUrl = String(imageUrl || '').trim();
+        if (!safeUrl) return;
+        this.app?.phoneShell?.showImageViewer?.(safeUrl, { alt });
+    }
+
     renderImagePromptCard(msg) {
         const promptRaw = String(msg?.imagePrompt || msg?.content || '待生成图片').trim() || '待生成图片';
         const promptText = this._escapeHtml(promptRaw);
@@ -2586,6 +2592,20 @@ renderChatRoom(chat) {
                 if (messageId) {
                     await this.generateImagePromptMessage(messageId);
                 }
+            });
+        });
+        currentView.querySelectorAll('.message-image-prompt-front-panel img').forEach(img => {
+            img.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this._openPhoneImageViewer(e.currentTarget.getAttribute('src'), e.currentTarget.getAttribute('alt') || '');
+            });
+        });
+        currentView.querySelectorAll('.message-image').forEach(img => {
+            img.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this._openPhoneImageViewer(e.currentTarget.getAttribute('src'), e.currentTarget.getAttribute('alt') || '');
             });
         });
         currentView.querySelectorAll('.message-image-prompt-show-back').forEach(btn => {

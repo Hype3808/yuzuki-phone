@@ -1548,6 +1548,7 @@ export class HoneyView {
             } else if (generatedImg) {
                 generatedImg.remove();
             }
+            this._bindGeneratedImageViewer(root);
 
             const statusEl = naiPlaceholder.querySelector('.honey-nai-status');
             if (imageStatus === 'failed' && data.imageGenerationError) {
@@ -2241,12 +2242,30 @@ export class HoneyView {
         }
     }
 
+    _bindGeneratedImageViewer(root = null) {
+        const scope = root || document.querySelector('.phone-view-current .honey-page-live') || document.querySelector('.honey-page-live');
+        if (!scope) return;
+        scope.querySelectorAll('.honey-nai-generated-image').forEach(img => {
+            if (img.dataset.honeyImageViewerBound === '1') return;
+            img.dataset.honeyImageViewerBound = '1';
+            img.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const imageUrl = e.currentTarget?.getAttribute('src') || '';
+                if (imageUrl) {
+                    this.app?.phoneShell?.showImageViewer?.(imageUrl, { alt: '蜜语直播图片' });
+                }
+            });
+        });
+    }
+
     bindLiveEvents() {
         const root = document.querySelector('.phone-view-current .honey-page-live') || document.querySelector('.honey-page-live');
         if (!root) return;
         const isUserLive = this._isUserLiveScene(this.currentSceneData || this.selectedTopic);
         this._bindLivePullRefresh(root, isUserLive);
         this._syncLiveRefreshIndicatorByState(root);
+        this._bindGeneratedImageViewer(root);
         if (root.dataset.honeyLiveBound === '1') return;
         root.dataset.honeyLiveBound = '1';
         this._bindLiveKeyboardViewport(root);
