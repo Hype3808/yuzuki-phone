@@ -84,7 +84,6 @@ if (window.GGP_Loaded) {
     let _phoneKeyboardLikelyOpenUntil = 0;
     const PHONE_PANEL_DESKTOP_SIDE_KEY = 'phone-panel-desktop-side';
     const PHONE_PANEL_DESKTOP_POSITION_KEY = 'phone-panel-desktop-position';
-    const PHONE_PANEL_DESKTOP_DRAG_PRESS_MS = 520;
     // 🔥 防重放护盾：仅允许被显式标记的旧楼层重新解析（用于 Swipe/Regenerate）
     const _forcedReplayFloors = new Map(); // key: `${chatId}:${floor}`, value: expireAt
 
@@ -421,10 +420,6 @@ if (window.GGP_Loaded) {
             currentX = startX;
             currentY = startY;
             bindDocumentDragEvents();
-            phoneBody.setPointerCapture?.(event.pointerId);
-            pressTimer = setTimeout(() => {
-                startDragging(event, phoneBody);
-            }, PHONE_PANEL_DESKTOP_DRAG_PRESS_MS);
         });
 
         const handlePointerMove = (event) => {
