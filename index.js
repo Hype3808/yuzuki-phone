@@ -10,13 +10,13 @@
  * Copyright (c) yuzuki. All rights reserved.
  * ======================================================== */
 // ========================================
-// 虚拟手机互动系统 v1.0.4
+// 虚拟手机互动系统 v1.0.5
 // SillyTavern 扩展插件
 // ========================================
 
 const ST_PHONE_BASE_URL = new URL('./', import.meta.url).href;
 const ST_PHONE_GLOBAL_CSS_URL = new URL('./phone.css', import.meta.url).href;
-const ST_PHONE_VERSION = '1.0.4';
+const ST_PHONE_VERSION = '1.0.5';
 const ST_PHONE_UPDATE_MANIFEST_URLS = [
     'https://raw.githubusercontent.com/gaigai315/yuzuki-phone/main/manifest.json',
     'https://raw.githubusercontent.com/gaigai315/yuzuki-phone/master/manifest.json'
@@ -27,7 +27,7 @@ const ST_PHONE_UPDATE_LOG_URLS = [
 ];
 const ST_PHONE_CURRENT_UPDATE = {
     version: ST_PHONE_VERSION,
-    date: '2026-05-05',
+    date: '2026-05-06',
     items: [
         '聊天 API 支持按 App 绑定不同预设，可让蜜语使用 Gemini、微信使用 GPT 等不同请求配置。',
         '生图功能已接通 NovelAI / NAI，蜜语直播可按设置生成图片，并支持新剧情自动生图。',
@@ -36,7 +36,8 @@ const ST_PHONE_CURRENT_UPDATE = {
         '生图设置新增控制台参数调试，可查看尺寸、步数、采样器、最终正负提示词与完整 payload。',
         '设置 App 的常规、联动、个性化、权限、生图等区域优化为折叠式布局，移动端和桌面端显示更统一。',
         '个性化设置新增桌面布局切换，可在默认图标布局和卡片布局之间切换。',
-        '个性化设置新增手机边框颜色，可自定义小手机外壳边框颜色。'
+        '个性化设置新增手机边框颜色，可自定义小手机外壳边框颜色。',
+        '日记线下注入新增最近篇数设置：先取最近指定篇数，再过滤其中隐藏日记，不会用更早日记补足。'
     ]
 };
 

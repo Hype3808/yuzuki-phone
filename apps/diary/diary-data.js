@@ -316,10 +316,18 @@ export class DiaryData {
         return changed;
     }
 
-    buildOfflineInjectionContent() {
+    buildOfflineInjectionContent(options = {}) {
+        const rawLimit = Number.parseInt(
+            options.limit ?? this.storage?.get?.('offline-diary-history-limit') ?? 10,
+            10
+        );
+        const limit = Math.max(1, Math.min(9999, Number.isFinite(rawLimit) ? rawLimit : 10));
         const entries = this.getEntries()
-            .filter(entry => entry && entry.offlineHidden !== true && String(entry.content || '').trim())
-            .sort((a, b) => Number(a.createdAt || 0) - Number(b.createdAt || 0));
+            .filter(entry => entry && String(entry.content || '').trim())
+            .sort((a, b) => this.getEntrySortTimestamp(b) - this.getEntrySortTimestamp(a))
+            .slice(0, limit)
+            .filter(entry => entry.offlineHidden !== true)
+            .sort((a, b) => this.getEntrySortTimestamp(a) - this.getEntrySortTimestamp(b));
         if (entries.length === 0) return '';
 
         const cleanText = (value, maxLen = 5000) => String(value || '')

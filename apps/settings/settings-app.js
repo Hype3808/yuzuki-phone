@@ -481,12 +481,19 @@ export class SettingsApp {
                             <div class="setting-item setting-toggle">
                                 <div>
                                     <div class="setting-label">日记记录注入线下</div>
-                                    <div class="setting-desc">关闭后，{{DIARY_HISTORY}} 不会替换为日记内容，隐藏日记也始终不注入</div>
+                                    <div class="setting-desc">关闭后，{{DIARY_HISTORY}} 不会替换为日记内容；隐藏日记在最近篇数内也不会注入</div>
                                 </div>
                                 <label class="toggle-switch">
                                     <input type="checkbox" id="offline-diary-history-enabled" ${(this.storage.get('offline-diary-history-enabled') === true || this.storage.get('offline-diary-history-enabled') === 'true') ? 'checked' : ''}>
                                     <span class="toggle-slider"></span>
                                 </label>
+                            </div>
+
+                            <div class="setting-item" style="display: flex; align-items: center; justify-content: space-between;">
+                                <span style="font-size: 14px; color: #000;">最近日记篇数</span>
+                                <input type="number" id="offline-diary-history-limit" min="1" max="9999"
+                                       value="${this.storage.get('offline-diary-history-limit') || 10}"
+                                       style="width: 55px; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; text-align: center; font-size: 14px; background: #fafafa;">
                             </div>
 
                             <div class="setting-item setting-toggle">
@@ -665,7 +672,7 @@ export class SettingsApp {
                         <div class="setting-section" style="padding: 12px 14px; border-radius: 14px;">
                             <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
                                 <div class="setting-label">版本</div>
-                                <div class="setting-value">v1.0.4</div>
+                                <div class="setting-value">v1.0.5</div>
                             </div>
                             <div class="setting-desc" style="margin-top: 8px;">
                                 每个聊天会话窗口独立存储<br>
@@ -2075,6 +2082,13 @@ export class SettingsApp {
 
         document.getElementById('offline-diary-history-enabled')?.addEventListener('change', async (e) => {
             await this.storage.set('offline-diary-history-enabled', !!e.target.checked);
+        });
+
+        document.getElementById('offline-diary-history-limit')?.addEventListener('change', async (e) => {
+            const limit = parseInt(e.target.value) || 10;
+            const validLimit = Math.max(1, Math.min(9999, limit));
+            e.target.value = validLimit;
+            await this.storage.set('offline-diary-history-limit', validLimit);
         });
 
         // 📞 通话发送条数设置
