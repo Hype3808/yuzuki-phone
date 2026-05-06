@@ -369,6 +369,11 @@ if (window.GGP_Loaded) {
             ].join(','));
         };
 
+        const isPhonePanelDragHandle = (target) => {
+            if (!target || typeof target.closest !== 'function') return false;
+            return !!target.closest('.phone-body-panel') && !target.closest('.phone-screen');
+        };
+
         const getPhoneBodyFromEvent = (event) => {
             const path = typeof event.composedPath === 'function' ? event.composedPath() : [];
             return path.find(el => el?.classList?.contains?.('phone-body-panel'))
@@ -411,6 +416,7 @@ if (window.GGP_Loaded) {
 
             const phoneBody = getPhoneBodyFromEvent(event);
             if (!phoneBody || isBlockedDragTarget(event.target)) return;
+            if (!isPhonePanelDragHandle(event.target)) return;
 
             resetDragState();
             activePointerId = event.pointerId;

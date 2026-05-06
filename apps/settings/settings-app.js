@@ -1157,6 +1157,7 @@ export class SettingsApp {
         const siliconflowModel = String(this.storage.get('phone-image-siliconflow-model') || this.storage.get('image_generation_model') || 'Kwai-Kolors/Kolors').trim();
         const novelaiSite = String(this.storage.get('phone-image-novelai-site') || 'official').trim() || 'official';
         const novelaiUrl = String(this.storage.get('phone-image-novelai-url') || '').trim();
+        const novelaiQueueUrl = String(this.storage.get('phone-image-novelai-queue-url') || '').trim();
         const sampler = String(this.storage.get('phone-image-novelai-sampler') || 'k_euler').trim() || 'k_euler';
         const schedule = String(this.storage.get('phone-image-novelai-schedule') || 'native').trim() || 'native';
         const novelaiSamplers = [
@@ -1270,6 +1271,15 @@ export class SettingsApp {
                         <input type="checkbox" id="phone-image-debug-payload" ${debugPayload ? 'checked' : ''}>
                         <span class="toggle-slider"></span>
                     </label>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-label">共享队列服务 URL</div>
+                    <div class="setting-desc">多人共用同一个 NAI Key 时填写；留空则直接请求 NAI。</div>
+                    <input type="text" id="phone-image-novelai-queue-url"
+                           value="${this._escapeHtml(novelaiQueueUrl)}"
+                           placeholder="例如：https://your-queue.example.com"
+                           style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
                 </div>
 
                 <div class="setting-item" style="display: flex; align-items: center; justify-content: space-between;">
@@ -2320,6 +2330,7 @@ export class SettingsApp {
                 await this.storage.set('phone-image-novelai-key', String(document.getElementById('phone-image-novelai-key')?.value || '').trim());
                 await this.storage.set('phone-image-novelai-site', String(document.getElementById('phone-image-novelai-site')?.value || 'official').trim() || 'official');
                 await this.storage.set('phone-image-novelai-url', String(document.getElementById('phone-image-novelai-url')?.value || '').trim());
+                await this.storage.set('phone-image-novelai-queue-url', String(document.getElementById('phone-image-novelai-queue-url')?.value || '').trim());
                 await this.storage.set('phone-image-novelai-model', String(document.getElementById('phone-image-novelai-model')?.value || '').trim() || 'nai-diffusion-4-5-full');
                 await this.storage.set('phone-image-novelai-sampler', String(document.getElementById('phone-image-novelai-sampler')?.value || '').trim() || 'k_euler');
                 await this.storage.set('phone-image-novelai-schedule', String(document.getElementById('phone-image-novelai-schedule')?.value || '').trim() || 'native');
@@ -2331,7 +2342,8 @@ export class SettingsApp {
                     btn.disabled = true;
                     btn.textContent = '测试中...';
                 }
-                setResult('正在请求 NovelAI...', '#7c3aed');
+                const queueUrl = String(document.getElementById('phone-image-novelai-queue-url')?.value || '').trim();
+                setResult(queueUrl ? '正在进入 NAI 共享队列...' : '正在请求 NovelAI...', '#7c3aed');
                 const result = await imageManager.generate({
                     app: 'honey',
                     provider: 'novelai',
@@ -2369,6 +2381,10 @@ export class SettingsApp {
 
         document.getElementById('phone-image-novelai-url')?.addEventListener('change', async (e) => {
             await this.storage.set('phone-image-novelai-url', String(e.target.value || '').trim());
+        });
+
+        document.getElementById('phone-image-novelai-queue-url')?.addEventListener('change', async (e) => {
+            await this.storage.set('phone-image-novelai-queue-url', String(e.target.value || '').trim());
         });
 
         imageNovelaiModelPreset?.addEventListener('change', async (e) => {

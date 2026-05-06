@@ -13,6 +13,8 @@
 export class ImageGenerationManager {
     constructor(storage) {
         this.storage = storage;
+        this._queueUserId = null;
+        this._lastQueueNotice = '';
     }
 
     _get(key, fallback = '') {
@@ -197,6 +199,7 @@ export class ImageGenerationManager {
             apiKey: String(overrides.apiKey || this._get(`phone-image-${provider}-key`, '') || (provider === 'siliconflow' ? legacySiliconflowKey : '')).trim(),
             site: String(overrides.site || this._get('phone-image-novelai-site', 'official')).trim() || 'official',
             customUrl: String(overrides.customUrl || this._get('phone-image-novelai-url', '')).trim(),
+            queueUrl: String(overrides.queueUrl || this._get('phone-image-novelai-queue-url', '')).trim(),
             model: String(overrides.model || this._get(`phone-image-${provider}-model`, '') || (provider === 'novelai' ? 'nai-diffusion-4-5-full' : legacySiliconflowModel || 'Kwai-Kolors/Kolors')).trim(),
             sampler: this._normalizeNovelAISampler(overrides.sampler || this._get('phone-image-novelai-sampler', 'k_euler')),
             schedule: this._normalizeNovelAISchedule(overrides.schedule || this._get('phone-image-novelai-schedule', 'native')),
@@ -323,6 +326,191 @@ export class ImageGenerationManager {
             return config.customUrl.replace(/\/+$/, '');
         }
         return 'https://image.novelai.net';
+    }
+
+    _resolveNovelAIQueueUrl(config) {
+        return String(config?.queueUrl || '').trim().replace(/\/+$/, '');
+    }
+
+    _createQueueTaskId() {
+        return `phone-nai-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    }
+
+    _getQueueUserId() {
+        if (this._queueUserId) return this._queueUserId;
+        const storageKey = 'phone_nai_queue_user_id';
+        try {
+            const stored = window.localStorage?.getItem(storageKey);
+            if (stored) {
+                this._queueUserId = stored;
+                return stored;
+            }
+            const cryptoApi = globalThis.crypto;
+            const randomPart = typeof cryptoApi?.randomUUID === 'function'
+                ? cryptoApi.randomUUID()
+                : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+            const userId = `phone-${randomPart}`;
+            window.localStorage?.setItem(storageKey, userId);
+            this._queueUserId = userId;
+            return userId;
+        } catch (e) {
+            this._queueUserId = `phone-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+            return this._queueUserId;
+        }
+    }
+
+    async _hashQueueKey(apiKey) {
+        const text = String(apiKey || '');
+        if (!text) throw new Error('缺少 NAI API Key，无法进入共享队列');
+        try {
+            const cryptoApi = globalThis.crypto;
+            if (typeof cryptoApi?.subtle?.digest === 'function' && typeof TextEncoder === 'function') {
+                const buffer = await cryptoApi.subtle.digest('SHA-256', new TextEncoder().encode(text));
+                return Array.from(new Uint8Array(buffer)).map(byte => byte.toString(16).padStart(2, '0')).join('');
+            }
+        } catch (e) {}
+
+        let hash = 0;
+        for (let i = 0; i < text.length; i++) {
+            hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
+        }
+        return `fallback-${Math.abs(hash).toString(16)}`;
+    }
+
+    _sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    _getQueueToken(payload) {
+        return String(payload?.token || payload?.queue_token || payload?.queueToken || '').trim();
+    }
+
+    _getQueuePosition(payload) {
+        const raw = payload?.position ?? payload?.queue_position ?? payload?.rank;
+        const value = Number(raw);
+        return Number.isFinite(value) ? value : null;
+    }
+
+    _getQueueSize(payload) {
+        const raw = payload?.queue_size ?? payload?.queueSize ?? payload?.size;
+        const value = Number(raw);
+        return Number.isFinite(value) ? value : null;
+    }
+
+    _formatQueueStatus(payload) {
+        const position = this._getQueuePosition(payload);
+        const size = this._getQueueSize(payload);
+        if (position === null) return '';
+        const displayPosition = Math.max(1, position + 1);
+        if (size !== null && size > 0) return `NAI 队列排队中：第 ${displayPosition}/${size} 位`;
+        return `NAI 队列排队中：第 ${displayPosition} 位`;
+    }
+
+    _noticeQueueStatus(payload, force = false) {
+        const text = this._formatQueueStatus(payload);
+        if (!text || (!force && text === this._lastQueueNotice)) return;
+        this._lastQueueNotice = text;
+        console.log(`[NovelAI Queue] ${text}`);
+        try {
+            window.VirtualPhone?.phoneShell?.showNotification?.('NAI 共享队列', text, '🎨');
+        } catch (e) {}
+    }
+
+    async _queueRequest(baseUrl, path, { method = 'GET', body = null, query = null } = {}) {
+        const url = new URL(`${baseUrl}${path}`);
+        if (query && typeof query === 'object') {
+            Object.entries(query).forEach(([key, value]) => {
+                if (value !== null && value !== undefined && value !== '') {
+                    url.searchParams.set(key, String(value));
+                }
+            });
+        }
+
+        const response = await fetch(url.toString(), {
+            method,
+            headers: method === 'POST' ? { 'Content-Type': 'application/json' } : undefined,
+            body: method === 'POST' ? JSON.stringify(body || {}) : undefined
+        });
+        const text = await response.text().catch(() => '');
+        let payload = null;
+        try { payload = text ? JSON.parse(text) : null; } catch (e) { payload = null; }
+        if (!response.ok) {
+            const message = payload?.message || payload?.error || text || '';
+            throw new Error(`NAI 队列服务请求失败 (${response.status})${message ? `: ${String(message).slice(0, 180)}` : ''}`);
+        }
+        return payload || {};
+    }
+
+    async _waitForNovelAIQueueTurn(config, options = {}) {
+        const baseUrl = this._resolveNovelAIQueueUrl(config);
+        if (!baseUrl) return null;
+
+        const keyHash = await this._hashQueueKey(config.apiKey);
+        const userId = this._getQueueUserId();
+        const taskId = String(options.queueTaskId || this._createQueueTaskId()).trim();
+        const queuePayload = { key_hash: keyHash, user_id: userId, task_id: taskId };
+        let token = '';
+        let joined = false;
+        let leftQueue = false;
+
+        const leave = async () => {
+            if (!joined || leftQueue) return;
+            leftQueue = true;
+            await this._queueRequest(baseUrl, '/leave-queue', {
+                method: 'POST',
+                body: { ...queuePayload, token }
+            }).catch((err) => console.warn('[NovelAI Queue] 离开队列失败:', err));
+        };
+
+        try {
+            const joinedInfo = await this._queueRequest(baseUrl, '/queue', {
+                method: 'POST',
+                body: queuePayload
+            });
+            joined = true;
+            token = this._getQueueToken(joinedInfo);
+            this._noticeQueueStatus(joinedInfo, true);
+            if (joinedInfo?.can_run && token) {
+                return { baseUrl, keyHash, userId, taskId, token };
+            }
+
+            for (let retry = 0; retry < 120; retry++) {
+                if (options?.signal?.aborted) {
+                    await leave();
+                    throw new Error('已取消 NAI 生图队列等待');
+                }
+                await this._sleep(3000);
+                const turnInfo = await this._queueRequest(baseUrl, '/my-turn', {
+                    query: queuePayload
+                });
+                token = this._getQueueToken(turnInfo) || token;
+                this._noticeQueueStatus(turnInfo);
+                if (turnInfo?.can_run && token) {
+                    return { baseUrl, keyHash, userId, taskId, token };
+                }
+            }
+
+            await leave();
+            throw new Error('等待 NAI 共享队列超时，请稍后重试');
+        } catch (err) {
+            if (!String(err?.message || '').includes('已取消 NAI 生图队列等待')) {
+                await leave();
+            }
+            throw err;
+        }
+    }
+
+    async _finishNovelAIQueue(queueInfo) {
+        if (!queueInfo?.baseUrl || !queueInfo?.token) return;
+        await this._queueRequest(queueInfo.baseUrl, '/complete', {
+            method: 'POST',
+            body: {
+                key_hash: queueInfo.keyHash,
+                user_id: queueInfo.userId,
+                task_id: queueInfo.taskId,
+                token: queueInfo.token
+            }
+        }).catch((err) => console.warn('[NovelAI Queue] 完成队列任务失败:', err));
     }
 
     _extractBase64Image(payload) {
@@ -619,52 +807,58 @@ export class ImageGenerationManager {
         const endpoint = `${this._resolveNovelAIEndpoint(config)}/ai/generate-image`;
         const payload = this._buildNovelAIPayload(options, config);
         this._debugNovelAIRequest({ endpoint, payload, config, options });
-        const response = await fetch(endpoint, {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${config.apiKey}`,
-                'Content-Type': 'application/json',
-                Accept: 'application/x-zip-compressed, image/png, application/json'
-            },
-            body: JSON.stringify(payload)
-        });
+        const queueInfo = await this._waitForNovelAIQueueTurn(config, options);
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${config.apiKey}`,
+                    'Content-Type': 'application/json',
+                    Accept: 'application/x-zip-compressed, image/png, application/json'
+                },
+                body: JSON.stringify(payload),
+                signal: options.signal
+            });
 
-        if (!response.ok) {
-            const text = await response.text().catch(() => '');
-            const hint = response.status >= 500
-                ? `；当前参数 model=${config.model}, sampler=${config.sampler}, schedule=${config.schedule}，可先用 native + k_euler 测试`
-                : '';
-            throw new Error(`NovelAI 请求失败 (${response.status})${hint}${text ? `: ${text.slice(0, 180)}` : ''}`);
-        }
+            if (!response.ok) {
+                const text = await response.text().catch(() => '');
+                const hint = response.status >= 500
+                    ? `；当前参数 model=${config.model}, sampler=${config.sampler}, schedule=${config.schedule}，可先用 native + k_euler 测试`
+                    : '';
+                throw new Error(`NovelAI 请求失败 (${response.status})${hint}${text ? `: ${text.slice(0, 180)}` : ''}`);
+            }
 
-        const contentType = String(response.headers.get('content-type') || '').toLowerCase();
-        let imageData = '';
-        if (contentType.includes('application/json')) {
-            const payload = await response.json();
-            imageData = this._extractBase64Image(payload);
-        } else {
-            imageData = await this._readZipImage(response);
+            const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+            let imageData = '';
+            if (contentType.includes('application/json')) {
+                const payload = await response.json();
+                imageData = this._extractBase64Image(payload);
+            } else {
+                imageData = await this._readZipImage(response);
+            }
+            if (!imageData) throw new Error('NovelAI 未返回可用图片');
+            const imageInfo = await this._waitForImageDecode(imageData).catch((err) => {
+                throw new Error(`NovelAI 返回图片不可用: ${err?.message || err}`);
+            });
+            return {
+                provider: 'novelai',
+                model: config.model,
+                prompt,
+                width: imageInfo.width,
+                height: imageInfo.height,
+                requestedWidth: Number(payload?.parameters?.width || config.width),
+                requestedHeight: Number(payload?.parameters?.height || config.height),
+                steps: Number(payload?.parameters?.steps || config.steps),
+                sampler: config.sampler,
+                schedule: config.schedule,
+                scale: Number(payload?.parameters?.scale ?? config.scale),
+                seed: Number(payload?.parameters?.seed ?? -1),
+                imageData,
+                imageUrl: imageData
+            };
+        } finally {
+            await this._finishNovelAIQueue(queueInfo);
         }
-        if (!imageData) throw new Error('NovelAI 未返回可用图片');
-        const imageInfo = await this._waitForImageDecode(imageData).catch((err) => {
-            throw new Error(`NovelAI 返回图片不可用: ${err?.message || err}`);
-        });
-        return {
-            provider: 'novelai',
-            model: config.model,
-            prompt,
-            width: imageInfo.width,
-            height: imageInfo.height,
-            requestedWidth: Number(payload?.parameters?.width || config.width),
-            requestedHeight: Number(payload?.parameters?.height || config.height),
-            steps: Number(payload?.parameters?.steps || config.steps),
-            sampler: config.sampler,
-            schedule: config.schedule,
-            scale: Number(payload?.parameters?.scale ?? config.scale),
-            seed: Number(payload?.parameters?.seed ?? -1),
-            imageData,
-            imageUrl: imageData
-        };
     }
 
     async _generateSiliconflow(options, config) {

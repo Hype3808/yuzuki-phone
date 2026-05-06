@@ -24,6 +24,7 @@ export class PhoneCallView {
         this.currentCaller = '';
         this.audioPlayer = new Audio();
         this.currentPlayingBubble = null;
+        this.returnViewAfterSettings = 'main';
     }
 
     render() {
@@ -127,6 +128,7 @@ export class PhoneCallView {
 
         // 绑定设置按钮
         document.getElementById('phone-call-open-settings')?.addEventListener('click', () => {
+            this.returnViewAfterSettings = this.currentView || 'main';
             this.renderSettings();
         });
 
@@ -263,9 +265,14 @@ export class PhoneCallView {
     // 设置界面（通话提示词编辑）
     // ========================================
     renderSettings() {
+        const previousView = this.currentView === 'settings'
+            ? (this.returnViewAfterSettings || 'main')
+            : (this.currentView || 'main');
+        this.returnViewAfterSettings = previousView;
         this.currentView = 'settings';
 
-        const callPrompt = this._getPromptManager()?.getPromptForFeature('phone', 'call') || '';
+        const pm = this._getPromptManager();
+        const callPrompt = pm?.getPromptForFeature('phone', 'call') || '';
 
         const html = `
             <div class="phone-call-settings">
@@ -319,7 +326,7 @@ export class PhoneCallView {
 
         // 返回（用 onclick 覆盖式绑定，防止 DOM Diffing 导致重复监听）
         const backBtn = query('#phone-call-settings-back');
-        if (backBtn) backBtn.onclick = () => this.renderMain();
+        if (backBtn) backBtn.onclick = () => this._returnFromSettings();
 
         // 保存通话提示词
         const saveBtn = query('#phone-call-save-call');
@@ -349,6 +356,20 @@ export class PhoneCallView {
             textarea.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
             textarea.addEventListener('touchend', (e) => e.stopPropagation(), { passive: true });
         }
+    }
+
+    _returnFromSettings() {
+        const targetView = this.returnViewAfterSettings || 'main';
+        this.returnViewAfterSettings = 'main';
+        if (targetView === 'active' && this.currentCaller) {
+            this.renderActiveCall(this.currentCaller);
+            return;
+        }
+        if (targetView === 'incoming' && this.currentCaller) {
+            this.renderIncomingCall(this.currentCaller);
+            return;
+        }
+        this.renderMain();
     }
 
     _bindPromptFoldToggles(root) {
