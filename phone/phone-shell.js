@@ -258,6 +258,15 @@ export class PhoneShell {
 
         // 触摸开始
         phoneBody.addEventListener('touchstart', (e) => {
+            if (!e.target?.closest?.('.phone-screen')) {
+                this.touchStartX = undefined;
+                this.touchStartY = undefined;
+                this.touchCurrentX = undefined;
+                this.isSwiping = false;
+                slideTarget = null;
+                return;
+            }
+
             // 🔥 核心修复：输入中（含光标拖拽手柄）时放弃全局滑动判断，避免抢占文本光标拖动
             const touchEditableHost = resolveEditableHost(e.target);
             const activeEditableHost = resolveEditableHost(document.activeElement);
@@ -277,6 +286,7 @@ export class PhoneShell {
 
         // 触摸移动
         phoneBody.addEventListener('touchmove', (e) => {
+            if (!Number.isFinite(this.touchStartX) || !e.target?.closest?.('.phone-screen')) return;
             const touch = e.touches[0];
             this.touchCurrentX = touch.clientX;
             const deltaX = this.touchCurrentX - this.touchStartX;
@@ -307,6 +317,7 @@ export class PhoneShell {
                 // 标记滑动类型：主屏幕关闭手机，APP内返回
                 this.isSwiping = true;
                 this.swipeAction = isHome ? 'close' : 'back';
+                e.stopPropagation();
 
                 // 🔥 动态获取滑动目标：back时只滑动屏幕内容，close时滑动整个手机
                 slideTarget = this.swipeAction === 'back'
@@ -330,6 +341,7 @@ export class PhoneShell {
 
         // 触摸结束
         phoneBody.addEventListener('touchend', (e) => {
+            if (!Number.isFinite(this.touchStartX)) return;
             const deltaX = this.touchCurrentX - this.touchStartX;
 
             // 🔥 保存引用，防止 setTimeout 回调时变量已被重置
@@ -396,95 +408,99 @@ export class PhoneShell {
             slideTarget = null;
         }, { passive: true });
 
-        // 鼠标支持（PC端模拟）
-        let mouseStartX = 0;
-        let mouseStartY = 0;
-        let isMouseDown = false;
-        let mouseSlideTarget = null;
+        // Pointer 支持（PC端模拟）
+        let pointerStartX = 0;
+        let pointerStartY = 0;
+        let pointerCurrentX = 0;
+        let activeSwipePointerId = null;
+        let isPointerDown = false;
+        let pointerSlideTarget = null;
 
-        phoneBody.addEventListener('mousedown', (e) => {
-            // PC 端移动小手机使用外壳/摄像头区域；右滑返回只在屏幕内容内生效，避免两套 transform 互相抢。
+        phoneBody.addEventListener('pointerdown', (e) => {
+            if (e.pointerType && e.pointerType !== 'mouse') return;
+            if (e.button !== undefined && e.button !== 0) return;
             if (!e.target?.closest?.('.phone-screen')) {
-                isMouseDown = false;
-                mouseSlideTarget = null;
+                isPointerDown = false;
+                pointerSlideTarget = null;
                 return;
             }
 
-            // 🔥 核心修复：如果点击的是输入框或文本域，不激活鼠标拖拽返回
-            const mouseEditableHost = resolveEditableHost(e.target);
-            if (isTextEditableElement(mouseEditableHost)) {
-                isMouseDown = false;
+            const pointerEditableHost = resolveEditableHost(e.target);
+            if (isTextEditableElement(pointerEditableHost)) {
+                isPointerDown = false;
                 return;
             }
 
-            mouseStartX = e.clientX;
-            mouseStartY = e.clientY;
-            isMouseDown = true;
-            mouseSlideTarget = null;
+            activeSwipePointerId = e.pointerId;
+            pointerStartX = e.clientX;
+            pointerStartY = e.clientY;
+            pointerCurrentX = e.clientX;
+            isPointerDown = true;
+            pointerSlideTarget = null;
+            this.isSwiping = false;
+            this.swipeAction = null;
         });
 
-        document.addEventListener('mousemove', (e) => {
-            if (!isMouseDown) return;
+        document.addEventListener('pointermove', (e) => {
+            if (!isPointerDown || activeSwipePointerId !== e.pointerId) return;
             if (document.getElementById('phone-panel')?.classList?.contains('phone-panel-desktop-dragging')) {
-                isMouseDown = false;
+                isPointerDown = false;
                 this.isSwiping = false;
                 this.swipeAction = null;
-                mouseSlideTarget = null;
+                pointerSlideTarget = null;
+                activeSwipePointerId = null;
                 return;
             }
-            const deltaX = e.clientX - mouseStartX;
-            const deltaY = Math.abs(e.clientY - mouseStartY);
+            const deltaX = e.clientX - pointerStartX;
+            const deltaY = Math.abs(e.clientY - pointerStartY);
+            pointerCurrentX = e.clientX;
 
-            // 🔥 计算相对于手机的位置
             const phoneRect = phoneBody.getBoundingClientRect();
-            const relativeStartX = mouseStartX - phoneRect.left;
-            const relativeStartY = mouseStartY - phoneRect.top;
+            const relativeStartX = pointerStartX - phoneRect.left;
+            const relativeStartY = pointerStartY - phoneRect.top;
             const phoneWidth = phoneRect.width;
             const phoneHeight = phoneRect.height;
-
-            // 🔥 确保鼠标起始点在手机屏幕内
             const isInsidePhone = relativeStartX >= 0 && relativeStartX <= phoneWidth &&
                                   relativeStartY >= 0 && relativeStartY <= phoneHeight;
 
             if (!isInsidePhone) return;
 
-            // 🔥 修复卡死Bug：通过历史栈精准判断，防止底层垫片干扰
             const isHome = this.isAtHomeScreen();
+            if (e.pointerType === 'mouse' && isHome) return;
 
-            // 🔥 滑动条件：
-            // - 主屏幕：从左边缘1/3区域开始右滑 → 关闭手机
-            // - APP内：从左边缘1/2区域开始右滑 → 返回上一级
             const triggerZone = isHome ? phoneWidth / 3 : phoneWidth / 2;
 
-            if (relativeStartX < triggerZone && deltaX > 20 && deltaX > deltaY) {
+            if (relativeStartX < triggerZone && deltaX > 10 && deltaX > deltaY) {
                 this.isSwiping = true;
                 this.swipeAction = isHome ? 'close' : 'back';
+                e.preventDefault();
+                e.stopPropagation();
 
-                // 🔥 动态获取滑动目标
-                mouseSlideTarget = this.swipeAction === 'back'
+                pointerSlideTarget = this.swipeAction === 'back'
                     ? (this.container.querySelector('.phone-view-current') || this.container.querySelector('.phone-screen > div'))
                     : phoneBody;
 
-                if (mouseSlideTarget) {
+                if (pointerSlideTarget) {
                     const progress = Math.min(deltaX / this.swipeThreshold, 1);
-                    mouseSlideTarget.style.transform = `translate3d(${deltaX * 0.85}px, 0, 0)`;
+                    pointerSlideTarget.style.transform = `translate3d(${deltaX * 0.85}px, 0, 0)`;
                     if (this.swipeAction === 'close') {
-                        mouseSlideTarget.style.opacity = 1 - (progress * 0.5);
+                        pointerSlideTarget.style.opacity = 1 - (progress * 0.5);
                     }
                 }
             }
         });
 
-        document.addEventListener('mouseup', (e) => {
-            if (!isMouseDown) return;
-            isMouseDown = false;
-            const deltaX = e.clientX - mouseStartX;
+        document.addEventListener('pointerup', (e) => {
+            if (!isPointerDown || activeSwipePointerId !== e.pointerId) return;
+            isPointerDown = false;
+            const deltaX = pointerCurrentX - pointerStartX;
 
-            // 🔥 保存引用，防止 setTimeout 回调时变量已被重置
-            const target = mouseSlideTarget;
+            const target = pointerSlideTarget;
             const action = this.swipeAction;
 
             if (this.isSwiping && target && deltaX > this.swipeThreshold) {
+                e.preventDefault();
+                e.stopPropagation();
                 if (action === 'close') {
                     // 🔥 主屏幕：滑动关闭手机
                     target.style.transition = 'transform 0.3s ease-out, opacity 0.3s ease-out';
@@ -538,7 +554,17 @@ export class PhoneShell {
 
             this.isSwiping = false;
             this.swipeAction = null;
-            mouseSlideTarget = null;
+            pointerSlideTarget = null;
+            activeSwipePointerId = null;
+        });
+
+        document.addEventListener('pointercancel', (e) => {
+            if (!isPointerDown || activeSwipePointerId !== e.pointerId) return;
+            isPointerDown = false;
+            this.isSwiping = false;
+            this.swipeAction = null;
+            pointerSlideTarget = null;
+            activeSwipePointerId = null;
         });
     }
 

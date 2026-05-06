@@ -222,12 +222,11 @@ if (window.GGP_Loaded) {
     }
 
     function getPhonePanelDesktopViewport() {
-        const viewport = window.visualViewport;
         return {
-            width: Math.max(320, Math.round(viewport?.width || window.innerWidth || document.documentElement?.clientWidth || 360)),
-            height: Math.max(320, Math.round(viewport?.height || window.innerHeight || document.documentElement?.clientHeight || 640)),
-            left: Math.round(viewport?.offsetLeft || 0),
-            top: Math.round(viewport?.offsetTop || 0)
+            width: Math.max(320, Math.round(document.documentElement?.clientWidth || window.innerWidth || 360)),
+            height: Math.max(320, Math.round(document.documentElement?.clientHeight || window.innerHeight || 640)),
+            left: 0,
+            top: 0
         };
     }
 
@@ -334,8 +333,13 @@ if (window.GGP_Loaded) {
         let currentY = 0;
         let isDragging = false;
         let suppressNextClick = false;
+        let suppressClickUntil = 0;
+        let suppressClickCleanup = null;
         let dragStartRect = null;
         let activePhoneBody = null;
+        let rafId = 0;
+        let pendingDeltaX = 0;
+        let pendingDeltaY = 0;
 
         const clearPressTimer = () => {
             if (pressTimer) {
@@ -344,8 +348,66 @@ if (window.GGP_Loaded) {
             }
         };
 
+        const cancelDragFrame = () => {
+            if (rafId) {
+                cancelAnimationFrame(rafId);
+                rafId = 0;
+            }
+        };
+
+        const applyDragFrame = () => {
+            rafId = 0;
+            panel.style.setProperty('--phone-panel-drag-x', `${Math.round(pendingDeltaX)}px`);
+            panel.style.setProperty('--phone-panel-drag-y', `${Math.round(pendingDeltaY)}px`);
+        };
+
+        const scheduleDragFrame = (deltaX, deltaY) => {
+            pendingDeltaX = deltaX;
+            pendingDeltaY = deltaY;
+            if (rafId) return;
+            if (typeof requestAnimationFrame === 'function') {
+                rafId = requestAnimationFrame(applyDragFrame);
+            } else {
+                applyDragFrame();
+            }
+        };
+
+        const isDragHandleClick = (event) => {
+            const target = event?.target;
+            return !!(target && typeof target.closest === 'function' && isPhonePanelDragHandle(target));
+        };
+
+        const armNextClickSuppressor = () => {
+            suppressNextClick = true;
+            suppressClickUntil = Date.now() + 350;
+            if (suppressClickCleanup) suppressClickCleanup();
+
+            const blockClick = (event) => {
+                if (!isDragHandleClick(event) || Date.now() > suppressClickUntil) return;
+                event.preventDefault();
+                event.stopPropagation();
+                event.stopImmediatePropagation?.();
+                suppressNextClick = false;
+                suppressClickUntil = 0;
+                suppressClickCleanup?.();
+            };
+
+            dragDoc.addEventListener('click', blockClick, true);
+            const cleanupTimer = setTimeout(() => {
+                suppressNextClick = false;
+                suppressClickUntil = 0;
+                suppressClickCleanup?.();
+            }, 360);
+            suppressClickCleanup = () => {
+                dragDoc.removeEventListener('click', blockClick, true);
+                clearTimeout(cleanupTimer);
+                suppressClickCleanup = null;
+            };
+        };
+
         const resetDragState = () => {
             clearPressTimer();
+            cancelDragFrame();
             activePointerId = null;
             startX = 0;
             startY = 0;
@@ -372,7 +434,9 @@ if (window.GGP_Loaded) {
 
         const isPhonePanelDragHandle = (target) => {
             if (!target || typeof target.closest !== 'function') return false;
-            return !!target.closest('.phone-body-panel') && !target.closest('.phone-screen');
+            if (target.closest('.phone-punch-hole')) return true;
+            const phoneBody = target.closest('.phone-body-panel');
+            return !!phoneBody && !target.closest('.phone-screen');
         };
 
         const getPhoneBodyFromEvent = (event) => {
@@ -402,13 +466,11 @@ if (window.GGP_Loaded) {
             suppressNextClick = true;
             currentX = Number.isFinite(currentX) ? currentX : event.clientX;
             currentY = Number.isFinite(currentY) ? currentY : event.clientY;
-            phoneBody.style.removeProperty('transform');
             phoneBody.style.removeProperty('transition');
             phoneBody.style.removeProperty('opacity');
             dragStartRect = phoneBody.getBoundingClientRect();
             panel.classList.add('phone-panel-desktop-dragging');
-            panel.style.setProperty('--phone-panel-drag-x', `${Math.round(currentX - startX)}px`);
-            panel.style.setProperty('--phone-panel-drag-y', `${Math.round(currentY - startY)}px`);
+            scheduleDragFrame(currentX - startX, currentY - startY);
 
             if (navigator.vibrate) navigator.vibrate(20);
         };
@@ -429,6 +491,9 @@ if (window.GGP_Loaded) {
             startY = event.clientY;
             currentX = startX;
             currentY = startY;
+            try {
+                panel.setPointerCapture?.(event.pointerId);
+            } catch {}
             bindDocumentDragEvents();
         });
 
@@ -448,8 +513,7 @@ if (window.GGP_Loaded) {
 
             event.preventDefault();
             event.stopPropagation();
-            panel.style.setProperty('--phone-panel-drag-x', `${Math.round(deltaX)}px`);
-            panel.style.setProperty('--phone-panel-drag-y', `${Math.round(deltaY)}px`);
+            scheduleDragFrame(deltaX, deltaY);
         };
 
         const finishPointer = async (event) => {
@@ -477,14 +541,14 @@ if (window.GGP_Loaded) {
             panel.classList.remove('phone-panel-desktop-dragging');
             panel.style.removeProperty('--phone-panel-drag-x');
             panel.style.removeProperty('--phone-panel-drag-y');
+            try {
+                panel.releasePointerCapture?.(event.pointerId);
+            } catch {}
             resetDragState();
 
             if (shouldSave) {
-                suppressNextClick = true;
+                armNextClickSuppressor();
                 savePhonePanelDesktopPosition(nextPosition);
-                setTimeout(() => {
-                    suppressNextClick = false;
-                }, 120);
             }
         };
 
@@ -494,17 +558,21 @@ if (window.GGP_Loaded) {
             panel.classList.remove('phone-panel-desktop-dragging');
             panel.style.removeProperty('--phone-panel-drag-x');
             panel.style.removeProperty('--phone-panel-drag-y');
+            try {
+                panel.releasePointerCapture?.(event.pointerId);
+            } catch {}
             resetDragState();
-            setTimeout(() => {
-                suppressNextClick = false;
-            }, 80);
         };
 
         panel.addEventListener('click', (event) => {
-            if (!suppressNextClick) return;
+            if (!suppressNextClick && Date.now() > suppressClickUntil) return;
+            if (!isDragHandleClick(event)) return;
             suppressNextClick = false;
+            suppressClickUntil = 0;
+            suppressClickCleanup?.();
             event.preventDefault();
             event.stopPropagation();
+            event.stopImmediatePropagation?.();
         }, true);
     }
 
