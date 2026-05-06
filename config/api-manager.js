@@ -546,6 +546,8 @@ export class ApiManager {
                 return await this._readUniversalStream(response.body, `[${label}]`);
             }
             const text = await response.text();
+            const chunkedResult = this._parseChunkedApiText(text);
+            if (chunkedResult) return chunkedResult;
             return this._parseApiResponse(text);
         };
 
@@ -985,6 +987,8 @@ export class ApiManager {
     _parseApiResponse(rawData) {
         let data = rawData;
         if (typeof data === 'string') {
+            const chunkedResult = this._parseChunkedApiText(data);
+            if (chunkedResult) return chunkedResult;
             try {
                 data = JSON.parse(data);
             } catch {
@@ -999,6 +1003,23 @@ export class ApiManager {
         }
         if (data.error) {
             throw new Error(data.error.message || JSON.stringify(data.error));
+        }
+        if (this._looksLikeStreamChunk(data)) {
+            const { content, reasoning, finishReason, error } = this._extractStreamContent(data);
+            if (error) throw new Error(error);
+            const summary = String(content || '').replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/^[\s\S]*?<\/think>/i, '').trim();
+            if (summary) {
+                return {
+                    success: true,
+                    summary: finishReason === 'length'
+                        ? `${summary}\n\n[⚠️ 内容已因达到最大Token限制而截断]`
+                        : summary
+                };
+            }
+            if (reasoning && String(reasoning).trim()) {
+                throw new Error('API 只返回了 reasoning_content，未返回正文内容');
+            }
+            throw new Error('API 返回流式分片但正文为空');
         }
 
         const maybeArrayContent = data?.choices?.[0]?.message?.content;
@@ -1029,6 +1050,62 @@ export class ApiManager {
             throw new Error('API 返回内容为空');
         }
         return { success: true, summary: content };
+    }
+
+    _looksLikeStreamChunk(data) {
+        if (!data || typeof data !== 'object') return false;
+        if (String(data.object || '').includes('chat.completion.chunk')) return true;
+        return !!(data.choices?.[0]?.delta || data.data?.choices?.[0]?.delta);
+    }
+
+    _parseChunkedApiText(rawText) {
+        const source = String(rawText || '').trim();
+        if (!source) return null;
+
+        const chunks = [];
+        const pushParsed = (text) => {
+            const trimmed = String(text || '').trim();
+            if (!trimmed || trimmed === '[DONE]') return;
+            try {
+                chunks.push(JSON.parse(trimmed));
+            } catch {
+                // 忽略非 JSON 行。
+            }
+        };
+
+        pushParsed(source);
+        source.split(/\r?\n/).forEach((line) => {
+            let trimmed = String(line || '').trim();
+            if (!trimmed || trimmed.startsWith(':')) return;
+            if (trimmed === 'data: [DONE]' || trimmed === 'data:[DONE]') return;
+            if (trimmed.startsWith('data:')) trimmed = trimmed.replace(/^data:\s*/, '');
+            pushParsed(trimmed);
+        });
+
+        let sawChunk = false;
+        let fullText = '';
+        let fullReasoning = '';
+        let isTruncated = false;
+        for (const chunk of chunks) {
+            if (!this._looksLikeStreamChunk(chunk)) continue;
+            sawChunk = true;
+            const { content, reasoning, finishReason, error } = this._extractStreamContent(chunk);
+            if (error) throw new Error(error);
+            if (finishReason === 'length') isTruncated = true;
+            if (content) fullText += content;
+            if (reasoning) fullReasoning += reasoning;
+        }
+        if (!sawChunk) return null;
+
+        let summary = String(fullText || '').replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/^[\s\S]*?<\/think>/i, '').trim();
+        if (summary) {
+            if (isTruncated) summary += '\n\n[⚠️ 内容已因达到最大Token限制而截断]';
+            return { success: true, summary };
+        }
+        if (fullReasoning && String(fullReasoning).trim()) {
+            throw new Error('API 只返回了 reasoning_content，未返回正文内容');
+        }
+        throw new Error('API 返回流式分片但正文为空');
     }
 
     async _readUniversalStream(body, logPrefix = '') {
@@ -1083,7 +1160,7 @@ export class ApiManager {
 
             let summary = String(fullText || '').replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/^[\s\S]*?<\/think>/i, '').trim();
             if (!summary && fullReasoning && String(fullReasoning).trim()) {
-                summary = String(fullReasoning).trim();
+                throw new Error('API 只返回了 reasoning_content，未返回正文内容');
             }
             if (isTruncated && summary) {
                 summary += '\n\n[⚠️ 内容已因达到最大Token限制而截断]';
