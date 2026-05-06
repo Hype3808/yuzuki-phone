@@ -1575,6 +1575,248 @@ IP属地：根据故事背景，生成虚拟的命名城市的IP市区
         this.savePrompts();
     }
 
+    _escapeHtml(text) {
+        return String(text ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    _loadPromptUserPresets() {
+        const raw = this.storage.get('phone-prompt-user-presets', null);
+        if (!raw) return {};
+        try {
+            const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch (e) {
+            console.warn('解析用户提示词预设失败:', e);
+            return {};
+        }
+    }
+
+    _savePromptUserPresets(data) {
+        this.storage.set('phone-prompt-user-presets', JSON.stringify(data || {}), true);
+    }
+
+    _loadActivePromptPresets() {
+        const raw = this.storage.get('phone-prompt-active-presets', null);
+        if (!raw) return {};
+        try {
+            const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch (e) {
+            console.warn('解析当前提示词预设失败:', e);
+            return {};
+        }
+    }
+
+    _saveActivePromptPresets(data) {
+        this.storage.set('phone-prompt-active-presets', JSON.stringify(data || {}), true);
+    }
+
+    getPromptUserPresets(app, feature) {
+        const data = this._loadPromptUserPresets();
+        const list = data?.[app]?.[feature];
+        return Array.isArray(list) ? list.filter(item => item && item.id && item.name) : [];
+    }
+
+    getActivePromptPresetId(app, feature) {
+        const active = this._loadActivePromptPresets();
+        return String(active?.[app]?.[feature] || '').trim();
+    }
+
+    _setActivePromptPresetId(app, feature, presetId) {
+        const active = this._loadActivePromptPresets();
+        if (!active[app]) active[app] = {};
+        active[app][feature] = String(presetId || '').trim();
+        this._saveActivePromptPresets(active);
+    }
+
+    createPromptUserPreset(app, feature, name, content) {
+        this.ensureLoaded();
+        const safeName = String(name || '').trim();
+        if (!safeName) throw new Error('预设名称不能为空');
+        const data = this._loadPromptUserPresets();
+        if (!data[app]) data[app] = {};
+        if (!Array.isArray(data[app][feature])) data[app][feature] = [];
+
+        const now = Date.now();
+        const id = `preset_${now.toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+        const preset = {
+            id,
+            name: safeName,
+            content: String(content || ''),
+            createdAt: now,
+            updatedAt: now
+        };
+        data[app][feature].push(preset);
+        this._savePromptUserPresets(data);
+        this._setActivePromptPresetId(app, feature, id);
+        this.updatePrompt(app, feature, preset.content);
+        return preset;
+    }
+
+    updateActivePromptUserPreset(app, feature, content) {
+        this.ensureLoaded();
+        const activeId = this.getActivePromptPresetId(app, feature);
+        const nextContent = String(content || '');
+        if (!activeId) {
+            this.updatePrompt(app, feature, nextContent);
+            return null;
+        }
+
+        const data = this._loadPromptUserPresets();
+        const list = Array.isArray(data?.[app]?.[feature]) ? data[app][feature] : [];
+        const preset = list.find(item => String(item?.id || '') === activeId);
+        if (!preset) {
+            this._setActivePromptPresetId(app, feature, '');
+            this.updatePrompt(app, feature, nextContent);
+            return null;
+        }
+
+        preset.content = nextContent;
+        preset.updatedAt = Date.now();
+        this._savePromptUserPresets(data);
+        this.updatePrompt(app, feature, nextContent);
+        return preset;
+    }
+
+    applyPromptPreset(app, feature, presetId) {
+        this.ensureLoaded();
+        const safeId = String(presetId || '').trim();
+        if (!safeId) {
+            const defaults = this.getDefaultPrompts();
+            const defaultContent = defaults?.[app]?.[feature]?.content || '';
+            this._setActivePromptPresetId(app, feature, '');
+            this.updatePrompt(app, feature, defaultContent);
+            return { id: '', name: '默认提示词', content: defaultContent };
+        }
+
+        const preset = this.getPromptUserPresets(app, feature).find(item => String(item.id) === safeId);
+        if (!preset) throw new Error('找不到该提示词预设');
+        this._setActivePromptPresetId(app, feature, preset.id);
+        this.updatePrompt(app, feature, preset.content);
+        return preset;
+    }
+
+    deletePromptUserPreset(app, feature, presetId) {
+        const safeId = String(presetId || '').trim();
+        if (!safeId) return false;
+        const data = this._loadPromptUserPresets();
+        const list = Array.isArray(data?.[app]?.[feature]) ? data[app][feature] : [];
+        const nextList = list.filter(item => String(item?.id || '') !== safeId);
+        if (nextList.length === list.length) return false;
+        data[app][feature] = nextList;
+        this._savePromptUserPresets(data);
+        if (this.getActivePromptPresetId(app, feature) === safeId) {
+            this._setActivePromptPresetId(app, feature, '');
+        }
+        return true;
+    }
+
+    resetPromptToDefault(app, feature) {
+        const defaults = this.getDefaultPrompts();
+        const defaultContent = defaults?.[app]?.[feature]?.content || '';
+        this._setActivePromptPresetId(app, feature, '');
+        this.updatePrompt(app, feature, defaultContent);
+        return defaultContent;
+    }
+
+    renderPromptPresetControls(app, feature) {
+        const presets = this.getPromptUserPresets(app, feature);
+        const activeId = this.getActivePromptPresetId(app, feature);
+        const options = [
+            `<option value="" ${activeId ? '' : 'selected'}>默认提示词</option>`,
+            ...presets.map(preset => `<option value="${this._escapeHtml(preset.id)}" ${activeId === preset.id ? 'selected' : ''}>${this._escapeHtml(preset.name)}</option>`)
+        ].join('');
+
+        return `
+            <div class="phone-prompt-preset-tools" data-prompt-app="${this._escapeHtml(app)}" data-prompt-feature="${this._escapeHtml(feature)}" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;">
+                <select class="phone-prompt-preset-select" style="width:100%; height:30px; padding:0 8px; border:1px solid #e0e0e0; border-radius:8px; background:#fafafa; font-size:12px;">
+                    ${options}
+                </select>
+                <div style="display:flex; gap:6px;">
+                    <button type="button" class="phone-prompt-preset-new" style="flex:1; height:28px; border:1px solid #d8d8d8; border-radius:8px; background:#fff; color:#333; font-size:12px; cursor:pointer;">新增预设</button>
+                    <button type="button" class="phone-prompt-preset-save" style="flex:1; height:28px; border:none; border-radius:8px; background:#07c160; color:#fff; font-size:12px; cursor:pointer;">保存当前</button>
+                    <button type="button" class="phone-prompt-preset-delete" style="flex:1; height:28px; border:1px solid rgba(211,51,51,.25); border-radius:8px; background:#fff; color:#d33; font-size:12px; cursor:pointer;">删除预设</button>
+                </div>
+            </div>
+        `;
+    }
+
+    bindPromptPresetControls(root, app, feature, textareaSelector, callbacks = {}) {
+        const host = Array.from(root?.querySelectorAll?.('.phone-prompt-preset-tools') || [])
+            .find(el => el?.dataset?.promptApp === app && el?.dataset?.promptFeature === feature);
+        const textarea = root?.querySelector?.(textareaSelector);
+        if (!host || !textarea) return;
+
+        const select = host.querySelector('.phone-prompt-preset-select');
+        const notify = (title, message, icon = '✅') => {
+            if (typeof callbacks.notify === 'function') callbacks.notify(title, message, icon);
+        };
+        const refreshSelect = () => {
+            const wrapper = document.createElement('div');
+            wrapper.innerHTML = this.renderPromptPresetControls(app, feature).trim();
+            const nextSelect = wrapper.querySelector('.phone-prompt-preset-select');
+            if (nextSelect && select) select.innerHTML = nextSelect.innerHTML;
+        };
+
+        select?.addEventListener('change', () => {
+            try {
+                const preset = this.applyPromptPreset(app, feature, select.value);
+                textarea.value = preset.content || '';
+                notify('已切换', preset.name || '提示词预设', '✅');
+                callbacks.onChange?.(preset);
+            } catch (e) {
+                notify('切换失败', e?.message || String(e), '❌');
+            }
+        });
+
+        host.querySelector('.phone-prompt-preset-new')?.addEventListener('click', () => {
+            const name = String(window.prompt('请输入提示词预设名称', '') || '').trim();
+            if (!name) return;
+            try {
+                const preset = this.createPromptUserPreset(app, feature, name, textarea.value || '');
+                refreshSelect();
+                if (select) select.value = preset.id;
+                notify('已新增预设', preset.name, '✅');
+                callbacks.onChange?.(preset);
+            } catch (e) {
+                notify('新增失败', e?.message || String(e), '❌');
+            }
+        });
+
+        host.querySelector('.phone-prompt-preset-save')?.addEventListener('click', () => {
+            try {
+                const preset = this.updateActivePromptUserPreset(app, feature, textarea.value || '');
+                notify('已保存', preset ? `预设「${preset.name}」已更新` : '当前提示词已保存', '✅');
+                callbacks.onChange?.(preset || null);
+            } catch (e) {
+                notify('保存失败', e?.message || String(e), '❌');
+            }
+        });
+
+        host.querySelector('.phone-prompt-preset-delete')?.addEventListener('click', () => {
+            const activeId = String(select?.value || '').trim();
+            if (!activeId) {
+                notify('不能删除', '默认提示词不能删除', '⚠️');
+                return;
+            }
+            const preset = this.getPromptUserPresets(app, feature).find(item => item.id === activeId);
+            if (!preset) return;
+            if (!window.confirm(`删除提示词预设「${preset.name}」？`)) return;
+            this.deletePromptUserPreset(app, feature, activeId);
+            const defaultContent = this.resetPromptToDefault(app, feature);
+            textarea.value = defaultContent;
+            refreshSelect();
+            if (select) select.value = '';
+            notify('已删除预设', preset.name, '✅');
+            callbacks.onChange?.(null);
+        });
+    }
+
     // 获取启用的提示词（发送给AI - 用于正文注入，只用线下模式）
     getEnabledPromptsForChat() {
         this.ensureLoaded();
@@ -1616,8 +1858,36 @@ IP属地：根据故事背景，生成虚拟的命名城市的IP市区
     // 一键恢复所有提示词到默认最新版
     resetAllPromptsToDefault() {
         const defaults = this.getDefaultPrompts();
-        this.prompts = JSON.parse(JSON.stringify(defaults));
+        const nextPrompts = JSON.parse(JSON.stringify(defaults));
+        const activePresets = this._loadActivePromptPresets();
+        const presetStore = this._loadPromptUserPresets();
+        const nextActivePresets = {};
+
+        Object.keys(nextPrompts).forEach(app => {
+            const appConfig = nextPrompts[app];
+            if (!appConfig || typeof appConfig !== 'object') return;
+
+            Object.keys(appConfig).forEach(feature => {
+                const promptConfig = appConfig[feature];
+                if (!promptConfig || typeof promptConfig !== 'object' || typeof promptConfig.content !== 'string') return;
+
+                const activeId = String(activePresets?.[app]?.[feature] || '').trim();
+                if (!activeId) return;
+
+                const presets = Array.isArray(presetStore?.[app]?.[feature]) ? presetStore[app][feature] : [];
+                const activePreset = presets.find(preset => String(preset?.id || '') === activeId);
+                if (!activePreset) return;
+
+                promptConfig.content = String(activePreset.content || '');
+                if (!nextActivePresets[app]) nextActivePresets[app] = {};
+                nextActivePresets[app][feature] = activeId;
+            });
+        });
+
+        this.prompts = nextPrompts;
         this._loaded = true;
+        // 只同步官方默认提示词版本；正在使用的用户预设保持生效，用户预设库也不会删除。
+        this._saveActivePromptPresets(nextActivePresets);
         this.savePrompts();
         return this.prompts;
     }

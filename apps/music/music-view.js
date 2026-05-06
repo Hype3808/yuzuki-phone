@@ -178,6 +178,7 @@ export class MusicView {
                                 </div>
                                 <div class="phone-prompt-fold-content">
                                     <div class="music-prompt-area">
+                                        ${window.VirtualPhone?.promptManager?.renderPromptPresetControls?.('music', 'recommend') || ''}
                                         <textarea id="music-prompt-textarea">${this._escapeHtml(promptContent)}</textarea>
                                         <div class="music-prompt-actions">
                                             <button class="music-settings-btn primary" id="music-prompt-save" style="flex:1">保存</button>
@@ -200,6 +201,9 @@ export class MusicView {
         const screen = this.app.phoneShell.screen;
         if (!screen) return;
         this._bindPromptFoldToggles(screen);
+        window.VirtualPhone?.promptManager?.bindPromptPresetControls?.(screen, 'music', 'recommend', '#music-prompt-textarea', {
+            notify: (title, message, icon) => this.app.phoneShell.showNotification(title, message, icon)
+        });
 
         // 返回 — 用 onclick 防止重复绑定
         const backBtn = screen.querySelector('#music-settings-back');
@@ -245,7 +249,7 @@ export class MusicView {
                 if (textarea) {
                     const pm = window.VirtualPhone?.promptManager;
                     if (pm) {
-                        pm.updatePrompt('music', 'recommend', textarea.value);
+                        pm.updateActivePromptUserPreset?.('music', 'recommend', textarea.value) ?? pm.updatePrompt('music', 'recommend', textarea.value);
                         this.app.phoneShell.showNotification('音乐', '提示词已保存', '✅');
                     }
                 }
@@ -259,13 +263,13 @@ export class MusicView {
                 const pm = window.VirtualPhone?.promptManager;
                 if (pm) {
                     pm.ensureLoaded();
-                    const defaults = pm.getDefaultPrompts();
-                    const defaultContent = defaults.music?.recommend?.content || '';
+                    const defaultContent = pm.resetPromptToDefault?.('music', 'recommend')
+                        ?? pm.getDefaultPrompts().music?.recommend?.content
+                        ?? '';
                     const textarea = screen.querySelector('#music-prompt-textarea');
                     if (textarea) {
                         textarea.value = defaultContent;
                     }
-                    pm.updatePrompt('music', 'recommend', defaultContent);
                     this.app.phoneShell.showNotification('音乐', '已恢复默认提示词', '✅');
                 }
             };

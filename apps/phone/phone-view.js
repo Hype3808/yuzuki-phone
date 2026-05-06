@@ -288,6 +288,7 @@ export class PhoneCallView {
                                 <i class="fa-solid fa-chevron-right phone-prompt-fold-arrow"></i>
                             </div>
                             <div class="phone-prompt-fold-content">
+                                ${pm?.renderPromptPresetControls?.('phone', 'call') || ''}
                                 <textarea class="phone-call-prompt-textarea" id="phone-call-call-prompt" placeholder="通话中回复规则...">${this._escapeHtml(callPrompt)}</textarea>
                                 <div style="margin-top:6px; font-size:11px; color:var(--phone-secondary-text, #999); line-height:1.5;">
                                     可用变量：<code>{{user}}</code>、<code>{{callerName}}</code>（同义：<code>{{caller}}</code> / <code>{{char}}</code>）
@@ -312,6 +313,9 @@ export class PhoneCallView {
         const currentView = document.querySelector('.phone-view-current') || document;
         const query = (selector) => currentView.querySelector(selector);
         this._bindPromptFoldToggles(currentView);
+        pm?.bindPromptPresetControls?.(currentView, 'phone', 'call', '#phone-call-call-prompt', {
+            notify: (title, message, icon) => this.app.phoneShell.showNotification(title, message, icon)
+        });
 
         // 返回（用 onclick 覆盖式绑定，防止 DOM Diffing 导致重复监听）
         const backBtn = query('#phone-call-settings-back');
@@ -321,7 +325,7 @@ export class PhoneCallView {
         const saveBtn = query('#phone-call-save-call');
         if (saveBtn) saveBtn.onclick = () => {
             const content = query('#phone-call-call-prompt')?.value || '';
-            if (pm) pm.updatePrompt('phone', 'call', content);
+            if (pm) pm.updateActivePromptUserPreset?.('phone', 'call', content) ?? pm.updatePrompt('phone', 'call', content);
             this.app.phoneShell.showNotification('已保存', '通话提示词已更新', '✅');
         };
 
@@ -329,9 +333,9 @@ export class PhoneCallView {
         const resetBtn = query('#phone-call-reset-call');
         if (resetBtn) resetBtn.onclick = () => {
             if (pm) {
-                const defaults = pm.getDefaultPrompts();
-                const defaultContent = defaults.phone?.call?.content || '';
-                pm.updatePrompt('phone', 'call', defaultContent);
+                const defaultContent = pm.resetPromptToDefault?.('phone', 'call')
+                    ?? pm.getDefaultPrompts().phone?.call?.content
+                    ?? '';
                 const textarea = query('#phone-call-call-prompt');
                 if (textarea) textarea.value = defaultContent;
                 this.app.phoneShell.showNotification('已恢复', '通话提示词已恢复默认', '✅');

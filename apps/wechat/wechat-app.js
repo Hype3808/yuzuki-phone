@@ -2420,6 +2420,8 @@ export class WechatApp {
                         ${prompt.description}
                     </div>
                     
+                    ${promptManager?.renderPromptPresetControls?.(app, feature) || ''}
+
                     <textarea id="prompt-editor" style="
                         width: 100%;
                         min-height: 300px;
@@ -2461,6 +2463,15 @@ export class WechatApp {
     `;
 
         this.phoneShell.setContent(html);
+        promptManager?.bindPromptPresetControls?.(
+            document.querySelector('.phone-view-current') || document,
+            app,
+            feature,
+            '#prompt-editor',
+            {
+                notify: (title, message, icon) => this.phoneShell.showNotification(title, message, icon)
+            }
+        );
 
         // 返回按钮
         document.getElementById('back-from-editor')?.addEventListener('click', () => {
@@ -2470,14 +2481,15 @@ export class WechatApp {
         // 保存按钮
         document.getElementById('save-prompt')?.addEventListener('click', () => {
             const content = document.getElementById('prompt-editor').value;
-            promptManager?.updatePrompt(app, feature, content);
+            promptManager?.updateActivePromptUserPreset?.(app, feature, content) ?? promptManager?.updatePrompt(app, feature, content);
             this.phoneShell.showNotification('保存成功', '提示词已更新', '✅');
         });
 
         // 恢复默认按钮
         document.getElementById('reset-prompt')?.addEventListener('click', () => {
-            const defaultPrompts = promptManager?.getDefaultPrompts();
-            const defaultContent = defaultPrompts?.[app]?.[feature]?.content || '';
+            const defaultContent = promptManager?.resetPromptToDefault?.(app, feature)
+                ?? promptManager?.getDefaultPrompts?.()?.[app]?.[feature]?.content
+                ?? '';
             document.getElementById('prompt-editor').value = defaultContent;
             this.phoneShell.showNotification('已恢复', '已恢复为默认提示词', '🔄');
         });

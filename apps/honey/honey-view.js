@@ -1985,6 +1985,7 @@ export class HoneyView {
                                 <i class="fa-solid fa-chevron-right phone-prompt-fold-arrow"></i>
                             </div>
                             <div class="phone-prompt-fold-content">
+                                ${promptManager?.renderPromptPresetControls?.('honey', 'live') || ''}
                                 <textarea id="honey-prompt-editor" class="honey-prompt-editor">${this._escapeHtml(promptConfig.content || '')}</textarea>
                             </div>
                         </div>
@@ -1997,6 +1998,7 @@ export class HoneyView {
                                 <i class="fa-solid fa-chevron-right phone-prompt-fold-arrow"></i>
                             </div>
                             <div class="phone-prompt-fold-content">
+                                ${promptManager?.renderPromptPresetControls?.('honey', 'userLive') || ''}
                                 <textarea id="honey-user-live-prompt-editor" class="honey-prompt-editor">${this._escapeHtml(userLivePromptConfig.content || '')}</textarea>
                                 <div class="honey-settings-actions">
                                     <button class="honey-settings-btn honey-settings-btn-muted" id="honey-reset-prompt">恢复默认</button>
@@ -3369,21 +3371,30 @@ export class HoneyView {
             const userLiveTextarea = root.querySelector('#honey-user-live-prompt-editor');
             const content = textarea?.value ?? '';
             const userLiveContent = userLiveTextarea?.value ?? '';
-            promptManager?.updatePrompt?.('honey', 'live', content);
-            promptManager?.updatePrompt?.('honey', 'userLive', userLiveContent);
+            promptManager?.updateActivePromptUserPreset?.('honey', 'live', content) ?? promptManager?.updatePrompt?.('honey', 'live', content);
+            promptManager?.updateActivePromptUserPreset?.('honey', 'userLive', userLiveContent) ?? promptManager?.updatePrompt?.('honey', 'userLive', userLiveContent);
             this.app.phoneShell.showNotification('保存成功', '蜜语提示词已更新', '✅');
         });
 
         root.querySelector('#honey-reset-prompt')?.addEventListener('click', () => {
-            const defaultContent = promptManager?.getDefaultPrompts?.()?.honey?.live?.content || '';
-            const defaultUserLiveContent = promptManager?.getDefaultPrompts?.()?.honey?.userLive?.content || '';
+            const defaultContent = promptManager?.resetPromptToDefault?.('honey', 'live')
+                ?? promptManager?.getDefaultPrompts?.()?.honey?.live?.content
+                ?? '';
+            const defaultUserLiveContent = promptManager?.resetPromptToDefault?.('honey', 'userLive')
+                ?? promptManager?.getDefaultPrompts?.()?.honey?.userLive?.content
+                ?? '';
             const textarea = root.querySelector('#honey-prompt-editor');
             const userLiveTextarea = root.querySelector('#honey-user-live-prompt-editor');
             if (textarea) textarea.value = defaultContent;
             if (userLiveTextarea) userLiveTextarea.value = defaultUserLiveContent;
-            promptManager?.updatePrompt?.('honey', 'live', defaultContent);
-            promptManager?.updatePrompt?.('honey', 'userLive', defaultUserLiveContent);
             this.app.phoneShell.showNotification('已恢复', '已恢复默认提示词', '🔄');
+        });
+
+        promptManager?.bindPromptPresetControls?.(root, 'honey', 'live', '#honey-prompt-editor', {
+            notify: (title, message, icon) => this.app.phoneShell.showNotification(title, message, icon)
+        });
+        promptManager?.bindPromptPresetControls?.(root, 'honey', 'userLive', '#honey-user-live-prompt-editor', {
+            notify: (title, message, icon) => this.app.phoneShell.showNotification(title, message, icon)
         });
 
         const videoUploadInput = root.querySelector('#honey-bg-video-upload');

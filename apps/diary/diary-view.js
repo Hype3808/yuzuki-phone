@@ -577,6 +577,7 @@ export class DiaryView {
                                 </div>
                                 <div class="phone-prompt-fold-content">
                                     <div class="diary-s-desc">自定义AI写日记时使用的提示词</div>
+                                    ${this._getPromptManager()?.renderPromptPresetControls?.('diary', 'generate') || ''}
                                     <textarea id="diary-s-prompt" class="diary-s-textarea">${this._getPromptContent().replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
                                     <div class="diary-s-btn-row">
                                         <button class="diary-s-btn diary-s-btn-warn" id="diary-s-prompt-reset">恢复默认</button>
@@ -823,8 +824,7 @@ export class DiaryView {
             if (!textarea) return;
             const pm = this._getPromptManager();
             if (pm?.prompts?.diary?.generate) {
-                pm.prompts.diary.generate.content = textarea.value;
-                pm.savePrompts();
+                pm.updateActivePromptUserPreset?.('diary', 'generate', textarea.value) ?? pm.updatePrompt?.('diary', 'generate', textarea.value);
                 alert('✅ 提示词已保存');
             }
         };
@@ -834,13 +834,19 @@ export class DiaryView {
             if (!confirm('确定恢复为默认提示词？')) return;
             const pm = this._getPromptManager();
             if (pm) {
-                const defaults = pm.getDefaultPrompts();
+                const defaultContent = pm.resetPromptToDefault?.('diary', 'generate')
+                    ?? pm.getDefaultPrompts().diary?.generate?.content
+                    ?? '';
                 const textarea = document.getElementById('diary-s-prompt');
-                if (textarea && defaults.diary?.generate?.content) {
-                    textarea.value = defaults.diary.generate.content;
+                if (textarea) {
+                    textarea.value = defaultContent;
                 }
             }
         };
+
+        this._getPromptManager()?.bindPromptPresetControls?.(document.querySelector('.phone-view-current .diary-settings-view') || document, 'diary', 'generate', '#diary-s-prompt', {
+            notify: (title, message, icon) => this.app.phoneShell?.showNotification?.(title, message, icon)
+        });
 
         // 提示词折叠交互
     }

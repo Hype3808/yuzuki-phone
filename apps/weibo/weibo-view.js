@@ -911,6 +911,7 @@ export class WeiboView {
                                 <i class="fa-solid fa-chevron-right phone-prompt-fold-arrow"></i>
                             </div>
                             <div class="phone-prompt-fold-content">
+                                ${promptManager?.renderPromptPresetControls?.('weibo', 'hotSearch') || ''}
                                 <textarea id="weibo-hot-prompt" class="weibo-prompt-textarea"
                                           placeholder="热搜内容生成提示词...">${hotSearchPrompt}</textarea>
                                 <button class="weibo-settings-btn" id="weibo-save-hot-prompt" style="margin-top: 8px;">
@@ -1065,6 +1066,7 @@ export class WeiboView {
                                 <i class="fa-solid fa-chevron-right phone-prompt-fold-arrow"></i>
                             </div>
                             <div class="phone-prompt-fold-content">
+                                ${promptManager?.renderPromptPresetControls?.('weibo', 'recommend') || ''}
                                 <textarea id="weibo-recommend-prompt" class="weibo-prompt-textarea"
                                           placeholder="推荐内容生成提示词...">${recommendPrompt}</textarea>
                                 <div style="display: flex; gap: 6px; margin-top: 6px;">
@@ -1091,6 +1093,7 @@ export class WeiboView {
                                 <i class="fa-solid fa-chevron-right phone-prompt-fold-arrow"></i>
                             </div>
                             <div class="phone-prompt-fold-content">
+                                ${promptManager?.renderPromptPresetControls?.('weibo', 'hotSearch') || ''}
                                 <textarea id="weibo-hotsearch-prompt" class="weibo-prompt-textarea"
                                           placeholder="热搜详情生成提示词...">${hotSearchPrompt}</textarea>
                                 <div style="display: flex; gap: 6px; margin-top: 6px;">
@@ -2717,6 +2720,13 @@ export class WeiboView {
 
     bindSettingsEvents() {
         this._bindPromptFoldToggles(document.querySelector('.phone-view-current .weibo-app') || document);
+        const promptManagerForPresets = window.VirtualPhone?.promptManager;
+        promptManagerForPresets?.bindPromptPresetControls?.(document.querySelector('.phone-view-current .weibo-app') || document, 'weibo', 'recommend', '#weibo-recommend-prompt', {
+            notify: (title, message, icon) => this.app.phoneShell.showNotification(title, message, icon)
+        });
+        promptManagerForPresets?.bindPromptPresetControls?.(document.querySelector('.phone-view-current .weibo-app') || document, 'weibo', 'hotSearch', '#weibo-hotsearch-prompt', {
+            notify: (title, message, icon) => this.app.phoneShell.showNotification(title, message, icon)
+        });
         document.getElementById('weibo-settings-back')?.addEventListener('click', () => {
             this.currentView = 'home';
             this.render();
@@ -2885,7 +2895,7 @@ export class WeiboView {
             const text = document.getElementById('weibo-recommend-prompt')?.value;
             if (text !== undefined) {
                 const promptManager = window.VirtualPhone?.promptManager;
-                promptManager?.updatePrompt('weibo', 'recommend', text);
+                promptManager?.updateActivePromptUserPreset?.('weibo', 'recommend', text) ?? promptManager?.updatePrompt('weibo', 'recommend', text);
                 this.app.phoneShell.showNotification('保存成功', '推荐提示词已更新', '✅');
             }
         });
@@ -2893,9 +2903,9 @@ export class WeiboView {
         document.getElementById('weibo-reset-recommend-prompt')?.addEventListener('click', () => {
             const promptManager = window.VirtualPhone?.promptManager;
             if (promptManager) {
-                const defaults = promptManager.getDefaultPrompts();
-                const defaultText = defaults.weibo?.recommend?.content || '';
-                promptManager.updatePrompt('weibo', 'recommend', defaultText);
+                const defaultText = promptManager.resetPromptToDefault?.('weibo', 'recommend')
+                    ?? promptManager.getDefaultPrompts().weibo?.recommend?.content
+                    ?? '';
                 const textarea = document.getElementById('weibo-recommend-prompt');
                 if (textarea) textarea.value = defaultText;
                 this.app.phoneShell.showNotification('已恢复', '推荐提示词已恢复默认', '✅');
@@ -2906,7 +2916,7 @@ export class WeiboView {
             const text = document.getElementById('weibo-hotsearch-prompt')?.value;
             if (text !== undefined) {
                 const promptManager = window.VirtualPhone?.promptManager;
-                promptManager?.updatePrompt('weibo', 'hotSearch', text);
+                promptManager?.updateActivePromptUserPreset?.('weibo', 'hotSearch', text) ?? promptManager?.updatePrompt('weibo', 'hotSearch', text);
                 this.app.phoneShell.showNotification('保存成功', '热搜提示词已更新', '✅');
             }
         });
@@ -2914,9 +2924,9 @@ export class WeiboView {
         document.getElementById('weibo-reset-hotsearch-prompt')?.addEventListener('click', () => {
             const promptManager = window.VirtualPhone?.promptManager;
             if (promptManager) {
-                const defaults = promptManager.getDefaultPrompts();
-                const defaultText = defaults.weibo?.hotSearch?.content || '';
-                promptManager.updatePrompt('weibo', 'hotSearch', defaultText);
+                const defaultText = promptManager.resetPromptToDefault?.('weibo', 'hotSearch')
+                    ?? promptManager.getDefaultPrompts().weibo?.hotSearch?.content
+                    ?? '';
                 const textarea = document.getElementById('weibo-hotsearch-prompt');
                 if (textarea) textarea.value = defaultText;
                 this.app.phoneShell.showNotification('已恢复', '热搜提示词已恢复默认', '✅');
@@ -2958,6 +2968,9 @@ export class WeiboView {
 
     bindHotSearchSettingsEvents() {
         this._bindPromptFoldToggles(document.querySelector('.phone-view-current .weibo-app') || document);
+        window.VirtualPhone?.promptManager?.bindPromptPresetControls?.(document.querySelector('.phone-view-current .weibo-app') || document, 'weibo', 'hotSearch', '#weibo-hot-prompt', {
+            notify: (title, message, icon) => this.app.phoneShell.showNotification(title, message, icon)
+        });
         document.getElementById('weibo-hot-settings-back')?.addEventListener('click', () => {
             if (this.currentHotSearchTitle) {
                 this.currentView = 'hotSearchDetail';
@@ -3002,7 +3015,7 @@ export class WeiboView {
             const text = document.getElementById('weibo-hot-prompt')?.value;
             if (text !== undefined) {
                 const promptManager = window.VirtualPhone?.promptManager;
-                promptManager?.updatePrompt('weibo', 'hotSearch', text);
+                promptManager?.updateActivePromptUserPreset?.('weibo', 'hotSearch', text) ?? promptManager?.updatePrompt('weibo', 'hotSearch', text);
                 this.app.phoneShell.showNotification('保存成功', '热搜提示词已更新', '✅');
             }
         });
