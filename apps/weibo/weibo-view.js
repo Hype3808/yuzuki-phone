@@ -408,6 +408,7 @@ export class WeiboView {
                                 ? 'done'
                                 : (String(imageState?.status || '').trim() || 'idle');
                             const generationError = this._escapeHtml(String(imageState?.error || '').trim());
+                            const canRegenerateMedia = isDirectImage && !!String(imageState?.prompt || '').trim();
 
                             if (isDirectImage) {
                                 // 已经生成成功/或直接上传的真实图片 URL
@@ -416,6 +417,13 @@ export class WeiboView {
                                     <div class="weibo-image-prompt-front-panel" style="width: 100%; height: 100%; aspect-ratio: 1; border-radius: 4px; overflow: hidden; position: relative;">
                                         <img src="${realUrl}" class="weibo-post-img-real" style="width: 100%; height: 100%; object-fit: cover; border-radius: 4px; background: #f9f9f9;">
                                         ${isVideoProcessed ? `<div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none;"><div style="width:32px; height:32px; border-radius:50%; background:rgba(0,0,0,0.5); border:1.5px solid #fff; display:flex; align-items:center; justify-content:center; color:#fff; font-size:14px; padding-left:3px;"><i class="fa-solid fa-play"></i></div></div>` : ''}
+                                        ${canRegenerateMedia ? `
+                                            <div class="weibo-image-prompt-regenerate" data-post-id="${post.id}" data-index="${index}" data-prompt="${this._escapeAttr(promptText)}" data-type="${mediaType}" title="重新生成${mediaType}" style="
+                                                position:absolute; left:4px; bottom:4px; background:rgba(0,0,0,0.55); color:#fff;
+                                                border-radius:999px; padding:3px 7px; font-size:11px; line-height:1; cursor:pointer;
+                                                box-shadow:0 2px 8px rgba(0,0,0,0.18);
+                                            ">重新生成</div>
+                                        ` : ''}
                                         <div class="weibo-image-prompt-show-back" title="查看${mediaType}描述" style="
                                             position:absolute; right:4px; bottom:4px; background:rgba(0,0,0,0.55); color:#fff;
                                             border-radius:999px; padding:3px 7px; font-size:11px; line-height:1; cursor:pointer;
@@ -2263,88 +2271,115 @@ export class WeiboView {
                 const promptText = btn.dataset.prompt;
                 const mediaType = btn.dataset.type; // 记录是图片还是视频
                 
-                if (!postId || isNaN(index) || !promptText) return;
-
-                const { posts, post, source } = this._getPostMediaTarget(postId);
-                if (!post) return;
-
-                const currentState = this._getWeiboPostImageState(post, index);
-                if (currentState?.status === 'loading') return;
-
-                const imageManager = window.VirtualPhone?.imageGenerationManager;
-                if (!imageManager || typeof imageManager.generate !== 'function') {
-                    this._setWeiboPostImageState(post, index, {
-                        status: 'failed',
-                        error: '生图管理器未初始化',
-                        prompt: promptText,
-                        mediaType,
-                        imageModel: '',
-                        imageProvider: ''
-                    });
-                    this._persistPostMediaTarget(posts, source, post);
-                    this._refreshPostMediaUI(postId);
-                    this.app.phoneShell.showNotification('生图失败', '生图管理器未初始化', '❌');
-                    return;
-                }
-                const imageStorage = this.app?.storage || window.VirtualPhone?.storage || null;
-                if (imageStorage && imageManager.storage !== imageStorage) {
-                    imageManager.storage = imageStorage;
-                }
-
-                this._setWeiboPostImageState(post, index, {
-                    status: 'loading',
-                    error: '',
-                    prompt: promptText,
-                    mediaType,
-                    imageModel: '',
-                    imageProvider: String(imageStorage?.get?.('phone-image-provider') || '').trim()
-                });
-                this._persistPostMediaTarget(posts, source, post);
-                this._refreshPostMediaUI(postId);
-
-                try {
-                    const result = await imageManager.generate({
-                        app: 'weibo',
-                        prompt: promptText
-                    });
-                    const imageUrl = String(result?.imageUrl || result?.imageData || '').trim();
-                    if (!imageUrl) throw new Error('生图成功但未返回图片URL');
-
-                    // 🔥 替换原有的图片数组中的 prompt 为真实的 URL (带上前缀以便区分是否带视频小标)
-                    const finalTag = mediaType === '视频' ? '[视频]' : '[图片]';
-                    post.images[index] = `${finalTag}${imageUrl}`;
-                    this._setWeiboPostImageState(post, index, {
-                        status: 'done',
-                        error: '',
-                        prompt: promptText,
-                        mediaType,
-                        generatedImageUrl: imageUrl,
-                        imageModel: String(result?.model || '').trim(),
-                        imageProvider: String(result?.provider || '').trim(),
-                        imageGenerationWidth: Number(result?.width || result?.requestedWidth || 0) || '',
-                        imageGenerationHeight: Number(result?.height || result?.requestedHeight || 0) || ''
-                    });
-
-                    this._persistPostMediaTarget(posts, source, post);
-                    this._refreshPostMediaUI(postId);
-                    this.app.phoneShell.showNotification('成功', '配图生成完成', '✅');
-
-                } catch (error) {
-                    const friendlyMessage = this._normalizeSiliconflowErrorMessage(error);
-                    this._setWeiboPostImageState(post, index, {
-                        status: 'failed',
-                        error: friendlyMessage,
-                        prompt: promptText,
-                        mediaType,
-                        imageModel: '',
-                        imageProvider: String(imageStorage?.get?.('phone-image-provider') || '').trim()
-                    });
-                    this._persistPostMediaTarget(posts, source, post);
-                    this._refreshPostMediaUI(postId);
-                    this.app.phoneShell.showNotification('生图失败', friendlyMessage, '❌');
-                }
+                await this._generateWeiboPostImage({ postId, index, promptText, mediaType });
             };
         });
+
+        document.querySelectorAll('.weibo-image-prompt-regenerate').forEach(btn => {
+            btn.onclick = async (e) => {
+                e.preventDefault(); e.stopPropagation();
+                const postId = btn.dataset.postId;
+                const index = parseInt(btn.dataset.index, 10);
+                const promptText = btn.dataset.prompt;
+                const mediaType = btn.dataset.type;
+
+                await this._generateWeiboPostImage({ postId, index, promptText, mediaType, clearPreviousImage: true });
+            };
+        });
+    }
+
+    async _generateWeiboPostImage({ postId, index, promptText, mediaType = '图片', clearPreviousImage = false } = {}) {
+        if (!postId || !Number.isInteger(index) || index < 0 || !promptText) return;
+
+        const { posts, post, source } = this._getPostMediaTarget(postId);
+        if (!post) return;
+
+        const currentState = this._getWeiboPostImageState(post, index);
+        if (currentState?.status === 'loading') return;
+
+        const imageManager = window.VirtualPhone?.imageGenerationManager;
+        const imageStorage = this.app?.storage || window.VirtualPhone?.storage || null;
+        const safeMediaType = mediaType === '视频' ? '视频' : '图片';
+
+        if (!imageManager || typeof imageManager.generate !== 'function') {
+            this._setWeiboPostImageState(post, index, {
+                status: 'failed',
+                error: '生图管理器未初始化',
+                prompt: promptText,
+                mediaType: safeMediaType,
+                imageModel: '',
+                imageProvider: ''
+            });
+            this._persistPostMediaTarget(posts, source, post);
+            this._refreshPostMediaUI(postId);
+            this.app.phoneShell.showNotification('生图失败', '生图管理器未初始化', '❌');
+            return;
+        }
+
+        if (imageStorage && imageManager.storage !== imageStorage) {
+            imageManager.storage = imageStorage;
+        }
+
+        const pendingTag = safeMediaType === '视频' ? '[视频]' : '[图片]';
+        if (clearPreviousImage && Array.isArray(post.images)) {
+            post.images[index] = `${pendingTag}${promptText}`;
+        }
+
+        this._setWeiboPostImageState(post, index, {
+            status: 'loading',
+            error: '',
+            prompt: promptText,
+            mediaType: safeMediaType,
+            generatedImageUrl: '',
+            imageModel: '',
+            imageProvider: String(imageStorage?.get?.('phone-image-provider') || '').trim(),
+            imageGenerationWidth: '',
+            imageGenerationHeight: ''
+        });
+        this._persistPostMediaTarget(posts, source, post);
+        this._refreshPostMediaUI(postId);
+
+        try {
+            const result = await imageManager.generate({
+                app: 'weibo',
+                prompt: promptText
+            });
+            const imageUrl = String(result?.imageUrl || result?.imageData || '').trim();
+            if (!imageUrl) throw new Error('生图成功但未返回图片URL');
+
+            // 替换原有的图片数组中的 prompt 为真实 URL，保留图片/视频前缀。
+            const finalTag = safeMediaType === '视频' ? '[视频]' : '[图片]';
+            post.images[index] = `${finalTag}${imageUrl}`;
+            this._setWeiboPostImageState(post, index, {
+                status: 'done',
+                error: '',
+                prompt: promptText,
+                mediaType: safeMediaType,
+                generatedImageUrl: imageUrl,
+                imageModel: String(result?.model || '').trim(),
+                imageProvider: String(result?.provider || '').trim(),
+                imageGenerationWidth: Number(result?.width || result?.requestedWidth || 0) || '',
+                imageGenerationHeight: Number(result?.height || result?.requestedHeight || 0) || ''
+            });
+
+            this._persistPostMediaTarget(posts, source, post);
+            this._refreshPostMediaUI(postId);
+            this.app.phoneShell.showNotification('成功', '配图生成完成', '✅');
+        } catch (error) {
+            const friendlyMessage = this._normalizeSiliconflowErrorMessage(error);
+            this._setWeiboPostImageState(post, index, {
+                status: 'failed',
+                error: friendlyMessage,
+                prompt: promptText,
+                mediaType: safeMediaType,
+                generatedImageUrl: '',
+                imageModel: '',
+                imageProvider: String(imageStorage?.get?.('phone-image-provider') || '').trim()
+            });
+            this._persistPostMediaTarget(posts, source, post);
+            this._refreshPostMediaUI(postId);
+            this.app.phoneShell.showNotification('生图失败', friendlyMessage, '❌');
+        }
     }
 
     refreshCurrentTabContent() {

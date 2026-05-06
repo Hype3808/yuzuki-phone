@@ -1427,7 +1427,12 @@ renderChatRoom(chat) {
         this.app.wechatData.updateMessageById(chatId, safeMessageId, {
             imageGenStatus: 'loading',
             imageGenError: '',
-            imagePrompt: promptText
+            imagePrompt: promptText,
+            generatedImageUrl: '',
+            imageModel: '',
+            imageProvider: '',
+            imageGenerationWidth: '',
+            imageGenerationHeight: ''
         });
         this._refreshVisibleChatMessages(chatId);
 
@@ -1510,6 +1515,19 @@ renderChatRoom(chat) {
                     ${generatedImageUrl ? `
                         <img src="${safeImageUrl}" alt="${promptText}" style="width:100%; height:100%; object-fit:cover; display:block;">
                         ${isVideo ? `<div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none;"><div style="width:40px; height:40px; border-radius:50%; background:rgba(0,0,0,0.5); border:2px solid #fff; display:flex; align-items:center; justify-content:center; color:#fff; font-size:18px; padding-left:4px;"><i class="fa-solid fa-play"></i></div></div>` : ''}
+                        <div class="message-image-prompt-regenerate" data-message-id="${cardId}" title="重新生成${msg.mediaType || '图片'}" style="
+                            position:absolute;
+                            left:6px;
+                            bottom:6px;
+                            background:rgba(0,0,0,0.55);
+                            color:#fff;
+                            border-radius:999px;
+                            padding:4px 8px;
+                            font-size:10px;
+                            line-height:1;
+                            cursor:pointer;
+                            box-shadow:0 2px 8px rgba(0,0,0,0.18);
+                        ">重新生成</div>
                         <div class="message-image-prompt-show-back" data-message-id="${cardId}" title="查看${msg.mediaType || '图片'}描述" style="
                             position:absolute;
                             right:6px;
@@ -2552,6 +2570,16 @@ renderChatRoom(chat) {
         });
         currentView.querySelectorAll('.message-image-prompt-generate').forEach(card => {
             card.addEventListener('click', async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const messageId = e.currentTarget.dataset.messageId;
+                if (messageId) {
+                    await this.generateImagePromptMessage(messageId);
+                }
+            });
+        });
+        currentView.querySelectorAll('.message-image-prompt-regenerate').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 const messageId = e.currentTarget.dataset.messageId;
