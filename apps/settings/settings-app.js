@@ -163,6 +163,18 @@ export class SettingsApp {
                         max-width: 760px;
                         margin: 0 auto;
                     }
+                    .settings-app .phone-settings-tab-content {
+                        box-sizing: border-box !important;
+                        width: 100% !important;
+                        visibility: visible !important;
+                        opacity: 1 !important;
+                    }
+                    .settings-app .phone-settings-tab-content.is-active {
+                        display: block !important;
+                    }
+                    .settings-app .phone-settings-tab-content.is-hidden {
+                        display: none !important;
+                    }
                     #tab-general > details[data-settings-fold-key] {
                         margin: 10px 0 !important;
                         border: 1px solid rgba(18, 24, 38, 0.08) !important;
@@ -359,7 +371,7 @@ export class SettingsApp {
                 </div>
 
                 <div class="app-body">
-                    <div class="tab-content" id="tab-general" style="${this.currentTab === 'general' ? '' : 'display: none;'}">
+                    <div class="phone-settings-tab-content ${this.currentTab === 'general' ? 'is-active' : 'is-hidden'}" id="tab-general">
                         <!-- 当前角色信息 -->
                         <div class="setting-section">
                             <div class="setting-section-title">📱 当前角色</div>
@@ -681,12 +693,12 @@ export class SettingsApp {
                         </div>
                     </div>
 
-                    <div class="tab-content" id="tab-memory" style="${this.currentTab === 'memory' ? '' : 'display: none;'}">
+                    <div class="phone-settings-tab-content ${this.currentTab === 'memory' ? 'is-active' : 'is-hidden'}" id="tab-memory">
                         ${this.renderMemoryPermissionSection()}
                         ${this.renderTagFilterSection()}
                     </div>
 
-                    <div class="tab-content" id="tab-llm" style="${this.currentTab === 'llm' ? '' : 'display: none;'}">
+                    <div class="phone-settings-tab-content ${this.currentTab === 'llm' ? 'is-active' : 'is-hidden'}" id="tab-llm">
                         <!-- 🤖 大模型 API 配置 (独立聊天) -->
                         <div class="setting-section">
                             <div class="setting-section-title">🤖 大模型 API 配置</div>
@@ -784,7 +796,7 @@ export class SettingsApp {
                         </div>
                     </div>
 
-                    <div class="tab-content" id="tab-tts" style="${this.currentTab === 'tts' ? '' : 'display: none;'}">
+                    <div class="phone-settings-tab-content ${this.currentTab === 'tts' ? 'is-active' : 'is-hidden'}" id="tab-tts">
                         <!-- 🔊 语音功能 (TTS) -->
                         <div class="tts-section-list">
                             <details data-tts-fold-key="phone-tts-minimax-section-open" ${isTtsMiniMaxSectionOpen ? 'open' : ''} style="margin: 12px 0 8px; border: 1px solid #ececec; border-radius: 10px; background: #fff; overflow: hidden;">
@@ -1024,7 +1036,7 @@ export class SettingsApp {
                         </div>
                     </div>
 
-                    <div class="tab-content" id="tab-image" style="${this.currentTab === 'image' ? '' : 'display: none;'}">
+                <div class="phone-settings-tab-content ${this.currentTab === 'image' ? 'is-active' : 'is-hidden'}" id="tab-image">
                         ${this.renderImageGenerationSection()}
                     </div>
                 </div>
