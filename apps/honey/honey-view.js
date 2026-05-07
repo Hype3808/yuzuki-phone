@@ -1634,6 +1634,18 @@ export class HoneyView {
                 const boundVideoName = boundVideoUrl
                     ? this._formatFollowVideoName(boundVideoUrl)
                     : '未选择';
+                const referenceImage = this._normalizeUploadedBackgroundUrl(host?.naiReferenceImage || '');
+                const hasReferenceImage = /^(?:https?:\/\/|\/backgrounds\/)/i.test(referenceImage);
+                const referenceEnabled = hasReferenceImage && host?.naiReferenceEnabled !== false && host?.naiReferenceEnabled !== 'false';
+                const rawReferenceStrength = Number(host?.naiReferenceStrength ?? 0.7);
+                const referenceStrength = Math.max(0, Math.min(1, Number.isFinite(rawReferenceStrength) ? rawReferenceStrength : 0.7));
+                const referencePercent = Math.round(referenceStrength * 100);
+                const referencePreviewStyle = hasReferenceImage
+                    ? ` style="${this._buildAvatarInlineStyle(`${referenceImage}${referenceImage.includes('?') ? '&' : '?'}t=${Date.now()}`)}"`
+                    : '';
+                const referenceStateText = hasReferenceImage
+                    ? (referenceEnabled ? '已启用' : '已暂停')
+                    : '未设置';
                 const avatarStyle = avatarUrl
                     ? ` style="${this._buildAvatarInlineStyle(avatarUrl)}"`
                     : '';
@@ -1685,6 +1697,68 @@ export class HoneyView {
                                     <span class="honey-follow-video-picker-current">${this._escapeHtml(boundVideoName)}</span>
                                     <i class="fa-solid fa-chevron-right honey-follow-video-picker-arrow"></i>
                                 </button>
+                            </div>
+                            <div class="honey-follow-section-title">角色参考图</div>
+                            <div class="honey-follow-reference-card${hasReferenceImage ? ' has-image' : ''}">
+                                <input
+                                    type="file"
+                                    class="honey-follow-reference-upload"
+                                    data-host-name="${this._escapeHtml(hostName)}"
+                                    accept="image/png,image/jpeg,image/webp,image/*"
+                                    style="display:none;"
+                                >
+                                <div class="honey-follow-reference-main">
+                                    <button
+                                        class="honey-follow-reference-preview"
+                                        data-action="upload-follow-reference"
+                                        data-host-name="${this._escapeHtml(hostName)}"
+                                        aria-label="上传角色参考图"
+                                        ${referencePreviewStyle}
+                                    >${hasReferenceImage ? '' : '<i class="fa-regular fa-image"></i>'}</button>
+                                    <div class="honey-follow-reference-meta">
+                                        <div class="honey-follow-reference-title">
+                                            <span><i class="fa-solid fa-user-check"></i> 固定形象</span>
+                                            <span class="honey-follow-reference-state">${this._escapeHtml(referenceStateText)}</span>
+                                        </div>
+                                        <div class="honey-follow-reference-desc">生图时自动作为 NovelAI 角色参考，保持这个主播的脸和气质。</div>
+                                    </div>
+                                    <label class="honey-toggle-switch honey-follow-reference-switch" title="启用角色参考图">
+                                        <input
+                                            type="checkbox"
+                                            class="honey-follow-reference-enabled"
+                                            data-host-name="${this._escapeHtml(hostName)}"
+                                            ${referenceEnabled ? 'checked' : ''}
+                                            ${hasReferenceImage ? '' : 'disabled'}
+                                        >
+                                        <span class="honey-toggle-slider"></span>
+                                    </label>
+                                </div>
+                                <div class="honey-follow-reference-controls">
+                                    <button
+                                        class="honey-follow-action-btn"
+                                        data-action="upload-follow-reference"
+                                        data-host-name="${this._escapeHtml(hostName)}"
+                                    >${hasReferenceImage ? '替换参考图' : '上传参考图'}</button>
+                                    <button
+                                        class="honey-follow-action-btn is-danger"
+                                        data-action="remove-follow-reference"
+                                        data-host-name="${this._escapeHtml(hostName)}"
+                                        ${hasReferenceImage ? '' : 'disabled'}
+                                    >删除</button>
+                                </div>
+                                <label class="honey-follow-reference-strength-row">
+                                    <span>参考强度 <b class="honey-follow-reference-strength-value">${referencePercent}%</b></span>
+                                    <input
+                                        type="range"
+                                        class="honey-follow-reference-strength"
+                                        data-host-name="${this._escapeHtml(hostName)}"
+                                        min="0"
+                                        max="1"
+                                        step="0.05"
+                                        value="${this._escapeHtml(String(referenceStrength))}"
+                                        ${hasReferenceImage ? '' : 'disabled'}
+                                    >
+                                </label>
                             </div>
                             <div class="honey-follow-actions">
                                 <button
@@ -2281,7 +2355,13 @@ export class HoneyView {
                 e.stopPropagation();
                 const imageUrl = e.currentTarget?.getAttribute('src') || '';
                 if (imageUrl) {
-                    this.app?.phoneShell?.showImageViewer?.(imageUrl, { alt: '蜜语直播图片' });
+                    const hostName = String(this.currentSceneData?.host || 'honey').trim() || 'honey';
+                    const seed = String(this.currentSceneData?.imageGenerationSeed || Date.now()).trim();
+                    this.app?.phoneShell?.showImageViewer?.(imageUrl, {
+                        alt: '蜜语直播图片',
+                        download: true,
+                        filename: `honey_${hostName}_${seed}.png`
+                    });
                 }
             });
         });
@@ -3142,6 +3222,33 @@ export class HoneyView {
             if (list) list.innerHTML = '';
         };
 
+        root.addEventListener('change', async (e) => {
+            const input = e.target?.closest?.('.honey-follow-reference-upload');
+            if (!input) return;
+            const hostName = String(input.dataset.hostName || '').trim();
+            const file = input.files?.[0] || null;
+            input.value = '';
+            if (!hostName || !file) return;
+
+            try {
+                const uploadedUrl = await this._uploadHoneyReferenceImageFile(hostName, file);
+                const updated = this.app?.honeyData?.updateFollowedHostNaiReference?.(hostName, {
+                    naiReferenceImage: uploadedUrl,
+                    naiReferenceEnabled: true,
+                    naiReferenceStrength: 0.7,
+                    naiReferenceInformationExtracted: 1
+                });
+                if (!updated) {
+                    this.app?.phoneShell?.showNotification?.('蜜语', '没有找到这个主播', '⚠️');
+                    return;
+                }
+                this.app?.phoneShell?.showNotification?.('蜜语', `${hostName} 的角色参考图已保存`, '✅');
+                this.render();
+            } catch (err) {
+                this.app?.phoneShell?.showNotification?.('参考图保存失败', err?.message || String(err || '图片读取失败'), '❌');
+            }
+        });
+
         root.addEventListener('click', (e) => {
             const target = e.target?.closest?.('[data-action]');
             if (!target) return;
@@ -3281,6 +3388,32 @@ export class HoneyView {
                 return;
             }
 
+            if (action === 'upload-follow-reference') {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!hostName) return;
+                const card = target.closest('.honey-follow-item');
+                const input = card?.querySelector?.('.honey-follow-reference-upload');
+                input?.click?.();
+                return;
+            }
+
+            if (action === 'remove-follow-reference') {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!hostName) return;
+                const currentHost = this.app?.honeyData?.getFollowedHostByName?.(hostName);
+                const oldReferenceImage = currentHost?.naiReferenceImage || '';
+                this.app?.honeyData?.updateFollowedHostNaiReference?.(hostName, {
+                    naiReferenceImage: '',
+                    naiReferenceEnabled: false
+                });
+                window.VirtualPhone?.imageManager?.deleteManagedBackgroundByPath?.(oldReferenceImage, { quiet: true });
+                this.app.phoneShell.showNotification('蜜语', '已删除角色参考图', '✅');
+                this.render();
+                return;
+            }
+
             if (action === 'open-host-chat-history') {
                 e.preventDefault();
                 e.stopPropagation();
@@ -3293,6 +3426,38 @@ export class HoneyView {
             }
 
             return;
+        });
+
+        root.addEventListener('input', (e) => {
+            const slider = e.target?.closest?.('.honey-follow-reference-strength');
+            if (!slider) return;
+            const valueEl = slider.closest('.honey-follow-reference-card')?.querySelector?.('.honey-follow-reference-strength-value');
+            const value = Math.max(0, Math.min(1, Number(slider.value) || 0));
+            if (valueEl) valueEl.textContent = `${Math.round(value * 100)}%`;
+        });
+
+        root.addEventListener('change', (e) => {
+            const enabledToggle = e.target?.closest?.('.honey-follow-reference-enabled');
+            if (enabledToggle) {
+                const hostName = String(enabledToggle.dataset.hostName || '').trim();
+                if (!hostName) return;
+                this.app?.honeyData?.updateFollowedHostNaiReference?.(hostName, {
+                    naiReferenceEnabled: !!enabledToggle.checked
+                });
+                this.render();
+                return;
+            }
+
+            const slider = e.target?.closest?.('.honey-follow-reference-strength');
+            if (slider) {
+                const hostName = String(slider.dataset.hostName || '').trim();
+                if (!hostName) return;
+                const value = Math.max(0, Math.min(1, Number(slider.value) || 0));
+                this.app?.honeyData?.updateFollowedHostNaiReference?.(hostName, {
+                    naiReferenceStrength: value
+                });
+                return;
+            }
         });
     }
 
@@ -5526,6 +5691,112 @@ export class HoneyView {
         return `background-image:url('${safe}');`;
     }
 
+    _readFileAsDataUrl(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ''));
+            reader.onerror = () => reject(reader.error || new Error('图片读取失败'));
+            reader.readAsDataURL(file);
+        });
+    }
+
+    _loadImageFromDataUrl(src) {
+        return new Promise((resolve, reject) => {
+            const image = new Image();
+            image.onload = () => resolve(image);
+            image.onerror = () => reject(new Error('图片解码失败'));
+            image.src = src;
+        });
+    }
+
+    async _prepareHoneyReferenceImageFile(file) {
+        if (!file || !String(file.type || '').startsWith('image/')) {
+            throw new Error('请选择图片文件');
+        }
+        const maxBytes = 8 * 1024 * 1024;
+        if (Number(file.size || 0) > maxBytes) {
+            throw new Error('参考图最大支持 8MB');
+        }
+
+        const dataUrl = await this._readFileAsDataUrl(file);
+        const image = await this._loadImageFromDataUrl(dataUrl);
+        const sourceWidth = Number(image.naturalWidth || image.width || 0);
+        const sourceHeight = Number(image.naturalHeight || image.height || 0);
+        if (!sourceWidth || !sourceHeight) return dataUrl;
+
+        const maxSide = 1024;
+        const scale = Math.min(1, maxSide / Math.max(sourceWidth, sourceHeight));
+        if (scale >= 1 && Number(file.size || 0) <= 900 * 1024) return dataUrl;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+        canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return dataUrl;
+        ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+        return canvas.toDataURL('image/jpeg', 0.9);
+    }
+
+    async _uploadHoneyReferenceImageFile(hostName, file) {
+        const currentHost = this.app?.honeyData?.getFollowedHostByName?.(hostName);
+        const oldReferenceImage = currentHost?.naiReferenceImage || '';
+        const dataUrl = await this._prepareHoneyReferenceImageFile(file);
+        const blobResp = await fetch(dataUrl);
+        const blob = await blobResp.blob();
+        const safeName = String(hostName || 'host')
+            .replace(/[^\w\u4e00-\u9fff-]+/g, '_')
+            .slice(0, 24) || 'host';
+        const filename = `phone_honey_ref_${safeName}_${Date.now()}.jpg`;
+        const formData = new FormData();
+        formData.append('avatar', blob, filename);
+
+        const headers = typeof window.getRequestHeaders === 'function' ? window.getRequestHeaders() : {};
+        delete headers['Content-Type'];
+        delete headers['content-type'];
+        if (!headers['X-CSRF-Token'] && !headers['x-csrf-token']) {
+            const csrfResp = await fetch('/csrf-token', { credentials: 'include' });
+            if (csrfResp.ok) {
+                const csrfData = await csrfResp.json().catch(() => ({}));
+                if (csrfData?.token) headers['X-CSRF-Token'] = csrfData.token;
+            }
+        }
+
+        const uploadResp = await fetch('/api/backgrounds/upload', {
+            method: 'POST',
+            body: formData,
+            headers,
+            credentials: 'include'
+        });
+        if (!uploadResp.ok) {
+            const detail = await this._readUploadErrorDetail(uploadResp);
+            throw new Error(detail ? `HTTP ${uploadResp.status}: ${detail}` : `HTTP ${uploadResp.status}`);
+        }
+
+        const uploadedUrl = await this._resolveUploadFinalUrl(uploadResp, filename);
+        window.VirtualPhone?.imageManager?.deleteManagedBackgroundByPath?.(oldReferenceImage, { quiet: true });
+        return uploadedUrl;
+    }
+
+    async _imageUrlToDataUrl(url) {
+        const safeUrl = String(url || '').trim();
+        if (!safeUrl) return '';
+        if (safeUrl.startsWith('data:image/')) return safeUrl;
+        const response = await fetch(safeUrl, {
+            credentials: 'include',
+            cache: 'no-store'
+        });
+        if (!response.ok) {
+            throw new Error(`参考图读取失败 (${response.status})`);
+        }
+        const blob = await response.blob();
+        return await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ''));
+            reader.onerror = () => reject(reader.error || new Error('参考图读取失败'));
+            reader.readAsDataURL(blob);
+        });
+    }
+
     _avatarIdentityKey(url) {
         if (!url) return '';
         let value = String(url).trim().replace(/\\/g, '/');
@@ -5963,6 +6234,27 @@ export class HoneyView {
                 seed: requestSeed
             })
             : null;
+        const sceneHostName = String(baseScene?.host || this.currentSceneData?.host || '').trim();
+        const hostNaiReference = provider === 'novelai'
+            ? this.app?.honeyData?.getHostNaiReference?.(sceneHostName)
+            : null;
+        let novelAIReferences = [];
+        if (hostNaiReference?.image) {
+            try {
+                const referenceImageDataUrl = await this._imageUrlToDataUrl(hostNaiReference.image);
+                if (referenceImageDataUrl) {
+                    novelAIReferences = [{
+                        ...hostNaiReference,
+                        image: referenceImageDataUrl
+                    }];
+                }
+            } catch (err) {
+                console.warn('[Honey NAI] 角色参考图读取失败，已跳过:', err);
+                if (!auto) {
+                    this.app?.phoneShell?.showNotification?.('蜜语', '角色参考图读取失败，本次将不使用参考图', '⚠️');
+                }
+            }
+        }
 
         console.log([
             auto ? '[Honey NAI] 自动请求直播生图' : '[Honey NAI] 即将请求直播生图',
@@ -5971,6 +6263,7 @@ export class HoneyView {
             `Scale: ${safeHoneyScale}`,
             `Provider: ${provider}`,
             `Seed: 随机（已忽略全局 Seed=${globalSeed}，避免重刷同图）`,
+            `主播参考图: ${novelAIReferences.length ? `${sceneHostName || '未知主播'} · 已启用` : '未使用'}`,
             '',
             'AI 原始画面 tag:',
             normalizedPrompt || '(空)',
@@ -6023,7 +6316,8 @@ export class HoneyView {
                 height: safeHoneyHeight,
                 steps: safeHoneySteps,
                 scale: safeHoneyScale,
-                seed: requestSeed
+                seed: requestSeed,
+                novelAIReferences
             });
             this.currentSceneData = {
                 ...(this.currentSceneData || baseScene),

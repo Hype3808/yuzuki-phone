@@ -637,6 +637,8 @@ export class PhoneShell {
     showImageViewer(imageUrl, options = {}) {
         const safeUrl = String(imageUrl || '').trim();
         if (!safeUrl || !this.container) return;
+        const allowDownload = options.download !== false;
+        const downloadName = this._buildImageViewerDownloadName(options.filename || options.downloadName || 'phone-image');
 
         const phoneBody = this.container.querySelector('.phone-body-panel') || this.container;
         phoneBody.querySelector('#phone-image-viewer-overlay')?.remove();
@@ -650,6 +652,11 @@ export class PhoneShell {
             <button class="phone-image-viewer-close" type="button" aria-label="关闭图片预览">
                 <i class="fa-solid fa-chevron-left"></i>
             </button>
+            ${allowDownload ? `
+                <button class="phone-image-viewer-download" type="button" aria-label="下载图片">
+                    <i class="fa-solid fa-download"></i>
+                </button>
+            ` : ''}
             <div class="phone-image-viewer-stage">
                 <img class="phone-image-viewer-img" alt="">
             </div>
@@ -674,10 +681,61 @@ export class PhoneShell {
         closeBtn?.addEventListener('pointerdown', closeFromControl);
         closeBtn?.addEventListener('touchstart', closeFromControl, { passive: false });
         closeBtn?.addEventListener('click', closeFromControl);
+        const downloadBtn = overlay.querySelector('.phone-image-viewer-download');
+        const downloadFromControl = async (e) => {
+            e?.preventDefault?.();
+            e?.stopPropagation?.();
+            await this._downloadImageFromViewer(safeUrl, downloadName);
+        };
+        downloadBtn?.addEventListener('pointerdown', downloadFromControl);
+        downloadBtn?.addEventListener('touchstart', downloadFromControl, { passive: false });
+        downloadBtn?.addEventListener('click', downloadFromControl);
         overlay.addEventListener('wheel', (e) => e.stopPropagation(), { passive: true });
         overlay.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
 
         phoneBody.appendChild(overlay);
+    }
+
+    _buildImageViewerDownloadName(rawName = 'phone-image') {
+        const base = String(rawName || 'phone-image')
+            .trim()
+            .replace(/[\\/:*?"<>|]+/g, '_')
+            .replace(/\s+/g, '_')
+            .slice(0, 80) || 'phone-image';
+        return /\.(?:png|jpe?g|webp|gif)$/i.test(base) ? base : `${base}.png`;
+    }
+
+    async _downloadImageFromViewer(imageUrl, filename) {
+        const safeUrl = String(imageUrl || '').trim();
+        if (!safeUrl) return;
+        let objectUrl = '';
+        try {
+            let href = safeUrl;
+            if (!safeUrl.startsWith('data:image/')) {
+                const response = await fetch(safeUrl, { credentials: 'include', cache: 'no-store' });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const blob = await response.blob();
+                objectUrl = URL.createObjectURL(blob);
+                href = objectUrl;
+            }
+
+            const link = document.createElement('a');
+            link.href = href;
+            link.download = filename;
+            link.rel = 'noopener';
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            this.showNotification?.('图片', '已触发下载', '⬇️');
+        } catch (err) {
+            console.warn('[PhoneShell] 图片下载失败，已尝试打开原图:', err);
+            window.open(safeUrl, '_blank', 'noopener');
+            this.showNotification?.('图片', '浏览器不支持直接下载，已打开原图', 'ℹ️');
+        } finally {
+            if (objectUrl) {
+                setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+            }
+        }
     }
     
     setContent(html, viewId = null) {

@@ -63,6 +63,59 @@ export class ImageGenerationManager {
         return /^nai-diffusion-4(?:-|$)/i.test(String(model || '').trim());
     }
 
+    _clampReferenceValue(value, fallback = 0.7, min = 0, max = 1) {
+        const num = Number.parseFloat(value);
+        if (!Number.isFinite(num)) return fallback;
+        const clamped = Math.max(min, Math.min(max, num));
+        return Math.round(clamped * 100) / 100;
+    }
+
+    _normalizeNovelAIReferenceImage(value) {
+        const raw = String(value || '').trim();
+        if (!raw) return '';
+        const dataUrlMatch = raw.match(/^data:image\/[a-z0-9.+-]+;base64,([\s\S]+)$/i);
+        if (dataUrlMatch) return dataUrlMatch[1].replace(/\s+/g, '');
+        if (/^[A-Za-z0-9+/=\s]+$/.test(raw.slice(0, 120))) return raw.replace(/\s+/g, '');
+        return '';
+    }
+
+    _buildNovelAIReferenceCacheKey(imageBase64 = '') {
+        const text = String(imageBase64 || '');
+        let hash = 2166136261;
+        for (let i = 0; i < text.length; i++) {
+            hash ^= text.charCodeAt(i);
+            hash = Math.imul(hash, 16777619);
+        }
+        return `phone-ref-${(hash >>> 0).toString(16)}-${text.length}`;
+    }
+
+    _normalizeNovelAIReferences(options = {}) {
+        const rawList = Array.isArray(options.novelAIReferences)
+            ? options.novelAIReferences
+            : (Array.isArray(options.referenceImages) ? options.referenceImages : []);
+        return rawList
+            .map((item) => {
+                const image = typeof item === 'string'
+                    ? this._normalizeNovelAIReferenceImage(item)
+                    : this._normalizeNovelAIReferenceImage(item?.image || item?.imageData || item?.dataUrl || item?.base64);
+                if (!image) return null;
+                return {
+                    image,
+                    cacheSecretKey: String(item?.cacheSecretKey || item?.cache_secret_key || '').trim()
+                        || this._buildNovelAIReferenceCacheKey(image),
+                    strength: this._clampReferenceValue(item?.strength ?? item?.referenceStrength, 0.7, 0, 1),
+                    informationExtracted: this._clampReferenceValue(
+                        item?.informationExtracted ?? item?.referenceInformationExtracted,
+                        1,
+                        0,
+                        1
+                    )
+                };
+            })
+            .filter(Boolean)
+            .slice(0, 4);
+    }
+
     _containsCjk(text) {
         return /[\u3400-\u9fff\u3000-\u303f\uff00-\uffef]/.test(String(text || ''));
     }
@@ -243,6 +296,7 @@ export class ImageGenerationManager {
         if (!config?.debugPayload) return;
         const originalPrompt = String(options?.rawPrompt || options?.prompt || '').trim();
         const translatedPrompt = String(options?.translatedPrompt || '').trim();
+        const debugPayload = this._redactNovelAIDebugPayload(payload);
         const debugInfo = {
             endpoint,
             provider: 'novelai',
@@ -260,7 +314,16 @@ export class ImageGenerationManager {
             translatedPrompt,
             positivePrompt: payload?.input || '',
             negativePrompt: payload?.parameters?.negative_prompt || '',
-            payload
+            referenceCount: Array.isArray(payload?.parameters?.reference_image_multiple_cached)
+                ? payload.parameters.reference_image_multiple_cached.length
+                : (Array.isArray(payload?.parameters?.director_reference_images_cached)
+                    ? payload.parameters.director_reference_images_cached.length
+                    : (Array.isArray(payload?.parameters?.director_reference_images)
+                        ? payload.parameters.director_reference_images.length
+                        : (Array.isArray(payload?.parameters?.reference_image_multiple)
+                            ? payload.parameters.reference_image_multiple.length
+                            : 0))),
+            payload: debugPayload
         };
         try {
             if (typeof window !== 'undefined') {
@@ -279,6 +342,7 @@ export class ImageGenerationManager {
                 `Scale: ${debugInfo.scale}`,
                 `CFG Rescale: ${debugInfo.cfgRescale}`,
                 `Seed: ${debugInfo.seed}`,
+                `参考图: ${debugInfo.referenceCount} 张`,
                 '',
                 'AI 画面 tag（原样）:',
                 debugInfo.originalPrompt || '(空)',
@@ -294,7 +358,7 @@ export class ImageGenerationManager {
                 '最终发送给 NAI 的负面提示词:',
                 debugInfo.negativePrompt || '(空)',
                 '',
-                '完整 payload 已保存到 window.__lastNovelAIRequest',
+                '调试 payload 已保存到 window.__lastNovelAIRequest（参考图 base64 已脱敏）',
                 '复制完整调试信息: copy(JSON.stringify(window.__lastNovelAIRequest, null, 2))'
             ].join('\n');
             console.log(plainText);
@@ -309,7 +373,8 @@ export class ImageGenerationManager {
                 schedule: debugInfo.schedule,
                 scale: debugInfo.scale,
                 cfgRescale: debugInfo.cfgRescale,
-                seed: debugInfo.seed
+                seed: debugInfo.seed,
+                referenceCount: debugInfo.referenceCount
             });
             console.info('AI 画面 tag（原样）', debugInfo.originalPrompt);
             if (debugInfo.translatedPrompt) console.info('自动转英文后的 NAI tag', debugInfo.translatedPrompt);
@@ -319,6 +384,43 @@ export class ImageGenerationManager {
             console.info('copy helper', 'copy(JSON.stringify(window.__lastNovelAIRequest, null, 2))');
             console.groupEnd();
         } catch (e) {}
+    }
+
+    _redactNovelAIDebugPayload(payload) {
+        try {
+            const clone = JSON.parse(JSON.stringify(payload || {}));
+            const refs = clone?.parameters?.reference_image_multiple;
+            if (Array.isArray(refs)) {
+                clone.parameters.reference_image_multiple = refs.map((item, index) => {
+                    const length = String(item || '').length;
+                    return `[BASE64_REFERENCE_IMAGE_${index + 1}:${length}]`;
+                });
+            }
+            const cachedRefs = clone?.parameters?.reference_image_multiple_cached;
+            if (Array.isArray(cachedRefs)) {
+                clone.parameters.reference_image_multiple_cached = cachedRefs.map((item, index) => ({
+                    cache_secret_key: String(item?.cache_secret_key || ''),
+                    data: `[BASE64_REFERENCE_IMAGE_CACHED_${index + 1}:${String(item?.data || '').length}]`
+                }));
+            }
+            const directorRefs = clone?.parameters?.director_reference_images;
+            if (Array.isArray(directorRefs)) {
+                clone.parameters.director_reference_images = directorRefs.map((item, index) => {
+                    const length = String(item || '').length;
+                    return `[BASE64_DIRECTOR_REFERENCE_IMAGE_${index + 1}:${length}]`;
+                });
+            }
+            const cachedDirectorRefs = clone?.parameters?.director_reference_images_cached;
+            if (Array.isArray(cachedDirectorRefs)) {
+                clone.parameters.director_reference_images_cached = cachedDirectorRefs.map((item, index) => ({
+                    cache_secret_key: String(item?.cache_secret_key || ''),
+                    data: `[BASE64_DIRECTOR_REFERENCE_IMAGE_CACHED_${index + 1}:${String(item?.data || '').length}]`
+                }));
+            }
+            return clone;
+        } catch (e) {
+            return payload;
+        }
     }
 
     _resolveNovelAIEndpoint(config) {
@@ -712,6 +814,7 @@ export class ImageGenerationManager {
         let scale = Number(options.scale ?? config.scale);
         let steps = Number(options.steps || config.steps);
         const cfgRescale = Number(options.cfgRescale ?? config.cfgRescale);
+        const novelAIReferences = this._normalizeNovelAIReferences(options);
         if (appKey === 'honey') {
             if (!Number.isFinite(width) || !Number.isFinite(height) || width < 512 || height < 768) {
                 width = appDefaults.width;
@@ -760,9 +863,6 @@ export class ImageGenerationManager {
                 legacy: false,
                 add_original_image: false,
                 legacy_v3_extend: false,
-                reference_image_multiple: [],
-                reference_information_extracted_multiple: [],
-                reference_strength_multiple: [],
                 v4_prompt: {
                     caption: {
                         base_caption: prompt,
@@ -779,6 +879,17 @@ export class ImageGenerationManager {
                     legacy_uc: false
                 }
             });
+
+            if (novelAIReferences.length > 0) {
+                Object.assign(parameters, {
+                    reference_image_multiple_cached: novelAIReferences.map(item => ({
+                        cache_secret_key: item.cacheSecretKey,
+                        data: item.image
+                    })),
+                    reference_strength_multiple: novelAIReferences.map(item => item.strength),
+                    normalize_reference_strength_multiple: true
+                });
+            }
         }
 
         return {

@@ -265,6 +265,45 @@ export class HoneyData {
         return Math.round(clamped * 10) / 10;
     }
 
+    _clampReferenceValue(value, fallback = 0.7, min = 0, max = 1) {
+        const num = Number.parseFloat(value);
+        if (!Number.isFinite(num)) return fallback;
+        const clamped = Math.max(min, Math.min(max, num));
+        return Math.round(clamped * 100) / 100;
+    }
+
+    _normalizeNaiReferenceImage(value) {
+        const raw = String(value || '').trim();
+        if (!raw || raw === '[object Object]' || raw === 'undefined' || raw === 'null') return '';
+        if (/^data:image\/[a-z0-9.+-]+;base64,/i.test(raw)) return '';
+        if (/^(?:https?:\/\/|\/backgrounds\/)/i.test(raw)) return raw;
+        return '';
+    }
+
+    _normalizeHostNaiReference(item = {}) {
+        const image = this._normalizeNaiReferenceImage(
+            item.naiReferenceImage || item.referenceImage || item.characterReferenceImage
+        );
+        return {
+            naiReferenceImage: image,
+            naiReferenceEnabled: image
+                ? (item.naiReferenceEnabled === undefined ? true : item.naiReferenceEnabled !== false && item.naiReferenceEnabled !== 'false')
+                : false,
+            naiReferenceStrength: this._clampReferenceValue(
+                item.naiReferenceStrength ?? item.referenceStrength,
+                0.7,
+                0,
+                1
+            ),
+            naiReferenceInformationExtracted: this._clampReferenceValue(
+                item.naiReferenceInformationExtracted ?? item.referenceInformationExtracted,
+                1,
+                0,
+                1
+            )
+        };
+    }
+
     _normalizeContinuePromptTurns(turns, maxTurns = 200) {
         const safeMax = Math.max(1, Number(maxTurns) || 200);
         return (Array.isArray(turns) ? turns : [])
@@ -1688,11 +1727,15 @@ export class HoneyData {
     getFollowedHosts() {
         const parsed = this._readJSON('honey_followed_hosts', []);
         if (!Array.isArray(parsed)) return [];
-        return parsed
+        let needsCleanup = false;
+        const list = parsed
             .map((item) => {
                 if (!item || typeof item !== 'object') return null;
                 const name = String(item.name || item.hostName || '').trim();
                 if (!name) return null;
+                if (/^data:image\/[a-z0-9.+-]+;base64,/i.test(String(item.naiReferenceImage || item.referenceImage || item.characterReferenceImage || '').trim())) {
+                    needsCleanup = true;
+                }
                 return {
                     name,
                     avatarUrl: String(item.avatarUrl || '').trim(),
@@ -1702,10 +1745,19 @@ export class HoneyData {
                     favorability: this._clampFavorability(item.favorability ?? item.affection, 0),
                     liveTitle: this._sanitizeInlineText(item.liveTitle || item.title || '', 40),
                     intro: this._sanitizeInlineText(item.intro || '', 120),
-                    fans: this._sanitizeInlineText(item.fans || item.followers || '', 24)
+                    fans: this._sanitizeInlineText(item.fans || item.followers || '', 24),
+                    ...this._normalizeHostNaiReference(item)
                 };
             })
             .filter(Boolean);
+        if (needsCleanup) {
+            try {
+                this._setStored('honey_followed_hosts', JSON.stringify(list));
+                this._scheduleFlushChatPersistence();
+                console.warn('[HoneyData] 已清理关注主播里的旧版 base64 角色参考图，请重新上传参考图以使用固定角色功能');
+            } catch (e) {}
+        }
+        return list;
     }
 
     saveFollowedHosts(list) {
@@ -1724,7 +1776,8 @@ export class HoneyData {
                         favorability: this._clampFavorability(item.favorability ?? item.affection, 0),
                         liveTitle: this._sanitizeInlineText(item.liveTitle || item.title || '', 40),
                         intro: this._sanitizeInlineText(item.intro || '', 120),
-                        fans: this._sanitizeInlineText(item.fans || item.followers || '', 24)
+                        fans: this._sanitizeInlineText(item.fans || item.followers || '', 24),
+                        ...this._normalizeHostNaiReference(item)
                     };
                 })
                 .filter(Boolean)
@@ -1759,7 +1812,8 @@ export class HoneyData {
             figure: '魅魔',
             boundVideoUrl: '',
             lastActiveAt: 0,
-            favorability: 0
+            favorability: 0,
+            ...this._normalizeHostNaiReference({})
         });
         this.saveFollowedHosts(list);
         return { followed: true, list };
@@ -1793,10 +1847,45 @@ export class HoneyData {
             favorability: this._clampFavorability(patch.favorability ?? patch.affection ?? list[idx].favorability, 0),
             liveTitle: this._sanitizeInlineText(patch.liveTitle ?? patch.title ?? list[idx].liveTitle, 40),
             intro: this._sanitizeInlineText(patch.intro ?? list[idx].intro, 120),
-            fans: this._sanitizeInlineText(patch.fans ?? patch.followers ?? list[idx].fans, 24)
+            fans: this._sanitizeInlineText(patch.fans ?? patch.followers ?? list[idx].fans, 24),
+            ...this._normalizeHostNaiReference({
+                ...list[idx],
+                ...patch
+            })
         };
         this.saveFollowedHosts(list);
         return list[idx];
+    }
+
+    getFollowedHostByName(hostName) {
+        const safeHostName = String(hostName || '').trim();
+        if (!safeHostName) return null;
+        const normalize = (name) => this._stripFollowStateSuffix(name).replace(/\s+/g, '').trim().toLowerCase();
+        const safeKey = normalize(safeHostName);
+        if (!safeKey) return null;
+        return this.getFollowedHosts().find(item => normalize(item?.name) === safeKey) || null;
+    }
+
+    getHostNaiReference(hostName) {
+        const host = this.getFollowedHostByName(hostName);
+        if (!host?.naiReferenceImage || !host.naiReferenceEnabled) return null;
+        const normalized = this._normalizeHostNaiReference(host);
+        if (!normalized.naiReferenceImage || !normalized.naiReferenceEnabled) return null;
+        return {
+            image: normalized.naiReferenceImage,
+            strength: normalized.naiReferenceStrength,
+            informationExtracted: normalized.naiReferenceInformationExtracted
+        };
+    }
+
+    updateFollowedHostNaiReference(hostName, patch = {}) {
+        const current = this.getFollowedHostByName(hostName);
+        if (!current) return null;
+        const normalized = this._normalizeHostNaiReference({
+            ...current,
+            ...patch
+        });
+        return this.updateFollowedHost(current.name, normalized);
     }
 
     bindHostVideo(hostName, videoUrl = '') {

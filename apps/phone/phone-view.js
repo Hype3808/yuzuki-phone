@@ -132,63 +132,7 @@ export class PhoneCallView {
             this.renderSettings();
         });
 
-        // 绑定通话记录点击事件 + 长按删除
-        const reversedHistory = [...history].reverse();
-        document.querySelectorAll('.phone-call-history-item').forEach(item => {
-            const idx = parseInt(item.dataset.recordIdx);
-            const record = reversedHistory[idx];
-            if (!record) return;
-
-            // 点击：已接通的查看聊天记录
-            if (record.status === 'answered' && record.transcript && record.transcript.length > 0) {
-                item.addEventListener('click', (e) => {
-                    // 如果删除按钮可见，点击先关闭删除按钮
-                    if (item.querySelector('.phone-call-delete-btn')) return;
-                    this.renderTranscript(record);
-                });
-            }
-
-            // 长按：弹出删除按钮
-            let longPressTimer = null;
-            item.addEventListener('touchstart', (e) => {
-                longPressTimer = setTimeout(() => {
-                    // 先清除其他已显示的删除按钮
-                    document.querySelectorAll('.phone-call-delete-btn').forEach(btn => btn.remove());
-                    // 创建删除按钮
-                    const deleteBtn = document.createElement('button');
-                    deleteBtn.className = 'phone-call-delete-btn';
-                    deleteBtn.textContent = '删除';
-                    deleteBtn.addEventListener('click', (ev) => {
-                        ev.stopPropagation();
-                        this.app.phoneCallData.deleteCallRecord(record.id);
-                        this.renderMain();
-                    });
-                    item.style.position = 'relative';
-                    item.appendChild(deleteBtn);
-                }, 600);
-            });
-            item.addEventListener('touchend', () => clearTimeout(longPressTimer));
-            item.addEventListener('touchmove', () => clearTimeout(longPressTimer));
-
-            // 鼠标端长按（PC兼容）
-            item.addEventListener('mousedown', (e) => {
-                longPressTimer = setTimeout(() => {
-                    document.querySelectorAll('.phone-call-delete-btn').forEach(btn => btn.remove());
-                    const deleteBtn = document.createElement('button');
-                    deleteBtn.className = 'phone-call-delete-btn';
-                    deleteBtn.textContent = '删除';
-                    deleteBtn.addEventListener('click', (ev) => {
-                        ev.stopPropagation();
-                        this.app.phoneCallData.deleteCallRecord(record.id);
-                        this.renderMain();
-                    });
-                    item.style.position = 'relative';
-                    item.appendChild(deleteBtn);
-                }, 600);
-            });
-            item.addEventListener('mouseup', () => clearTimeout(longPressTimer));
-            item.addEventListener('mouseleave', () => clearTimeout(longPressTimer));
-        });
+        this._bindCallHistoryEvents(history);
 
         // 点击空白处关闭删除按钮
         document.querySelector('.phone-call-main')?.addEventListener('click', (e) => {
@@ -196,6 +140,131 @@ export class PhoneCallView {
                 document.querySelectorAll('.phone-call-delete-btn').forEach(btn => btn.remove());
             }
         });
+    }
+
+    _bindCallHistoryEvents(history) {
+        const reversedHistory = [...history].reverse();
+        document.querySelectorAll('.phone-call-history-item').forEach(item => {
+            const idx = parseInt(item.dataset.recordIdx, 10);
+            const record = reversedHistory[idx];
+            if (!record) return;
+
+            let pressTimer = null;
+            let longPressFired = false;
+            let startX = 0;
+            let startY = 0;
+            let suppressClickUntil = 0;
+
+            const clearPress = () => {
+                if (pressTimer) {
+                    clearTimeout(pressTimer);
+                    pressTimer = null;
+                }
+            };
+
+            const startPress = (x, y) => {
+                startX = x;
+                startY = y;
+                longPressFired = false;
+                clearPress();
+                pressTimer = setTimeout(() => {
+                    pressTimer = null;
+                    longPressFired = true;
+                    suppressClickUntil = Date.now() + 450;
+                    this._showCallRecordDeleteButton(item, record);
+                }, 520);
+            };
+
+            const movePress = (x, y) => {
+                if (!pressTimer) return;
+                const dx = Math.abs(x - startX);
+                const dy = Math.abs(y - startY);
+                if (dx > 18 || dy > 18) {
+                    clearPress();
+                }
+            };
+
+            const endPress = () => {
+                clearPress();
+                if (longPressFired) {
+                    suppressClickUntil = Date.now() + 450;
+                    longPressFired = false;
+                }
+            };
+
+            if (record.status === 'answered' && record.transcript && record.transcript.length > 0) {
+                item.addEventListener('click', (e) => {
+                    if (Date.now() < suppressClickUntil || item.querySelector('.phone-call-delete-btn')) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return;
+                    }
+                    this.renderTranscript(record);
+                });
+            }
+
+            item.addEventListener('touchstart', (e) => {
+                if (!e.touches || e.touches.length === 0) return;
+                const t = e.touches[0];
+                startPress(t.clientX, t.clientY);
+            }, { passive: true });
+
+            item.addEventListener('touchmove', (e) => {
+                if (!e.touches || e.touches.length === 0) return;
+                const t = e.touches[0];
+                movePress(t.clientX, t.clientY);
+            }, { passive: true });
+
+            item.addEventListener('touchend', endPress);
+            item.addEventListener('touchcancel', () => {
+                clearPress();
+                longPressFired = false;
+            });
+
+            item.addEventListener('mousedown', (e) => {
+                if (e.button !== 0) return;
+                startPress(e.clientX, e.clientY);
+            });
+            item.addEventListener('mousemove', (e) => movePress(e.clientX, e.clientY));
+            item.addEventListener('mouseup', endPress);
+            item.addEventListener('mouseleave', () => {
+                clearPress();
+                longPressFired = false;
+            });
+            item.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                suppressClickUntil = Date.now() + 450;
+                this._showCallRecordDeleteButton(item, record);
+            });
+        });
+    }
+
+    _showCallRecordDeleteButton(item, record) {
+        document.querySelectorAll('.phone-call-delete-btn').forEach(btn => btn.remove());
+        if (!item || !record) return;
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.type = 'button';
+        deleteBtn.className = 'phone-call-delete-btn';
+        deleteBtn.textContent = '删除';
+
+        let deleting = false;
+        const executeDelete = (ev) => {
+            ev?.preventDefault?.();
+            ev?.stopPropagation?.();
+            if (deleting) return;
+            deleting = true;
+            this.app.phoneCallData.deleteCallRecord(record.id);
+            this.renderMain();
+        };
+
+        deleteBtn.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+        deleteBtn.addEventListener('touchend', executeDelete, { passive: false });
+        deleteBtn.addEventListener('click', executeDelete);
+
+        item.style.position = 'relative';
+        item.appendChild(deleteBtn);
     }
 
     // ========================================
