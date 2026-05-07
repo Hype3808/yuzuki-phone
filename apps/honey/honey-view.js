@@ -5719,17 +5719,40 @@ export class HoneyView {
         }
 
         const dataUrl = await this._readFileAsDataUrl(file);
+        return await this._prepareHoneyReferenceImageDataUrl(dataUrl);
+    }
+
+    _getHoneyReferenceTargetSize(sourceWidth, sourceHeight) {
+        const width = Number(sourceWidth || 0);
+        const height = Number(sourceHeight || 0);
+        if (!width || !height) return { width: 1024, height: 1536 };
+
+        const ratio = width / height;
+        const targetSizes = [
+            { width: 1024, height: 1536 },
+            { width: 1472, height: 1472 },
+            { width: 1536, height: 1024 }
+        ];
+        return targetSizes.reduce((best, item) => {
+            const bestDiff = Math.abs((best.width / best.height) - ratio);
+            const itemDiff = Math.abs((item.width / item.height) - ratio);
+            return itemDiff < bestDiff ? item : best;
+        }, targetSizes[0]);
+    }
+
+    async _prepareHoneyReferenceImageDataUrl(dataUrl) {
         const image = await this._loadImageFromDataUrl(dataUrl);
         const sourceWidth = Number(image.naturalWidth || image.width || 0);
         const sourceHeight = Number(image.naturalHeight || image.height || 0);
         if (!sourceWidth || !sourceHeight) return dataUrl;
 
+        const target = this._getHoneyReferenceTargetSize(sourceWidth, sourceHeight);
         const canvas = document.createElement('canvas');
-        canvas.width = 832;
-        canvas.height = 1216;
+        canvas.width = target.width;
+        canvas.height = target.height;
         const ctx = canvas.getContext('2d');
         if (!ctx) return dataUrl;
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = '#000000';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         const scale = Math.min(canvas.width / sourceWidth, canvas.height / sourceHeight);
         const drawWidth = Math.max(1, Math.round(sourceWidth * scale));
@@ -5737,7 +5760,7 @@ export class HoneyView {
         const drawX = Math.round((canvas.width - drawWidth) / 2);
         const drawY = Math.round((canvas.height - drawHeight) / 2);
         ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
-        return canvas.toDataURL('image/jpeg', 0.9);
+        return canvas.toDataURL('image/png');
     }
 
     async _uploadHoneyReferenceImageFile(hostName, file) {
@@ -5780,24 +5803,32 @@ export class HoneyView {
         return uploadedUrl;
     }
 
-    async _imageUrlToDataUrl(url) {
+    async _imageUrlToDataUrl(url, options = {}) {
         const safeUrl = String(url || '').trim();
         if (!safeUrl) return '';
-        if (safeUrl.startsWith('data:image/')) return safeUrl;
-        const response = await fetch(safeUrl, {
-            credentials: 'include',
-            cache: 'no-store'
-        });
-        if (!response.ok) {
-            throw new Error(`参考图读取失败 (${response.status})`);
+        let dataUrl = '';
+        if (safeUrl.startsWith('data:image/')) {
+            dataUrl = safeUrl;
+        } else {
+            const response = await fetch(safeUrl, {
+                credentials: 'include',
+                cache: 'no-store'
+            });
+            if (!response.ok) {
+                throw new Error(`参考图读取失败 (${response.status})`);
+            }
+            const blob = await response.blob();
+            dataUrl = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(String(reader.result || ''));
+                reader.onerror = () => reject(reader.error || new Error('参考图读取失败'));
+                reader.readAsDataURL(blob);
+            });
         }
-        const blob = await response.blob();
-        return await new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(String(reader.result || ''));
-            reader.onerror = () => reject(reader.error || new Error('参考图读取失败'));
-            reader.readAsDataURL(blob);
-        });
+        if (options?.forNaiReference) {
+            return await this._prepareHoneyReferenceImageDataUrl(dataUrl);
+        }
+        return dataUrl;
     }
 
     _avatarIdentityKey(url) {
@@ -6244,7 +6275,7 @@ export class HoneyView {
         let novelAIReferences = [];
         if (hostNaiReference?.image) {
             try {
-                const referenceImageDataUrl = await this._imageUrlToDataUrl(hostNaiReference.image);
+                const referenceImageDataUrl = await this._imageUrlToDataUrl(hostNaiReference.image, { forNaiReference: true });
                 if (referenceImageDataUrl) {
                     novelAIReferences = [{
                         ...hostNaiReference,
