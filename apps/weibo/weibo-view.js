@@ -3500,7 +3500,8 @@ export class WeiboView {
     }
 
     _isDirectWeiboMediaUrl(value) {
-        return /^(data:image\/|https?:\/\/|\/backgrounds\/)/i.test(String(value || '').trim());
+        const text = String(value || '').trim();
+        return /^(data:image\/|data:application\/octet-stream;base64,|https?:\/\/|\/backgrounds\/)/i.test(text);
     }
 
     _parseWeiboMediaItem(rawValue) {

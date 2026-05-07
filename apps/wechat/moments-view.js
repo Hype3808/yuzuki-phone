@@ -470,7 +470,8 @@ export class MomentsView {
     }
 
     _isDirectMomentImageUrl(value) {
-        return /^(data:image\/|https?:\/\/|\/backgrounds\/)/i.test(String(value || '').trim());
+        const text = String(value || '').trim();
+        return /^(data:image\/|data:application\/octet-stream;base64,|https?:\/\/|\/backgrounds\/)/i.test(text);
     }
 
     _parseMomentImageItem(rawValue) {

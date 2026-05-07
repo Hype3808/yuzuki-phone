@@ -35,6 +35,16 @@ export class HoneyData {
         return await window.VirtualPhone?.worldbookManager?.buildWorldbookMessage?.('honey');
     }
 
+    _getHoneyOverridePrompt(promptManager) {
+        let text = '';
+        try {
+            text = promptManager?.getPromptForFeature?.('honey', 'override') || '';
+        } catch (e) {
+            console.warn('[Honey] 获取蜜语破限词失败:', e);
+        }
+        return String(text || '').trim();
+    }
+
     _sanitizeInlineText(value, maxLen = 260) {
         return String(value || '')
             .replace(/<[^>]*>/g, ' ')
@@ -2407,6 +2417,7 @@ export class HoneyData {
         const promptManager = window.VirtualPhone?.promptManager;
         promptManager?.ensureLoaded();
         const prompt = promptManager?.getPromptForFeature('honey', 'userLive') || '';
+        const overridePrompt = this._getHoneyOverridePrompt(promptManager);
         const profile = this.getHoneyUserProfile();
         const runtimeContext = this._buildLiveRuntimeContext(options);
         const friends = this.getHoneyFriends();
@@ -2417,7 +2428,15 @@ export class HoneyData {
         const mode = String(options?.requestMode || '').trim();
         const currentFollowers = Math.max(0, Number.parseInt(String(profile.followers || 0), 10) || 0);
 
-        const messages = [
+        const messages = [];
+        if (overridePrompt) {
+            messages.push({
+                role: 'system',
+                content: overridePrompt,
+                isPhoneMessage: true
+            });
+        }
+        messages.push(
             {
                 role: 'system',
                 content: String(prompt || '').trim() || '你是蜜语用户开播引擎，只返回 <Honey> 结构。',
@@ -2442,7 +2461,7 @@ export class HoneyData {
                 ].join('\n'),
                 isPhoneMessage: true
             }
-        ];
+        );
         const worldInfoMessage = await this._buildWorldInfoMessage();
         if (worldInfoMessage) messages.push(worldInfoMessage);
 
@@ -2541,6 +2560,7 @@ export class HoneyData {
         const promptManager = window.VirtualPhone?.promptManager;
         promptManager?.ensureLoaded();
         const honeyPrompt = promptManager?.getPromptForFeature('honey', 'live') || '';
+        const overridePrompt = this._getHoneyOverridePrompt(promptManager);
         const runtimeContext = this._buildLiveRuntimeContext(options);
         const honeyNickname = this._sanitizeInlineText(this.getHoneyUserNickname(), 24) || '你';
         const safeUserMessage = this._sanitizeInlineText(options?.userMessage || '', 220);
@@ -2679,7 +2699,11 @@ export class HoneyData {
         if (!apiManager) throw new Error('API Manager 未初始化');
 
         const context = this._getContext();
-        const messages = [{ role: 'system', content: systemPrompt, isPhoneMessage: true }];
+        const messages = [];
+        if (overridePrompt) {
+            messages.push({ role: 'system', content: overridePrompt, isPhoneMessage: true });
+        }
+        messages.push({ role: 'system', content: systemPrompt, isPhoneMessage: true });
         const worldInfoMessage = await this._buildWorldInfoMessage();
         if (worldInfoMessage) messages.push(worldInfoMessage);
         if (instructionSystemPrompt) {

@@ -4497,6 +4497,32 @@ export class WechatApp {
                         📝 功能提示词
                     </div>
 
+                    <!-- 线上破限词 -->
+                    <div class="prompt-item" style="border-bottom: 1px solid #f0f0f0; padding-bottom: 12px; margin-bottom: 12px;">
+                        <div class="prompt-header" style="display: flex; align-items: center; cursor: pointer;"
+                             data-feature="override">
+                            <div style="display: flex; align-items: center; flex: 1;">
+                                <i class="fa-solid fa-chevron-right prompt-arrow"
+                                   style="color: #999; font-size: 12px; margin-right: 8px; transition: transform 0.2s;"></i>
+                                <span style="font-size: 15px;">${prompts.override?.name || '🧩 线上破限词'}</span>
+                            </div>
+                        </div>
+                        <div class="prompt-content" style="display: none; margin-top: 10px; padding-left: 20px;">
+                            <div style="font-size: 12px; color: #666; margin-bottom: 8px;">
+                                ${prompts.override?.description || '微信线上聊天、语音、通话、视频请求开头注入'}
+                            </div>
+                            <button class="edit-prompt-btn" data-feature="override" style="
+                                padding: 6px 12px;
+                                background: #f0f0f0;
+                                border: none;
+                                border-radius: 4px;
+                                font-size: 12px;
+                                color: #333;
+                                cursor: pointer;
+                            ">编辑提示词</button>
+                        </div>
+                    </div>
+
                     <!-- 线下模式 -->
                     <div class="prompt-item" style="border-bottom: 1px solid #f0f0f0; padding-bottom: 12px; margin-bottom: 12px;">
                         <div class="prompt-header" style="display: flex; align-items: center; cursor: pointer;"

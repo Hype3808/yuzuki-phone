@@ -439,8 +439,9 @@ export class WeiboData {
 
                 // 清理 base64 图片，避免请求体膨胀；其他标签过滤交给现有黑白名单系统
                 content = String(content || '')
-                    .replace(/<img[^>]*src=["']data:image[^"']*["'][^>]*>/gi, '[图片]')
-                    .replace(/!\[[^\]]*\]\(data:image[^)]*\)/gi, '[图片]')
+                    .replace(/<img[^>]*src=["']data:(?:image\/[^"']+|application\/octet-stream);base64,[^"']*["'][^>]*>/gi, '[图片]')
+                    .replace(/!\[[^\]]*\]\(data:(?:image\/[^)]+|application\/octet-stream);base64,[^)]*\)/gi, '[图片]')
+                    .replace(/data:application\/octet-stream;base64,[A-Za-z0-9+/=\s]{120,}/gi, '[图片]')
                     .trim();
 
                 if (!content) return;

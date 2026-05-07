@@ -2021,6 +2021,7 @@ export class HoneyView {
     renderSettingsPage() {
         const promptManager = this._getPromptManager();
         const promptConfig = this._getHoneyPromptConfig(promptManager);
+        const overridePromptConfig = this._getHoneyOverridePromptConfig(promptManager);
         const userLivePromptConfig = this._getHoneyUserLivePromptConfig(promptManager);
         const bgVideoUrl = this.app.honeyData?.getRecommendBgVideo?.() || '';
         const honeyNickname = this.app.honeyData?.getHoneyUserNickname?.() || '观众';
@@ -2135,6 +2136,19 @@ export class HoneyView {
 
                     <div class="honey-settings-card">
                         <div class="honey-settings-card-title">提示词设置</div>
+                        <div class="phone-prompt-fold" data-default-open="false" style="margin-top: 10px;">
+                            <div class="phone-prompt-fold-header">
+                                <div class="phone-prompt-fold-main">
+                                    <div class="phone-prompt-fold-title">${this._escapeHtml(overridePromptConfig.name || '蜜语破限词')}</div>
+                                    <div class="phone-prompt-fold-desc">${this._escapeHtml(overridePromptConfig.description || '蜜语看直播和自己开播请求开头注入')}</div>
+                                </div>
+                                <i class="fa-solid fa-chevron-right phone-prompt-fold-arrow"></i>
+                            </div>
+                            <div class="phone-prompt-fold-content">
+                                ${promptManager?.renderPromptPresetControls?.('honey', 'override') || ''}
+                                <textarea id="honey-override-prompt-editor" class="honey-prompt-editor">${this._escapeHtml(overridePromptConfig.content || '')}</textarea>
+                            </div>
+                        </div>
                         <div class="phone-prompt-fold" data-default-open="false">
                             <div class="phone-prompt-fold-header">
                                 <div class="phone-prompt-fold-main">
@@ -3679,29 +3693,40 @@ export class HoneyView {
         });
 
         root.querySelector('#honey-save-prompt')?.addEventListener('click', () => {
+            const overrideTextarea = root.querySelector('#honey-override-prompt-editor');
             const textarea = root.querySelector('#honey-prompt-editor');
             const userLiveTextarea = root.querySelector('#honey-user-live-prompt-editor');
+            const overrideContent = overrideTextarea?.value ?? '';
             const content = textarea?.value ?? '';
             const userLiveContent = userLiveTextarea?.value ?? '';
+            promptManager?.updateActivePromptUserPreset?.('honey', 'override', overrideContent) ?? promptManager?.updatePrompt?.('honey', 'override', overrideContent);
             promptManager?.updateActivePromptUserPreset?.('honey', 'live', content) ?? promptManager?.updatePrompt?.('honey', 'live', content);
             promptManager?.updateActivePromptUserPreset?.('honey', 'userLive', userLiveContent) ?? promptManager?.updatePrompt?.('honey', 'userLive', userLiveContent);
             this.app.phoneShell.showNotification('保存成功', '蜜语提示词已更新', '✅');
         });
 
         root.querySelector('#honey-reset-prompt')?.addEventListener('click', () => {
+            const defaultOverrideContent = promptManager?.resetPromptToDefault?.('honey', 'override')
+                ?? promptManager?.getDefaultPrompts?.()?.honey?.override?.content
+                ?? '';
             const defaultContent = promptManager?.resetPromptToDefault?.('honey', 'live')
                 ?? promptManager?.getDefaultPrompts?.()?.honey?.live?.content
                 ?? '';
             const defaultUserLiveContent = promptManager?.resetPromptToDefault?.('honey', 'userLive')
                 ?? promptManager?.getDefaultPrompts?.()?.honey?.userLive?.content
                 ?? '';
+            const overrideTextarea = root.querySelector('#honey-override-prompt-editor');
             const textarea = root.querySelector('#honey-prompt-editor');
             const userLiveTextarea = root.querySelector('#honey-user-live-prompt-editor');
+            if (overrideTextarea) overrideTextarea.value = defaultOverrideContent;
             if (textarea) textarea.value = defaultContent;
             if (userLiveTextarea) userLiveTextarea.value = defaultUserLiveContent;
             this.app.phoneShell.showNotification('已恢复', '已恢复默认提示词', '🔄');
         });
 
+        promptManager?.bindPromptPresetControls?.(root, 'honey', 'override', '#honey-override-prompt-editor', {
+            notify: (title, message, icon) => this.app.phoneShell.showNotification(title, message, icon)
+        });
         promptManager?.bindPromptPresetControls?.(root, 'honey', 'live', '#honey-prompt-editor', {
             notify: (title, message, icon) => this.app.phoneShell.showNotification(title, message, icon)
         });
@@ -6107,6 +6132,27 @@ export class HoneyView {
         return prompt || {
             name: '蜜语直播/视频',
             description: '蜜语APP直播与视频生成规则',
+            content: ''
+        };
+    }
+
+    _getHoneyOverridePromptConfig(promptManager = null) {
+        const manager = promptManager || this._getPromptManager();
+        let prompt = manager?.prompts?.honey?.override;
+        if (!prompt) {
+            const defaults = manager?.getDefaultPrompts?.();
+            const defaultPrompt = defaults?.honey?.override;
+            if (defaultPrompt && manager?.prompts?.honey) {
+                manager.prompts.honey.override = { ...defaultPrompt };
+                manager.savePrompts?.();
+                prompt = manager.prompts.honey.override;
+            } else if (defaultPrompt) {
+                prompt = { ...defaultPrompt };
+            }
+        }
+        return prompt || {
+            name: '蜜语破限词',
+            description: '蜜语看直播和自己开播请求开头注入',
             content: ''
         };
     }

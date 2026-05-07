@@ -565,6 +565,21 @@ export class ChatView {
         return entries;
     }
 
+    _getOnlineOverridePrompt(promptManager, replacements = {}) {
+        let text = '';
+        try {
+            text = promptManager?.getPromptForFeature?.('wechat', 'override') || '';
+        } catch (e) {
+            console.warn('⚠️ 获取微信破限词失败:', e);
+        }
+        text = String(text || '').trim();
+        if (!text) return '';
+        Object.entries(replacements || {}).forEach(([key, value]) => {
+            text = text.replace(new RegExp(`\\{\\{${this._escapeRegExp(key)}\\}\\}`, 'g'), String(value ?? ''));
+        });
+        return text.trim();
+    }
+
     _renderGroupCallParticipantsStrip(chat = null) {
         const targetChat = chat || this.app.currentChat;
         if (!targetChat || targetChat.type !== 'group') return '';
@@ -4875,6 +4890,23 @@ renderChatRoom(chat) {
             : [];
         const customEmojiList = customEmojiNames.length > 0 ? customEmojiNames.join('、') : '暂无可用自定义表情包';
         let systemPrompt = '';
+        const overrideReplacements = {
+            user: userName,
+            chatName: targetChat?.name || charName,
+            char: targetChat?.name || charName,
+            groupName,
+            groupMembers,
+            customEmojiList
+        };
+        const onlineOverridePrompt = this._getOnlineOverridePrompt(promptManager, overrideReplacements);
+        if (onlineOverridePrompt) {
+            messages.unshift({
+                role: 'system',
+                content: onlineOverridePrompt,
+                name: 'SYSTEM (🧩微信破限词)',
+                isPhoneMessage: true
+            });
+        }
 
         // 🔥 根据模式选择提示词（非通话模式时）
         if (!callMode) {
