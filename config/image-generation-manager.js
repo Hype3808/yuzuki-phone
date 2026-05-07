@@ -883,10 +883,16 @@ export class ImageGenerationManager {
             if (novelAIReferences.length > 0) {
                 Object.assign(parameters, {
                     director_reference_images: novelAIReferences.map(item => item.image),
-                    director_reference_descriptions: novelAIReferences.map(() => ''),
+                    director_reference_descriptions: novelAIReferences.map(() => ({
+                        caption: {
+                            base_caption: 'character&style',
+                            char_captions: []
+                        },
+                        legacy_uc: false
+                    })),
                     director_reference_information_extracted: novelAIReferences.map(item => item.informationExtracted),
                     director_reference_strength_values: novelAIReferences.map(item => item.strength),
-                    director_reference_style_aware: novelAIReferences.map(() => true)
+                    director_reference_secondary_strength_values: novelAIReferences.map(() => 0)
                 });
             }
         }
