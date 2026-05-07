@@ -1821,11 +1821,21 @@ export class HoneyData {
 
     removeFollowedHost(hostName) {
         const safeHostName = String(hostName || '').trim();
-        if (!safeHostName) return this.getFollowedHosts();
-        const list = this.getFollowedHosts().filter(item => String(item?.name || '').trim() !== safeHostName);
+        const currentList = this.getFollowedHosts();
+        if (!safeHostName) {
+            return {
+                removedHost: null,
+                list: currentList
+            };
+        }
+        const removedHost = currentList.find(item => String(item?.name || '').trim() === safeHostName) || null;
+        const list = currentList.filter(item => String(item?.name || '').trim() !== safeHostName);
         this.saveFollowedHosts(list);
         this.clearHostRecords(safeHostName);
-        return list;
+        return {
+            removedHost,
+            list
+        };
     }
 
     updateFollowedHost(hostName, patch = {}) {

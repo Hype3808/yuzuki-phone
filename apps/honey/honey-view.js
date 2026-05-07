@@ -3382,7 +3382,9 @@ export class HoneyView {
                 e.preventDefault();
                 e.stopPropagation();
                 if (!hostName) return;
-                this.app?.honeyData?.removeFollowedHost?.(hostName);
+                const result = this.app?.honeyData?.removeFollowedHost?.(hostName);
+                const oldReferenceImage = result?.removedHost?.naiReferenceImage || '';
+                window.VirtualPhone?.imageManager?.deleteManagedBackgroundByPath?.(oldReferenceImage, { quiet: true });
                 this.app.phoneShell.showNotification('蜜语', `已取消关注 ${hostName}`, '✅');
                 this.render();
                 return;
