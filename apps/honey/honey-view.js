@@ -5724,16 +5724,19 @@ export class HoneyView {
         const sourceHeight = Number(image.naturalHeight || image.height || 0);
         if (!sourceWidth || !sourceHeight) return dataUrl;
 
-        const maxSide = 1024;
-        const scale = Math.min(1, maxSide / Math.max(sourceWidth, sourceHeight));
-        if (scale >= 1 && Number(file.size || 0) <= 900 * 1024) return dataUrl;
-
         const canvas = document.createElement('canvas');
-        canvas.width = Math.max(1, Math.round(sourceWidth * scale));
-        canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+        canvas.width = 832;
+        canvas.height = 1216;
         const ctx = canvas.getContext('2d');
         if (!ctx) return dataUrl;
-        ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        const scale = Math.min(canvas.width / sourceWidth, canvas.height / sourceHeight);
+        const drawWidth = Math.max(1, Math.round(sourceWidth * scale));
+        const drawHeight = Math.max(1, Math.round(sourceHeight * scale));
+        const drawX = Math.round((canvas.width - drawWidth) / 2);
+        const drawY = Math.round((canvas.height - drawHeight) / 2);
+        ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
         return canvas.toDataURL('image/jpeg', 0.9);
     }
 

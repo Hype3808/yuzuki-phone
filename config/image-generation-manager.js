@@ -882,12 +882,11 @@ export class ImageGenerationManager {
 
             if (novelAIReferences.length > 0) {
                 Object.assign(parameters, {
-                    reference_image_multiple_cached: novelAIReferences.map(item => ({
-                        cache_secret_key: item.cacheSecretKey,
-                        data: item.image
-                    })),
-                    reference_strength_multiple: novelAIReferences.map(item => item.strength),
-                    normalize_reference_strength_multiple: true
+                    director_reference_images: novelAIReferences.map(item => item.image),
+                    director_reference_descriptions: novelAIReferences.map(() => ''),
+                    director_reference_information_extracted: novelAIReferences.map(item => item.informationExtracted),
+                    director_reference_strength_values: novelAIReferences.map(item => item.strength),
+                    director_reference_style_aware: novelAIReferences.map(() => true)
                 });
             }
         }
