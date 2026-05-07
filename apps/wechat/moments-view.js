@@ -33,9 +33,6 @@ export class MomentsView {
 
         return `
             <div class="moments-page" style="overscroll-behavior: none; ${bgImage ? `background-image: url('${bgImage}'); background-size: cover; background-position: center;` : (hasMainShellBg ? 'background: transparent;' : 'background: #fff;')}">
-                <!-- 🔥 背景图上传（隐藏的input） -->
-                <input type="file" id="moments-bg-upload" accept="image/png, image/jpeg, image/gif, image/webp, image/*" style="display: none;">
-
                 <!-- 朋友圈列表 - 有背景图时透明，无背景图时白色 -->
                 <div class="moments-feed" style="background: ${hasBackdrop ? 'transparent' : '#fff'};">
                     <div class="moments-pull-refresh-indicator" id="moments-pull-refresh-indicator">
@@ -207,66 +204,6 @@ export class MomentsView {
         }
 
         this.bindMomentsPullRefresh();
-
-        // 🔥 背景图上传事件 - 支持裁剪
-        document.getElementById('moments-bg-upload')?.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            // 重置input，允许重复选择同一文件
-            e.target.value = '';
-
-            try {
-                const cropper = new ImageCropper({
-                    title: '裁剪背景图',
-                    outputWidth: 1080,
-                    outputHeight: 1920,
-                    quality: 0.9,
-                    maxFileSize: 5 * 1024 * 1024
-                });
-
-                const croppedImage = await cropper.open(file);
-
-                // 🔥 上传到服务端，避免 Base64 撑大存档（严格模式：失败不回退）
-                const res = await fetch(croppedImage);
-                const blob = await res.blob();
-                const ext = blob.type === 'image/png' ? 'png' : 'jpg';
-                const filename = `phone_moments_bg_${Date.now()}.${ext}`;
-                const formData = new FormData();
-                formData.append('avatar', blob, filename);
-                const headers = typeof window.getRequestHeaders === 'function' ? window.getRequestHeaders() : {};
-                delete headers['Content-Type'];
-                if (!headers['X-CSRF-Token']) {
-                    const csrfResp = await fetch('/csrf-token');
-                    if (csrfResp.ok) headers['X-CSRF-Token'] = (await csrfResp.json()).token;
-                }
-                const uploadResp = await fetch('/api/backgrounds/upload', { method: 'POST', body: formData, headers });
-                if (!uploadResp.ok) {
-                    throw new Error(`上传失败（HTTP ${uploadResp.status}）`);
-                }
-                const finalUrl = `/backgrounds/${filename}`;
-
-                const userInfo = this.app.wechatData.getUserInfo();
-                const oldBackground = String(userInfo.momentsBackground || '').trim();
-                userInfo.momentsBackground = finalUrl;
-                this.app.wechatData.saveData();
-                if (oldBackground && oldBackground !== finalUrl) {
-                    const cleanupTask = window.VirtualPhone?.imageManager?.deleteManagedBackgroundByPath?.(oldBackground, { quiet: true });
-                    cleanupTask?.catch?.(() => { });
-                }
-                this.app.phoneShell.showNotification('成功', '朋友圈背景已更新', '✅');
-                this.app.render();
-            } catch (error) {
-                if (error.message !== '用户取消') {
-                    this.app.phoneShell.showNotification('提示', error.message, '⚠️');
-                }
-            }
-        });
-
-        // 🔥 顶部栏背景按钮点击
-        document.getElementById('moments-bg-btn')?.addEventListener('click', () => {
-            document.getElementById('moments-bg-upload')?.click();
-        });
 
         // 操作按钮（点赞/评论弹窗）
         document.querySelectorAll('.moment-action-btn').forEach(btn => {

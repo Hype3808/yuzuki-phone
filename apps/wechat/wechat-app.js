@@ -2813,9 +2813,6 @@ export class WechatApp {
                 return `
                     <button class="wechat-header-btn" id="moments-post-btn" title="发朋友圈">
                         <i class="fa-solid fa-camera"></i>
-                    </button>
-                    <button class="wechat-header-btn" id="moments-bg-btn" title="更换背景">
-                        <i class="fa-solid fa-image"></i>
                     </button>`;
             }
             return `
@@ -4394,6 +4391,11 @@ export class WechatApp {
         const settingsContentStyle = shellBg.contentBgStyle || 'background: #ededed;';
         const wechatWorldbookRaw = window.VirtualPhone?.storage?.get('wechat-use-worldbook');
         const useWechatWorldbook = wechatWorldbookRaw !== false && wechatWorldbookRaw !== 'false';
+        const userInfo = this.wechatData.getUserInfo();
+        const momentsBackground = String(userInfo?.momentsBackground || '').trim();
+        const momentsBackgroundPreview = momentsBackground
+            ? `background-image:url('${momentsBackground}');background-size:cover;background-position:center;`
+            : 'background:linear-gradient(135deg,#f3f4f6,#e9edf2);';
         const html = `
         <div class="${shellBg.appClass}" style="${shellBg.appStyle}">
             <div class="wechat-header">
@@ -4417,6 +4419,44 @@ export class WechatApp {
         </div>
     </div>
 </div>
+
+                <!-- 外观背景设置 -->
+                <div style="background: #fff; border-radius: 12px; margin: 15px; padding: 15px;">
+                    <div style="font-size: 14px; font-weight: 600; color: #333; margin-bottom: 12px;">
+                        外观背景
+                    </div>
+                    <input type="file" id="wechat-settings-moments-bg-upload" accept="image/png, image/jpeg, image/gif, image/webp, image/*" style="display: none;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <div style="width: 54px; height: 78px; border-radius: 10px; overflow: hidden; flex: 0 0 auto; border: 1px solid #e7e7e7; ${momentsBackgroundPreview}">
+                        </div>
+                        <div style="min-width: 0; flex: 1;">
+                            <div style="font-size: 14px; color: #222;">朋友圈背景</div>
+                            <div style="font-size: 12px; color: #888; line-height: 1.45; margin-top: 4px;">
+                                设置朋友圈列表页背景图，适合放角色、场景或主题图。
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px;">
+                        <button id="wechat-settings-change-moments-bg" style="
+                            padding: 9px 10px;
+                            border: 1px solid #e7e7e7;
+                            border-radius: 8px;
+                            background: #fafafa;
+                            color: #222;
+                            font-size: 13px;
+                            cursor: pointer;
+                        ">更换背景</button>
+                        <button id="wechat-settings-clear-moments-bg" ${momentsBackground ? '' : 'disabled'} style="
+                            padding: 9px 10px;
+                            border: 1px solid ${momentsBackground ? '#ffd0d0' : '#ececec'};
+                            border-radius: 8px;
+                            background: ${momentsBackground ? '#fff7f7' : '#f7f7f7'};
+                            color: ${momentsBackground ? '#d93025' : '#aaa'};
+                            font-size: 13px;
+                            cursor: ${momentsBackground ? 'pointer' : 'default'};
+                        ">清除背景</button>
+                    </div>
+                </div>
                 
                 <!-- 生成上下文设置 -->
                 <div style="background: #fff; border-radius: 12px; margin: 15px; padding: 15px;">
@@ -4766,6 +4806,82 @@ export class WechatApp {
             this._wechatPanelMode = 'main';
             this.render();
         };
+
+        document.getElementById('wechat-settings-change-moments-bg')?.addEventListener('click', () => {
+            document.getElementById('wechat-settings-moments-bg-upload')?.click();
+        });
+
+        document.getElementById('wechat-settings-clear-moments-bg')?.addEventListener('click', async () => {
+            const currentUserInfo = this.wechatData.getUserInfo();
+            const oldBackground = String(currentUserInfo?.momentsBackground || '').trim();
+            if (!oldBackground) return;
+            currentUserInfo.momentsBackground = null;
+            this.wechatData.saveData();
+            const cleanupTask = window.VirtualPhone?.imageManager?.deleteManagedBackgroundByPath?.(oldBackground, { quiet: true });
+            cleanupTask?.catch?.(() => { });
+            this.phoneShell.showNotification('成功', '朋友圈背景已清除', '✅');
+            this.showSettings();
+        });
+
+        document.getElementById('wechat-settings-moments-bg-upload')?.addEventListener('change', async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            e.target.value = '';
+
+            try {
+                const cropper = new ImageCropper({
+                    title: '裁剪朋友圈背景',
+                    outputWidth: 1080,
+                    outputHeight: 1920,
+                    quality: 0.9,
+                    maxFileSize: 5 * 1024 * 1024
+                });
+
+                const croppedImage = await cropper.open(file);
+                const res = await fetch(croppedImage);
+                const blob = await res.blob();
+                const ext = blob.type === 'image/png' ? 'png' : 'jpg';
+                const filename = `phone_moments_bg_${Date.now()}.${ext}`;
+                const formData = new FormData();
+                formData.append('avatar', blob, filename);
+                const headers = typeof window.getRequestHeaders === 'function' ? window.getRequestHeaders() : {};
+                delete headers['Content-Type'];
+                delete headers['content-type'];
+                if (!headers['X-CSRF-Token'] && !headers['x-csrf-token']) {
+                    const csrfResp = await fetch('/csrf-token', { credentials: 'include' });
+                    if (csrfResp.ok) {
+                        const csrfData = await csrfResp.json().catch(() => ({}));
+                        if (csrfData?.token) headers['X-CSRF-Token'] = csrfData.token;
+                    }
+                }
+
+                const uploadResp = await fetch('/api/backgrounds/upload', {
+                    method: 'POST',
+                    body: formData,
+                    headers,
+                    credentials: 'include'
+                });
+                if (!uploadResp.ok) {
+                    throw new Error(`上传失败（HTTP ${uploadResp.status}）`);
+                }
+
+                const finalUrl = `/backgrounds/${filename}`;
+                const currentUserInfo = this.wechatData.getUserInfo();
+                const oldBackground = String(currentUserInfo?.momentsBackground || '').trim();
+                currentUserInfo.momentsBackground = finalUrl;
+                this.wechatData.saveData();
+                if (oldBackground && oldBackground !== finalUrl) {
+                    const cleanupTask = window.VirtualPhone?.imageManager?.deleteManagedBackgroundByPath?.(oldBackground, { quiet: true });
+                    cleanupTask?.catch?.(() => { });
+                }
+                this.phoneShell.showNotification('成功', '朋友圈背景已更新', '✅');
+                this.showSettings();
+            } catch (error) {
+                if (error?.message !== '用户取消') {
+                    this.phoneShell.showNotification('提示', error?.message || String(error || '背景上传失败'), '⚠️');
+                }
+            }
+        });
 
         // 折叠展开功能
         document.querySelectorAll('.phone-prompt-fold').forEach(fold => {
