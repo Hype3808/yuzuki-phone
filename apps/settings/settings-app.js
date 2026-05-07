@@ -787,8 +787,8 @@ export class SettingsApp {
                                     <div style="font-size: 12px; color: #666; margin-bottom: 4px;">API 提供商</div>
                                     <select id="phone-api-provider" style="width: 100%; padding: 8px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 13px; background: #fff;">
                                         <option value="openai">OpenAI 官方</option>
-                                        <option value="proxy_only">OpenAI 兼容/中转站</option>
-                                        <option value="compatible">兼容端点</option>
+                                        <option value="proxy_only">OpenAI 兼容反代 / Build 本地</option>
+                                        <option value="compatible">OP兼容端点 / 中转站（推荐）</option>
                                         <option value="deepseek">DeepSeek 官方</option>
                                         <option value="claude">Claude 官方</option>
                                         <option value="gemini">Google Gemini 官方</option>
@@ -3313,7 +3313,7 @@ export class SettingsApp {
                 urlInput.setAttribute('placeholder', '例如: http://127.0.0.1:8889/v1');
                 modelInput.setAttribute('placeholder', '例如: gemini-2.5-pro');
             } else if (provider === 'compatible') {
-                urlInput.setAttribute('placeholder', '例如: https://api.xxx.com/v1');
+                urlInput.setAttribute('placeholder', '例如: https://api.xxx.com/v1 或 OP兼容端点');
                 modelInput.setAttribute('placeholder', '例如: gpt-4o, deepseek-chat');
             } else if (provider === 'openai') {
                 urlInput.setAttribute('placeholder', '例如: https://api.openai.com/v1');
@@ -3633,7 +3633,7 @@ export class SettingsApp {
 
                         const csrfToken = await apiManager._getCsrfToken();
                         let targetSource = 'custom';
-                        if (provider === 'openai' || provider === 'deepseek' || provider === 'siliconflow') {
+                        if (provider === 'openai' || provider === 'deepseek' || provider === 'siliconflow' || provider === 'compatible') {
                             targetSource = 'openai';
                         }
 

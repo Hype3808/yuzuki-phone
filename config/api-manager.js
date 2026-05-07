@@ -609,7 +609,7 @@ export class ApiManager {
                 const csrfToken = await this._getCsrfToken();
                 const proxyResponse = await fetch('/api/backends/chat-completions/generate', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken, 'X-ST-Phone-Internal-API': '1' },
                     body: JSON.stringify(proxyPayload),
                     credentials: 'include',
                     signal: options.signal
@@ -656,7 +656,7 @@ export class ApiManager {
                         const csrfToken = await this._getCsrfToken();
                         const customResponse = await fetch('/api/backends/chat-completions/generate', {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken, 'X-ST-Phone-Internal-API': '1' },
                             body: JSON.stringify(customPayload),
                             credentials: 'include',
                             signal: options.signal
@@ -694,7 +694,7 @@ export class ApiManager {
                     const csrfToken = await this._getCsrfToken();
                     const retryResponse = await fetch('/api/backends/chat-completions/generate', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken, 'X-ST-Phone-Internal-API': '1' },
                         body: JSON.stringify(retryPayload),
                         credentials: 'include',
                         signal: options.signal
@@ -709,7 +709,7 @@ export class ApiManager {
             }
         }
 
-        const allowDirectFallback = ['compatible', 'openai', 'gemini', 'deepseek', 'siliconflow'].includes(provider) || !useProxy;
+        const allowDirectFallback = ['compatible', 'proxy_only', 'openai', 'gemini', 'deepseek', 'siliconflow'].includes(provider) || !useProxy;
         if (!allowDirectFallback && proxyError) {
             return { success: false, error: `后端代理失败: ${proxyError.message}` };
         }

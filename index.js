@@ -7826,7 +7826,22 @@ if (window.GGP_Loaded) {
                 window._stPhoneFetchPatched = true;
                 const ogFetch = window.fetch;
                 window.fetch = async function (url, options) {
+                    const isPhoneInternalApiRequest = (() => {
+                        const headers = options?.headers;
+                        if (!headers) return false;
+                        if (typeof Headers !== 'undefined' && headers instanceof Headers) {
+                            return headers.get('X-ST-Phone-Internal-API') === '1';
+                        }
+                        if (Array.isArray(headers)) {
+                            return headers.some(([key, value]) => String(key || '').toLowerCase() === 'x-st-phone-internal-api' && String(value) === '1');
+                        }
+                        if (typeof headers === 'object') {
+                            return Object.entries(headers).some(([key, value]) => String(key || '').toLowerCase() === 'x-st-phone-internal-api' && String(value) === '1');
+                        }
+                        return false;
+                    })();
                     const isTextGeneration = (
+                        !isPhoneInternalApiRequest &&
                         typeof url === 'string' &&
                         (url.includes('/api/backends/chat-completions/generate') ||
                          url.includes('/v1/chat/completions') ||
