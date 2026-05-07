@@ -142,6 +142,10 @@ if (window.GGP_Loaded) {
         return raw !== false && raw !== 'false';
     }
 
+    function hasExplicitUserReplyTag(text) {
+        return /(?:<|&lt;)回复([^>&]+?)(?:>|&gt;)[\s\S]*?(?:<|&lt;)\/回复\1(?:>|&gt;)/i.test(String(text || ''));
+    }
+
     function updatePhonePanelViewportHeight(options = {}) {
         const panel = document.getElementById('phone-panel');
         const root = document.documentElement;
@@ -5463,7 +5467,7 @@ if (window.GGP_Loaded) {
             // 🔥 新增：单独拦截用户消息，处理 <回复xx> 标签
             if (message.is_user) {
                 const listenUserMessages = isPhoneUserMessageListenerEnabled();
-                if (listenUserMessages && isPhoneFeatureEnabled() && !isHistoryReplay) {
+                if (isPhoneFeatureEnabled() && !isHistoryReplay && (listenUserMessages || hasExplicitUserReplyTag(text))) {
                     processUserReplyTags(text, index, currentBatchId); // 🔥 传入 index 和 batchId
                 }
                 // 用户楼层同样参与微博自动触发判断

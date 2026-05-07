@@ -1589,7 +1589,7 @@ export class SettingsApp {
                     <div class="setting-item setting-toggle">
                         <div>
                             <div class="setting-label">用户消息监听</div>
-                            <div class="setting-desc">关闭后，酒馆正文生成时小手机不扫描用户消息，可避免数据库/记忆插件塞入的 user 内容拖慢或误触发。</div>
+                            <div class="setting-desc">关闭后，酒馆正文生成时不做用户消息自动监听；明确的 &lt;回复联系人&gt; 标签仍会同步微信线上。</div>
                         </div>
                         <label class="toggle-switch">
                             <input type="checkbox" id="phone-user-message-listener-enabled" ${isUserMessageListenerEnabled ? 'checked' : ''}>
