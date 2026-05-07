@@ -172,7 +172,7 @@ export class PromptManager {
     _getHoneyNaiPromptRules() {
         return `- 仅为“当前激情直播”生成一条画面用 NovelAI 英文 tag，必须填在当前直播结构里的：画面：[NAI英文tag提示词: ...]。热门推荐、评论区、好友申请都不要生成画面 tag。
 - 严禁输出 <image>、image###、<imgthink>、解释文字、中文或自然语言句子；括号内只能是英文逗号分隔 tag。
-- AI 原始画面 tag 禁止写 masterpiece、best quality、very aesthetic、highres、sharp focus、cinematic lighting、detailed anime illustration 等通用质量/画风词；这些由系统自动拼接。也不要写 specific pose、specific outfit、specific background props、mood tags 这类占位词。
+- AI 原始画面 tag 禁止写 masterpiece、best quality、very aesthetic、highres、sharp focus、cinematic lighting、detailed anime illustration 等通用质量/画风词；画风与质量词由用户在生图设置的固定前置/后置提示词里自行配置。也不要写 specific pose、specific outfit、specific background props、mood tags 这类占位词。
 - tag 必须从直播剧情中截取最值得画的一帧，先判断画面类型：solo performance / close-up / pov / interaction / collab scene。只画当前这一帧，不要把整段剧情流水账都塞进 tag。
 - tag 推荐顺序：rating:explicit 或 nsfw -> 人数与主体关系 -> 构图距离(cowboy shot / upper body / close-up / full body / pov) -> 角度(from front / from side / from behind / from above / from below) -> 主体锚点(male focus/female focus, 1boy/1girl/2boys/2girls) -> 外貌特征 -> 表情 -> 身体状态 -> 具体动作 -> 服装状态 -> 直播场景道具 -> 光影氛围。
 - 蜜语不限制最多两人。根据直播剧情可生成单人、双人、三人或多人画面；但必须明确主视觉焦点。多人画面优先细写 1-2 个核心主体，其余人物只用 faceless viewers、audience silhouettes、blurred figures、partial body 这类弱化背景 tag 概括，禁止使用 extra hands、extra arms、extra limbs 这类会诱发畸形的正面 tag。
@@ -196,7 +196,7 @@ export class PromptManager {
 
         text = text.replace(
             /- NAI 提示词必须足够具体，禁止只写 nsfw\/live streaming\/specific pose 这类占位词。必须包含：质量词、主体人数与性别、角色年龄感必须为 adult、脸部\/眼睛\/头发\/手部细节、服装状态、明确姿势、镜头距离、背景地点、光影、画面氛围、构图、直播间道具、剧情主题标签。\n- NAI 提示词建议 45-90 个英文 tag，使用逗号分隔，不要写中文，不要写完整句子，不要输出解释。必须避开 underage、child、teen、loli、shota、minor 等未成年相关 tag。\n- 如果需要女性向成人主题，可以加入合适的题材 tag，如 dominant male, muscular male, adult woman, bedroom, live streaming, teasing expression, wet skin, messy clothes, cinematic lighting 等，但要让场景、人物和动作都能被画出来。/g,
-            `- NAI 画面提示词必须以可见画面细节为主体，不要把重点写成画风评价。AI 原始画面 tag 禁止写 masterpiece、best quality、very aesthetic、highres、sharp focus、cinematic lighting、detailed anime illustration 等通用质量/画风词；这些由系统自动拼接。
+            `- NAI 画面提示词必须以可见画面细节为主体，不要把重点写成画风评价。AI 原始画面 tag 禁止写 masterpiece、best quality、very aesthetic、highres、sharp focus、cinematic lighting、detailed anime illustration 等通用质量/画风词；画风与质量词由用户在生图设置的固定前置/后置提示词里自行配置。
 - NAI 提示词必须足够具体，禁止只写 nsfw/live streaming/specific pose/specific outfit/mood tags 这类占位词。必须包含：rating:explicit 或 nsfw、adult character、主体人数与性别、镜头距离、构图角度、角色焦点、脸部/眼睛/头发/手部细节、具体表情、可见动作、服装状态、背景地点、直播设备或屏幕光、光影、画面氛围。
 - 当前激情直播是成人内容时，NAI tag 必须写出与直播剧情一致的成人可见部位或成人动作；不要只写 shirtless、abs、chest muscles 这种普通擦边胸像。需要下半身或全身内容时，使用 cowboy shot/full body/legs visible 等构图，避免 upper body close-up 裁掉关键画面。
 - NAI tag 推荐顺序：adult/rating 与人数关系 -> 构图/镜头/角度 -> 核心主体锚点与外貌 -> 表情/动作/姿势 -> 服装状态 -> 场景道具 -> 光影氛围。蜜语不限制最多两人；多人画面要明确主视觉焦点，并用 BREAK 隔开核心主体，背景人群可用 faceless viewers / audience silhouettes / blurred figures 概括，禁止把 extra hands、extra arms、extra limbs 写进正面提示词。
@@ -207,7 +207,7 @@ export class PromptManager {
             text = `${text}
 
 【NAI 画面提示词强化规则】
-- NAI 画面提示词必须以可见画面细节为主体，不要把重点写成画风评价。AI 原始画面 tag 禁止写 masterpiece、best quality、very aesthetic、highres、sharp focus、cinematic lighting、detailed anime illustration 等通用质量/画风词；这些由系统自动拼接。
+- NAI 画面提示词必须以可见画面细节为主体，不要把重点写成画风评价。AI 原始画面 tag 禁止写 masterpiece、best quality、very aesthetic、highres、sharp focus、cinematic lighting、detailed anime illustration 等通用质量/画风词；画风与质量词由用户在生图设置的固定前置/后置提示词里自行配置。
 - NAI tag 推荐顺序：adult/rating 与人数 -> 构图/镜头/角度 -> 角色锚点与外貌 -> 表情/动作/姿势 -> 服装状态 -> 场景道具 -> 光影氛围。
 - 当前激情直播是成人内容时，NAI tag 必须写出与直播剧情一致的成人可见部位或成人动作；不要只写 shirtless、abs、chest muscles 这种普通擦边胸像。需要下半身或全身内容时，使用 cowboy shot/full body/legs visible 等构图，避免 upper body close-up 裁掉关键画面。
 - 禁止输出 specific pose、specific outfit、specific background props、mood tags 这类占位词；必须换成当前直播画面里真实可见的具体 tag。
@@ -215,7 +215,7 @@ export class PromptManager {
         }
 
         text = text
-            .replace(/质量\/画风词最多 4-6 个，且只能放在开头；后续主要写人物、动作、镜头、服装、环境和光影。/g, 'AI 原始画面 tag 禁止写 masterpiece、best quality、very aesthetic、highres、sharp focus、cinematic lighting、detailed anime illustration 等通用质量/画风词；这些由系统自动拼接。')
+            .replace(/质量\/画风词最多 4-6 个，且只能放在开头；后续主要写人物、动作、镜头、服装、环境和光影。/g, 'AI 原始画面 tag 禁止写 masterpiece、best quality、very aesthetic、highres、sharp focus、cinematic lighting、detailed anime illustration 等通用质量/画风词；画风与质量词由用户在生图设置的固定前置/后置提示词里自行配置。')
             .replace(/少量质量词 -> /g, '');
 
         const naiRuleSection = text.match(/【二、画面Novel AI 英文提示词生成规则】([\s\S]*?)(?=\n\n【二、直播推荐与平台生态】)/);
@@ -1455,7 +1455,7 @@ IP属地：根据故事背景，生成虚拟的命名城市的IP市区
 【二、画面Novel AI 英文提示词生成规则】
 - 仅为“当前激情直播”生成一条画面用 NovelAI 英文 tag，必须填在当前直播结构里的：画面：[NAI英文tag提示词: ...]。热门推荐、评论区、好友申请都不要生成画面 tag。
 - 严禁输出 <image>、image###、<imgthink>、解释文字、中文或自然语言句子；括号内只能是英文逗号分隔 tag。
-- AI 原始画面 tag 禁止写 masterpiece、best quality、very aesthetic、highres、sharp focus、cinematic lighting、detailed anime illustration 等通用质量/画风词；这些由系统自动拼接。也不要写 specific pose、specific outfit、specific background props、mood tags 这类占位词。
+- AI 原始画面 tag 禁止写 masterpiece、best quality、very aesthetic、highres、sharp focus、cinematic lighting、detailed anime illustration 等通用质量/画风词；画风与质量词由用户在生图设置的固定前置/后置提示词里自行配置。也不要写 specific pose、specific outfit、specific background props、mood tags 这类占位词。
 - tag 必须从直播剧情中截取最值得画的一帧，先判断画面类型：solo performance / close-up / pov / interaction / collab scene。只画当前这一帧，不要把整段剧情流水账都塞进 tag。
 - tag 推荐顺序：rating:explicit 或 nsfw -> 人数与主体关系 -> 构图距离(cowboy shot / upper body / close-up / full body / pov) -> 角度(from front / from side / from behind / from above / from below) -> 主体锚点(male focus/female focus, 1boy/1girl/2boys/2girls) -> 外貌特征 -> 表情 -> 身体状态 -> 具体动作 -> 服装状态 -> 直播场景道具 -> 光影氛围。
 - 蜜语不限制最多两人。根据直播剧情可生成单人、双人、三人或多人画面；但必须明确主视觉焦点。多人画面优先细写 1-2 个核心主体，其余人物只用 faceless viewers、audience silhouettes、blurred figures、partial body 这类弱化背景 tag 概括，禁止使用 extra hands、extra arms、extra limbs 这类会诱发畸形的正面 tag。

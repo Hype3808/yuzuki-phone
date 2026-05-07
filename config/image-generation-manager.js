@@ -846,7 +846,7 @@ export class ImageGenerationManager {
             steps,
             n_samples: 1,
             ucPreset: 0,
-            qualityToggle: true,
+            qualityToggle: false,
             sm: false,
             sm_dyn: false,
             cfg_rescale: cfgRescale,
