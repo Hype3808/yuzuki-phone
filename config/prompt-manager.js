@@ -132,7 +132,7 @@ export class PromptManager {
                 ['recommend', 'hotSearch'].forEach((feature) => {
                     const weiboContent = parsed?.weibo?.[feature]?.content;
                     if (typeof weiboContent !== 'string') return;
-                    const upgraded = this._upgradeWeiboImagePromptContent(weiboContent);
+                    const upgraded = this._upgradeWeiboPublicBoundaryPromptContent(this._upgradeWeiboImagePromptContent(weiboContent));
                     if (upgraded !== weiboContent) {
                         parsed.weibo[feature].content = upgraded;
                         isUpdated = true;
@@ -517,6 +517,25 @@ ${wechatImagePromptRule}`;
             text = text.replace('【账号与内容分布】', `${weiboImagePromptRule}\n【账号与内容分布】`);
         }
         return text;
+    }
+
+    _getWeiboPublicBoundaryRule() {
+        return `【微博与朋友圈分工边界】
+- 微博是公域平台，只生成公开舆论、热搜、路人讨论、粉丝/营销号/官方账号发声；可以参考角色卡和剧情，但只能转化为“外界可见的信息、公开动态、传闻或合理猜测”。
+- 严禁把微信私聊、朋友圈小圈子、亲密关系推进、室内私密日常直接搬到微博；这类内容应留给微信/朋友圈，不要在微博重复生成。
+- 角色本人可以发微博，但仅限角色卡或当前剧情明确显示其为公众人物、主播、网红、艺人、官方账号、组织账号，或剧情中明确要求公开发声/营业/回应热搜。普通私人角色不要主动生成本人微博。
+- 若角色本人发微博，内容必须是公开表达、营业、公告、澄清、转发或面向粉丝/公众的动态；不得暴露只有用户、微信联系人或私密场景才知道的细节。
+- 默认优先生成外部账号视角：官方、营销号、超话、粉丝、路人、媒体与吃瓜网友；避免让微博变成朋友圈的替代品。`;
+    }
+
+    _upgradeWeiboPublicBoundaryPromptContent(content) {
+        let text = String(content || '');
+        if (!text || text.includes('微博与朋友圈分工边界')) return text;
+        const rule = this._getWeiboPublicBoundaryRule();
+        if (text.includes('【核心规则】')) {
+            return text.replace('【核心规则】', `${rule}\n【核心规则】`);
+        }
+        return `${rule}\n${text}`;
     }
 
     _upgradeCallSocialReactionPromptContent(content) {
@@ -1170,6 +1189,7 @@ from:林晓雨: 在呢
                     description: '微博推荐内容与热搜生成',
                     content: `【系统角色与任务】
 你是一个资深的中文社交媒体（特别是微博）生态模拟专家。接下来，根据故事世界观及上下文剧情。生成6-10条高度拟真的微博推文及8条以上的微博热搜标题。
+${this._getWeiboPublicBoundaryRule()}
 【核心规则】（严格遵守，不可违反）
 视角限制（绝对禁止全知视角）： 网友、粉丝、大V只能根据"已公开的信息"或"八卦小道消息"进行主观猜测、吃瓜、带节奏或发泄情
 绪。只有"官方微博"能发布确切通告。严禁出现微博网友知晓私下剧情互动和主角之间的对话内容细节。
@@ -1231,6 +1251,7 @@ IP属地：根据故事背景，生成虚拟的命名城市的IP市区
                     description: '微博热搜详情内容生成',
                     content: `请根据上下文剧情以及用户正在查询的微博热搜内容，微博标题的名称为【{{hotSearchTitle}}】，请根据内容生成相关热搜的，不同微博博主对该事件
 的微博内容讨论和评论区。
+${this._getWeiboPublicBoundaryRule()}
 【核心规则】（严格遵守，不可违反）
 视角限制（绝对禁止全知视角）： 无论是热搜还是微博正文的内容，网友、粉丝、大V只能根据"已公开的信息"或"八卦小道消息"进行主观猜测、吃瓜、带节奏或发泄情
 绪。只有"官方微博"能发布确切通告。
