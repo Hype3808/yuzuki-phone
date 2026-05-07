@@ -4646,29 +4646,8 @@ renderChatRoom(chat) {
             });
 
 
-            // 🔥 新增：读取世界书/角色书条目（character_book）
-            const wechatWorldbookRaw = window.VirtualPhone?.storage?.get?.('wechat-use-worldbook');
-            const useWechatWorldbook = wechatWorldbookRaw !== false && wechatWorldbookRaw !== 'false';
-            if (useWechatWorldbook && char.data && char.data.character_book && char.data.character_book.entries) {
-                const entries = char.data.character_book.entries;
-                if (entries.length > 0) {
-                    let worldInfo = '【世界书/角色书信息】\n';
-                    entries.forEach((entry, idx) => {
-                        if (entry.content && entry.enabled !== false) {
-                            const content = String(entry.content || '');
-                            worldInfo += `${content}\n---\n`;
-                        }
-                    });
-
-                    messages.push({
-                        role: 'system',
-                        content: worldInfo,
-                        name: 'SYSTEM (世界书)',
-                        isPhoneMessage: true
-                    });
-
-                }
-            }
+            const worldInfoMessage = await window.VirtualPhone?.worldbookManager?.buildWorldbookMessage?.('wechat');
+            if (worldInfoMessage) messages.push(worldInfoMessage);
         }
 
         // ========================================

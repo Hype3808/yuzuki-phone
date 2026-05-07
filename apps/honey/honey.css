@@ -3350,6 +3350,41 @@
     margin-top: 4px;
 }
 
+.phone-honey-worldbook-list {
+    color: rgba(255, 245, 251, 0.96) !important;
+}
+
+.honey-worldbook-fold {
+    margin-top: 10px;
+}
+
+.phone-honey-worldbook-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    color: rgba(255, 245, 251, 0.96) !important;
+}
+
+.phone-honey-worldbook-text {
+    min-width: 0;
+    color: rgba(255, 245, 251, 0.96) !important;
+}
+
+.phone-honey-worldbook-name {
+    display: block;
+    font-size: 13px;
+    color: #ffffff !important;
+}
+
+.phone-honey-worldbook-meta {
+    display: block;
+    font-size: 11px;
+    color: rgba(255, 245, 251, 0.72) !important;
+    margin-top: 2px;
+}
+
 .honey-toggle-switch {
     position: relative;
     width: 44px;

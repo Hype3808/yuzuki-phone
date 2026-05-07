@@ -3146,7 +3146,7 @@ input:checked + .toggle-slider:before {
     position: absolute !important;
     top: 32px !important;
     left: 12px !important;
-    z-index: 2 !important;
+    z-index: 5 !important;
     width: 34px !important;
     height: 34px !important;
     border: none !important;
@@ -3158,6 +3158,8 @@ input:checked + .toggle-slider:before {
     justify-content: center !important;
     font-size: 16px !important;
     cursor: pointer !important;
+    pointer-events: auto !important;
+    touch-action: manipulation !important;
     backdrop-filter: blur(12px) !important;
     -webkit-backdrop-filter: blur(12px) !important;
 }

@@ -2026,12 +2026,26 @@ export class HoneyView {
                         <div class="honey-settings-row">
                             <div>
                                 <div class="honey-settings-label">使用酒馆世界书</div>
-                                <div class="honey-settings-desc">开启后，蜜语生成会注入角色卡内的世界书/角色书条目。</div>
+                                <div class="honey-settings-desc">开启后，蜜语生成会注入下方勾选的酒馆世界书；不受酒馆启用状态影响。</div>
                             </div>
                             <label class="honey-toggle-switch">
                                 <input type="checkbox" id="phone-honey-use-worldbook" ${useHoneyWorldbook ? 'checked' : ''}>
                                 <span class="honey-toggle-slider"></span>
                             </label>
+                        </div>
+                        <div class="phone-prompt-fold honey-worldbook-fold" data-default-open="false" style="margin-top: 10px;">
+                            <div class="phone-prompt-fold-header">
+                                <div class="phone-prompt-fold-main">
+                                    <div class="phone-prompt-fold-title">世界书选择</div>
+                                    <div class="phone-prompt-fold-desc">展开后勾选要注入的酒馆世界书</div>
+                                </div>
+                                <i class="fa-solid fa-chevron-right phone-prompt-fold-arrow"></i>
+                            </div>
+                            <div class="phone-prompt-fold-content">
+                                <div id="phone-honey-worldbook-list" class="phone-honey-worldbook-list">
+                                    <div class="honey-settings-desc" style="padding-top: 8px;">正在读取当前可用世界书...</div>
+                                </div>
+                            </div>
                         </div>
                         <div class="honey-settings-row">
                             <div>
@@ -2107,6 +2121,7 @@ export class HoneyView {
         this.app.phoneShell.setContent(html, 'honey-settings');
         this._applyPhoneChromeTheme();
         this.bindSettingsEvents();
+        this.renderHoneyWorldbookList();
     }
 
     _openWechatChatFromHoney(chatId) {
@@ -3281,6 +3296,46 @@ export class HoneyView {
         });
     }
 
+    async renderHoneyWorldbookList() {
+        const root = document.querySelector('.phone-view-current .honey-page-settings') || document.querySelector('.honey-page-settings');
+        const container = root?.querySelector?.('#phone-honey-worldbook-list');
+        const manager = window.VirtualPhone?.worldbookManager;
+        if (!container || !manager) return;
+
+        try {
+            const sources = await manager.listAvailableWorldbooks({ includeEntries: true, force: true });
+            const selection = manager.getSelectionState('honey');
+            if (sources.length === 0) {
+                container.innerHTML = '<div class="honey-settings-desc" style="padding-top: 8px;">未读取到酒馆世界书列表。</div>';
+                return;
+            }
+
+            container.innerHTML = sources.map(source => {
+                const checked = (selection.initialized && manager.matchesSelection?.(source, selection.ids)) ? 'checked' : '';
+                const disabledText = source.entries?.length ? '' : '（读取失败或为空）';
+                return `
+                    <label class="phone-honey-worldbook-item">
+                        <input type="checkbox" class="phone-honey-worldbook-choice" value="${this._escapeHtml(source.id)}" ${checked} style="margin-top: 2px;">
+                        <span class="phone-honey-worldbook-text">
+                            <span class="phone-honey-worldbook-name">${this._escapeHtml(source.name)}${this._escapeHtml(disabledText)}</span>
+                            <span class="phone-honey-worldbook-meta">${this._escapeHtml(source.sourceLabel || '世界书')} · ${Number(source.entries?.length || 0)} 条</span>
+                        </span>
+                    </label>
+                `;
+            }).join('');
+
+            container.querySelectorAll('.phone-honey-worldbook-choice').forEach(input => {
+                input.addEventListener('change', async () => {
+                    const ids = Array.from(container.querySelectorAll('.phone-honey-worldbook-choice:checked')).map(item => item.value);
+                    await manager.setSelection('honey', ids);
+                });
+            });
+        } catch (error) {
+            console.warn('[Honey] 世界书列表渲染失败:', error);
+            container.innerHTML = '<div class="honey-settings-desc" style="padding-top: 8px; color: #d93025;">世界书读取失败，请稍后重试。</div>';
+        }
+    }
+
     bindSettingsEvents() {
         const promptManager = this._getPromptManager();
         const root = document.querySelector('.phone-view-current .honey-page-settings') || document.querySelector('.honey-page-settings');
@@ -3403,9 +3458,10 @@ export class HoneyView {
         root.querySelector('#phone-honey-use-worldbook')?.addEventListener('change', async (e) => {
             const enabled = !!e.target.checked;
             await this.app?.storage?.set?.('phone-honey-use-worldbook', enabled);
+            if (enabled) this.renderHoneyWorldbookList();
             this.app.phoneShell.showNotification(
                 enabled ? '已开启' : '已关闭',
-                `蜜语生成${enabled ? '会' : '不会'}注入酒馆世界书`,
+                `蜜语生成${enabled ? '会' : '不会'}注入勾选的世界书`,
                 enabled ? '✅' : 'ℹ️'
             );
         });

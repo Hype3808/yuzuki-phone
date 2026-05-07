@@ -31,28 +31,8 @@ export class HoneyData {
         return (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) ? SillyTavern.getContext() : null;
     }
 
-    _buildCharacterBookWorldInfoMessage() {
-        const enabledRaw = this.storage?.get?.('phone-honey-use-worldbook');
-        const enabled = enabledRaw === true || enabledRaw === 'true';
-        if (!enabled) return null;
-
-        const context = this._getContext();
-        const char = context?.characters?.[context?.characterId];
-        const entries = char?.data?.character_book?.entries;
-        if (!Array.isArray(entries) || entries.length === 0) return null;
-
-        const parts = entries
-            .filter(entry => entry?.content && entry.enabled !== false)
-            .map(entry => String(entry.content || '').trim())
-            .filter(Boolean);
-        if (parts.length === 0) return null;
-
-        return {
-            role: 'system',
-            content: `【世界书/角色书信息】\n${parts.join('\n---\n')}`,
-            name: 'SYSTEM (世界书)',
-            isPhoneMessage: true
-        };
+    async _buildWorldInfoMessage() {
+        return await window.VirtualPhone?.worldbookManager?.buildWorldbookMessage?.('honey');
     }
 
     _sanitizeInlineText(value, maxLen = 260) {
@@ -2364,7 +2344,7 @@ export class HoneyData {
                 isPhoneMessage: true
             }
         ];
-        const worldInfoMessage = this._buildCharacterBookWorldInfoMessage();
+        const worldInfoMessage = await this._buildWorldInfoMessage();
         if (worldInfoMessage) messages.push(worldInfoMessage);
 
         if (mode === 'continue') {
@@ -2601,7 +2581,7 @@ export class HoneyData {
 
         const context = this._getContext();
         const messages = [{ role: 'system', content: systemPrompt, isPhoneMessage: true }];
-        const worldInfoMessage = this._buildCharacterBookWorldInfoMessage();
+        const worldInfoMessage = await this._buildWorldInfoMessage();
         if (worldInfoMessage) messages.push(worldInfoMessage);
         if (instructionSystemPrompt) {
             messages.push({ role: 'system', content: instructionSystemPrompt, isPhoneMessage: true });

@@ -660,12 +660,20 @@ export class PhoneShell {
         img.alt = String(options.alt || '图片预览');
 
         const close = () => overlay.remove();
+        const closeFromControl = (e) => {
+            e?.preventDefault?.();
+            e?.stopPropagation?.();
+            close();
+        };
         overlay.addEventListener('click', (e) => {
             if (e.target === overlay || e.target?.classList?.contains('phone-image-viewer-stage')) {
                 close();
             }
         });
-        overlay.querySelector('.phone-image-viewer-close')?.addEventListener('click', close);
+        const closeBtn = overlay.querySelector('.phone-image-viewer-close');
+        closeBtn?.addEventListener('pointerdown', closeFromControl);
+        closeBtn?.addEventListener('touchstart', closeFromControl, { passive: false });
+        closeBtn?.addEventListener('click', closeFromControl);
         overlay.addEventListener('wheel', (e) => e.stopPropagation(), { passive: true });
         overlay.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
 

@@ -38,10 +38,13 @@ export class MomentsView {
 
                 <!-- 朋友圈列表 - 有背景图时透明，无背景图时白色 -->
                 <div class="moments-feed" style="background: ${hasBackdrop ? 'transparent' : '#fff'};">
+                    <div class="moments-pull-refresh-indicator" id="moments-pull-refresh-indicator">
+                        <div class="moments-pull-refresh-inner" id="moments-pull-refresh-inner"></div>
+                    </div>
                     ${moments.length === 0 ? `
                         <div class="moments-empty-tip" style="${hasBackdrop ? 'background: rgba(255,255,255,0.8); border-radius: 12px; margin: 20px;' : ''}">
                             <p>朋友圈空空如也</p>
-                            <p class="tip-sub">点击右上角刷新加载朋友圈</p>
+                            <p class="tip-sub">下拉刷新加载朋友圈</p>
                         </div>
                     ` : moments.map(moment => this.renderMomentItem(moment, hasBackdrop)).join('')}
                 </div>
@@ -75,7 +78,7 @@ export class MomentsView {
                     ${moment.text ? `<div class="moment-text">${moment.text}</div>` : ''}
 
                     <!-- 图片 -->
-                    ${this.renderImages(moment.images)}
+                    ${this.renderImages(moment.images, moment)}
 
                     <!-- 底部：时间 + 操作 -->
                     <div class="moment-footer">
@@ -93,7 +96,7 @@ export class MomentsView {
     }
 
     // 渲染图片
-    renderImages(images) {
+    renderImages(images, moment = null) {
         if (!images || images.length === 0) return '';
 
         const gridClass = images.length === 1 ? 'single' :
@@ -102,14 +105,63 @@ export class MomentsView {
 
         return `
             <div class="moment-images ${gridClass}">
-                ${images.map(img => `
+                ${images.map((img, index) => `
                     <div class="moment-img-wrapper">
-                        ${img.startsWith?.('data:') || img.startsWith?.('http') || img.startsWith?.('/')
-                            ? `<img src="${img}" class="moment-img">`
-                            : `<div class="moment-img-placeholder">${img}</div>`
-                        }
+                        ${this.renderMomentImage(img, index, moment)}
                     </div>
                 `).join('')}
+            </div>
+        `;
+    }
+
+    renderMomentImage(rawImage, index, moment = null) {
+        const parsed = this._parseMomentImageItem(rawImage);
+        const state = this._getMomentImageState(moment, index);
+        const promptText = state?.prompt || parsed.promptText || String(rawImage || '').trim();
+        const safePrompt = this._escapeHtml(promptText || '图片描述');
+        if (parsed.isDirectImage) {
+            return `
+                <div class="moment-image-generated-box">
+                    <img src="${this._escapeAttr(parsed.realUrl)}" class="moment-img" data-moment-image-url="${this._escapeAttr(parsed.realUrl)}">
+                    <button class="moment-image-regenerate" data-index="${index}" data-prompt="${this._escapeAttr(promptText)}" title="重新生成">
+                        <i class="fa-solid fa-rotate"></i>
+                    </button>
+                    <button class="moment-image-show-desc" title="查看图片描述">描述</button>
+                    <div class="moment-image-desc-panel">
+                        <div class="moment-image-desc-text">${safePrompt || '暂无图片描述'}</div>
+                        <button class="moment-image-restore" title="恢复图片">恢复</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        const status = state?.status || '';
+        const error = state?.error || '';
+        const statusText = status === 'loading'
+            ? '正在生成...'
+            : (status === 'failed' ? '生成失败，点击重试' : '生成图片');
+        const icon = status === 'loading'
+            ? '<i class="fa-solid fa-spinner fa-spin"></i>'
+            : '<i class="fa-regular fa-image"></i>';
+        const previewSeed = encodeURIComponent(`moments_${index}_${promptText}`);
+        const previewUrl = `https://picsum.photos/seed/${previewSeed}/480/480`;
+
+        return `
+            <div class="moment-image-prompt-box" data-index="${index}" data-prompt="${this._escapeAttr(promptText)}" title="${this._escapeAttr(promptText)}">
+                <div class="moment-image-prompt-front">
+                    <img src="${previewUrl}" alt="${this._escapeAttr(promptText)}" class="moment-img" style="filter:${status === 'failed' ? 'grayscale(0.2)' : 'none'};">
+                    <div class="moment-image-prompt-mask"></div>
+                    <div class="moment-image-prompt-generate" data-index="${index}" data-prompt="${this._escapeAttr(promptText)}">
+                        <div class="moment-image-prompt-icon">${icon}</div>
+                        <div class="moment-image-prompt-text">${statusText}</div>
+                        ${error ? `<div class="moment-image-prompt-error">${this._escapeHtml(error)}</div>` : ''}
+                    </div>
+                    <button class="moment-image-show-desc" title="查看图片描述">描述</button>
+                </div>
+                <div class="moment-image-desc-panel">
+                    <div class="moment-image-desc-text">${safePrompt || '暂无图片描述'}</div>
+                    <button class="moment-image-restore" title="恢复卡片正面">恢复</button>
+                </div>
             </div>
         `;
     }
@@ -154,10 +206,7 @@ export class MomentsView {
             momentsPage.style.overscrollBehavior = 'none';
         }
 
-        // 刷新按钮（在顶部栏）
-        document.getElementById('moments-refresh')?.addEventListener('click', () => {
-            this.loadMomentsFromAI();
-        });
+        this.bindMomentsPullRefresh();
 
         // 🔥 背景图上传事件 - 支持裁剪
         document.getElementById('moments-bg-upload')?.addEventListener('change', async (e) => {
@@ -228,6 +277,60 @@ export class MomentsView {
             });
         });
 
+        document.querySelectorAll('.moment-image-prompt-generate').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                const momentEl = btn.closest('.moment-item');
+                const momentId = momentEl?.dataset?.momentId || '';
+                const index = Number.parseInt(btn.dataset.index, 10);
+                const promptText = String(btn.dataset.prompt || '').trim();
+                await this.generateMomentImage({ momentId, index, promptText });
+            });
+        });
+
+        document.querySelectorAll('.moment-image-regenerate').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                const momentEl = btn.closest('.moment-item');
+                const momentId = momentEl?.dataset?.momentId || '';
+                const index = Number.parseInt(btn.dataset.index, 10);
+                const promptText = String(btn.dataset.prompt || '').trim();
+                await this.generateMomentImage({ momentId, index, promptText, clearPreviousImage: true });
+            });
+        });
+
+        document.querySelectorAll('.moment-image-show-desc').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                const box = btn.closest('.moment-image-prompt-box, .moment-image-generated-box');
+                if (!box) return;
+                box.classList.add('is-desc-open');
+            });
+        });
+
+        document.querySelectorAll('.moment-image-restore').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                const box = btn.closest('.moment-image-prompt-box, .moment-image-generated-box');
+                if (!box) return;
+                box.classList.remove('is-desc-open');
+            });
+        });
+
+        document.querySelectorAll('.moment-img[data-moment-image-url]').forEach(img => {
+            img.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const imageUrl = e.currentTarget?.dataset?.momentImageUrl || e.currentTarget?.src || '';
+                if (imageUrl) {
+                    this.app?.phoneShell?.showImageViewer?.(imageUrl, { alt: '朋友圈图片' });
+                }
+            });
+        });
+
         // 点击评论可以回复（包括自己的评论，方便和其他NPC互动）
         document.querySelectorAll('.comment-row').forEach(row => {
             row.addEventListener('click', (e) => {
@@ -249,6 +352,325 @@ export class MomentsView {
                 this.currentReplyTo = null;
             }
         });
+    }
+
+    bindMomentsPullRefresh() {
+        const momentsPage = document.querySelector('.moments-page');
+        if (!momentsPage || momentsPage.dataset.pullRefreshBound === '1') return;
+        momentsPage.dataset.pullRefreshBound = '1';
+
+        let startY = 0;
+        let startX = 0;
+        let pullDistance = 0;
+        let pressing = false;
+        let pressType = '';
+        let previousUserSelect = '';
+        const maxPull = 92;
+        const triggerThreshold = 62;
+
+        const canPull = () => !this.isLoading && momentsPage.scrollTop <= 2;
+
+        const startPress = (clientX, clientY, type) => {
+            if (!canPull()) return false;
+            pressing = true;
+            pressType = type;
+            pullDistance = 0;
+            startX = clientX;
+            startY = clientY;
+            if (type === 'mouse') {
+                previousUserSelect = document.body.style.userSelect;
+                document.body.style.userSelect = 'none';
+            }
+            return true;
+        };
+
+        const movePress = (clientX, clientY, e) => {
+            if (!pressing) return;
+            const deltaX = clientX - startX;
+            const deltaY = clientY - startY;
+            if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 8) {
+                pressing = false;
+                pullDistance = 0;
+                pressType = '';
+                this.syncMomentsPullIndicator();
+                return;
+            }
+            if (deltaY <= 0 || deltaY < 6) return;
+
+            pullDistance = Math.min(maxPull, Math.round(deltaY * 0.55));
+            const ready = pullDistance >= triggerThreshold;
+            this.setMomentsPullHint(pullDistance, ready ? '松手刷新朋友圈' : '下拉刷新朋友圈', ready);
+            if (e?.cancelable) e.preventDefault();
+        };
+
+        const endPress = () => {
+            if (!pressing) return;
+            const shouldTrigger = pullDistance >= triggerThreshold;
+            pressing = false;
+            pullDistance = 0;
+            if (pressType === 'mouse') {
+                document.body.style.userSelect = previousUserSelect || '';
+                previousUserSelect = '';
+            }
+            pressType = '';
+
+            if (shouldTrigger) {
+                this.loadMomentsFromAI();
+            } else {
+                this.syncMomentsPullIndicator();
+            }
+        };
+
+        momentsPage.addEventListener('touchstart', (e) => {
+            if (!e.touches || e.touches.length === 0) return;
+            startPress(e.touches[0].clientX, e.touches[0].clientY, 'touch');
+        }, { passive: true });
+        momentsPage.addEventListener('touchmove', (e) => {
+            if (!e.touches || e.touches.length === 0) return;
+            movePress(e.touches[0].clientX, e.touches[0].clientY, e);
+        }, { passive: false });
+        momentsPage.addEventListener('touchend', () => {
+            if (pressType === 'touch') endPress();
+        });
+        momentsPage.addEventListener('touchcancel', () => {
+            if (pressType === 'touch') endPress();
+        });
+
+        let removeMouseGlobalListeners = null;
+        const addMouseGlobalListeners = () => {
+            const onMouseMove = (e) => {
+                if (pressType !== 'mouse') return;
+                movePress(e.clientX, e.clientY, e);
+            };
+            const onMouseUp = () => {
+                if (pressType !== 'mouse') return;
+                removeMouseGlobalListeners?.();
+                endPress();
+            };
+            const onWindowBlur = () => {
+                if (pressType !== 'mouse') return;
+                removeMouseGlobalListeners?.();
+                endPress();
+            };
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mouseup', onMouseUp);
+            window.addEventListener('blur', onWindowBlur);
+            removeMouseGlobalListeners = () => {
+                window.removeEventListener('mousemove', onMouseMove);
+                window.removeEventListener('mouseup', onMouseUp);
+                window.removeEventListener('blur', onWindowBlur);
+                removeMouseGlobalListeners = null;
+            };
+        };
+
+        momentsPage.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return;
+            if (e.target?.closest?.('.moment-action-btn, .moment-image-prompt-generate, .inline-comment-box, .action-popup, input, textarea, button')) return;
+            if (!startPress(e.clientX, e.clientY, 'mouse')) return;
+            e.preventDefault();
+            addMouseGlobalListeners();
+        });
+    }
+
+    setMomentsPullHint(height, text, ready = false) {
+        const wrap = document.getElementById('moments-pull-refresh-indicator');
+        const inner = document.getElementById('moments-pull-refresh-inner');
+        if (!wrap || !inner) return;
+        wrap.classList.remove('loading', 'success', 'error');
+        wrap.classList.toggle('ready', !!ready);
+        wrap.style.height = `${Math.max(0, height)}px`;
+        inner.innerHTML = `<i class="fa-solid fa-arrow-down"></i> ${text}`;
+    }
+
+    syncMomentsPullIndicator(status = '') {
+        const wrap = document.getElementById('moments-pull-refresh-indicator');
+        const inner = document.getElementById('moments-pull-refresh-inner');
+        if (!wrap || !inner) return;
+        wrap.classList.remove('ready', 'loading', 'success', 'error');
+
+        if (this.isLoading || status === 'loading') {
+            wrap.classList.add('loading');
+            wrap.style.height = '40px';
+            inner.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在生成中...';
+            return;
+        }
+        if (status === 'success') {
+            wrap.classList.add('success');
+            wrap.style.height = '36px';
+            inner.innerHTML = '<i class="fa-solid fa-check"></i> 已刷新';
+            return;
+        }
+        if (status === 'error') {
+            wrap.classList.add('error');
+            wrap.style.height = '36px';
+            inner.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> 刷新失败';
+            return;
+        }
+        wrap.style.height = '0px';
+        inner.innerHTML = '';
+    }
+
+    _escapeHtml(value) {
+        return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    _escapeAttr(value) {
+        return this._escapeHtml(value).replace(/`/g, '&#96;');
+    }
+
+    _normalizeImageGenerationError(error) {
+        const message = String(error?.message || error || '').trim();
+        if (!message) return '生成失败，请重试';
+        if (/缺少.*API Key|api key/i.test(message)) return '缺少生图 API Key';
+        if (/未启用/.test(message)) return '生图功能未启用';
+        if (/rate|429|too many/i.test(message)) return '请求过快，请稍后重试';
+        return message.slice(0, 80);
+    }
+
+    _isDirectMomentImageUrl(value) {
+        return /^(data:image\/|https?:\/\/|\/backgrounds\/)/i.test(String(value || '').trim());
+    }
+
+    _parseMomentImageItem(rawValue) {
+        const imageStr = String(rawValue || '').trim();
+        let body = imageStr;
+        const taggedMatch = imageStr.match(/^\[(图片|视频)\]\s*([\s\S]*)$/);
+        if (taggedMatch) body = String(taggedMatch[2] || '').trim();
+        const unwrappedBody = body.replace(/^[（(]\s*|\s*[)）]$/g, '').trim();
+        const directUrl = this._isDirectMomentImageUrl(body)
+            ? body
+            : (this._isDirectMomentImageUrl(unwrappedBody) ? unwrappedBody : '');
+
+        let promptText = '';
+        if (!directUrl) {
+            promptText = unwrappedBody || body;
+            if (!taggedMatch && /^\[[^\]]+\]$/.test(imageStr)) {
+                promptText = imageStr.slice(1, -1).trim();
+            }
+        }
+
+        return {
+            realUrl: directUrl,
+            isDirectImage: !!directUrl,
+            promptText: promptText.trim()
+        };
+    }
+
+    _getMomentById(momentId) {
+        const safeId = String(momentId || '').trim();
+        const moments = this.app.wechatData.getMoments();
+        return Array.isArray(moments) ? moments.find(item => String(item?.id || '').trim() === safeId) : null;
+    }
+
+    _getMomentImageState(moment, index) {
+        if (!moment || !Array.isArray(moment.imageGenerationStates)) return null;
+        const state = moment.imageGenerationStates[index];
+        return state && typeof state === 'object' ? state : null;
+    }
+
+    _setMomentImageState(moment, index, nextState) {
+        if (!moment || !Number.isInteger(index) || index < 0) return;
+        if (!Array.isArray(moment.imageGenerationStates)) moment.imageGenerationStates = [];
+        if (nextState === null) {
+            delete moment.imageGenerationStates[index];
+            return;
+        }
+        const prev = this._getMomentImageState(moment, index) || {};
+        moment.imageGenerationStates[index] = { ...prev, ...nextState };
+    }
+
+    _refreshMomentImageUI(momentId) {
+        const momentsPage = document.querySelector('.moments-page');
+        const scrollTop = momentsPage?.scrollTop || 0;
+        this.app.render();
+        setTimeout(() => {
+            const nextPage = document.querySelector('.moments-page');
+            if (nextPage) nextPage.scrollTop = scrollTop;
+        }, 0);
+    }
+
+    async generateMomentImage({ momentId, index, promptText, clearPreviousImage = false } = {}) {
+        if (!momentId || !Number.isInteger(index) || index < 0 || !promptText) return;
+        const moment = this._getMomentById(momentId);
+        if (!moment) return;
+        const currentState = this._getMomentImageState(moment, index);
+        if (currentState?.status === 'loading') return;
+
+        const imageManager = window.VirtualPhone?.imageGenerationManager;
+        const imageStorage = this.app?.storage || window.VirtualPhone?.storage || null;
+        if (!imageManager || typeof imageManager.generate !== 'function') {
+            this._setMomentImageState(moment, index, {
+                status: 'failed',
+                error: '生图管理器未初始化',
+                prompt: promptText
+            });
+            await this.app.wechatData.saveData();
+            this._refreshMomentImageUI(momentId);
+            this.app.phoneShell.showNotification('生图失败', '生图管理器未初始化', '❌');
+            return;
+        }
+
+        if (imageStorage && imageManager.storage !== imageStorage) {
+            imageManager.storage = imageStorage;
+        }
+
+        if (clearPreviousImage && Array.isArray(moment.images)) {
+            moment.images[index] = `[图片]${promptText}`;
+        }
+
+        this._setMomentImageState(moment, index, {
+            status: 'loading',
+            error: '',
+            prompt: promptText,
+            generatedImageUrl: '',
+            imageProvider: String(imageStorage?.get?.('phone-image-provider') || '').trim()
+        });
+        await this.app.wechatData.saveData();
+        this._refreshMomentImageUI(momentId);
+
+        try {
+            const result = await imageManager.generate({
+                app: 'wechat',
+                prompt: promptText
+            });
+            const imageUrl = String(result?.imageUrl || result?.imageData || '').trim();
+            if (!imageUrl) throw new Error('生图成功但未返回图片URL');
+
+            const latestMoment = this._getMomentById(momentId) || moment;
+            if (!Array.isArray(latestMoment.images)) latestMoment.images = [];
+            latestMoment.images[index] = `[图片]${imageUrl}`;
+            this._setMomentImageState(latestMoment, index, {
+                status: 'done',
+                error: '',
+                prompt: promptText,
+                generatedImageUrl: imageUrl,
+                imageModel: String(result?.model || '').trim(),
+                imageProvider: String(result?.provider || '').trim(),
+                imageGenerationWidth: Number(result?.width || result?.requestedWidth || 0) || '',
+                imageGenerationHeight: Number(result?.height || result?.requestedHeight || 0) || ''
+            });
+            await this.app.wechatData.saveData();
+            this._refreshMomentImageUI(momentId);
+            this.app.phoneShell.showNotification('成功', '朋友圈配图生成完成', '✅');
+        } catch (error) {
+            const friendlyMessage = this._normalizeImageGenerationError(error);
+            const latestMoment = this._getMomentById(momentId) || moment;
+            this._setMomentImageState(latestMoment, index, {
+                status: 'failed',
+                error: friendlyMessage,
+                prompt: promptText,
+                generatedImageUrl: '',
+                imageProvider: String(imageStorage?.get?.('phone-image-provider') || '').trim()
+            });
+            await this.app.wechatData.saveData();
+            this._refreshMomentImageUI(momentId);
+            this.app.phoneShell.showNotification('生图失败', friendlyMessage, '❌');
+        }
     }
 
     // 显示操作弹窗
@@ -622,13 +1044,7 @@ ${replyTo ? `- 回复对象：${replyTo}` : ''}
         if (this.isLoading) return;
 
         this.isLoading = true;
-        this.app.phoneShell.showNotification('朋友圈', '正在加载...', '⏳');
-
-        // 显示加载动画
-        const refreshBtn = document.getElementById('moments-refresh');
-        if (refreshBtn) {
-            refreshBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-        }
+        this.syncMomentsPullIndicator('loading');
 
         try {
             // 获取联系人列表
@@ -636,7 +1052,7 @@ ${replyTo ? `- 回复对象：${replyTo}` : ''}
             if (contacts.length === 0) {
                 this.app.phoneShell.showNotification('提示', '请先添加联系人', '⚠️');
                 this.isLoading = false;
-                if (refreshBtn) refreshBtn.innerHTML = '<i class="fa-solid fa-rotate"></i>';
+                this.syncMomentsPullIndicator('error');
                 return;
             }
 
@@ -825,18 +1241,19 @@ ${momentsPrompt}
                 });
 
                 this.app.wechatData.saveData();
-                this.app.phoneShell.showNotification('朋友圈', `已加载 ${result.moments.length} 条动态`, '✅');
+                this.syncMomentsPullIndicator('success');
                 this.app.render();
             } else {
-                this.app.phoneShell.showNotification('朋友圈', '加载失败，请重试', '❌');
+                this.syncMomentsPullIndicator('error');
             }
 
         } catch (error) {
             console.error('❌ 加载朋友圈失败:', error);
+            this.syncMomentsPullIndicator('error');
             this.app.phoneShell.showNotification('错误', error.message, '❌');
         } finally {
             this.isLoading = false;
-            if (refreshBtn) refreshBtn.innerHTML = '<i class="fa-solid fa-rotate"></i>';
+            setTimeout(() => this.syncMomentsPullIndicator(), 1300);
         }
     }
 

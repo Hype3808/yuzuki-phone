@@ -10,13 +10,13 @@
  * Copyright (c) yuzuki. All rights reserved.
  * ======================================================== */
 // ========================================
-// 虚拟手机互动系统 v1.0.5
+// 虚拟手机互动系统 v1.0.6
 // SillyTavern 扩展插件
 // ========================================
 
 const ST_PHONE_BASE_URL = new URL('./', import.meta.url).href;
 const ST_PHONE_GLOBAL_CSS_URL = new URL('./phone.css', import.meta.url).href;
-const ST_PHONE_VERSION = '1.0.5';
+const ST_PHONE_VERSION = '1.0.6';
 const ST_PHONE_UPDATE_MANIFEST_URLS = [
     'https://raw.githubusercontent.com/gaigai315/yuzuki-phone/main/manifest.json',
     'https://raw.githubusercontent.com/gaigai315/yuzuki-phone/master/manifest.json'
@@ -33,7 +33,12 @@ const ST_PHONE_CURRENT_UPDATE = {
         '优化蜜语、微信、微博等场景的提示词约束，让回复和生图描述更稳定。',
         '新增提示词预设页面，支持按功能管理和切换不同提示词设定。',
         '微信和微博图片卡片新增重新生图，可清理旧图并替换为新生成结果。',
-        '蜜语、微信、微博生成图片支持点击放大查看，像手机相册一样居中预览。'
+        '蜜语、微信、微博生成图片支持点击放大查看，像手机相册一样居中预览。',
+        '微信和蜜语可读取酒馆全部世界书条目，并按用户勾选内容注入生成上下文。',
+        '微信和蜜语的世界书选择列表改为默认折叠，世界书较多时设置页更清爽。',
+        '世界书选择默认全不选，只有用户手动勾选的世界书才会参与生成注入。',
+        '优化蜜语世界书列表在深色设置页中的文字颜色，提升可读性。',
+        '朋友圈改为下拉刷新，并接通配图生成功能，图片描述可点击生成和重试。'
     ]
 };
 
@@ -57,6 +62,7 @@ if (window.GGP_Loaded) {
     let SettingsApp = null;        // 打开设置时加载
     let TtsManager = null;         // 语音管理器
     let ImageGenerationManager = null; // 生图管理器
+    let WorldbookManager = null;   // 世界书选择/注入管理器
 
     // 🔥 三击唤醒手势状态
     let phoneTapCount = 0;
@@ -74,6 +80,7 @@ if (window.GGP_Loaded) {
     let promptManager = null;
     let ttsManager = null;
     let imageGenerationManager = null;
+    let worldbookManager = null;
     let modulesLoaded = false;
     let _lastWechatChatId = null; // 🔥 防串味：记录上一次处理微信数据的 chatId
     let _globalCssLoadingPromise = null;
@@ -630,7 +637,8 @@ if (window.GGP_Loaded) {
             timeManagerModule,      // 👈 新增：时间推算引擎
             promptManagerModule,    // 👈 新增：全局提示词中枢
             ttsManagerModule,
-            imageGenerationManagerModule
+            imageGenerationManagerModule,
+            worldbookManagerModule
         ] = await Promise.all([
             import('./config/apps.js'),
             import('./config/storage.js'),
@@ -638,7 +646,8 @@ if (window.GGP_Loaded) {
             import('./config/time-manager.js'),    // 👈 取消懒加载
             import('./config/prompt-manager.js'),  // 👈 取消懒加载
             import('./config/tts-manager.js'),
-            import('./config/image-generation-manager.js')
+            import('./config/image-generation-manager.js'),
+            import('./config/worldbook-manager.js')
         ]);
 
         APPS = appsModule.APPS;
@@ -648,6 +657,7 @@ if (window.GGP_Loaded) {
         PromptManager = promptManagerModule.PromptManager; // 👈 绑定类
         TtsManager = ttsManagerModule.TtsManager;
         ImageGenerationManager = imageGenerationManagerModule.ImageGenerationManager;
+        WorldbookManager = worldbookManagerModule.WorldbookManager;
 
         // 初始化核心对象
         currentApps = JSON.parse(JSON.stringify(APPS));
@@ -659,6 +669,7 @@ if (window.GGP_Loaded) {
         promptManager = new PromptManager(storage);
         ttsManager = new TtsManager(storage);
         imageGenerationManager = new ImageGenerationManager(storage);
+        worldbookManager = new WorldbookManager(storage);
         promptManager.ensureLoaded(); // 强制把所有提示词立即读入内存待命
 
         modulesLoaded = true;
@@ -6020,6 +6031,7 @@ if (window.GGP_Loaded) {
                 promptManager: null,
                 ttsManager: ttsManager,
                 imageGenerationManager: imageGenerationManager,
+                worldbookManager: worldbookManager,
                 home: null,
                 wechatApp: null,
                 mofoApp: null,

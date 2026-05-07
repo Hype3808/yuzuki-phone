@@ -1968,6 +1968,41 @@ export class WechatApp {
     /* 🔥 移除硬编码背景，由内联样式控制 */
 }
 
+.moments-pull-refresh-indicator {
+    height: 0;
+    overflow: hidden;
+    transition: height 0.18s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #8a8a8a;
+    font-size: 12px;
+}
+
+.moments-pull-refresh-inner {
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+.moments-pull-refresh-indicator.ready .moments-pull-refresh-inner {
+    color: #07c160;
+}
+
+.moments-pull-refresh-indicator.loading .moments-pull-refresh-inner {
+    color: #576b95;
+}
+
+.moments-pull-refresh-indicator.success .moments-pull-refresh-inner {
+    color: #07c160;
+}
+
+.moments-pull-refresh-indicator.error .moments-pull-refresh-inner {
+    color: #d93025;
+}
+
 .moments-empty-tip {
     text-align: center;
     padding: 60px 20px;
@@ -2028,6 +2063,159 @@ export class WechatApp {
     align-items: center;
     justify-content: center;
     font-size: 22px;
+}
+
+.moment-image-prompt-box,
+.moment-image-generated-box {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: 86px;
+    border-radius: 4px;
+    overflow: hidden;
+    cursor: pointer;
+    background: #f3f3f3;
+}
+
+.moment-image-prompt-front {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: inherit;
+}
+
+.moment-image-prompt-box.is-desc-open .moment-image-prompt-front,
+.moment-image-generated-box.is-desc-open > .moment-img,
+.moment-image-generated-box.is-desc-open > .moment-image-regenerate,
+.moment-image-generated-box.is-desc-open > .moment-image-show-desc {
+    display: none !important;
+}
+
+.moment-image-prompt-box.is-desc-open .moment-image-desc-panel,
+.moment-image-generated-box.is-desc-open .moment-image-desc-panel {
+    display: flex;
+}
+
+.moment-image-prompt-mask {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(0,0,0,0.08), rgba(0,0,0,0.52));
+}
+
+.moment-image-prompt-generate {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px;
+    box-sizing: border-box;
+    color: #fff;
+    text-align: center;
+}
+
+.moment-image-prompt-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255,255,255,0.18);
+    border: 1px solid rgba(255,255,255,0.24);
+    font-size: 15px;
+}
+
+.moment-image-prompt-text {
+    font-size: 10px;
+    line-height: 1.2;
+    font-weight: 600;
+}
+
+.moment-image-prompt-error {
+    max-width: 100%;
+    font-size: 9px;
+    line-height: 1.25;
+    color: rgba(255,255,255,0.9);
+    word-break: break-word;
+}
+
+.moment-image-show-desc,
+.moment-image-regenerate,
+.moment-image-restore {
+    position: absolute;
+    z-index: 4;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    background: rgba(0,0,0,0.58);
+    color: #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+}
+
+.moment-image-show-desc {
+    right: 5px;
+    bottom: 5px;
+    max-width: calc(100% - 8px);
+    padding: 4px 7px;
+    border-radius: 4px;
+    font-size: 10px;
+    line-height: 1.1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.moment-image-regenerate {
+    left: 5px;
+    bottom: 5px;
+    width: 26px;
+    height: 26px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+}
+
+.moment-image-desc-panel {
+    display: none;
+    position: absolute;
+    inset: 0;
+    padding: 8px;
+    padding-bottom: 30px;
+    box-sizing: border-box;
+    align-items: center;
+    justify-content: center;
+    background: #f7f7f7;
+    border: 1px dashed #dedede;
+    border-radius: 4px;
+    color: #666;
+    z-index: 3;
+}
+
+.moment-image-desc-text {
+    width: 100%;
+    max-height: 100%;
+    overflow-y: auto;
+    font-size: 10px;
+    line-height: 1.45;
+    text-align: center;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.moment-image-restore {
+    right: 5px;
+    bottom: 5px;
+    padding: 4px 7px;
+    border-radius: 4px;
+    font-size: 10px;
+    line-height: 1.1;
 }
 
 /* 内容列 */
@@ -2628,9 +2816,6 @@ export class WechatApp {
                     </button>
                     <button class="wechat-header-btn" id="moments-bg-btn" title="更换背景">
                         <i class="fa-solid fa-image"></i>
-                    </button>
-                    <button class="wechat-header-btn" id="moments-refresh" title="刷新朋友圈">
-                        <i class="fa-solid fa-rotate"></i>
                     </button>`;
             }
             return `
@@ -4209,7 +4394,6 @@ export class WechatApp {
         const settingsContentStyle = shellBg.contentBgStyle || 'background: #ededed;';
         const wechatWorldbookRaw = window.VirtualPhone?.storage?.get('wechat-use-worldbook');
         const useWechatWorldbook = wechatWorldbookRaw !== false && wechatWorldbookRaw !== 'false';
-
         const html = `
         <div class="${shellBg.appClass}" style="${shellBg.appStyle}">
             <div class="wechat-header">
@@ -4243,13 +4427,27 @@ export class WechatApp {
                         <div style="min-width: 0;">
                             <div style="font-size: 14px; color: #222;">使用酒馆世界书</div>
                             <div style="font-size: 12px; color: #888; line-height: 1.45; margin-top: 4px;">
-                                开启后，微信生成会注入角色卡内的世界书/角色书条目。
+                                开启后，微信生成会注入下方勾选的酒馆世界书；不受酒馆启用状态影响。
                             </div>
                         </div>
                         <label class="toggle-switch" style="flex: 0 0 auto;">
                             <input type="checkbox" id="wechat-use-worldbook" ${useWechatWorldbook ? 'checked' : ''}>
                             <span class="toggle-slider"></span>
                         </label>
+                    </div>
+                    <div class="phone-prompt-fold wechat-worldbook-fold" data-default-open="false" style="margin-top: 12px;">
+                        <div class="phone-prompt-fold-header">
+                            <div class="phone-prompt-fold-main">
+                                <div class="phone-prompt-fold-title">世界书选择</div>
+                                <div class="phone-prompt-fold-desc">展开后勾选要注入的酒馆世界书</div>
+                            </div>
+                            <i class="fa-solid fa-chevron-right phone-prompt-fold-arrow"></i>
+                        </div>
+                        <div class="phone-prompt-fold-content">
+                            <div id="wechat-worldbook-list">
+                                <div style="font-size: 12px; color: #888; padding: 8px 0;">正在读取当前可用世界书...</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -4560,6 +4758,7 @@ export class WechatApp {
     `;
 
         this.phoneShell.setContent(html);
+        this.renderWechatWorldbookList();
 
         // 返回按钮
         const backBtn = document.getElementById('back-from-settings');
@@ -4569,6 +4768,22 @@ export class WechatApp {
         };
 
         // 折叠展开功能
+        document.querySelectorAll('.phone-prompt-fold').forEach(fold => {
+            if (fold.dataset.foldInited !== '1') {
+                fold.dataset.foldInited = '1';
+                fold.classList.toggle('is-open', String(fold.dataset.defaultOpen || '').toLowerCase() === 'true');
+            }
+        });
+        document.querySelectorAll('.phone-prompt-fold-header').forEach(header => {
+            if (header.dataset.foldBound === '1') return;
+            header.dataset.foldBound = '1';
+            header.addEventListener('click', () => {
+                const fold = header.closest('.phone-prompt-fold');
+                if (!fold) return;
+                fold.classList.toggle('is-open');
+            });
+        });
+
         document.querySelectorAll('.prompt-header').forEach(header => {
             header.onclick = (e) => {
                 const content = header.nextElementSibling;
@@ -4620,9 +4835,10 @@ export class WechatApp {
         document.getElementById('wechat-use-worldbook')?.addEventListener('change', async (e) => {
             const enabled = !!e.target.checked;
             await window.VirtualPhone?.storage?.set('wechat-use-worldbook', enabled);
+            if (enabled) this.renderWechatWorldbookList();
             this.phoneShell.showNotification(
                 enabled ? '已开启' : '已关闭',
-                `微信生成${enabled ? '会' : '不会'}注入酒馆世界书`,
+                `微信生成${enabled ? '会' : '不会'}注入勾选的世界书`,
                 enabled ? '✅' : 'ℹ️'
             );
         });
@@ -4646,6 +4862,51 @@ export class WechatApp {
             await window.VirtualPhone?.storage?.set('global_alapi_token', token);
             this.phoneShell.showNotification('保存成功', '表情包密钥已更新', '✅');
         };
+    }
+
+    async renderWechatWorldbookList() {
+        const container = document.getElementById('wechat-worldbook-list');
+        const manager = window.VirtualPhone?.worldbookManager;
+        if (!container || !manager) return;
+        const escapeText = (value) => String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+
+        try {
+            const sources = await manager.listAvailableWorldbooks({ includeEntries: true, force: true });
+            const selection = manager.getSelectionState('wechat');
+            if (sources.length === 0) {
+                container.innerHTML = '<div style="font-size: 12px; color: #999; padding: 8px 0;">未读取到酒馆世界书列表。</div>';
+                return;
+            }
+
+            container.innerHTML = sources.map(source => {
+                const checked = (selection.initialized && manager.matchesSelection?.(source, selection.ids)) ? 'checked' : '';
+                const disabledText = source.entries?.length ? '' : '（读取失败或为空）';
+                return `
+                    <label style="display: flex; align-items: flex-start; gap: 8px; padding: 8px 0; border-top: 1px solid #f2f2f2;">
+                        <input type="checkbox" class="wechat-worldbook-choice" value="${escapeText(source.id)}" ${checked} style="margin-top: 2px;">
+                        <span style="min-width: 0;">
+                            <span style="display: block; font-size: 13px; color: #333;">${escapeText(source.name)}${escapeText(disabledText)}</span>
+                            <span style="display: block; font-size: 11px; color: #999; margin-top: 2px;">${escapeText(source.sourceLabel || '世界书')} · ${Number(source.entries?.length || 0)} 条</span>
+                        </span>
+                    </label>
+                `;
+            }).join('');
+
+            container.querySelectorAll('.wechat-worldbook-choice').forEach(input => {
+                input.addEventListener('change', async () => {
+                    const ids = Array.from(container.querySelectorAll('.wechat-worldbook-choice:checked')).map(item => item.value);
+                    await manager.setSelection('wechat', ids);
+                });
+            });
+        } catch (error) {
+            console.warn('[Wechat] 世界书列表渲染失败:', error);
+            container.innerHTML = '<div style="font-size: 12px; color: #d93025; padding: 8px 0;">世界书读取失败，请稍后重试。</div>';
+        }
     }
 
     showAvatarManager() {
