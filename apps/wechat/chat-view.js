@@ -952,7 +952,7 @@ renderChatRoom(chat) {
         let messageBody = '';
 
         const contentStr = String(msg?.content || '').trim();
-        const inlineVoiceNewMatch = /^(?:\[\s*语音\s*\]|【\s*语音\s*】)\s*[:：]?\s*(.+)$/i.exec(contentStr);
+        const inlineVoiceNewMatch = /^(?:\[\s*(?:语音条|语音)\s*\]|【\s*(?:语音条|语音)\s*】)\s*[:：]?\s*(.+)$/i.exec(contentStr);
         const inlineVoiceOldMatch = /^\[语音\s*(\d+)秒?\]\(?([^)]*)\)?$/i.exec(contentStr);
         const effectiveType = (msg.type === 'text' || !msg.type)
             && (inlineVoiceNewMatch || inlineVoiceOldMatch)
@@ -999,7 +999,7 @@ renderChatRoom(chat) {
                 let voiceText = msg.voiceText || '';
 
                 // 兼容新老格式提取
-                const newVMatch = inlineVoiceNewMatch || /^(?:\[\s*语音\s*\]|【\s*语音\s*】)\s*[:：]?\s*(.+)$/i.exec(msg.content);
+                const newVMatch = inlineVoiceNewMatch || /^(?:\[\s*(?:语音条|语音)\s*\]|【\s*(?:语音条|语音)\s*】)\s*[:：]?\s*(.+)$/i.exec(msg.content);
                 if (newVMatch) {
                     voiceText = String(newVMatch[1] || '').trim();
                     const wrappedVoiceMatch = voiceText.match(/^[（(]\s*([\s\S]*?)\s*[)）]$/);

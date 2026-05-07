@@ -390,7 +390,7 @@ ${wechatSingleDirectionRule}`;
             }
         }
 
-        return text;
+        return this._upgradeWechatVoiceBarPromptContent(text);
     }
 
     _upgradeWechatOfflinePromptContent(content) {
@@ -443,7 +443,7 @@ ${wechatSingleDirectionRule}`;
                 );
         }
 
-        return text;
+        return this._upgradeWechatVoiceBarPromptContent(text);
     }
 
     _upgradeWechatGroupChatPromptContent(content) {
@@ -487,7 +487,17 @@ ${wechatImagePromptRule}`;
 💡 群聊中若要使用本地表情包，格式为：发送者: [表情包](表情名称)。`;
         }
 
-        return text;
+        return this._upgradeWechatVoiceBarPromptContent(text);
+    }
+
+    _upgradeWechatVoiceBarPromptContent(content) {
+        let text = String(content || '');
+        if (!text) return text;
+
+        return text
+            .replace(/(\[HH:MM\]\s*)\[语音\]\s*[（(]\s*语音条转文字内容\s*[)）]/g, '$1[语音条]（语音条转文字内容）')
+            .replace(/(发送者:\s*)\[语音\]\s*[（(]\s*语音转化出的文字内容\s*[)）]/g, '$1[语音条]（语音转化出的文字内容）')
+            .replace(/(发送者:\s*)\[语音\]\s*语音转化出的文字内容/g, '$1[语音条]（语音转化出的文字内容）');
     }
 
     _upgradeWeiboImagePromptContent(content) {
@@ -594,7 +604,7 @@ date:{{STORY_DATE}}
 [HH:MM] [转账](金额：xx元)
 [HH:MM] [红包](金额：xx元)
 [HH:MM] [拨打微信语音]
-[HH:MM] [语音] （语音条转文字内容)
+[HH:MM] [语音条]（语音条转文字内容）
 [HH:MM] 直接发送emoji（如 😀😭😅）
 [HH:MM] [表情包](关键词) 
 [HH:MM] [定位](地点位置) 
@@ -699,7 +709,7 @@ from:林晓雨: 在呢
 发送者: [红包](金额：xx元)
 发送者: [拨打微信语音]
 发送者: [拨打微信视频]
-发送者: [语音] 语音转化出的文字内容
+发送者: [语音条]（语音转化出的文字内容）
 发送者: 直接发送emoji（如 😀😭😅）
 发送者: [表情包](表情名称) 
 发送者: [图片]（English NovelAI tags）
@@ -1046,7 +1056,7 @@ from:林晓雨: 在呢
 📎 特殊消息（可选）：
 发送者: [转账](金额：xx元)
 发送者: [红包](金额：xx元)
-发送者: [语音] 语音转化出的文字内容
+发送者: [语音条]（语音转化出的文字内容）
 发送者: [图片](English NovelAI tags)
 发送者: 直接发送emoji（如 😀😭😅）
 发送者: [表情包](关键词) （直接发送表情包）

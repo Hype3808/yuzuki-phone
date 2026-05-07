@@ -959,7 +959,7 @@ export class WechatData {
                 message.type = 'sticker';
                 message.keyword = stickerMatch[1].trim();
             }
-            const newVoiceMatch = /^(?:\[\s*语音\s*\]|【\s*语音\s*】)\s*[:：]?\s*(.+)$/i.exec(contentStr);
+            const newVoiceMatch = /^(?:\[\s*(?:语音条|语音)\s*\]|【\s*(?:语音条|语音)\s*】)\s*[:：]?\s*(.+)$/i.exec(contentStr);
             if (newVoiceMatch) {
                 let parsedVoiceText = String(newVoiceMatch[1] || '').trim();
                 const wrappedVoiceMatch = parsedVoiceText.match(/^[（(]\s*([\s\S]*?)\s*[)）]$/);

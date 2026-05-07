@@ -4440,8 +4440,8 @@ if (window.GGP_Loaded) {
             return;
         }
 
-        // [语音]内容 / [语音](内容) / [语音]（内容）/ 【语音】内容
-        const newVoiceMatch = /^(?:\[\s*语音\s*\]|【\s*语音\s*】)\s*[:：]?\s*(.+)$/i.exec(String(content || '').trim());
+        // [语音条]内容 / [语音条](内容) / [语音条]（内容）/ 【语音条】内容，兼容旧 [语音] 写法
+        const newVoiceMatch = /^(?:\[\s*(?:语音条|语音)\s*\]|【\s*(?:语音条|语音)\s*】)\s*[:：]?\s*(.+)$/i.exec(String(content || '').trim());
         if (newVoiceMatch) {
             let parsedVoiceText = String(newVoiceMatch[1] || '').trim();
             const wrappedVoiceMatch = parsedVoiceText.match(/^[（(]\s*([\s\S]*?)\s*[)）]$/);
