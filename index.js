@@ -137,6 +137,11 @@ if (window.GGP_Loaded) {
         return !!(runtime && runtime.enabled);
     }
 
+    function isPhoneUserMessageListenerEnabled() {
+        const raw = storage?.get?.('phone-user-message-listener-enabled');
+        return raw !== false && raw !== 'false';
+    }
+
     function updatePhonePanelViewportHeight(options = {}) {
         const panel = document.getElementById('phone-panel');
         const root = document.documentElement;
@@ -5457,11 +5462,14 @@ if (window.GGP_Loaded) {
 
             // 🔥 新增：单独拦截用户消息，处理 <回复xx> 标签
             if (message.is_user) {
-                if (isPhoneFeatureEnabled() && !isHistoryReplay) {
+                const listenUserMessages = isPhoneUserMessageListenerEnabled();
+                if (listenUserMessages && isPhoneFeatureEnabled() && !isHistoryReplay) {
                     processUserReplyTags(text, index, currentBatchId); // 🔥 传入 index 和 batchId
                 }
                 // 用户楼层同样参与微博自动触发判断
-                scheduleAutoWeiboIfDue({ reason: 'user_message' });
+                if (listenUserMessages) {
+                    scheduleAutoWeiboIfDue({ reason: 'user_message' });
+                }
                 return; // 用户消息处理完毕后退出，不走下面的 AI 标签解析链路
             }
 

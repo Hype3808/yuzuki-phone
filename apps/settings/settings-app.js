@@ -1564,6 +1564,8 @@ export class SettingsApp {
 
     renderMemoryPermissionSection() {
         const isMemoryPermissionOpen = this.storage.get('phone-settings-memory-permission-open') === true;
+        const userMessageListenerRaw = this.storage.get('phone-user-message-listener-enabled');
+        const isUserMessageListenerEnabled = userMessageListenerRaw !== false && userMessageListenerRaw !== 'false';
         const appDefs = [
             { id: 'wechat', name: '微信', desc: '聊天与社交场景' },
             { id: 'weibo', name: '微博', desc: '动态与评论场景' },
@@ -1576,12 +1578,23 @@ export class SettingsApp {
         return `
             <details data-settings-fold-key="phone-settings-memory-permission-open" ${isMemoryPermissionOpen ? 'open' : ''} style="margin: 12px 0 8px; border: 1px solid #ececec; border-radius: 10px; background: #fff; overflow: hidden;">
                 <summary style="height: 38px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; list-style: none; font-size: 13px; font-weight: 700; color: #333; background: #fafafa;">
-                    <span>🛂 权限管理</span>
+                    <span>记忆表格联动</span>
                     ${SETTINGS_FOLD_ARROW_HTML}
                 </summary>
                 <div style="padding: 10px 10px 4px;">
                     <div class="setting-info">
                         控制手机各 App 对记忆插件的 API 权限通行证 (Signal) 下发。线下被动注入由记忆插件自身策略决定，不在此处配置。
+                    </div>
+
+                    <div class="setting-item setting-toggle">
+                        <div>
+                            <div class="setting-label">用户消息监听</div>
+                            <div class="setting-desc">关闭后，酒馆正文生成时小手机不扫描用户消息，可避免数据库/记忆插件塞入的 user 内容拖慢或误触发。</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="phone-user-message-listener-enabled" ${isUserMessageListenerEnabled ? 'checked' : ''}>
+                            <span class="toggle-slider"></span>
+                        </label>
                     </div>
 
                     ${appDefs.map(def => {
@@ -1621,6 +1634,10 @@ export class SettingsApp {
     }
 
     bindMemoryPermissionEvents() {
+        document.getElementById('phone-user-message-listener-enabled')?.addEventListener('change', async (e) => {
+            await this.storage.set('phone-user-message-listener-enabled', !!e.target.checked);
+        });
+
         document.querySelectorAll('.phone-memory-perm').forEach(input => {
             input.addEventListener('change', async (e) => {
                 const appId = String(e.target.dataset.appId || '').trim();
@@ -1682,7 +1699,7 @@ export class SettingsApp {
         return `
             <details data-settings-fold-key="phone-settings-memory-tag-filter-open" ${isTagFilterOpen ? 'open' : ''} style="margin: 8px 0 8px; border: 1px solid #ececec; border-radius: 10px; background: #fff; overflow: hidden;">
                 <summary style="height: 38px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; list-style: none; font-size: 13px; font-weight: 700; color: #333; background: #fafafa;">
-                    <span>🏷️ 标签过滤</span>
+                    <span>正文标签过滤</span>
                     ${SETTINGS_FOLD_ARROW_HTML}
                 </summary>
                 <div style="padding: 10px 10px 4px;">
