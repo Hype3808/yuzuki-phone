@@ -4847,6 +4847,7 @@ export class HoneyView {
         items.forEach((item, idx) => {
             const name = this._normalizeLeaderboardName(item?.name || '');
             if (!name) return;
+            if (userSafeName && name === userSafeName) return;
             const coinsText = String(item?.coins || '').trim();
             const amount = this._parseLeaderboardCoinsToNumber(item?.coins || '');
             const sourceRank = Number(item?.rank) || (idx + 1);
@@ -4863,15 +4864,13 @@ export class HoneyView {
             });
         });
 
-        if (userSafeName) {
+        if (userSafeName && safeUserTotal > 0) {
             const prev = mergedMap.get(userSafeName);
-            const preservedAmount = Math.max(0, Math.round(Number(prev?.amount) || 0));
-            const effectiveUserTotal = safeUserTotal > 0 ? safeUserTotal : preservedAmount;
             mergedMap.set(userSafeName, {
                 name: userSafeName,
-                amount: effectiveUserTotal,
+                amount: safeUserTotal,
                 sourceRank: prev?.sourceRank || 999,
-                coinsText: this._formatLeaderboardCoinsFromNumber(effectiveUserTotal)
+                coinsText: this._formatLeaderboardCoinsFromNumber(safeUserTotal)
             });
         }
 
@@ -4891,7 +4890,7 @@ export class HoneyView {
         }));
 
         let userRank = null;
-        if (userSafeName) {
+        if (userSafeName && safeUserTotal > 0) {
             const userEntry = mergedMap.get(userSafeName);
             const effectiveUserTotal = Math.max(0, Math.round(Number(userEntry?.amount) || 0));
             const index = sorted.findIndex(item => item.name === userSafeName);
