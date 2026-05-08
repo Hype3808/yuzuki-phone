@@ -320,12 +320,11 @@ export class ApiManager {
             if (cleanMessages.length === 0) throw new Error('消息数组为空');
 
             // 🌟 1. 核心修复：向后端请求配置，并正确进行 JSON.parse()
-            const csrfToken = await this._getCsrfToken();
             let parsedSettings = {};
             try {
                 const settingsRes = await fetch('/api/settings/get', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                    headers: await this._getJsonRequestHeaders(),
                     credentials: 'include',
                     body: JSON.stringify({})
                 });
@@ -428,22 +427,38 @@ export class ApiManager {
             // 🌟 4. 发送到正确的官方路由
             const endpoint = '/api/backends/chat-completions/generate';
             
-            const response = await fetch(endpoint, {
+            const sendGenerateRequest = async (forceRefresh = false) => fetch(endpoint, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                headers: await this._getJsonRequestHeaders({ forceRefresh }),
                 credentials: 'include',
                 body: JSON.stringify(payload),
                 signal: options.signal
             });
 
+            let response = await sendGenerateRequest(false);
+
             if (!response.ok) {
-                const errText = await response.text();
+                let errText = await response.text();
+                if (this._isUnauthorizedResponse(response.status, errText)) {
+                    console.warn('⚠️ [ApiManager] 原生 API 鉴权失败，刷新 CSRF 后重试一次');
+                    response = await sendGenerateRequest(true);
+                    if (response.ok) {
+                        return response.body
+                            ? await this._readUniversalStream(response.body, '[酒馆原生流式兜底]')
+                            : this._parseApiResponse(await response.text());
+                    }
+                    errText = await response.text();
+                }
                 console.error('[ApiManager] 后端返回错误:', response.status, errText);
                 if (
                     response.status === 502 &&
                     /invalid url|err_invalid_url|\/chat\/completions/i.test(String(errText || ''))
                 ) {
                     console.warn('⚠️ [ApiManager] 检测到后端 URL 解析失败，自动回退到 generateRaw 兜底');
+                    return await this._callTavernGenerateRawFallback(cleanMessages, maxTokens, options);
+                }
+                if (this._isUnauthorizedResponse(response.status, errText)) {
+                    console.warn('⚠️ [ApiManager] 原生 API 鉴权仍失败，回退 generateRaw');
                     return await this._callTavernGenerateRawFallback(cleanMessages, maxTokens, options);
                 }
                 return { success: false, error: `原生 API 失败: ${response.status} ${errText || ''}`.trim() };
@@ -659,10 +674,9 @@ export class ApiManager {
                 }
 
                 console.log(`🌐 [ApiManager][后端代理] 目标: ${apiUrl} | 模式: ${targetSource} | 模型: ${model || '未指定'} | 流式: ${enableStream ? '开' : '关'}`);
-                const csrfToken = await this._getCsrfToken();
                 const proxyResponse = await fetch('/api/backends/chat-completions/generate', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken, 'X-ST-Phone-Internal-API': '1' },
+                    headers: { ...(await this._getJsonRequestHeaders()), 'X-ST-Phone-Internal-API': '1' },
                     body: JSON.stringify(proxyPayload),
                     credentials: 'include',
                     signal: options.signal
@@ -706,10 +720,9 @@ export class ApiManager {
                         }
 
                         console.log(`🌐 [ApiManager][后端代理-降级Custom] 目标: ${apiUrl} | 模型: ${model || '未指定'} | 流式: ${enableStream ? '开' : '关'}`);
-                        const csrfToken = await this._getCsrfToken();
                         const customResponse = await fetch('/api/backends/chat-completions/generate', {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken, 'X-ST-Phone-Internal-API': '1' },
+                            headers: { ...(await this._getJsonRequestHeaders()), 'X-ST-Phone-Internal-API': '1' },
                             body: JSON.stringify(customPayload),
                             credentials: 'include',
                             signal: options.signal
@@ -744,10 +757,9 @@ export class ApiManager {
                     };
 
                     console.log(`🌐 [ApiManager][后端代理-降级OpenAI] 目标: ${v1Url} | 模型: ${model || '未指定'} | 流式: ${enableStream ? '开' : '关'}`);
-                    const csrfToken = await this._getCsrfToken();
                     const retryResponse = await fetch('/api/backends/chat-completions/generate', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken, 'X-ST-Phone-Internal-API': '1' },
+                        headers: { ...(await this._getJsonRequestHeaders()), 'X-ST-Phone-Internal-API': '1' },
                         body: JSON.stringify(retryPayload),
                         credentials: 'include',
                         signal: options.signal
@@ -916,22 +928,49 @@ export class ApiManager {
         return { content, reasoning, finishReason, error: null };
     }
 
-    async _getCsrfToken() {
+    async _getCsrfToken(forceRefresh = false) {
         // 尝试从全局变量获取（兼容部分酒馆版本）
-        if (typeof window !== 'undefined' && typeof window.getRequestHeaders === 'function') {
+        if (!forceRefresh && typeof window !== 'undefined' && typeof window.getRequestHeaders === 'function') {
             const headers = window.getRequestHeaders();
             if (headers['X-CSRF-Token']) return headers['X-CSRF-Token'];
+            if (headers['x-csrf-token']) return headers['x-csrf-token'];
         }
 
         const now = Date.now();
-        if (this.cachedCsrfToken && (now - this.csrfTokenCacheTime < 60000)) return this.cachedCsrfToken;
+        if (!forceRefresh && this.cachedCsrfToken && (now - this.csrfTokenCacheTime < 60000)) return this.cachedCsrfToken;
         try {
-            const response = await fetch('/csrf-token', { credentials: 'include' });
+            const response = await fetch(`/csrf-token?_=${now}`, { credentials: 'include', cache: 'no-store' });
             const data = await response.json();
             this.cachedCsrfToken = data.token;
             this.csrfTokenCacheTime = now;
             return data.token;
         } catch (error) { return ''; }
+    }
+
+    async _getJsonRequestHeaders(options = {}) {
+        const forceRefresh = options?.forceRefresh === true;
+        const headers = {};
+
+        try {
+            if (!forceRefresh && typeof window !== 'undefined' && typeof window.getRequestHeaders === 'function') {
+                Object.assign(headers, window.getRequestHeaders() || {});
+            }
+        } catch (_e) {
+            // ignore
+        }
+
+        headers['Content-Type'] = headers['Content-Type'] || headers['content-type'] || 'application/json';
+        if (!headers['X-CSRF-Token'] && !headers['x-csrf-token']) {
+            const csrfToken = await this._getCsrfToken(forceRefresh);
+            if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+        }
+
+        return headers;
+    }
+
+    _isUnauthorizedResponse(status, body = '') {
+        const text = String(body || '').toLowerCase();
+        return status === 401 || (status === 400 && /unauthori[sz]ed|csrf|forbidden|invalid token/.test(text));
     }
 
     _resolveContextLength(context, options = {}) {
