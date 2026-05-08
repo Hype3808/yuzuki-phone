@@ -423,6 +423,34 @@ export class ChatView {
         return true;
     }
 
+    _formatErrorForLog(error, fallback = '未知错误') {
+        if (error === undefined || error === null) return fallback;
+        if (typeof error === 'string') return error || fallback;
+        if (typeof error === 'number' || typeof error === 'boolean') return String(error);
+
+        const parts = [];
+        const name = String(error?.name || '').trim();
+        const message = String(error?.message || '').trim();
+        const status = error?.status || error?.statusCode || error?.code || '';
+        const statusText = String(error?.statusText || '').trim();
+
+        if (name) parts.push(name);
+        if (message) parts.push(message);
+        if (status || statusText) parts.push(`status=${status || '?'}${statusText ? ` ${statusText}` : ''}`);
+
+        try {
+            const json = JSON.stringify(error);
+            if (json && json !== '{}' && !parts.includes(json)) parts.push(json);
+        } catch (_e) {
+            // ignore
+        }
+
+        const causeText = error?.cause ? this._formatErrorForLog(error.cause, '') : '';
+        if (causeText) parts.push(`cause=${causeText}`);
+
+        return parts.filter(Boolean).join(' | ') || fallback;
+    }
+
     _escapeRegExp(text) {
         return String(text || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
@@ -4696,8 +4724,13 @@ renderChatRoom(chat) {
             if (error.message === '已中断发送' || error.name === 'AbortError') {
                 console.log('✅ 手机端发送已中断，静默处理');
             } else {
-                console.error('❌ 发送手机消息失败:', error);
-                this.app.phoneShell?.showNotification('发送失败', error.message, '❌');
+                const errorText = this._formatErrorForLog(error, '发送手机消息失败');
+                console.error('❌ 发送手机消息失败:', {
+                    message: errorText,
+                    stack: error?.stack,
+                    raw: error
+                });
+                this.app.phoneShell?.showNotification('发送失败', errorText, '❌');
                 
                 // 🔥 修复2：发生严重代码报错时，强制把它从连发等待队列里踢出去，彻底杜绝死循环！
                 this._dequeuePendingChat(savedChatId);
@@ -4782,14 +4815,18 @@ renderChatRoom(chat) {
                     console.log('✅ 发送已取消');
                     throw new Error('已中断发送');
                 }
-                throw new Error(result.error);
+                throw new Error(result.error || 'AI 返回失败但未提供错误信息');
             }
 
             return result.summary;
 
         } catch (error) {
             if (error.message === '已中断发送') throw error;
-            console.error('❌ [手机聊天] 静默调用失败:', error);
+            console.error('❌ [手机聊天] 静默调用失败:', {
+                message: this._formatErrorForLog(error, '静默调用失败'),
+                stack: error?.stack,
+                raw: error
+            });
             throw error;
         } finally {
             // 还原配置

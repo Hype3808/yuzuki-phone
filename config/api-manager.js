@@ -46,6 +46,34 @@ export class ApiManager {
         this.proxyRouteHints.set(this._getProxyHintKey(provider, apiUrl), source);
     }
 
+    _formatError(error, fallback = '未知错误') {
+        if (error === undefined || error === null) return fallback;
+        if (typeof error === 'string') return error || fallback;
+        if (typeof error === 'number' || typeof error === 'boolean') return String(error);
+
+        const parts = [];
+        const name = String(error?.name || '').trim();
+        const message = String(error?.message || '').trim();
+        const status = error?.status || error?.statusCode || error?.code || '';
+        const statusText = String(error?.statusText || '').trim();
+
+        if (name) parts.push(name);
+        if (message) parts.push(message);
+        if (status || statusText) parts.push(`status=${status || '?'}${statusText ? ` ${statusText}` : ''}`);
+
+        try {
+            const json = JSON.stringify(error);
+            if (json && json !== '{}' && !parts.includes(json)) parts.push(json);
+        } catch (_e) {
+            // ignore
+        }
+
+        const causeText = error?.cause ? this._formatError(error.cause, '') : '';
+        if (causeText) parts.push(`cause=${causeText}`);
+
+        return parts.filter(Boolean).join(' | ') || fallback;
+    }
+
     _resolvePhoneApiConfig(rawConfig, appId = '') {
         if (!rawConfig || typeof rawConfig !== 'object') return rawConfig;
 
@@ -244,6 +272,15 @@ export class ApiManager {
             console.log('🔄 [ApiManager] 智能路由 -> 走向酒馆原生 API (generateRaw)');
             return await this._callTavernAPI(messages, options);
         }
+        } catch (error) {
+            console.error('[ApiManager] callAI 异常详情:', {
+                name: error?.name,
+                message: error?.message,
+                status: error?.status || error?.statusCode || error?.code,
+                stack: error?.stack,
+                raw: error
+            });
+            return { success: false, error: this._formatError(error, 'API 调用异常') };
         } finally {
             this._activeRequestCount = Math.max(0, this._activeRequestCount - 1);
             // 仅在所有手机请求都结束后，清理探针里的 gaigaiPhoneSignal，
@@ -284,17 +321,29 @@ export class ApiManager {
 
             // 🌟 1. 核心修复：向后端请求配置，并正确进行 JSON.parse()
             const csrfToken = await this._getCsrfToken();
-            const settingsRes = await fetch('/api/settings/get', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-                body: JSON.stringify({})
-            });
-            
-            if (!settingsRes.ok) throw new Error('无法读取酒馆配置');
-            
-            const serverData = await settingsRes.json();
-            // 酒馆的 settings 是一个字符串，必须 parse！
-            const parsedSettings = JSON.parse(serverData.settings || '{}'); 
+            let parsedSettings = {};
+            try {
+                const settingsRes = await fetch('/api/settings/get', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                    credentials: 'include',
+                    body: JSON.stringify({})
+                });
+
+                if (!settingsRes.ok) {
+                    const errText = await settingsRes.text().catch(() => '');
+                    throw new Error(`无法读取酒馆配置: ${settingsRes.status} ${errText}`.trim());
+                }
+
+                const serverData = await settingsRes.json();
+                // 酒馆的 settings 通常是字符串；部分移动端/旧版构建可能直接返回对象。
+                parsedSettings = typeof serverData?.settings === 'string'
+                    ? JSON.parse(serverData.settings || '{}')
+                    : (serverData?.settings || serverData || {});
+            } catch (settingsError) {
+                console.warn('[ApiManager] 读取酒馆配置失败，回退 generateRaw:', this._formatError(settingsError, 'settings/get 失败'));
+                return await this._callTavernGenerateRawFallback(cleanMessages, this._resolveResponseLength(null, options), options);
+            }
             
             // 兼容不同版本的酒馆设置结构
             const oai = parsedSettings.oai_settings || parsedSettings;
@@ -412,8 +461,12 @@ export class ApiManager {
         } catch (e) {
             if (options?.signal?.aborted) return { success: false, error: '已中断发送', aborted: true };
             if (isAbortLike(e)) return { success: false, error: '请求被其他插件中断' };
-            console.error('[ApiManager] 请求异常:', e);
-            return { success: false, error: `原生 API 失败: ${e?.message || e}` };
+            console.error('[ApiManager] 请求异常:', {
+                message: this._formatError(e, '请求异常'),
+                stack: e?.stack,
+                raw: e
+            });
+            return { success: false, error: `原生 API 失败: ${this._formatError(e, '请求异常')}` };
         }
     }
 
@@ -469,7 +522,7 @@ export class ApiManager {
             return { success: true, summary };
         } catch (e) {
             if (options?.signal?.aborted) return { success: false, error: '已中断发送', aborted: true };
-            return { success: false, error: `原生 API 失败: ${e?.message || e}` };
+            return { success: false, error: `原生 API 失败: ${this._formatError(e, 'generateRaw 异常')}` };
         }
     }
 
