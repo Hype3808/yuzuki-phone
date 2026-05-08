@@ -264,6 +264,30 @@ export class DiaryData {
         return false;
     }
 
+    deleteEntries(entryIds = []) {
+        const ids = new Set(
+            (Array.isArray(entryIds) ? entryIds : [])
+                .map(id => String(id || '').trim())
+                .filter(Boolean)
+        );
+        if (ids.size === 0) return 0;
+
+        const entries = this.getEntries();
+        const before = entries.length;
+        this._entries = entries.filter(entry => !ids.has(String(entry?.id || '')));
+        const deletedCount = before - this._entries.length;
+        if (deletedCount <= 0) return 0;
+
+        this.saveEntries();
+        const settings = this.getSettings();
+        ids.forEach(entryId => {
+            delete settings[`bg_${entryId}`];
+            delete settings[`lh_${entryId}`];
+        });
+        this.saveSettings();
+        return deletedCount;
+    }
+
     clearAllEntries() {
         this._entries = [];
         this.saveEntries();

@@ -154,7 +154,8 @@ export class DiaryView {
             }).join('');
         }
 
-        const deleteAllBtn = sorted.length > 0 ? `<button class="diary-toc-btn diary-delete-all-btn" id="diary-delete-all" title="全部删除" style="${this.tocManageMode ? '' : 'display:none;'}">🗑️</button>` : '';
+        const selectedCount = sorted.filter(entry => this.tocSelectedIds.has(String(entry.id))).length;
+        const deleteSelectedBtn = sorted.length > 0 ? `<button class="diary-toc-btn diary-delete-all-btn" id="diary-delete-selected" title="${selectedCount > 0 ? `删除已选 ${selectedCount} 篇` : '删除已选'}" style="${this.tocManageMode ? '' : 'display:none;'}">🗑️${selectedCount > 0 ? `<span class="diary-delete-selected-count">${selectedCount}</span>` : ''}</button>` : '';
         const manageBtns = sorted.length > 0 && this.tocManageMode ? `
             <button class="diary-toc-btn" id="diary-toc-select-all" title="全选">全选</button>
             <button class="diary-toc-btn" id="diary-toc-hide-selected" title="隐藏所选">隐藏</button>
@@ -182,7 +183,7 @@ export class DiaryView {
                 <div class="diary-toc ${enterClass}" style="${bgStyle}">
                     <div class="diary-toc-header">
                         <div class="diary-toc-actions">
-                            ${deleteAllBtn}
+                            ${deleteSelectedBtn}
                             ${manageBtns}
                             ${entryTools}
                             <button class="diary-toc-btn diary-pencil-btn" id="diary-manual-write" title="设置">
@@ -226,15 +227,37 @@ export class DiaryView {
         };
 
         let longPressTimer = null;
-        const deleteAllBtn = document.getElementById('diary-delete-all');
-        if (deleteAllBtn) deleteAllBtn.onclick = () => {
-            if (confirm('确定删除全部日记吗？此操作不可恢复！')) {
-                this.app.diaryData.clearAllEntries();
+        const deleteSelectedBtn = document.getElementById('diary-delete-selected');
+        if (deleteSelectedBtn) deleteSelectedBtn.onclick = () => {
+            const entries = this._sortEntries(this.app.diaryData.getEntries());
+            const liveIds = new Set(entries.map(entry => String(entry.id)));
+            const ids = Array.from(this.tocSelectedIds).map(id => String(id || '')).filter(id => liveIds.has(id));
+            if (ids.length === 0) {
+                alert('请先勾选要删除的日记');
+                return;
+            }
+
+            const isDeletingAll = entries.length > 0 && ids.length === entries.length;
+            const confirmText = isDeletingAll
+                ? `确定删除全部 ${entries.length} 篇日记吗？此操作不可恢复！`
+                : `确定删除已勾选的 ${ids.length} 篇日记吗？此操作不可恢复！`;
+
+            if (confirm(confirmText)) {
+                if (isDeletingAll) {
+                    this.app.diaryData.clearAllEntries();
+                } else {
+                    this.app.diaryData.deleteEntries(ids);
+                }
+                if (ids.includes(String(this.currentEntryId || ''))) {
+                    this.currentEntryId = null;
+                }
                 this.tocSelectedIds.clear();
                 this.tocManageMode = false;
                 this.render();
             }
         };
+
+        const deleteAllBtn = deleteSelectedBtn;
 
         const enterManageMode = () => {
             this.tocManageMode = true;
@@ -274,7 +297,6 @@ export class DiaryView {
             this.tocManageMode = false;
             this.render();
         });
-
         document.querySelectorAll('.diary-toc-item').forEach(item => {
             // 🔥 防止重复绑定定时器事件
             if (item.dataset.bound) return;
