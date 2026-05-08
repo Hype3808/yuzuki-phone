@@ -619,6 +619,28 @@ export class ApiManager {
             return this._parseApiResponse(text);
         };
 
+        const fetchProxyWithAuthRetry = async (payload, label) => {
+            const endpoint = '/api/backends/chat-completions/generate';
+            const send = async (forceRefresh = false) => fetch(endpoint, {
+                method: 'POST',
+                headers: { ...(await this._getJsonRequestHeaders({ forceRefresh })), 'X-ST-Phone-Internal-API': '1' },
+                body: JSON.stringify(payload),
+                credentials: 'include',
+                signal: options.signal
+            });
+
+            let response = await send(false);
+            if (!response.ok) {
+                const clone = response.clone();
+                const errText = await clone.text().catch(() => '');
+                if (this._isUnauthorizedResponse(response.status, errText)) {
+                    console.warn(`⚠️ [ApiManager][${label}] 后端代理鉴权失败，刷新 CSRF 后重试一次`);
+                    response = await send(true);
+                }
+            }
+            return response;
+        };
+
         const buildSafetyConfig = () => ([
             { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
             { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
@@ -674,13 +696,7 @@ export class ApiManager {
                 }
 
                 console.log(`🌐 [ApiManager][后端代理] 目标: ${apiUrl} | 模式: ${targetSource} | 模型: ${model || '未指定'} | 流式: ${enableStream ? '开' : '关'}`);
-                const proxyResponse = await fetch('/api/backends/chat-completions/generate', {
-                    method: 'POST',
-                    headers: { ...(await this._getJsonRequestHeaders()), 'X-ST-Phone-Internal-API': '1' },
-                    body: JSON.stringify(proxyPayload),
-                    credentials: 'include',
-                    signal: options.signal
-                });
+                const proxyResponse = await fetchProxyWithAuthRetry(proxyPayload, '后端代理');
                 const proxyResult = await parseProxyResponse(proxyResponse, proxyPayload.stream && enableStream, '后端代理');
                 if (provider === 'proxy_only' || provider === 'compatible') {
                     this._setProxyRouteHint(provider, apiUrl, targetSource);
@@ -720,13 +736,7 @@ export class ApiManager {
                         }
 
                         console.log(`🌐 [ApiManager][后端代理-降级Custom] 目标: ${apiUrl} | 模型: ${model || '未指定'} | 流式: ${enableStream ? '开' : '关'}`);
-                        const customResponse = await fetch('/api/backends/chat-completions/generate', {
-                            method: 'POST',
-                            headers: { ...(await this._getJsonRequestHeaders()), 'X-ST-Phone-Internal-API': '1' },
-                            body: JSON.stringify(customPayload),
-                            credentials: 'include',
-                            signal: options.signal
-                        });
+                        const customResponse = await fetchProxyWithAuthRetry(customPayload, '后端代理-降级Custom');
                         const customResult = await parseProxyResponse(customResponse, customPayload.stream && enableStream, '后端代理-降级Custom');
                         this._setProxyRouteHint(provider, apiUrl, 'custom');
                         return customResult;
@@ -757,13 +767,7 @@ export class ApiManager {
                     };
 
                     console.log(`🌐 [ApiManager][后端代理-降级OpenAI] 目标: ${v1Url} | 模型: ${model || '未指定'} | 流式: ${enableStream ? '开' : '关'}`);
-                    const retryResponse = await fetch('/api/backends/chat-completions/generate', {
-                        method: 'POST',
-                        headers: { ...(await this._getJsonRequestHeaders()), 'X-ST-Phone-Internal-API': '1' },
-                        body: JSON.stringify(retryPayload),
-                        credentials: 'include',
-                        signal: options.signal
-                    });
+                    const retryResponse = await fetchProxyWithAuthRetry(retryPayload, '后端代理-降级OpenAI');
                     const retryResult = await parseProxyResponse(retryResponse, retryPayload.stream && enableStream, '后端代理-降级OpenAI');
                     this._setProxyRouteHint(provider, apiUrl, 'openai');
                     return retryResult;
@@ -774,7 +778,8 @@ export class ApiManager {
             }
         }
 
-        const allowDirectFallback = ['compatible', 'proxy_only', 'openai', 'gemini', 'deepseek', 'siliconflow'].includes(provider) || !useProxy;
+        const proxyAuthFailed = proxyError && /unauthori[sz]ed|csrf|forbidden|invalid token/i.test(String(proxyError.message || ''));
+        const allowDirectFallback = ['compatible', 'proxy_only', 'openai', 'gemini', 'deepseek', 'siliconflow'].includes(provider) || !useProxy || proxyAuthFailed;
         if (!allowDirectFallback && proxyError) {
             return { success: false, error: `后端代理失败: ${proxyError.message}` };
         }
