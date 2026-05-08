@@ -126,6 +126,64 @@ export class WechatData {
         }
     }
 
+    _normalizeBooleanValue(value, fallback = false) {
+        if (value === true || value === 'true' || value === 1 || value === '1') return true;
+        if (value === false || value === 'false' || value === 0 || value === '0') return false;
+        return !!fallback;
+    }
+
+    isHoneyHistoryInjectionEnabledForChat(chatId) {
+        const chat = this.getChat(chatId);
+        if (!chat || chat.type === 'group') return false;
+        const contact = chat.contactId ? this.getContact(chat.contactId) : this.getContactByName(chat.name);
+        if (this._isHoneySyncedContact(contact) || this._isHoneySyncedContact(chat)) return true;
+        return this._normalizeBooleanValue(chat.injectHoneyHistoryEnabled, false)
+            || this._normalizeBooleanValue(contact?.injectHoneyHistoryEnabled, false);
+    }
+
+    setHoneyHistoryInjectionForChat(chatId, enabled) {
+        const chat = this.getChat(chatId);
+        if (!chat || chat.type === 'group') return false;
+        const nextEnabled = !!enabled;
+        chat.injectHoneyHistoryEnabled = nextEnabled;
+        if (chat.contactId) {
+            const contact = this.getContact(chat.contactId);
+            if (contact) contact.injectHoneyHistoryEnabled = nextEnabled;
+        }
+        this.saveData();
+        return true;
+    }
+
+    getHoneyHistoryInjectionChats() {
+        const chats = Array.isArray(this.data?.chats) ? this.data.chats : [];
+        return chats.filter(chat => this.isHoneyHistoryInjectionEnabledForChat(chat?.id));
+    }
+
+    recordHoneyInviteDecision(contactName, decision, details = {}) {
+        const safeName = String(contactName || '').trim();
+        if (!safeName) return null;
+        const decisionText = String(decision || '').trim() || 'pending';
+        const contact = this.getContactByName(safeName);
+        const chat = contact?.id ? this.getChatByContactId(contact.id) : this.getChatList().find(item => item.type !== 'group' && this._isSameLookupName(item.name, safeName));
+        const nowText = String(details?.time || '').trim() || new Date().toISOString();
+        const record = {
+            decision: decisionText,
+            at: nowText,
+            message: String(details?.message || '').trim(),
+            source: 'wechat_honey_invite'
+        };
+        if (chat) {
+            chat.honeyInviteState = record;
+            if (decisionText === 'accepted') chat.injectHoneyHistoryEnabled = true;
+        }
+        if (contact?.id) {
+            contact.honeyInviteState = record;
+            if (decisionText === 'accepted') contact.injectHoneyHistoryEnabled = true;
+        }
+        this.saveData();
+        return record;
+    }
+
     /**
      * 🔥 懒加载：初始化时只加载轻量数据（聊天列表、联系人、用户信息）
      * 消息内容在进入聊天时才从单独的存储键加载
@@ -142,6 +200,14 @@ export class WechatData {
 
                     // 🔥 先构建 chats 数组（迁移需要用到）
                     const chats = data.chats || [];
+                    const contacts = data.contacts || [];
+                    chats.forEach((chat) => {
+                        if (!chat || !chat.contactId) return;
+                        const contact = contacts.find(item => item?.id === chat.contactId);
+                        if (contact?.injectHoneyHistoryEnabled !== undefined) {
+                            chat.injectHoneyHistoryEnabled = this._normalizeBooleanValue(contact.injectHoneyHistoryEnabled, false);
+                        }
+                    });
                     const legacyCustomEmojis = this._normalizeCustomEmojiList(data.customEmojis || []);
                     const globalCustomEmojis = this._loadGlobalCustomEmojis();
                     const mergedCustomEmojis = this._mergeCustomEmojiLists(globalCustomEmojis, legacyCustomEmojis);
@@ -160,11 +226,12 @@ export class WechatData {
                         const migratedData = {
                             userInfo: normalizedUserInfo,
                             chats: chats,  // 已更新 timestamp
-                            contacts: data.contacts || [],
+                            contacts: contacts,
                             moments: data.moments || [],
                             contactGenderMap: data.contactGenderMap || {},
                             contactAutoAvatarMap: data.contactAutoAvatarMap || {},
-                            walletByChat: data.walletByChat || {}
+                            walletByChat: data.walletByChat || {},
+                            honeyInviteLog: data.honeyInviteLog || []
                             // 🔥 不再包含 messages 字段
                         };
                         this.storage.set(key, JSON.stringify(migratedData), false);
@@ -184,13 +251,14 @@ export class WechatData {
                     return {
                         userInfo: normalizedUserInfo,
                         chats: chats,
-                        contacts: data.contacts || [],
+                        contacts: contacts,
                         messages: {},  // 🔥 初始为空，按需从单独存储加载
                         moments: data.moments || [],
                         customEmojis: mergedCustomEmojis,
                         contactGenderMap: data.contactGenderMap || {},
                         contactAutoAvatarMap: data.contactAutoAvatarMap || {},
-                        walletByChat: walletByChat
+                        walletByChat: walletByChat,
+                        honeyInviteLog: data.honeyInviteLog || []
                     };
                 } catch (parseError) {
                     console.error('❌ JSON解析失败:', parseError.message);
@@ -415,7 +483,8 @@ export class WechatData {
                 moments: this.data.moments,
                 contactGenderMap: this.data.contactGenderMap || {},
                 contactAutoAvatarMap: this.data.contactAutoAvatarMap || {},
-                walletByChat: this.data.walletByChat || {}
+                walletByChat: this.data.walletByChat || {},
+                honeyInviteLog: this.data.honeyInviteLog || []
                 // 🔥 messages 不再保存到主数据中
             };
 

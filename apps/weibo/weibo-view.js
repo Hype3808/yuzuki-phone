@@ -1896,7 +1896,7 @@ export class WeiboView {
         `;
     }
 
-    // 🔥 AI互动：当用户在微博详情页评论时，触发AI生成回复（完全静默版）
+    // 🔥 AI互动：当用户在微博详情页评论时，触发AI生成回复
     async triggerCommentAIReaction(postId, userText, replyTo, mode, meta = {}) {
         try {
             let post;
@@ -1916,7 +1916,8 @@ export class WeiboView {
                 return; 
             }
 
-            // 取消了“正在输入...”弹窗，直接请求API
+            this.app.phoneShell.showNotification('微博', '网友正在围观...', '👀');
+
             const result = await this.app.weiboData.generateReplyForUserComment(post, userText, replyTo);
 
             if (result && result.comments && result.comments.length > 0) {

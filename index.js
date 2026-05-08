@@ -29,7 +29,7 @@ const ST_PHONE_CURRENT_UPDATE = {
     version: ST_PHONE_VERSION,
     date: '2026-05-09',
     items: [
-        '微博评论回复归属已修复：回复某条评论时会固定到对应楼层，后续网友或 AI 回复不会串到其他评论下面。'
+        '微博评论回复体验已优化：回复某条评论时会固定到对应楼层，后续网友或 AI 回复不会串到其他评论下面；发表评论或回复触发 API 时会显示“网友正在围观...”通知。'
     ]
 };
 
@@ -736,6 +736,7 @@ if (window.GGP_Loaded) {
     // 兼容旧版标签（逐步废弃）
     const LEGACY_PHONE_TAG = /<Phone>([\s\S]*?)<\/Phone>/gi;
     const LEGACY_WECHAT_TAG = /<wechat\s+chatId="([^"]+)"\s+from="([^"]+)">([\s\S]*?)<\/wechat>/gi;
+    const HONEY_INVITE_TAG_REGEX = /^[［\[]\s*蜜语\s*[］\]]\s*(?:[（(]\s*([^）)]*)\s*[）)])?\s*$/i;
 
     // 来电标签正则
     const PHONE_CALL_REGEX = /\[手机来电通话\]\s*呼叫方[：:\s]+([^<。\.\n\r]+)/i;
@@ -1047,6 +1048,102 @@ if (window.GGP_Loaded) {
             senderKey: senderKey
         });
         _drainFallbackNotificationQueue();
+    }
+
+    function escapePhoneHtml(value = '') {
+        return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    async function ensureHoneyAppReady() {
+        if (window.VirtualPhone?.honeyApp) return window.VirtualPhone.honeyApp;
+        const module = await import(`./apps/honey/honey-app.js?v=${ST_PHONE_VERSION}-nai-debug`);
+        if (!window.VirtualPhone) window.VirtualPhone = {};
+        if (!window.VirtualPhone.honeyApp) {
+            window.VirtualPhone.honeyApp = new module.HoneyApp(phoneShell, storage);
+        }
+        return window.VirtualPhone.honeyApp;
+    }
+
+    async function handleWechatHoneyInviteAction({ action, contactName, chatId, message = '' } = {}) {
+        const safeAction = String(action || '').trim();
+        const safeContactName = String(contactName || '').trim();
+        if (!safeContactName || !window.VirtualPhone?.cachedWechatData) return;
+        const wechatData = window.VirtualPhone.cachedWechatData;
+        if (safeAction === 'reject') {
+            wechatData.recordHoneyInviteDecision?.(safeContactName, 'rejected', { message });
+            phoneShell?.showNotification?.('蜜语邀约', '已拒绝，对方会在下轮知道结果', '💔');
+            return;
+        }
+        if (safeAction !== 'accept') return;
+
+        try {
+            const honeyApp = await ensureHoneyAppReady();
+            const host = honeyApp.honeyData?.ensureFollowedHostFromWechat?.(safeContactName, {
+                title: `${safeContactName} 的直播间`,
+                intro: '微信好友主动发起的蜜语邀约。'
+            });
+            wechatData.recordHoneyInviteDecision?.(safeContactName, 'accepted', { message });
+            if (chatId) wechatData.setHoneyHistoryInjectionForChat?.(chatId, true);
+            window.dispatchEvent(new CustomEvent('phone:openApp', { detail: { appId: 'honey' } }));
+            setTimeout(() => {
+                const app = window.VirtualPhone?.honeyApp;
+                app?.openFollowedHostLive?.(host?.name || safeContactName, {
+                    autoGenerateIfMissing: false,
+                    title: `${safeContactName} 的直播间`,
+                    intro: '微信好友主动发起的蜜语邀约。'
+                });
+            }, 180);
+        } catch (e) {
+            console.error('[微信蜜语邀约] 接受失败:', e);
+            phoneShell?.showNotification?.('蜜语邀约', '打开蜜语失败：' + (e?.message || e), '⚠️');
+        }
+    }
+
+    function showWechatHoneyInvitePopup({ contactName, chatId, messageId, message = '' } = {}) {
+        const safeContactName = String(contactName || '').trim();
+        if (!safeContactName) return;
+        const fingerprint = `${chatId || ''}:${messageId || ''}:${safeContactName}`;
+        const old = document.getElementById('st-phone-honey-invite-modal');
+        if (old?.dataset?.fingerprint === fingerprint) return;
+        old?.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'st-phone-honey-invite-modal';
+        overlay.className = 'st-phone-honey-invite-modal';
+        overlay.dataset.fingerprint = fingerprint;
+        overlay.innerHTML = `
+            <div class="st-phone-honey-invite-backdrop"></div>
+            <div class="st-phone-honey-invite-card" role="dialog" aria-modal="true">
+                <div class="st-phone-honey-invite-top">
+                    <div class="st-phone-honey-invite-avatar"><i class="fa-solid fa-video"></i></div>
+                    <div class="st-phone-honey-invite-meta">
+                        <div class="st-phone-honey-invite-kicker">蜜语联播邀约</div>
+                        <div class="st-phone-honey-invite-title">${escapePhoneHtml(safeContactName)}</div>
+                    </div>
+                </div>
+                <div class="st-phone-honey-invite-body">${escapePhoneHtml(message || '邀请你进入蜜语直播间')}</div>
+                <div class="st-phone-honey-invite-actions">
+                    <button type="button" class="st-phone-honey-invite-btn is-secondary" data-action="reject">拒绝</button>
+                    <button type="button" class="st-phone-honey-invite-btn is-primary" data-action="accept">接受</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        const close = () => overlay.remove();
+        overlay.querySelector('.st-phone-honey-invite-backdrop')?.addEventListener('click', close);
+        overlay.querySelectorAll('.st-phone-honey-invite-btn[data-action]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const action = String(btn.dataset.action || '').trim();
+                close();
+                await handleWechatHoneyInviteAction({ action, contactName: safeContactName, chatId, message });
+            });
+        });
     }
 
     function compareSemver(a, b) {
@@ -4429,6 +4526,14 @@ if (window.GGP_Loaded) {
             return;
         }
 
+        const honeyInviteMatch = HONEY_INVITE_TAG_REGEX.exec(String(content || '').trim());
+        if (honeyInviteMatch) {
+            msgObj.type = 'honey_invite';
+            msgObj.honeyInviteStatus = String(honeyInviteMatch[1] || '等待接受').trim() || '等待接受';
+            msgObj.content = '[蜜语]';
+            return;
+        }
+
         // [图片/视频](描述) / [图片/视频]（描述）
         const imageMatch = /^\[(图片|视频)\]\s*[（(]\s*([^)）]+?)\s*[)）]\s*$/.exec(content);
         if (imageMatch) {
@@ -4820,7 +4925,21 @@ if (window.GGP_Loaded) {
                     callType: msg.callType,
                     quote: msg.quote
                 });
-                if (added) newMessagesAdded++;
+                if (added) {
+                    newMessagesAdded++;
+                    if (msg.type === 'honey_invite' && !data.isHistoryReplay) {
+                        const latestMessages = wechatData.getMessages(chat.id) || [];
+                        const latestMsg = latestMessages[latestMessages.length - 1] || {};
+                        setTimeout(() => {
+                            showWechatHoneyInvitePopup({
+                                contactName: messageSender,
+                                chatId: chat.id,
+                                messageId: latestMsg.id,
+                                message: msg.honeyInviteStatus || '等待接受'
+                            });
+                        }, 260);
+                    }
+                }
 
             });
 
@@ -6802,6 +6921,31 @@ if (window.GGP_Loaded) {
                                                 ])
                                                 .filter(([key, description]) => key && description)
                                         );
+                                        const honeyInviteStates = [];
+                                        allChats.forEach((chat) => {
+                                            if (!chat || chat.type === 'group' || !chat.honeyInviteState) return;
+                                            const state = chat.honeyInviteState;
+                                            const decision = String(state?.decision || '').trim();
+                                            if (!decision) return;
+                                            honeyInviteStates.push({
+                                                name: String(chat.name || '').trim(),
+                                                decision,
+                                                at: String(state?.at || '').trim(),
+                                                message: String(state?.message || '').trim()
+                                            });
+                                        });
+                                        if (honeyInviteStates.length > 0) {
+                                            wechatOfflineChats.push({
+                                                chatId: '__honey_invite_state__',
+                                                chatName: '微信蜜语邀约状态',
+                                                messages: honeyInviteStates.slice(-20).map(item => ({
+                                                    speaker: '系统',
+                                                    content: `${item.name || '未知联系人'} 的蜜语邀约已${item.decision === 'accepted' ? '接受' : item.decision === 'rejected' ? '拒绝' : item.decision}${item.message ? `（${item.message}）` : ''}`,
+                                                    time: '',
+                                                    date: item.at || ''
+                                                }))
+                                            });
+                                        }
                                         const parseDateTimeToTs = (dateText, timeText) => {
                                             const dateRaw = String(dateText || '').trim();
                                             const timeRaw = String(timeText || '').trim().replace('：', ':');

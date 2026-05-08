@@ -1608,6 +1608,71 @@ export class HoneyView {
 
         this._syncTopTitleMarquee();
         this._syncIntroTicker();
+        this._bindViewerLiveCollabButton(root, isUserLive);
+    }
+
+    _bindViewerLiveCollabButton(root = null, isUserLive = false) {
+        const liveRoot = this._getLiveRoot(root);
+        const btn = liveRoot?.querySelector?.('#honey-collab-btn');
+        if (!btn) return;
+        if (isUserLive || this._isUserLiveScene(this.currentSceneData)) return;
+        if (btn.dataset.collabBound === '1') return;
+
+        btn.dataset.collabBound = '1';
+        btn.addEventListener('click', async (e) => {
+            if (this._isUserLiveScene(this.currentSceneData)) return;
+            e.stopPropagation();
+            if (this._isGeneratingScene) return;
+
+            const currentBtn = e.currentTarget;
+            const collabName = String(currentBtn?.dataset?.collabName || '').trim() || '无';
+            const collabCost = Math.max(0, Number.parseInt(String(currentBtn?.dataset?.collabCost || '0').trim(), 10) || 0);
+
+            if (collabName !== '无') {
+                this.app.phoneShell.showNotification('联播占线', '当前已有观众正在联播，请稍后再试', '⚠️');
+                return;
+            }
+
+            const confirmText = `确定要申请与主播联播吗？\n本次上麦将扣除：${collabCost}金币`;
+            if (!window.confirm(confirmText)) return;
+
+            if (collabCost > 0) {
+                const consumeResult = this.app?.honeyData?.consumeHoneyCoins?.(collabCost) || { success: false, balanceBefore: 0, balanceAfter: 0 };
+                if (!consumeResult.success) {
+                    this.app.phoneShell.showNotification(
+                        '金币不足',
+                        `本次需${this._formatCoinDisplay(collabCost)}金币，当前仅${this._formatCoinDisplay(consumeResult.balanceBefore || 0)}金币`,
+                        '⚠️'
+                    );
+                    return;
+                }
+                this.app.phoneShell.showNotification('联播', '支付成功，正在连接主播...', '✅');
+            }
+
+            currentBtn.disabled = true;
+            currentBtn.classList.add('is-loading');
+            currentBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 连接中';
+
+            try {
+                await this._generateCurrentTopicScene({
+                    resetSession: false,
+                    notify: false,
+                    sourceRoot: liveRoot,
+                    userMessage: '【系统强制提示：用户已支付金币申请上麦联播。请主播在接下来的回复中同意接通，将联播对象改为{{user}}，并开始与{{user}}进行激情的一对一联播互动。】'
+                });
+            } catch (err) {
+                console.error('联播申请失败:', err);
+                this.app.phoneShell.showNotification('错误', err.message || String(err), '❌');
+            } finally {
+                const currentRoot = this._getLiveRoot(liveRoot);
+                const currentCollabBtn = currentRoot?.querySelector('#honey-collab-btn');
+                if (currentCollabBtn) {
+                    currentCollabBtn.disabled = false;
+                    currentCollabBtn.classList.remove('is-loading');
+                }
+                this._refreshLivePageDom({ sourceRoot: currentRoot });
+            }
+        });
     }
 
     renderFollowPage() {
@@ -2550,60 +2615,7 @@ export class HoneyView {
                 }
             });
         }
-        root.querySelector('#honey-collab-btn')?.addEventListener('click', async (e) => {
-            if (isUserLive) return;
-            e.stopPropagation();
-            if (this._isGeneratingScene) return;
-
-            const btn = e.currentTarget;
-            const collabName = String(btn?.dataset?.collabName || '').trim() || '无';
-            const collabCost = Math.max(0, Number.parseInt(String(btn?.dataset?.collabCost || '0').trim(), 10) || 0);
-
-            if (collabName !== '无') {
-                this.app.phoneShell.showNotification('联播占线', '当前已有观众正在联播，请稍后再试', '⚠️');
-                return;
-            }
-
-            const confirmText = `确定要申请与主播联播吗？\n本次上麦将扣除：${collabCost}金币`;
-            if (!window.confirm(confirmText)) return;
-
-            if (collabCost > 0) {
-                const consumeResult = this.app?.honeyData?.consumeHoneyCoins?.(collabCost) || { success: false, balanceBefore: 0, balanceAfter: 0 };
-                if (!consumeResult.success) {
-                    this.app.phoneShell.showNotification(
-                        '金币不足',
-                        `本次需${this._formatCoinDisplay(collabCost)}金币，当前仅${this._formatCoinDisplay(consumeResult.balanceBefore || 0)}金币`,
-                        '⚠️'
-                    );
-                    return;
-                }
-                this.app.phoneShell.showNotification('联播', '支付成功，正在连接主播...', '✅');
-            }
-
-            btn.disabled = true;
-            btn.classList.add('is-loading');
-            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 连接中';
-
-            try {
-                await this._generateCurrentTopicScene({
-                    resetSession: false,
-                    notify: false,
-                    sourceRoot: root,
-                    userMessage: '【系统强制提示：用户已支付金币申请上麦联播。请主播在接下来的回复中同意接通，将联播对象改为{{user}}，并开始与{{user}}进行激情的一对一联播互动。】'
-                });
-            } catch (err) {
-                console.error('联播申请失败:', err);
-                this.app.phoneShell.showNotification('错误', err.message || String(err), '❌');
-            } finally {
-                const currentRoot = this._getLiveRoot(root);
-                const currentCollabBtn = currentRoot?.querySelector('#honey-collab-btn');
-                if (currentCollabBtn) {
-                    currentCollabBtn.disabled = false;
-                    currentCollabBtn.classList.remove('is-loading');
-                }
-                this._refreshLivePageDom({ sourceRoot: currentRoot });
-            }
-        });
+        this._bindViewerLiveCollabButton(root, isUserLive);
         const sceneToggleBtn = root.querySelector('#honey-scene-toggle-btn');
         if (sceneToggleBtn) {
             let lastSceneToggleTs = 0;
@@ -3993,6 +4005,42 @@ export class HoneyView {
             }
             if (this.currentPage === 'live') this.render();
         });
+    }
+
+    openFollowedHostLive(hostName, options = {}) {
+        const safeHostName = String(hostName || '').trim();
+        if (!safeHostName) return false;
+        const followedHost = this.app?.honeyData?.getFollowedHostByName?.(safeHostName)
+            || this.app?.honeyData?.ensureFollowedHostFromWechat?.(safeHostName, options);
+        if (!followedHost) return false;
+        const topicTitle = String(followedHost.liveTitle || `${followedHost.name} 的直播间`).trim();
+        const topic = {
+            ...this._getFallbackTopic(),
+            title: topicTitle,
+            host: followedHost.name || safeHostName,
+            avatarUrl: followedHost.avatarUrl || '',
+            intro: followedHost.intro || '微信好友发来的蜜语直播邀约。',
+            fans: followedHost.fans || '',
+            favorability: followedHost.favorability ?? 0,
+            description: '主播正在等待你进入直播间。',
+            _topicTitle: topicTitle,
+            _topicKey: `topic_follow_${this._simpleHash(String(followedHost.name || safeHostName).trim().toLowerCase())}`
+        };
+        this.currentSceneData = {
+            ...topic,
+            comments: [],
+            userChats: [],
+            promptTurns: [],
+            gifts: [],
+            leaderboard: [],
+            audienceGiftTotals: {},
+            userGiftRank: null
+        };
+        this.enterLiveFromTopic(this.currentSceneData, {
+            autoGenerateIfMissing: options?.autoGenerateIfMissing === true,
+            backTarget: 'follow'
+        });
+        return true;
     }
 
     handleBackAction() {

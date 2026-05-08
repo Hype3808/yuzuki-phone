@@ -40,6 +40,10 @@ export class HoneyApp {
         this.honeyView.render();
     }
 
+    openFollowedHostLive(hostName, options = {}) {
+        return this.honeyView?.openFollowedHostLive?.(hostName, options);
+    }
+
     handleSwipeBack() {
         const now = Date.now();
         if (this._lastSwipeTime && now - this._lastSwipeTime < 400) return;
