@@ -1209,7 +1209,7 @@ export class WeiboData {
         return { liked, likeCount, commentIndex: idx, postId };
     }
 
-    addComment(postId, text, replyTo = null, source = 'recommend', commenterName = null, location = '本地') {
+    addComment(postId, text, replyTo = null, source = 'recommend', commenterName = null, location = '本地', meta = {}) {
         const posts = source === 'user' ? this.getUserPosts() : (source === 'recommend' ? this.getRecommendPosts() : null);
         if (!posts) return;
 
@@ -1225,7 +1225,8 @@ export class WeiboData {
             name: finalName,
             location: finalLocation,
             text: text,
-            replyTo: replyTo
+            replyTo: replyTo,
+            replyRootIndex: Number.isInteger(meta?.replyRootIndex) ? meta.replyRootIndex : null
         });
         post.comments = post.commentList.length;
 
@@ -1239,7 +1240,7 @@ export class WeiboData {
         return post;
     }
 
-    addCommentHotSearch(postId, text, replyTo = null, title, commenterName = null, location = '本地') {
+    addCommentHotSearch(postId, text, replyTo = null, title, commenterName = null, location = '本地', meta = {}) {
         const detail = this.getHotSearchDetail(title);
         if (!detail?.posts) return;
 
@@ -1255,7 +1256,8 @@ export class WeiboData {
             name: finalName,
             location: finalLocation,
             text: text,
-            replyTo: replyTo
+            replyTo: replyTo,
+            replyRootIndex: Number.isInteger(meta?.replyRootIndex) ? meta.replyRootIndex : null
         });
         post.comments = post.commentList.length;
 

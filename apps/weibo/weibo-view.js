@@ -744,6 +744,7 @@ export class WeiboView {
         this.app.phoneShell.setContent(html, 'weibo-post-detail');
         
         this.currentReplyTo = null; // 初始化回复状态
+        this.currentReplyRootIndex = null;
         this.bindPostDetailEvents(postId, mode);
     }
 
@@ -799,6 +800,7 @@ export class WeiboView {
             // 点击空白区域时，取消“回复某人”状态，变回普通的“写评论...”
             document.getElementById('weibo-detail-scroll-area')?.addEventListener('click', () => {
                 this.currentReplyTo = null;
+                this.currentReplyRootIndex = null;
                 input.placeholder = "写评论...";
             });
 
@@ -807,16 +809,18 @@ export class WeiboView {
                 if (!text) return;
 
                 const replyTo = this.currentReplyTo;
+                const replyRootIndex = Number.isInteger(this.currentReplyRootIndex) ? this.currentReplyRootIndex : null;
 
                 if (mode === 'recommend' || mode === 'myPosts') {
-                    this.app.weiboData.addComment(postId, text, replyTo, mode === 'myPosts' ? 'user' : 'recommend');
+                    this.app.weiboData.addComment(postId, text, replyTo, mode === 'myPosts' ? 'user' : 'recommend', null, '本地', { replyRootIndex });
                 } else {
-                    this.app.weiboData.addCommentHotSearch(postId, text, replyTo, this.currentHotSearchTitle);
+                    this.app.weiboData.addCommentHotSearch(postId, text, replyTo, this.currentHotSearchTitle, null, '本地', { replyRootIndex });
                 }
 
                 // 清空输入框和状态
                 input.value = '';
                 this.currentReplyTo = null;
+                this.currentReplyRootIndex = null;
                 input.placeholder = "写评论...";
 
                 // 🔥 核心修复：直接重新渲染整个详情页，确保评论100%精准显示在正文下方，且包含正确的回复对象
@@ -831,7 +835,7 @@ export class WeiboView {
                 }
                 
                 // 🔥 触发AI自动回复用户的评论 (已静默)
-                this.triggerCommentAIReaction(postId, text, replyTo, mode);
+                this.triggerCommentAIReaction(postId, text, replyTo, mode, { replyRootIndex });
             };
 
             sendBtn.addEventListener('click', (e) => {
@@ -1671,7 +1675,7 @@ export class WeiboView {
     // 💬 评论输入
     // ========================================
 
-    showCommentInput(postId, replyTo = null, mode = 'recommend') {
+    showCommentInput(postId, replyTo = null, mode = 'recommend', meta = {}) {
         // 移除之前的输入框
         document.querySelectorAll('.weibo-inline-comment-box').forEach(el => el.remove());
 
@@ -1696,9 +1700,13 @@ export class WeiboView {
             if (!text) return;
 
             if (mode === 'recommend' || mode === 'myPosts') {
-                this.app.weiboData.addComment(postId, text, replyTo, mode === 'myPosts' ? 'user' : 'recommend');
+                this.app.weiboData.addComment(postId, text, replyTo, mode === 'myPosts' ? 'user' : 'recommend', null, '本地', {
+                    replyRootIndex: Number.isInteger(meta?.replyRootIndex) ? meta.replyRootIndex : null
+                });
             } else {
-                this.app.weiboData.addCommentHotSearch(postId, text, replyTo, this.currentHotSearchTitle);
+                this.app.weiboData.addCommentHotSearch(postId, text, replyTo, this.currentHotSearchTitle, null, '本地', {
+                    replyRootIndex: Number.isInteger(meta?.replyRootIndex) ? meta.replyRootIndex : null
+                });
             }
 
             inputBox.remove();
@@ -1728,7 +1736,9 @@ export class WeiboView {
             }
             
             // 🔥 触发AI自动回复用户的评论
-            this.triggerCommentAIReaction(postId, text, replyTo, mode);
+            this.triggerCommentAIReaction(postId, text, replyTo, mode, {
+                replyRootIndex: Number.isInteger(meta?.replyRootIndex) ? meta.replyRootIndex : null
+            });
         };
 
         sendBtn.addEventListener('click', (e) => {
@@ -1753,23 +1763,32 @@ export class WeiboView {
 
         // 🔥 核心逻辑：将扁平的评论数组转换为“主评论 + 楼中楼”的嵌套结构
         const groupedComments = [];
+        const rootByOriginalIndex = new Map();
         
         post.commentList.forEach((c, idx) => {
             const cleanName = (c.name || '网友').replace(/^@/, '');
             const cleanReplyTo = c.replyTo ? c.replyTo.replace(/^@/, '') : null;
+            const replyRootIndex = Number.parseInt(c.replyRootIndex, 10);
             
             const commentObj = { 
                 ...c, 
                 originalIndex: idx, 
                 cleanName: cleanName, 
                 cleanReplyTo: cleanReplyTo, 
+                replyRootIndex: Number.isInteger(replyRootIndex) ? replyRootIndex : null,
                 subComments: [] 
             };
 
             // 如果没有回复对象，或者是回复博主本人的，视为主评论
             if (!cleanReplyTo || cleanReplyTo === post.blogger) {
                 groupedComments.push(commentObj);
+                rootByOriginalIndex.set(idx, commentObj);
             } else {
+                if (commentObj.replyRootIndex !== null && rootByOriginalIndex.has(commentObj.replyRootIndex)) {
+                    rootByOriginalIndex.get(commentObj.replyRootIndex).subComments.push(commentObj);
+                    return;
+                }
+
                 // 如果有回复对象，倒序向上寻找属于哪个主评论的圈子
                 let foundParent = false;
                 for (let i = groupedComments.length - 1; i >= 0; i--) {
@@ -1784,6 +1803,7 @@ export class WeiboView {
                 // 异常兜底：如果找不到对应的楼主（比如数据缺失），就强行让它自立门户当主评论
                 if (!foundParent) {
                     groupedComments.push(commentObj);
+                    rootByOriginalIndex.set(idx, commentObj);
                 }
             }
         });
@@ -1822,8 +1842,8 @@ export class WeiboView {
                         </div>
                         <div class="wnc-main">
                             <!-- 🔥 主评论，添加 weibo-replyable 类用于点击回复 -->
-                            <div class="wnc-name weibo-replyable" data-author="${mainComment.cleanName}">${mainComment.cleanName}</div>
-                            <div class="wnc-content weibo-replyable" data-author="${mainComment.cleanName}">
+                            <div class="wnc-name weibo-replyable" data-author="${mainComment.cleanName}" data-root-index="${mainComment.originalIndex}">${mainComment.cleanName}</div>
+                            <div class="wnc-content weibo-replyable" data-author="${mainComment.cleanName}" data-root-index="${mainComment.originalIndex}">
                                 ${mainComment.text}
                             </div>
                             
@@ -1831,7 +1851,7 @@ export class WeiboView {
                             ${mainComment.subComments.length > 0 ? `
                                 <div class="wnc-sub-comments">
                                     ${mainComment.subComments.map(sub => `
-                                        <div class="wnc-sub-item weibo-replyable" data-author="${sub.cleanName}">
+                                        <div class="wnc-sub-item weibo-replyable" data-author="${sub.cleanName}" data-root-index="${mainComment.originalIndex}">
                                             <span class="wnc-sub-content-wrap">
                                                 <span class="wnc-sub-name">${sub.cleanName}</span>
                                                 ${sub.cleanReplyTo && sub.cleanReplyTo !== mainComment.cleanName ? `
@@ -1877,7 +1897,7 @@ export class WeiboView {
     }
 
     // 🔥 AI互动：当用户在微博详情页评论时，触发AI生成回复（完全静默版）
-    async triggerCommentAIReaction(postId, userText, replyTo, mode) {
+    async triggerCommentAIReaction(postId, userText, replyTo, mode, meta = {}) {
         try {
             let post;
             if (mode === 'recommend') {
@@ -1911,6 +1931,7 @@ export class WeiboView {
                     await new Promise(r => setTimeout(r, 1000 + Math.random() * 1500));
                     const aiReplyTo = c.replyTo ? String(c.replyTo).trim() : null;
                     const finalReplyTo = aiReplyTo || replyTarget;
+                    const replyRootIndex = Number.isInteger(meta?.replyRootIndex) ? meta.replyRootIndex : null;
 
                     if (mode === 'recommend' || mode === 'myPosts') {
                         this.app.weiboData.addComment(
@@ -1919,10 +1940,11 @@ export class WeiboView {
                             finalReplyTo,
                             mode === 'myPosts' ? 'user' : 'recommend',
                             c.name || '热心网友',
-                            c.location || ''
+                            c.location || '',
+                            { replyRootIndex }
                         );
                     } else {
-                        this.app.weiboData.addCommentHotSearch(postId, c.text, finalReplyTo, this.currentHotSearchTitle, c.name || '热心网友', c.location || '');
+                        this.app.weiboData.addCommentHotSearch(postId, c.text, finalReplyTo, this.currentHotSearchTitle, c.name || '热心网友', c.location || '', { replyRootIndex });
                     }
                 }
 
@@ -3165,6 +3187,7 @@ export class WeiboView {
                 const fixedInput = document.getElementById('fixed-comment-input');
                 if (fixedInput) {
                     this.currentReplyTo = null;
+                    this.currentReplyRootIndex = null;
                     fixedInput.placeholder = "写评论...";
                     fixedInput.focus();
                 }
@@ -3208,11 +3231,13 @@ export class WeiboView {
                 
                 // 直接从我们在 HTML 里埋好的 data-author 中取被回复人的名字
                 const replyTo = el.dataset.author || null;
+                const rootIndex = Number.parseInt(el.dataset.rootIndex, 10);
                 
                 // 聚焦到底部固定输入框，并改变提示词和内部状态
                 const fixedInput = document.getElementById('fixed-comment-input');
                 if (fixedInput && replyTo) {
                     this.currentReplyTo = replyTo;
+                    this.currentReplyRootIndex = Number.isInteger(rootIndex) ? rootIndex : null;
                     fixedInput.placeholder = `回复 ${replyTo}:`;
                     fixedInput.focus();
                 }
