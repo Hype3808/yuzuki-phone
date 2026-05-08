@@ -1982,6 +1982,50 @@ parseAIResponse(text) {
         }
     }
 
+    // 🗑️ 按消息 ID 批量删除，供聊天多选模式使用
+    deleteMessagesByIds(chatId, messageIds = []) {
+        const safeChatId = String(chatId || '').trim();
+        const ids = Array.from(new Set(
+            (Array.isArray(messageIds) ? messageIds : [])
+                .map(id => String(id || '').trim())
+                .filter(Boolean)
+        ));
+        if (!safeChatId || ids.length === 0) return 0;
+
+        this.getMessages(safeChatId);
+        let deletedCount = 0;
+
+        ids.forEach((id) => {
+            const messages = this.data.messages[safeChatId] || [];
+            const index = messages.findIndex(msg => String(msg?.id || '').trim() === id);
+            if (index === -1) return;
+            this.deleteMessage(safeChatId, index);
+            deletedCount++;
+        });
+
+        return deletedCount;
+    }
+
+    // 🗑️ 从指定消息开始，一直删除到当前聊天末尾
+    deleteMessagesFromId(chatId, messageId) {
+        const safeChatId = String(chatId || '').trim();
+        const safeMessageId = String(messageId || '').trim();
+        if (!safeChatId || !safeMessageId) return 0;
+
+        this.getMessages(safeChatId);
+        const messages = this.data.messages[safeChatId] || [];
+        const startIndex = messages.findIndex(msg => String(msg?.id || '').trim() === safeMessageId);
+        if (startIndex === -1) return 0;
+
+        let deletedCount = 0;
+        while ((this.data.messages[safeChatId] || []).length > startIndex) {
+            this.deleteMessage(safeChatId, startIndex);
+            deletedCount++;
+        }
+
+        return deletedCount;
+    }
+
     // 🗑️ 清空聊天的所有消息
     clearMessages(chatId) {
         if (this.data.messages[chatId]) {

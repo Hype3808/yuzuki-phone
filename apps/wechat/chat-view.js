@@ -44,6 +44,9 @@ export class ChatView {
         this._wechatTtsCacheLimit = 80;
         this.customEmojiSelectionMode = false;
         this.selectedCustomEmojiIds = new Set();
+        this.messageSelectionMode = false;
+        this.selectedMessageIds = new Set();
+        this.messageSelectionChatId = null;
     }
 
     // 🔥 判断当前会话是否开启在线模式（per-chat）
@@ -874,6 +877,238 @@ renderChatRoom(chat) {
         return html;
     }
 
+    _getCurrentMessageSelectionChatId() {
+        return String(this.messageSelectionChatId || '').trim();
+    }
+
+    _isMessageSelectionActiveForCurrentChat() {
+        const currentChatId = String(this.app.currentChat?.id || '').trim();
+        return !!this.messageSelectionMode
+            && !!currentChatId
+            && this._getCurrentMessageSelectionChatId() === currentChatId;
+    }
+
+    _refreshCurrentChatMessages(options = {}) {
+        const currentView = this.getCurrentWechatView();
+        const messagesDiv = currentView?.querySelector('#chat-messages');
+        if (!messagesDiv || !this.app.currentChat?.id) return;
+
+        const keepScroll = options.keepScroll !== false;
+        const previousTop = messagesDiv.scrollTop;
+        const previousHeight = messagesDiv.scrollHeight;
+        const wasNearBottom = previousHeight - previousTop - messagesDiv.clientHeight < 100;
+
+        const messages = this.app.wechatData.getMessages(this.app.currentChat.id);
+        const userInfo = this.app.wechatData.getUserInfo();
+        messagesDiv.innerHTML = this.renderMessagesWithDateDividers(messages, userInfo);
+
+        this.bindMessageLongPressEvents();
+        this.bindSpecialMessageEvents();
+        this.bindMessageSelectionEvents();
+        this._syncMessageSelectionBar();
+
+        if (!keepScroll) return;
+        if (wasNearBottom) {
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        } else {
+            const delta = messagesDiv.scrollHeight - previousHeight;
+            messagesDiv.scrollTop = Math.max(0, previousTop + delta);
+        }
+    }
+
+    _renderMessageSelectionBar() {
+        const selectedCount = this.selectedMessageIds?.size || 0;
+        return `
+            <div class="wechat-message-selection-bar">
+                <button class="wechat-message-selection-action" data-action="select-all">
+                    <i class="fa-regular fa-circle-check"></i>
+                    <span>全选</span>
+                </button>
+                <button class="wechat-message-selection-action ${selectedCount > 0 ? '' : 'is-disabled'}" data-action="delete-tail" ${selectedCount > 0 ? '' : 'disabled'}>
+                    <i class="fa-solid fa-arrow-down-long"></i>
+                    <span>删至末尾</span>
+                </button>
+                <button class="wechat-message-selection-action ${selectedCount > 0 ? 'is-danger' : 'is-disabled'}" data-action="delete" ${selectedCount > 0 ? '' : 'disabled'}>
+                    <i class="fa-regular fa-trash-can"></i>
+                    <span>删除${selectedCount > 0 ? `(${selectedCount})` : ''}</span>
+                </button>
+                <button class="wechat-message-selection-action is-close" data-action="cancel" aria-label="退出多选">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+        `;
+    }
+
+    _syncMessageSelectionBar() {
+        const currentView = this.getCurrentWechatView();
+        const chatRoom = currentView?.querySelector('.chat-room');
+        if (!chatRoom) return;
+
+        chatRoom.querySelectorAll('.wechat-message-selection-bar').forEach(el => el.remove());
+        const inputArea = chatRoom.querySelector('.chat-input-area');
+
+        if (!this._isMessageSelectionActiveForCurrentChat()) {
+            if (inputArea) inputArea.style.removeProperty('display');
+            return;
+        }
+
+        if (inputArea) inputArea.style.display = 'none';
+        chatRoom.insertAdjacentHTML('beforeend', this._renderMessageSelectionBar());
+
+        const bar = chatRoom.querySelector('.wechat-message-selection-bar');
+        bar?.querySelector('[data-action="delete"]')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.deleteSelectedMessages();
+        });
+        bar?.querySelector('[data-action="delete-tail"]')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.deleteMessagesFromFirstSelectionToEnd();
+        });
+        bar?.querySelector('[data-action="select-all"]')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.selectAllMessagesInCurrentChat();
+        });
+        bar?.querySelector('[data-action="cancel"]')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.exitMessageSelectionMode();
+        });
+    }
+
+    _syncSelectedMessageIdsWithData(chatId = null) {
+        const safeChatId = String(chatId || this.app.currentChat?.id || '').trim();
+        if (!safeChatId || !this.selectedMessageIds) return;
+
+        const messages = this.app.wechatData.getMessages(safeChatId) || [];
+        const liveIds = new Set(messages.map(msg => String(msg?.id || '').trim()).filter(Boolean));
+        Array.from(this.selectedMessageIds).forEach(id => {
+            if (!liveIds.has(id)) this.selectedMessageIds.delete(id);
+        });
+    }
+
+    enterMessageSelectionMode(initialMessageId = null) {
+        const chatId = String(this.app.currentChat?.id || '').trim();
+        if (!chatId) return;
+
+        this.messageSelectionMode = true;
+        this.messageSelectionChatId = chatId;
+        this.selectedMessageIds = new Set();
+
+        const safeMessageId = String(initialMessageId || '').trim();
+        if (safeMessageId) this.selectedMessageIds.add(safeMessageId);
+
+        this.showEmoji = false;
+        this.showMore = false;
+        this._setCustomEmojiSelectionMode(false);
+        this._syncSelectedMessageIdsWithData(chatId);
+        this._refreshCurrentChatMessages({ keepScroll: true });
+    }
+
+    exitMessageSelectionMode() {
+        if (!this.messageSelectionMode && this.selectedMessageIds.size === 0) return;
+        this.messageSelectionMode = false;
+        this.messageSelectionChatId = null;
+        this.selectedMessageIds.clear();
+        document.querySelectorAll('.wechat-message-selection-bar').forEach(el => el.remove());
+        this._refreshCurrentChatMessages({ keepScroll: true });
+    }
+
+    toggleMessageSelection(messageId) {
+        if (!this._isMessageSelectionActiveForCurrentChat()) return;
+        const safeMessageId = String(messageId || '').trim();
+        if (!safeMessageId) return;
+
+        if (this.selectedMessageIds.has(safeMessageId)) {
+            this.selectedMessageIds.delete(safeMessageId);
+        } else {
+            this.selectedMessageIds.add(safeMessageId);
+        }
+        this._refreshCurrentChatMessages({ keepScroll: true });
+    }
+
+    selectAllMessagesInCurrentChat() {
+        if (!this._isMessageSelectionActiveForCurrentChat()) return;
+        const chatId = String(this.app.currentChat?.id || '').trim();
+        const messages = this.app.wechatData.getMessages(chatId) || [];
+        this.selectedMessageIds = new Set(
+            messages.map(msg => String(msg?.id || '').trim()).filter(Boolean)
+        );
+        this._refreshCurrentChatMessages({ keepScroll: true });
+    }
+
+    deleteSelectedMessages() {
+        if (!this._isMessageSelectionActiveForCurrentChat()) return;
+        const chatId = String(this.app.currentChat?.id || '').trim();
+        const ids = Array.from(this.selectedMessageIds || []).map(id => String(id || '').trim()).filter(Boolean);
+        if (!chatId || ids.length === 0) {
+            this.app.phoneShell?.showNotification('提示', '请先选择要删除的消息', '⚠️');
+            return;
+        }
+
+        const deletedCount = this.app.wechatData.deleteMessagesByIds(chatId, ids);
+        this.messageSelectionMode = false;
+        this.messageSelectionChatId = null;
+        this.selectedMessageIds.clear();
+        document.querySelectorAll('.wechat-message-selection-bar').forEach(el => el.remove());
+        this._refreshCurrentChatMessages({ keepScroll: true });
+
+        if (this.app.phoneShell && typeof this.app.phoneShell.updateStatusBarTime === 'function') {
+            this.app.phoneShell.updateStatusBarTime();
+        }
+        this.app.phoneShell?.showNotification('已删除', `已删除 ${deletedCount} 条消息`, '🗑️');
+    }
+
+    deleteMessagesFromFirstSelectionToEnd() {
+        if (!this._isMessageSelectionActiveForCurrentChat()) return;
+        const chatId = String(this.app.currentChat?.id || '').trim();
+        const selectedIds = new Set(Array.from(this.selectedMessageIds || []).map(id => String(id || '').trim()).filter(Boolean));
+        if (!chatId || selectedIds.size === 0) {
+            this.app.phoneShell?.showNotification('提示', '请先选择起始消息', '⚠️');
+            return;
+        }
+
+        const messages = this.app.wechatData.getMessages(chatId) || [];
+        const startMessage = messages.find(msg => selectedIds.has(String(msg?.id || '').trim()));
+        if (!startMessage?.id) {
+            this.app.phoneShell?.showNotification('提示', '未找到起始消息', '⚠️');
+            return;
+        }
+
+        const deletedCount = this.app.wechatData.deleteMessagesFromId(chatId, startMessage.id);
+        this.messageSelectionMode = false;
+        this.messageSelectionChatId = null;
+        this.selectedMessageIds.clear();
+        document.querySelectorAll('.wechat-message-selection-bar').forEach(el => el.remove());
+        this._refreshCurrentChatMessages({ keepScroll: true });
+
+        if (this.app.phoneShell && typeof this.app.phoneShell.updateStatusBarTime === 'function') {
+            this.app.phoneShell.updateStatusBarTime();
+        }
+        this.app.phoneShell?.showNotification('已删除', `已从该处删除 ${deletedCount} 条消息`, '🗑️');
+    }
+
+    bindMessageSelectionEvents() {
+        const currentView = this.getCurrentWechatView();
+        const messagesDiv = currentView?.querySelector('#chat-messages');
+        if (!messagesDiv || messagesDiv._messageSelectionEventsBound) return;
+        messagesDiv._messageSelectionEventsBound = true;
+
+        messagesDiv.addEventListener('click', (e) => {
+            if (!this._isMessageSelectionActiveForCurrentChat()) return;
+            const target = e.target.closest('.message-select-check, .message-content, .system-message-bubble');
+            if (!target) return;
+
+            const msgElement = target.closest('.chat-message[data-message-id]');
+            if (!msgElement) return;
+            e.preventDefault();
+            e.stopPropagation();
+            this.toggleMessageSelection(msgElement.dataset.messageId);
+        });
+    }
+
     _resolveMessageAvatarIdentity(msg, userInfo) {
         const isMe = msg.from === 'me' || msg.from === userInfo.name;
         if (isMe) {
@@ -926,6 +1161,7 @@ renderChatRoom(chat) {
         // 4. 重新绑定事件
         this.bindMessageLongPressEvents();
         this.bindSpecialMessageEvents();
+        this.bindMessageSelectionEvents();
 
         // 5. 恢复滚动状态（如果本来在底部，就继续贴底）
         if (isNearBottom) {
@@ -937,15 +1173,26 @@ renderChatRoom(chat) {
     renderMessage(msg, userInfo) {
         const { isMe, senderName, senderAvatar } = this._resolveMessageAvatarIdentity(msg, userInfo);
         const isRedPacketOpened = msg.status === 'opened';
+        const messageId = String(msg?.id || '').trim();
+        const isSelectionMode = this._isMessageSelectionActiveForCurrentChat();
+        const isSelected = messageId && this.selectedMessageIds.has(messageId);
+        const selectionClass = isSelectionMode ? ' is-selection-mode' : '';
+        const selectedClass = isSelected ? ' is-selected' : '';
+        const selectionCheckHtml = isSelectionMode && messageId ? `
+            <button class="message-select-check ${isSelected ? 'checked' : ''}" data-message-id="${this._escapeHtml(messageId)}" aria-label="${isSelected ? '取消选择' : '选择消息'}" style="order:-1;">
+                ${isSelected ? '<i class="fa-solid fa-check"></i>' : ''}
+            </button>
+        ` : '';
 
         // 🔥🔥🔥 系统消息特殊处理（居中透明气泡）
         if (msg.type === 'system' || msg.from === 'system') {
             return `
-            <div class="chat-message message-system" style="
+            <div class="chat-message message-system${selectionClass}${selectedClass}" data-message-id="${this._escapeHtml(messageId)}" style="
                 display: flex;
                 justify-content: center;
                 margin: 12px 0;
             ">
+                ${selectionCheckHtml}
                 <div class="system-message-bubble" style="
                     background: rgba(0, 0, 0, 0.05);
                     border-radius: 4px;
@@ -1209,7 +1456,8 @@ renderChatRoom(chat) {
         const quoteHtml = msg.quote ? `<div style="font-size: 10px; color: #888; background: rgba(0,0,0,0.05); padding: 2px 6px; border-radius: 3px; margin-top: 3px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block;">${msg.quote.sender}: ${msg.quote.content.length > 10 ? msg.quote.content.substring(0, 10) + '...' : msg.quote.content}</div>` : '';
 
         return `
-        <div class="chat-message ${isMe ? 'message-right' : 'message-left'}">
+        <div class="chat-message ${isMe ? 'message-right' : 'message-left'}${selectionClass}${selectedClass}" data-message-id="${this._escapeHtml(messageId)}">
+            ${selectionCheckHtml}
             ${!isMe ? `<div class="message-avatar">${this.app.renderAvatar(senderAvatar, '👤', senderName)}</div>` : ''}
             <div class="message-content" style="display: inline-flex; flex-direction: column; ${isMe ? 'align-items: flex-end;' : 'align-items: flex-start;'}">
                 ${!isMe && isGroupChat ? `<div class="message-sender" style="font-size: 12px; color: #576b95; margin-bottom: 2px;">${senderName}</div>` : ''}
@@ -2568,18 +2816,21 @@ renderChatRoom(chat) {
         const currentView = this.getCurrentWechatView();
         currentView.querySelectorAll('.message-redpacket').forEach(rp => {
             rp.addEventListener('click', (e) => {
+                if (this._isMessageSelectionActiveForCurrentChat()) return;
                 const messageId = e.currentTarget.dataset.msgId;
                 if (messageId) this.openRedPacket(messageId);
             });
         });
         currentView.querySelectorAll('.message-transfer').forEach(tf => {
             tf.addEventListener('click', (e) => {
+                if (this._isMessageSelectionActiveForCurrentChat()) return;
                 const messageId = e.currentTarget.dataset.msgId;
                 if (messageId) this.openTransferDetail(messageId);
             });
         });
         currentView.querySelectorAll('.message-weibo-card').forEach(card => {
             card.addEventListener('click', (e) => {
+                if (this._isMessageSelectionActiveForCurrentChat()) return;
                 if (Date.now() < (this._suppressWeiboCardClickUntil || 0)) {
                     e.preventDefault();
                     e.stopPropagation();
@@ -2591,6 +2842,7 @@ renderChatRoom(chat) {
         });
         currentView.querySelectorAll('.message-image-prompt-generate').forEach(card => {
             card.addEventListener('click', async (e) => {
+                if (this._isMessageSelectionActiveForCurrentChat()) return;
                 e.preventDefault();
                 e.stopPropagation();
                 const messageId = e.currentTarget.dataset.messageId;
@@ -2601,6 +2853,7 @@ renderChatRoom(chat) {
         });
         currentView.querySelectorAll('.message-image-prompt-regenerate').forEach(btn => {
             btn.addEventListener('click', async (e) => {
+                if (this._isMessageSelectionActiveForCurrentChat()) return;
                 e.preventDefault();
                 e.stopPropagation();
                 const messageId = e.currentTarget.dataset.messageId;
@@ -2611,6 +2864,7 @@ renderChatRoom(chat) {
         });
         currentView.querySelectorAll('.message-image-prompt-front-panel img').forEach(img => {
             img.addEventListener('click', (e) => {
+                if (this._isMessageSelectionActiveForCurrentChat()) return;
                 e.preventDefault();
                 e.stopPropagation();
                 this._openPhoneImageViewer(e.currentTarget.getAttribute('src'), e.currentTarget.getAttribute('alt') || '');
@@ -2618,6 +2872,7 @@ renderChatRoom(chat) {
         });
         currentView.querySelectorAll('.message-image').forEach(img => {
             img.addEventListener('click', (e) => {
+                if (this._isMessageSelectionActiveForCurrentChat()) return;
                 e.preventDefault();
                 e.stopPropagation();
                 this._openPhoneImageViewer(e.currentTarget.getAttribute('src'), e.currentTarget.getAttribute('alt') || '');
@@ -2625,6 +2880,7 @@ renderChatRoom(chat) {
         });
         currentView.querySelectorAll('.message-image-prompt-show-back').forEach(btn => {
             btn.addEventListener('click', (e) => {
+                if (this._isMessageSelectionActiveForCurrentChat()) return;
                 e.preventDefault();
                 e.stopPropagation();
                 this._toggleImagePromptCard(e.currentTarget.closest('.message-image-prompt-box'), true);
@@ -2632,6 +2888,7 @@ renderChatRoom(chat) {
         });
         currentView.querySelectorAll('.message-image-prompt-restore').forEach(btn => {
             btn.addEventListener('click', (e) => {
+                if (this._isMessageSelectionActiveForCurrentChat()) return;
                 e.preventDefault();
                 e.stopPropagation();
                 this._toggleImagePromptCard(e.currentTarget.closest('.message-image-prompt-box'), false);
@@ -3069,6 +3326,11 @@ renderChatRoom(chat) {
         const query = (selector) => currentView.querySelector(selector);
         const queryAll = (selector) => currentView.querySelectorAll(selector);
 
+        if (this._isMessageSelectionActiveForCurrentChat()) {
+            this._syncSelectedMessageIdsWithData(this.app.currentChat?.id);
+            this._syncMessageSelectionBar();
+        }
+
         // 📱 输入框聚焦：用户正在编辑，立即打断自动回复倒计时
         input?.addEventListener('focus', () => {
             clearTimeout(this.batchTimer);
@@ -3225,6 +3487,7 @@ renderChatRoom(chat) {
         // 🔥 点击消息区域空白处，收起功能面板和表情面板
         const messagesDiv = query('#chat-messages');
         messagesDiv?.addEventListener('click', (e) => {
+            if (this._isMessageSelectionActiveForCurrentChat()) return;
             // 只有点击空白区域才收起（不是点击消息气泡）
             if (this.showMore || this.showEmoji) {
                 if (this.showEmoji) {
@@ -3382,6 +3645,7 @@ renderChatRoom(chat) {
         // 添加头像点击事件
         queryAll('.message-avatar').forEach(avatar => {
             avatar.addEventListener('click', (e) => {
+                if (this._isMessageSelectionActiveForCurrentChat()) return;
                 const message = e.target.closest('.chat-message');
                 if (!message) return;
                 const isMe = message.classList.contains('message-right');
@@ -3397,12 +3661,14 @@ renderChatRoom(chat) {
 
         // 🔧 绑定消息气泡长按/点击事件
         this.bindMessageLongPressEvents();
+        this.bindMessageSelectionEvents();
 
         // 🔊 语音气泡点击播放逻辑
         const voiceMessagesDiv = document.getElementById('chat-messages');
         if (voiceMessagesDiv && !voiceMessagesDiv._voiceEventBound) {
             voiceMessagesDiv._voiceEventBound = true;
             voiceMessagesDiv.addEventListener('click', async (e) => {
+                if (this._isMessageSelectionActiveForCurrentChat()) return;
                 const bubble = e.target.closest('.voice-bubble-playable');
                 if (!bubble) return;
 
@@ -3524,6 +3790,7 @@ renderChatRoom(chat) {
 
         // 📱 移动端长按 (事件委托到父容器)
         messagesDiv.addEventListener('touchstart', (e) => {
+            if (this._isMessageSelectionActiveForCurrentChat()) return;
             const targetBubble = e.target.closest(longPressBubbleSelector);
             if (!targetBubble) return;
 
@@ -3586,6 +3853,7 @@ renderChatRoom(chat) {
 
         // 💻 桌面端右键
         messagesDiv.addEventListener('contextmenu', (e) => {
+            if (this._isMessageSelectionActiveForCurrentChat()) return;
             const targetBubble = e.target.closest(longPressBubbleSelector);
             if (!targetBubble) return;
 
@@ -3600,6 +3868,7 @@ renderChatRoom(chat) {
 
         // 💻 桌面端双击
         messagesDiv.addEventListener('dblclick', (e) => {
+            if (this._isMessageSelectionActiveForCurrentChat()) return;
             const targetBubble = e.target.closest(longPressBubbleSelector);
             if (!targetBubble) return;
 
@@ -6070,6 +6339,7 @@ renderChatRoom(chat) {
         if (isTextMessage || isLocationMessage) {
             buttonsHtml += `<button class="msg-action-btn" data-action="edit" data-index="${messageIndex}" style="background: transparent; color: #333; border: none; border-right: 0.5px solid rgba(0,0,0,0.08); padding: 4px 8px; font-size: 11px; cursor: pointer;">编辑</button>`;
         }
+        buttonsHtml += `<button class="msg-action-btn" data-action="multi-select" data-index="${messageIndex}" style="background: transparent; color: #333; border: none; border-right: 0.5px solid rgba(0,0,0,0.08); padding: 4px 8px; font-size: 11px; cursor: pointer;">多选</button>`;
         if (isTextMessage || isImageMessage) {
             buttonsHtml += `<button class="msg-action-btn" data-action="quote" data-index="${messageIndex}" style="background: transparent; color: #333; border: none; border-right: 0.5px solid rgba(0,0,0,0.08); padding: 4px 8px; font-size: 11px; cursor: pointer;">引用</button>`;
         }
@@ -6120,6 +6390,9 @@ renderChatRoom(chat) {
                     this.deleteMessage(index);
                 } else if (action === 'edit') {
                     this.editMessage(index);
+                } else if (action === 'multi-select') {
+                    const targetMessage = this.app.wechatData.getMessages(this.app.currentChat.id)?.[index];
+                    this.enterMessageSelectionMode(targetMessage?.id || null);
                 } else if (action === 'recall') {
                     this.recallMessage(index);
                 } else if (action === 'quote') {
@@ -6255,15 +6528,7 @@ renderChatRoom(chat) {
         this.app.wechatData.deleteMessage(this.app.currentChat.id, messageIndex);
 
         // 🔥 局部刷新：只更新消息列表，不重绘整个界面
-        const currentView = this.getCurrentWechatView();
-        const messagesDiv = currentView?.querySelector('#chat-messages');
-        if (messagesDiv) {
-            const messages = this.app.wechatData.getMessages(this.app.currentChat.id);
-            const userInfo = this.app.wechatData.getUserInfo();
-            messagesDiv.innerHTML = this.renderMessagesWithDateDividers(messages, userInfo);
-            // 🔥 重新绑定长按事件
-            this.bindMessageLongPressEvents();
-        }
+        this._refreshCurrentChatMessages({ keepScroll: true });
 
         // 🔥🔥🔥 核心修复：通知手机外壳立即刷新左上角状态栏时间
         if (this.app.phoneShell && typeof this.app.phoneShell.updateStatusBarTime === 'function') {

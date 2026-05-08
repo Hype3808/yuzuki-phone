@@ -685,6 +685,136 @@ export class WechatApp {
     text-align: left;
 }
 
+/* 微信聊天多选删除 */
+.chat-message.is-selection-mode {
+    position: relative;
+    align-items: center;
+    min-height: 42px;
+    margin-left: -6px;
+    margin-right: -6px;
+    padding: 4px 6px;
+    box-sizing: border-box;
+}
+
+.chat-message.is-selection-mode.is-selected {
+    background: rgba(0, 0, 0, 0.07);
+}
+
+.message-right.is-selection-mode .message-select-check {
+    margin-right: auto;
+}
+
+.chat-message.is-selection-mode .message-select-check {
+    width: 20px;
+    height: 20px;
+    flex: 0 0 20px;
+    margin-left: 8px;
+    margin-right: 10px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(0, 0, 0, 0.24);
+    background: rgba(255, 255, 255, 0.88);
+    color: #fff !important;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    box-sizing: border-box;
+    cursor: pointer;
+}
+
+.chat-message.is-selection-mode .message-select-check.checked {
+    background: #07c160;
+    border-color: #07c160;
+}
+
+.chat-message.is-selection-mode .message-select-check i {
+    color: #fff !important;
+    font-size: 11px;
+    line-height: 1;
+}
+
+.chat-message.is-selection-mode .message-avatar {
+    pointer-events: none;
+}
+
+.chat-message.is-selection-mode .message-content {
+    cursor: pointer;
+}
+
+.chat-message.is-selection-mode.message-system {
+    justify-content: flex-start !important;
+}
+
+.chat-message.is-selection-mode.message-system .system-message-bubble {
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.wechat-message-selection-bar {
+    flex-shrink: 0;
+    height: 108px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(10px, 4vw, 28px);
+    padding: 12px 12px 14px;
+    box-sizing: border-box;
+    border-top: 0.5px solid rgba(0, 0, 0, 0.12);
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(18px) saturate(160%);
+    -webkit-backdrop-filter: blur(18px) saturate(160%);
+}
+
+.wechat-message-selection-action {
+    width: 48px;
+    min-width: 42px;
+    border: none;
+    background: transparent;
+    color: #222 !important;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 7px;
+    padding: 0;
+    font-size: 11px;
+    line-height: 1.15;
+    text-align: center;
+    cursor: pointer;
+}
+
+.wechat-message-selection-action i {
+    color: currentColor !important;
+    font-size: 17px;
+    line-height: 1;
+}
+
+.wechat-message-selection-action span {
+    color: currentColor !important;
+    width: 100%;
+}
+
+.wechat-message-selection-action.is-muted,
+.wechat-message-selection-action.is-disabled {
+    color: rgba(0, 0, 0, 0.34) !important;
+    cursor: default;
+}
+
+.wechat-message-selection-action.is-danger {
+    color: #1f2329 !important;
+}
+
+.wechat-message-selection-action.is-close {
+    width: 32px;
+    min-width: 32px;
+    align-self: center;
+    color: rgba(0, 0, 0, 0.36) !important;
+}
+
+.wechat-message-selection-action.is-close i {
+    font-size: 18px;
+}
+
 /* 特殊消息类型 */
 .message-image {
     max-width: 100%;

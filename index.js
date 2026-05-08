@@ -10,13 +10,13 @@
  * Copyright (c) yuzuki. All rights reserved.
  * ======================================================== */
 // ========================================
-// 虚拟手机互动系统 v1.0.6
+// 虚拟手机互动系统 v1.0.7
 // SillyTavern 扩展插件
 // ========================================
 
 const ST_PHONE_BASE_URL = new URL('./', import.meta.url).href;
 const ST_PHONE_GLOBAL_CSS_URL = new URL('./phone.css', import.meta.url).href;
-const ST_PHONE_VERSION = '1.0.6';
+const ST_PHONE_VERSION = '1.0.7';
 const ST_PHONE_UPDATE_MANIFEST_URLS = [
     'https://raw.githubusercontent.com/gaigai315/yuzuki-phone/main/manifest.json',
     'https://raw.githubusercontent.com/gaigai315/yuzuki-phone/master/manifest.json'
@@ -35,7 +35,8 @@ const ST_PHONE_CURRENT_UPDATE = {
         '设置 App 联动页新增用户消息监听开关；关闭后可减少记忆表格/数据库插件的大段 user 内容拖慢，明确的回复标签仍会同步微信线上。',
         '独立 API 供应商已对齐记忆插件：OP兼容端点/中转站与 Build 本地反代分流更清晰，并补充失败兜底，蜜语和微博刷新更稳定。',
         '微信与蜜语新增独立的线上破限词区域：微信聊天/语音/视频/通话会注入微信破限词，蜜语看直播与自己开播会注入蜜语破限词。',
-        '一键更新所有提示词会刷新默认提示词版本；若当前正在使用用户自己的提示词预设，会继续保留该预设，用户手动切回默认后才使用新版默认词。'
+        '一键更新所有提示词会刷新默认提示词版本；若当前正在使用用户自己的提示词预设，会继续保留该预设，用户手动切回默认后才使用新版默认词。',
+        '微信聊天新增多选删除：长按或右键消息进入多选，可跳选、全选、删除选中消息，也可从选中位置删至末尾。'
     ]
 };
 
