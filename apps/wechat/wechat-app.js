@@ -114,6 +114,7 @@ export class WechatApp {
     display: flex;
     flex-direction: column;
     font-family: inherit;
+    position: relative;
 
     /* 🔥 新增：基础字体大小，使用变量方便调整 */
     font-size: 14px; /* 默认大小 */
@@ -2697,12 +2698,7 @@ export class WechatApp {
             console.warn('⚠️ 提示词不存在，尝试从默认配置获取');
             const defaults = promptManager?.getDefaultPrompts();
             prompt = defaults?.[app]?.[feature];
-
-            // 如果默认配置有，则添加到当前配置
-            if (prompt && promptManager?.prompts?.[app]) {
-                promptManager.prompts[app][feature] = { ...prompt };
-                promptManager.savePrompts();
-            }
+            if (prompt) prompt = { ...prompt };
         }
 
         if (!prompt) {
@@ -2918,12 +2914,13 @@ export class WechatApp {
                 const currentContact = this.currentChat.contactId
                     ? this.wechatData.getContact(this.currentChat.contactId)
                     : this.wechatData.getContactByName(this.currentChat.name);
-                const isHoneyContact = currentContact?.sourceApp === 'honey' || currentContact?.sourceLabel === '蜜语';
+                const isHoneyContact = currentContact?.sourceApp === 'honey' || currentContact?.sourceLabel === '蜜语' || currentContact?.sourceLabel === '主播';
                 if (!isHoneyContact) return this.currentChat.name;
+                const honeyLabel = currentContact?.sourceLabel === '主播' || String(currentContact?.relation || '').includes('主播') ? '主播' : '蜜语';
                 return `
                     <span style="position:relative; display:inline-flex; align-items:center; justify-content:center; line-height:1.1; overflow:visible;">
                         <span style="position:absolute; left:50%; top:-11px; transform:translateX(-50%); display:inline-flex; align-items:center; gap:3px; padding:1px 5px; border-radius:999px; background:rgba(255,105,180,0.14); color:#ff5fa2; font-size:8px; line-height:1; border:1px solid rgba(255,105,180,0.24); white-space:nowrap;">
-                            <i class="fa-solid fa-heart" style="font-size:7px;"></i>蜜语
+                            <i class="fa-solid fa-heart" style="font-size:7px;"></i>${honeyLabel}
                         </span>
                         <span>${this.currentChat.name}</span>
                     </span>
@@ -4503,20 +4500,6 @@ export class WechatApp {
         this._wechatPanelMode = 'settings';
         const promptManager = window.VirtualPhone?.promptManager;
         const prompts = promptManager?.prompts?.wechat || {};
-        // 功能开关已从微信设置页移除：保留历史字段兼容并强制恢复启用，避免旧存档残留 false 导致功能失效
-        const wechatModeManagedFeatures = ['offline', 'online', 'voiceCall', 'videoCall', 'groupVoiceCall', 'groupVideoCall', 'groupChat', 'moments', 'loadContacts'];
-        if (promptManager?.prompts?.wechat) {
-            let hasPromptStateChanged = false;
-            wechatModeManagedFeatures.forEach((feature) => {
-                if (promptManager.prompts.wechat?.[feature] && promptManager.prompts.wechat[feature].enabled === false) {
-                    promptManager.prompts.wechat[feature].enabled = true;
-                    hasPromptStateChanged = true;
-                }
-            });
-            if (hasPromptStateChanged) {
-                promptManager.savePrompts();
-            }
-        }
         const shellBg = this._getMainShellBackgroundConfig();
         const settingsContentStyle = shellBg.contentBgStyle || 'background: #ededed;';
         const wechatWorldbookRaw = window.VirtualPhone?.storage?.get('wechat-use-worldbook');

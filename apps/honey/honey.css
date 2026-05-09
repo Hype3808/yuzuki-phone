@@ -3120,6 +3120,7 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 12px 12px 14px;
     white-space: pre-wrap;
     font-size: 13px;
@@ -3131,6 +3132,14 @@
     -webkit-overflow-scrolling: touch;
     touch-action: pan-y;
     overscroll-behavior-y: contain;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.honey-scene-modal-desc::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
 }
 
 .honey-live-collab-modal {
@@ -3214,6 +3223,113 @@
     display: flex;
     flex-direction: column;
     gap: 3px;
+}
+
+.honey-live-visibility-modal {
+    position: absolute;
+    inset: 0;
+    z-index: 80;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+    box-sizing: border-box;
+}
+
+.honey-live-visibility-backdrop {
+    position: absolute;
+    inset: 0;
+    border: 0;
+    background: rgba(5, 5, 12, 0.58);
+}
+
+.honey-live-visibility-panel {
+    position: relative;
+    width: min(100%, 286px);
+    border-radius: 14px;
+    padding: 16px;
+    box-sizing: border-box;
+    background: rgba(28, 18, 30, 0.96);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.34);
+    color: #fff;
+}
+
+.honey-live-visibility-title {
+    font-size: 16px;
+    font-weight: 800;
+    line-height: 1.2;
+}
+
+.honey-live-visibility-desc {
+    margin-top: 8px;
+    color: rgba(255, 255, 255, 0.72);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.honey-live-visibility-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 14px;
+}
+
+.honey-live-visibility-btn {
+    height: 42px;
+    border: 0;
+    border-radius: 10px;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 800;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    cursor: pointer;
+}
+
+.honey-live-visibility-btn.is-private {
+    background: linear-gradient(135deg, #5b4acb, #2a214f);
+}
+
+.honey-live-visibility-btn.is-public {
+    background: linear-gradient(135deg, #ff4b8e, #b1145d);
+}
+
+.honey-host-wechat-reject-modal {
+    z-index: 270;
+}
+
+.honey-host-wechat-reject-panel {
+    width: min(240px, calc(100% - 30px));
+    padding: 10px;
+    gap: 8px;
+}
+
+.honey-host-wechat-reject-text {
+    max-height: 120px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    overscroll-behavior: contain;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 11px;
+    line-height: 1.55;
+    color: #fff0f8 !important;
+}
+
+.honey-host-wechat-reject-ok {
+    width: 100%;
+    min-height: 28px;
+    border: 1px solid rgba(255, 105, 180, 0.38);
+    border-radius: 8px;
+    background: linear-gradient(135deg, rgba(255, 77, 148, 0.86), rgba(255, 128, 184, 0.72));
+    color: #fff !important;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
 }
 
 .honey-live-collab-request-item {

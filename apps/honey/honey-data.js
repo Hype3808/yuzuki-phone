@@ -422,6 +422,9 @@ export class HoneyData {
         const currentScene = (options?.currentScene && typeof options.currentScene === 'object') ? options.currentScene : null;
         const externalComments = Array.isArray(options?.currentComments) ? options.currentComments : null;
         const previousDescription = String(options?.previousDescription || '').trim();
+        const isPrivateLive = String(options?.visibility || currentScene?.visibility || '').trim() === 'private'
+            || options?.isPrivateLive === true
+            || currentScene?.isPrivateLive === true;
 
         if (!currentScene && !externalComments?.length && !previousDescription) return '';
 
@@ -487,6 +490,9 @@ export class HoneyData {
 
         const lines = [];
         lines.push('【当前直播间状态（请在此基础上续写）】');
+        if (isPrivateLive) {
+            lines.push('【私密直播模式】当前直播间为私密中。无需生成回复评论区及好友申请等内容；最终 <Honey> 需要省略评论区，或输出空评论区。请聚焦主播画面、私密直播状态的信息。');
+        }
         if (host) lines.push(`主播：${host}${hostFollowState ? `（${hostFollowState}）` : ''}`);
         if (title) lines.push(`标题：${title}`);
         if (viewers || fans) lines.push(`状态：在线人数:${viewers || '0'} 粉丝:${fans || '0'}`);
@@ -697,11 +703,11 @@ export class HoneyData {
         const safeTopicKey = /^topic_[a-z0-9]+$/i.test(refKey)
             ? refKey.toLowerCase()
             : String(scene._topicKey || `topic_${this._simpleHash(`${safeTitle}__0`)}`).trim();
-        scenes[key] = {
+        scenes[key] = this._stripInlineGeneratedImagesFromScene({
             ...scene,
             _topicTitle: safeTitle,
             _topicKey: safeTopicKey
-        };
+        });
         this.saveTopicScenes(scenes);
     }
 
@@ -1643,6 +1649,282 @@ export class HoneyData {
         return { friend, contact, chat, wechatData };
     }
 
+    _buildFollowedHostWechatBackground(host = {}, options = {}) {
+        const hostName = this._sanitizeInlineText(host?.name || options?.hostName || '', 40) || '主播';
+        const intro = this._sanitizeInlineText(host?.intro || options?.intro || '', 160);
+        const title = this._sanitizeInlineText(host?.liveTitle || options?.title || `${hostName} 的直播间`, 60);
+        const figure = this._sanitizeInlineText(host?.figure || '主播', 24);
+        const favorability = this._clampFavorability(host?.favorability ?? host?.affection, null);
+        const decisionMessage = this._sanitizeInlineText(options?.decisionMessage || options?.message || '', 180);
+        const parts = [
+            `${hostName} 是用户在蜜语关注的主播，已同意添加微信。`,
+            `来源直播间：${title}`,
+            `身份：${figure}`
+        ];
+        if (intro) parts.push(`主播简介：${intro}`);
+        if (favorability !== null) parts.push(`当前好感度：${favorability}%`);
+        if (decisionMessage) parts.push(`通过好友申请时的回复：${decisionMessage}`);
+        return this._sanitizeHoneySecret(parts.join(' '), 260);
+    }
+
+    ensureFollowedHostWechatChat(hostNameOrHost, options = {}) {
+        const inputHostName = typeof hostNameOrHost === 'string'
+            ? hostNameOrHost
+            : (hostNameOrHost?.name || hostNameOrHost?.hostName || '');
+        const safeHostName = this._sanitizeInlineText(this._stripFollowStateSuffix(inputHostName || ''), 40);
+        if (!safeHostName) return null;
+
+        const list = this.getFollowedHosts();
+        const hostKey = this._normalizeHostNameKey(safeHostName);
+        const existingIndex = list.findIndex(item => this._normalizeHostNameKey(item?.name || '') === hostKey);
+        const host = existingIndex >= 0
+            ? { ...list[existingIndex] }
+            : {
+                ...(typeof hostNameOrHost === 'object' && hostNameOrHost ? hostNameOrHost : {}),
+                name: safeHostName
+            };
+        const wechatData = this._getWechatDataBridge();
+        const contacts = wechatData.getContacts();
+        let contact = contacts.find(item => this._normalizeHostNameKey(item?.name || '') === hostKey) || null;
+        const avatar = String(options?.avatarUrl || host.avatarUrl || '').trim() || '👤';
+        const hiddenBackground = this._buildFollowedHostWechatBackground(host, options);
+        const visibleIntro = this._sanitizeInlineText(options?.message || options?.decisionMessage || `${safeHostName} 已同意添加微信。`, 120);
+        const relation = '蜜语主播';
+
+        if (!contact) {
+            const contactId = `contact_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+            contact = {
+                id: contactId,
+                name: safeHostName,
+                avatar,
+                remark: '',
+                letter: wechatData.getFirstLetter(safeHostName),
+                relation,
+                sourceApp: 'honey',
+                sourceLabel: '主播',
+                honeySource: '关注主播',
+                honeyVisibleIntro: visibleIntro,
+                honeyHiddenBackground: hiddenBackground
+            };
+            wechatData.addContact(contact);
+            contact = wechatData.getContact(contactId) || contact;
+        } else {
+            const nextRelation = String(contact.relation || '').includes('主播')
+                ? contact.relation
+                : (contact.relation ? `${contact.relation} / ${relation}` : relation);
+            wechatData.updateContact(contact.id, {
+                avatar: avatar || contact.avatar || '👤',
+                relation: nextRelation,
+                sourceApp: 'honey',
+                sourceLabel: '主播',
+                honeySource: contact.honeySource || '关注主播',
+                honeyVisibleIntro: visibleIntro || contact.honeyVisibleIntro || '',
+                honeyHiddenBackground: hiddenBackground || contact.honeyHiddenBackground || ''
+            });
+            contact = wechatData.getContact(contact.id) || {
+                ...contact,
+                avatar: avatar || contact.avatar || '👤',
+                relation: nextRelation,
+                sourceApp: 'honey',
+                sourceLabel: '主播',
+                honeySource: contact.honeySource || '关注主播',
+                honeyVisibleIntro: visibleIntro || contact.honeyVisibleIntro || '',
+                honeyHiddenBackground: hiddenBackground || contact.honeyHiddenBackground || ''
+            };
+        }
+
+        let chat = wechatData.getChatByContactId(contact.id);
+        if (!chat) {
+            chat = wechatData.createChat({
+                id: `chat_${contact.id}`,
+                contactId: contact.id,
+                name: contact.name,
+                type: 'single',
+                avatar: contact.avatar || '👤'
+            });
+        } else {
+            chat.name = contact.name;
+            chat.avatar = contact.avatar || chat.avatar || '👤';
+            wechatData.saveData();
+        }
+
+        if (chat?.id && typeof wechatData.setHoneyHistoryInjectionForChat === 'function') {
+            wechatData.setHoneyHistoryInjectionForChat(chat.id, true);
+        }
+
+        const hostPatch = {
+            ...host,
+            name: host.name || safeHostName,
+            avatarUrl: avatar !== '👤' ? avatar : (host.avatarUrl || ''),
+            figure: host.figure || '主播',
+            sourceApp: 'honey',
+            sourceLabel: '主播',
+            wechatContactId: String(contact.id || ''),
+            wechatChatId: String(chat?.id || '')
+        };
+        if (existingIndex >= 0) {
+            list[existingIndex] = { ...list[existingIndex], ...hostPatch };
+        } else {
+            list.push({
+                ...hostPatch,
+                ...this._normalizeHostNaiReference(hostPatch)
+            });
+        }
+        this.saveFollowedHosts(list);
+
+        if (window.VirtualPhone?.wechatApp) {
+            window.VirtualPhone.wechatApp.wechatData = wechatData;
+            if (window.VirtualPhone.wechatApp.currentView === 'contacts' || window.VirtualPhone.wechatApp.currentChat?.contactId === contact.id) {
+                window.VirtualPhone.wechatApp.render();
+            }
+        }
+
+        this.globalSocialStore?.upsertContact?.({
+            app: 'honey',
+            appContactId: this._getHoneyGlobalContactId({ name: safeHostName }),
+            name: safeHostName,
+            avatar: avatar !== '👤' ? avatar : '',
+            relation,
+            extra: {
+                sourceApp: 'honey',
+                sourceLabel: '主播',
+                honeySource: '关注主播',
+                wechatContactId: String(contact.id || ''),
+                wechatChatId: String(chat?.id || ''),
+                honeyHiddenBackground: hiddenBackground || '',
+                honeyScope: 'followed_host'
+            }
+        });
+        this.globalSocialStore?.upsertContact?.({
+            app: 'wechat',
+            appContactId: String(contact.id || ''),
+            name: contact.name || safeHostName,
+            avatar: contact.avatar || '',
+            relation: contact.relation || relation,
+            extra: {
+                sourceApp: 'honey',
+                sourceLabel: '主播',
+                honeySource: '关注主播',
+                honeyVisibleIntro: visibleIntro || '',
+                honeyHiddenBackground: hiddenBackground || ''
+            }
+        });
+
+        return { host: list.find(item => this._normalizeHostNameKey(item?.name || '') === hostKey) || hostPatch, contact, chat, wechatData };
+    }
+
+    _formatFollowedHostWechatFriendRequestContext(hostName, options = {}) {
+        const safeHostName = this._sanitizeInlineText(this._stripFollowStateSuffix(hostName || ''), 40);
+        if (!safeHostName) return '';
+        const host = this.getFollowedHostByName(safeHostName) || {};
+        const rawCurrentScene = (options?.currentScene && typeof options.currentScene === 'object') ? options.currentScene : null;
+        const currentSceneHostKey = this._normalizeHostNameKey(this._stripFollowStateSuffix(rawCurrentScene?.host || ''));
+        const currentScene = currentSceneHostKey && currentSceneHostKey === this._normalizeHostNameKey(safeHostName)
+            ? rawCurrentScene
+            : null;
+        const historyMap = this.getHostHistory(safeHostName) || {};
+        const historyScenes = Object.keys(historyMap)
+            .filter(Boolean)
+            .sort((a, b) => String(b).localeCompare(String(a)))
+            .slice(0, 3)
+            .map(date => ({ date, scene: historyMap[date] || {} }));
+        const userName = this._sanitizeInlineText(this.getHoneyUserNickname?.() || '用户', 24) || '用户';
+        const lines = [
+            `【蜜语主播加微信判定】`,
+            `主播：${safeHostName}`,
+            `申请人：${userName}`,
+            `用户正在申请把该主播添加到微信好友。请根据主播人设、关系进度、打赏记录和聊天历史判断是否同意。`
+        ];
+        if (host.figure) lines.push(`主播身份：${this._sanitizeInlineText(host.figure, 24)}`);
+        if (host.liveTitle) lines.push(`直播间标题：${this._sanitizeInlineText(host.liveTitle, 60)}`);
+        if (host.intro) lines.push(`主播简介：${this._sanitizeInlineText(host.intro, 180)}`);
+        const favorability = this._clampFavorability(host.favorability ?? host.affection, null);
+        if (favorability !== null) lines.push(`当前好感度：${favorability}%`);
+        if (host.fans) lines.push(`粉丝量：${this._sanitizeInlineText(host.fans, 24)}`);
+
+        const sceneContexts = currentScene
+            ? [{ date: '当前直播', scene: currentScene }]
+            : historyScenes;
+        sceneContexts.slice(0, 4).forEach(({ date, scene }, idx) => {
+            const title = this._sanitizeInlineText(scene?.title || '', 60);
+            const desc = String(scene?.description || '')
+                .replace(/\r/g, '')
+                .split('\n')
+                .map(line => String(line || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim())
+                .filter(Boolean);
+            const comments = (Array.isArray(scene?.comments) ? scene.comments : []).map(line => this._sanitizeInlineText(line, 120)).filter(Boolean).slice(-4);
+            const gifts = (Array.isArray(scene?.gifts) ? scene.gifts : []).map(line => this._sanitizeInlineText(line, 100)).filter(Boolean).slice(-4);
+            const userGiftRank = (scene?.userGiftRank && typeof scene.userGiftRank === 'object')
+                ? `#${scene.userGiftRank.rank || '?'} ${this._sanitizeInlineText(scene.userGiftRank.name || userName, 24)} - ${this._sanitizeInlineText(scene.userGiftRank.coins || '', 20)}`
+                : '';
+            lines.push(`【互动片段${idx + 1}：${this._sanitizeInlineText(date, 20)}】`);
+            if (title) lines.push(`标题：${title}`);
+            if (userGiftRank) lines.push(`用户打赏记录：${userGiftRank}`);
+            if (gifts.length > 0) lines.push(`打赏动态：${gifts.join(' / ')}`);
+            if (comments.length > 0) lines.push(`评论互动：${comments.join(' / ')}`);
+            if (desc.length > 0) lines.push(`直播正文：${desc.join(' / ')}`);
+        });
+
+        lines.push('输出格式只能二选一：');
+        lines.push('[加微信]（接受）');
+        lines.push('回复：用主播口吻给用户一句自然微信通过话术');
+        lines.push('或');
+        lines.push('[加微信]（拒绝）');
+        lines.push('回复：用主播口吻给用户一句自然拒绝理由');
+        return lines.join('\n');
+    }
+
+    async requestFollowedHostWechatFriendDecision(hostName, options = {}) {
+        const safeHostName = this._sanitizeInlineText(this._stripFollowStateSuffix(hostName || ''), 40);
+        if (!safeHostName) throw new Error('主播名称为空');
+        const apiManager = window.VirtualPhone?.apiManager;
+        if (!apiManager) throw new Error('API Manager 未初始化');
+        const contextText = this._formatFollowedHostWechatFriendRequestContext(safeHostName, options);
+        const messages = [
+            {
+                role: 'system',
+                content: '你是蜜语 APP 的主播好友申请判定器。你必须扮演当前主播本人，只能根据上下文判断是否同意加微信，并严格按指定标签输出。',
+                isPhoneMessage: true
+            },
+            {
+                role: 'user',
+                content: contextText,
+                isPhoneMessage: true
+            }
+        ];
+        const context = this._getContext();
+        const result = await apiManager.callAI(messages, {
+            max_tokens: Math.min(
+                Number.parseInt(context?.max_response_length, 10)
+                    || Number.parseInt(context?.max_length, 10)
+                    || Number.parseInt(context?.maxContextLength, 10)
+                    || 1024,
+                1600
+            ),
+            preserve_roles: false,
+            appId: 'honey'
+        });
+        if (!result?.success) throw new Error(result?.error || 'AI 返回为空');
+        const rawText = result.summary || result.content || result.text || '';
+        const filteredText = applyPhoneTagFilter(rawText, { storage: this.storage }) || rawText;
+        const statusMatch = String(filteredText || '').match(/[［\[]\s*加微信\s*[］\]]\s*[（(]\s*([^）)]*)\s*[）)]/i);
+        const status = String(statusMatch?.[1] || '').trim();
+        const accepted = /接受|同意|通过|可以|yes|ok|accept/i.test(status);
+        const rejected = /拒绝|不接受|不同意|不通过|no|reject/i.test(status);
+        const replyMatch = String(filteredText || '').match(/回复\s*[：:]\s*([\s\S]*)/);
+        const message = this._sanitizeInlineText(
+            (replyMatch?.[1] || String(filteredText || '').replace(statusMatch?.[0] || '', '')).trim(),
+            180
+        );
+        return {
+            accepted: accepted && !rejected,
+            rejected: rejected || (!accepted && !rejected),
+            message: message || (accepted && !rejected ? '可以，加吧。' : '先不用加微信了。'),
+            raw: filteredText,
+            status
+        };
+    }
+
     getHoneyCoinBalance() {
         const raw = this._getStored('honey_coin_balance', 0);
         const num = Number.parseFloat(raw);
@@ -1880,9 +2162,10 @@ export class HoneyData {
         const index = list.findIndex(item => String(item?.name || '').trim() === safeHostName);
 
         if (index >= 0) {
+            const removedHost = list[index];
             list.splice(index, 1);
             this.saveFollowedHosts(list);
-            this.clearHostRecords(safeHostName);
+            this.clearHostRecords(removedHost?.name || safeHostName);
             return { followed: false, list };
         }
 
@@ -2003,7 +2286,7 @@ export class HoneyData {
         const removedHost = currentList.find(item => String(item?.name || '').trim() === safeHostName) || null;
         const list = currentList.filter(item => String(item?.name || '').trim() !== safeHostName);
         this.saveFollowedHosts(list);
-        this.clearHostRecords(safeHostName);
+        this.clearHostRecords(removedHost?.name || safeHostName);
         return {
             removedHost,
             list
@@ -2135,6 +2418,19 @@ export class HoneyData {
             this._removeStored(historyKey);
         }
         this._clearHostRelatedSceneCache(safeHostName);
+        this._clearFollowedHostGlobalRecord(safeHostName);
+    }
+
+    _clearFollowedHostGlobalRecord(hostName = '') {
+        const safeHostName = String(hostName || '').trim();
+        const hostKey = this._normalizeHostNameKey(safeHostName);
+        if (!hostKey) return 0;
+
+        return this.globalSocialStore?.removeAppContactsByPredicate?.('honey', (entry) => {
+            const entryNameKey = this._normalizeHostNameKey(entry?.name || '');
+            const scope = String(entry?.extra?.honeyScope || '').trim().toLowerCase();
+            return entryNameKey === hostKey && scope === 'followed_host';
+        }) || 0;
     }
 
     _normalizeSceneDate(dateStr = '') {
@@ -2161,6 +2457,17 @@ export class HoneyData {
         }
     }
 
+    _stripInlineGeneratedImagesFromScene(scene = {}) {
+        if (!scene || typeof scene !== 'object') return scene;
+        const next = { ...scene };
+        ['naiImageUrl', 'generatedImageUrl', 'imageUrl'].forEach((key) => {
+            if (/^data:image\/[a-z0-9.+-]+;base64,/i.test(String(next[key] || '').trim())) {
+                next[key] = '';
+            }
+        });
+        return next;
+    }
+
     getHostHistory(hostName) {
         const key = this._hostHistoryStorageKey(hostName);
         if (!key) return {};
@@ -2173,7 +2480,7 @@ export class HoneyData {
         if (!key || !sceneData || typeof sceneData !== 'object') return;
         const dateKey = this._normalizeSceneDate(dateStr);
         const history = this.getHostHistory(hostName);
-        history[dateKey] = this._deepCloneSceneData(sceneData);
+        history[dateKey] = this._stripInlineGeneratedImagesFromScene(this._deepCloneSceneData(sceneData));
         this._setStored(key, JSON.stringify(history));
         this._scheduleFlushChatPersistence();
     }
@@ -2187,8 +2494,9 @@ export class HoneyData {
 
     saveLastSceneData(scene) {
         if (!scene || typeof scene !== 'object') return;
-        this._lastSceneCache = scene;
-        this._setStored('honey_last_scene', JSON.stringify(scene));
+        const safeScene = this._stripInlineGeneratedImagesFromScene(scene);
+        this._lastSceneCache = safeScene;
+        this._setStored('honey_last_scene', JSON.stringify(safeScene));
         this._scheduleFlushChatPersistence();
     }
 
@@ -2417,7 +2725,7 @@ export class HoneyData {
             const comments = this._normalizeHoneyCommentObjects(live?.comments);
             const gifts = (Array.isArray(live?.gifts) ? live.gifts : [])
                 .map(item => this._sanitizeInlineText(item, 100))
-                .filter(Boolean)
+                .filter(line => this._isHoneyGiftRecordLine(line))
                 .slice(-8);
             const leaderboard = (Array.isArray(live?.leaderboard) ? live.leaderboard : [])
                 .map((item, idx) => {
@@ -2463,7 +2771,7 @@ export class HoneyData {
                     || (this._normalizeCollabValue(live?.collab || live?.collabUser || live?.collabName || '无') !== '无'
                         ? '联播已接通，互动正在持续推进。'
                         : '当前暂无联播剧情，直播主要通过弹幕滚动推进。'),
-                comments: comments.length > 0 ? comments : ['[粉丝]系统: 直播已开启，观众正在进入房间'],
+                comments: comments.length > 0 ? comments : [],
                 gifts,
                 audienceGiftTotals: {},
                 userGiftRank: null,
@@ -2523,7 +2831,7 @@ export class HoneyData {
             .split('\n')
             .map(line => line.replace(/^\s*(?:[-*•]+|\d{1,2}\s*[\.、])\s*/, '').trim())
             .map(line => this._sanitizeInlineText(line, 100))
-            .filter(line => line && /(?:打赏|送出|赠送|贡献|金币|金豆|[🌹🍆🍑💋🔗⛓️📿🪢🏎️🚀💎👑🍾])/u.test(line))
+            .filter(line => this._isHoneyGiftRecordLine(line))
             .slice(-8);
         const comments = String(commentsSection || '')
             .split('\n')
@@ -2564,7 +2872,7 @@ export class HoneyData {
                 || (collab !== '无'
                     ? '联播已接通，互动正在持续推进。'
                     : '当前暂无联播剧情，直播主要通过弹幕滚动推进。'),
-            comments: comments.length > 0 ? comments : ['[粉丝]系统: 直播已开启，观众正在进入房间'],
+            comments: comments.length > 0 ? comments : [],
             gifts,
             audienceGiftTotals: {},
             userGiftRank: null,
@@ -2592,6 +2900,9 @@ export class HoneyData {
         const safeUserMessageWithNick = this._formatLiveUserMessageForPrompt(safeUserMessage, profile.nickname);
         const historyTurns = this._normalizeContinuePromptTurns(options?.promptTurns);
         const mode = String(options?.requestMode || '').trim();
+        const isPrivateLive = String(options?.visibility || options?.currentScene?.visibility || '').trim() === 'private'
+            || options?.isPrivateLive === true
+            || options?.currentScene?.isPrivateLive === true;
         const currentFollowers = Math.max(0, Number.parseInt(String(profile.followers || 0), 10) || 0);
 
         const messages = [];
@@ -2740,6 +3051,9 @@ export class HoneyData {
         const safeUserMessage = this._sanitizeInlineText(options?.userMessage || '', 220);
         const safeUserMessageWithNick = this._formatLiveUserMessageForPrompt(safeUserMessage, honeyNickname);
         const historyTurns = this._normalizeContinuePromptTurns(options?.promptTurns);
+        const isPrivateLive = String(options?.visibility || options?.currentScene?.visibility || '').trim() === 'private'
+            || options?.isPrivateLive === true
+            || options?.currentScene?.isPrivateLive === true;
         const fallbackSystemPrompt = [
             '你是蜜语APP后台引擎。',
             '请严格输出<Honey>标签格式的数据。'
@@ -2763,7 +3077,7 @@ export class HoneyData {
         const wechatLinkedCharacterContext = isWechatLinkedHost
             ? this._buildWechatLinkedCharacterContext(safeHost)
             : '';
-        const wechatHistoryContext = mode === 'continue' && isWechatLinkedHost
+        const wechatHistoryContext = isWechatLinkedHost
             ? this.buildWechatHistoryContextForHoneyHost(safeHost, 24)
             : '';
         let instructionUserPrompt = '请根据蜜语APP提示词生成剧情。';
@@ -3071,7 +3385,7 @@ export class HoneyData {
             data.gifts = giftsSection
                 .split('\n')
                 .map(line => line.replace(/^\s*(?:[-*•]+|\d{1,2}\s*[\.、])\s*/, '').trim())
-                .filter(line => line && /(?:打赏|送出|赠送|贡献|金币|金豆|[🌹🍆🍑💋🔗⛓️📿🪢🏎️🚀💎👑🍾])/u.test(line));
+                .filter(line => this._isHoneyGiftRecordLine(line));
         }
 
         const commentHeaderPattern = /(?:^|\n)\s*(?:\[\s*评论区\s*\][^\n]*|评论区\s*[：:][^\n]*)(?:\n|$)/i;
@@ -3110,10 +3424,6 @@ export class HoneyData {
                 data.comments = comments;
             }
         }
-        if (!data.comments.length) {
-            data.comments = ['系统公告: 连线成功，剧情已刷新。'];
-        }
-
         const friendRequestSection = this._extractSectionByPatternPairs(liveSection, [
             { start: /(?:^|\n)\s*好友申请\s*[：:]\s*/i, end: null }
         ]);
@@ -3211,6 +3521,13 @@ export class HoneyData {
         const fallback = this._sanitizeInlineText(text, 180);
         if (!fallback) return '';
         return `${rankPrefix}匿名: ${fallback}`.trim();
+    }
+
+    _isHoneyGiftRecordLine(line) {
+        const text = String(line || '').trim();
+        if (!text) return false;
+        return /(?:送出|赠送|贡献|金币|金豆|[🌹🍆🍑💋🔗⛓️📿🪢🏎️🚀💎👑🍾])/u.test(text)
+            || /打赏[^\n]{0,20}\d/u.test(text);
     }
 
     _normalizeCollabValue(rawValue = '') {

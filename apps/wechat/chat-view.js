@@ -1486,19 +1486,18 @@ renderChatRoom(chat) {
 
             case 'honey_invite': {
                 const statusText = String(msg.honeyInviteStatus || msg.status || '').trim();
-                const displayStatus = statusText || (isMe ? '等待回应' : '等待接受');
+                const displayStatus = statusText || (isMe ? '等待回应' : '等待中...');
+                const statusClass = /拒绝/.test(displayStatus)
+                    ? 'is-rejected'
+                    : (/接受/.test(displayStatus) ? 'is-accepted' : 'is-waiting');
                 messageBody = `
-                <div class="message-honey-invite" style="background:linear-gradient(135deg,#ff5d9e,#ff9466); color:#fff; border-radius:8px; overflow:hidden; min-width:170px; max-width:220px; box-shadow:0 2px 8px rgba(255,93,158,0.22);">
-                    <div style="display:flex; align-items:center; gap:8px; padding:10px 12px;">
-                        <div style="width:30px; height:30px; border-radius:10px; background:rgba(255,255,255,0.22); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-                            <i class="fa-solid fa-heart" style="font-size:14px;"></i>
-                        </div>
-                        <div style="min-width:0;">
-                            <div style="font-size:14px; font-weight:700; line-height:1.25;">蜜语邀约</div>
-                            <div style="font-size:11px; opacity:.86; margin-top:2px;">${this._escapeHtml(displayStatus)}</div>
-                        </div>
+                <div class="message-honey-invite ${statusClass}">
+                    <div class="message-honey-invite-head">
+                        <span class="message-honey-invite-title">蜜语邀约</span>
+                        <span class="message-honey-invite-badge">${isMe ? '已发送' : '微信好友'}</span>
                     </div>
-                    <div style="height:24px; line-height:24px; padding:0 10px; background:rgba(255,255,255,0.18); font-size:11px; opacity:.9;">成人私密直播间</div>
+                    <div class="message-honey-invite-sub">直播间</div>
+                    <div class="message-honey-invite-foot">${this._escapeHtml(displayStatus)}</div>
                 </div>
             `;
                 break;
@@ -2784,7 +2783,7 @@ renderChatRoom(chat) {
 
         const honeyMatch = String(content || '').trim().match(/^[［\[]\s*蜜语\s*[］\]]\s*(?:[（(]\s*([^）)]*)\s*[）)])?\s*$/i);
         if (honeyMatch) {
-            const status = String(honeyMatch[1] || '等待接受').trim() || '等待接受';
+            const status = String(honeyMatch[1] || '等待中...').trim() || '等待中...';
             return {
                 type: 'honey_invite',
                 honeyInviteStatus: status,
@@ -3032,7 +3031,7 @@ renderChatRoom(chat) {
         const honeyApp = await this._ensureHoneyAppReady();
         const host = honeyApp.honeyData?.ensureFollowedHostFromWechat?.(safeName, {
             title: `${safeName} 的直播间`,
-            intro: '微信好友主动接受了用户的蜜语邀约。'
+            intro: '微信好友接受了用户发起的蜜语邀约。'
         });
         this.app.wechatData.recordHoneyInviteDecision?.(safeName, 'accepted', { message: '用户主动发起，AI接受' });
         if (chatId) this.app.wechatData.setHoneyHistoryInjectionForChat?.(chatId, true);
@@ -3041,10 +3040,102 @@ renderChatRoom(chat) {
             window.VirtualPhone?.honeyApp?.openFollowedHostLive?.(host?.name || safeName, {
                 autoGenerateIfMissing: false,
                 title: `${safeName} 的直播间`,
-                intro: '微信好友主动接受了用户的蜜语邀约。'
+                intro: '微信好友接受了你发起的蜜语邀约。',
+                inviteSource: 'user_request'
             });
         }, 180);
         return true;
+    }
+
+    _isHoneyInviteWaitingStatus(status = '') {
+        return /等待|请求|邀约中|pending|wait/i.test(String(status || '').trim());
+    }
+
+    _refreshChatMessagesIfVisible(chatId = '') {
+        const safeChatId = String(chatId || '').trim();
+        if (!safeChatId || String(this.app.currentChat?.id || '').trim() !== safeChatId) return;
+        const messagesDiv = document.getElementById('chat-messages');
+        if (!messagesDiv) return;
+        const messages = this.app.wechatData.getMessages(safeChatId) || [];
+        const userInfo = this.app.wechatData.getUserInfo();
+        this.smartUpdateMessages(messages, userInfo);
+    }
+
+    _updateHoneyInviteMessageStatus(chatId = '', messageId = '', status = '') {
+        const safeChatId = String(chatId || '').trim();
+        const safeMessageId = String(messageId || '').trim();
+        const safeStatus = String(status || '').trim();
+        if (!safeChatId || !safeStatus) return null;
+
+        let targetId = safeMessageId;
+        if (!targetId) {
+            const messages = this.app.wechatData.getMessages(safeChatId) || [];
+            const lastInvite = [...messages].reverse().find(msg => msg?.type === 'honey_invite');
+            targetId = String(lastInvite?.id || '').trim();
+        }
+        if (!targetId) return null;
+
+        const updated = this.app.wechatData.updateMessageById?.(safeChatId, targetId, {
+            honeyInviteStatus: safeStatus,
+            content: `[蜜语]（${safeStatus}）`
+        });
+        this._refreshChatMessagesIfVisible(safeChatId);
+        return updated;
+    }
+
+    _showHoneyInvitePopup({ contactName = '', chatId = '', messageId = '', message = '' } = {}) {
+        const safeContactName = String(contactName || '').trim();
+        if (!safeContactName) return;
+        const fingerprint = `${chatId || ''}:${messageId || ''}:${safeContactName}`;
+        const old = document.getElementById('st-phone-honey-invite-modal');
+        if (old?.dataset?.fingerprint === fingerprint) return;
+        old?.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'st-phone-honey-invite-modal';
+        overlay.className = 'st-phone-honey-invite-modal honey-live-collab-modal';
+        overlay.dataset.fingerprint = fingerprint;
+        overlay.innerHTML = `
+            <button class="st-phone-honey-invite-backdrop honey-live-collab-modal-backdrop" type="button" data-action="dismiss" aria-label="关闭蜜语邀约"></button>
+            <div class="st-phone-honey-invite-panel honey-live-collab-modal-panel" role="dialog" aria-modal="true" aria-label="蜜语邀约">
+                <div class="honey-live-collab-modal-head">
+                    <div class="honey-live-collab-modal-title">蜜语邀请</div>
+                    <button class="honey-live-collab-modal-close" type="button" data-action="dismiss" aria-label="关闭蜜语邀约">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <div class="st-phone-honey-invite-text">${this._escapeHtml(safeContactName)} 邀请你进入蜜语直播间。</div>
+                <div class="st-phone-honey-invite-actions">
+                    <button class="st-phone-honey-invite-action is-reject" type="button" data-action="reject">拒绝</button>
+                    <button class="st-phone-honey-invite-action is-accept" type="button" data-action="accept">接受</button>
+                </div>
+            </div>
+        `;
+
+        const host = document.querySelector('.phone-view-current .wechat-app')
+            || document.querySelector('.phone-view-current')
+            || document.getElementById('phone-panel')
+            || document.body;
+        host.appendChild(overlay);
+
+        const close = () => overlay.remove();
+        overlay.querySelectorAll('[data-action="dismiss"]').forEach(el => {
+            el.addEventListener('click', close);
+        });
+        overlay.querySelector('.st-phone-honey-invite-action[data-action="reject"]')?.addEventListener('click', () => {
+            close();
+            this._updateHoneyInviteMessageStatus(chatId, messageId, '已拒绝');
+            this.app.wechatData.recordHoneyInviteDecision?.(safeContactName, 'rejected', { message: message || '用户拒绝' });
+            this.app.phoneShell?.showNotification?.('蜜语邀约', '已拒绝，对方会在下轮知道结果', '💔');
+        });
+        overlay.querySelector('.st-phone-honey-invite-action[data-action="accept"]')?.addEventListener('click', () => {
+            close();
+            this._updateHoneyInviteMessageStatus(chatId, messageId, '已接受');
+            this._openHoneyFromWechatContact(safeContactName, chatId).catch((err) => {
+                console.error('打开蜜语失败:', err);
+                this.app.phoneShell?.showNotification('蜜语', '打开蜜语失败：' + (err?.message || err), '⚠️');
+            });
+        });
     }
 
     _handleHoneyInviteResponse(special, { senderName = '', chatId = '' } = {}) {
@@ -3052,11 +3143,20 @@ renderChatRoom(chat) {
         const status = String(special.honeyInviteStatus || '').trim();
         const targetName = String(senderName || this.app.currentChat?.name || '').trim();
         if (!targetName) return;
+        if (this._isHoneyInviteWaitingStatus(status)) {
+            this._showHoneyInvitePopup({
+                contactName: targetName,
+                chatId,
+                messageId: special.id || special.messageId || '',
+                message: status || '等待中...'
+            });
+            return;
+        }
         if (/拒绝|不接受|decline|reject/i.test(status)) {
             this.app.wechatData.recordHoneyInviteDecision?.(targetName, 'rejected', { message: status || '拒绝' });
             return;
         }
-        if (/接受|同意|接收|accept|yes|ok/i.test(status)) {
+        if (/^(?:接受|同意|接收|accept|yes|ok)$/i.test(status)) {
             this._openHoneyFromWechatContact(targetName, chatId).catch((err) => {
                 console.error('打开蜜语失败:', err);
                 this.app.phoneShell?.showNotification('蜜语', '打开蜜语失败：' + (err?.message || err), '⚠️');
@@ -4014,9 +4114,9 @@ renderChatRoom(chat) {
 
         const text = input.value.trim();
 
-        // 🔥 组词保护：打开表情面板时，空输入不触发“催更/重试/空提示”逻辑
+        // 🔥 组词保护：打开表情或 + 号面板时，空输入不触发“催更/重试/空提示”逻辑
         // 等用户关闭面板后，再按原有规则检查输入内容
-        if (!text && this.showEmoji) {
+        if (!text && (this.showEmoji || this.showMore)) {
             return;
         }
 
@@ -4611,7 +4711,12 @@ renderChatRoom(chat) {
                     }
                     this.app.wechatData.addMessage(bgChat.id, msgData);
                     if (special?.type === 'honey_invite') {
-                        this._handleHoneyInviteResponse(special, { senderName: targetName || m.sender, chatId: bgChat.id });
+                        const latestMessages = this.app.wechatData.getMessages(bgChat.id) || [];
+                        const latestMsg = latestMessages[latestMessages.length - 1] || {};
+                        this._handleHoneyInviteResponse(
+                            { ...special, messageId: latestMsg.id || special.messageId || '' },
+                            { senderName: targetName || m.sender, chatId: bgChat.id }
+                        );
                     }
                     bgAddedCount++;
                     if (special?.type === 'weibo_card' && special.weiboData) {
@@ -4718,7 +4823,12 @@ renderChatRoom(chat) {
                 if (special?.type === 'redpacket') msgData.id = `rp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
                 this.app.wechatData.addMessage(savedChatId, msgData);
                 if (special?.type === 'honey_invite') {
-                    this._handleHoneyInviteResponse(special, { senderName: msg.sender || savedChatName, chatId: savedChatId });
+                    const latestMessages = this.app.wechatData.getMessages(savedChatId) || [];
+                    const latestMsg = latestMessages[latestMessages.length - 1] || {};
+                    this._handleHoneyInviteResponse(
+                        { ...special, messageId: latestMsg.id || special.messageId || '' },
+                        { senderName: msg.sender || savedChatName, chatId: savedChatId }
+                    );
                 }
                 if (special?.type === 'weibo_card' && special.weiboData) {
                     this.syncWeiboNewsToWeiboApp(special.weiboData, msg.sender);
@@ -5091,8 +5201,11 @@ renderChatRoom(chat) {
                 if (currentContact.relation) {
                     contactNotes.push(`关系：${currentContact.relation}`);
                 }
-                if (currentContact.sourceApp === 'honey' || currentContact.sourceLabel === '蜜语') {
+                if (currentContact.sourceApp === 'honey' || currentContact.sourceLabel === '蜜语' || currentContact.sourceLabel === '主播') {
                     contactNotes.push(`来源应用：蜜语`);
+                    if (currentContact.sourceLabel === '主播' || String(currentContact.relation || '').includes('主播')) {
+                        contactNotes.push(`来源身份：主播`);
+                    }
                 }
                 if (currentContact.honeySource) {
                     contactNotes.push(`认识场景：${currentContact.honeySource}`);

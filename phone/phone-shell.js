@@ -244,6 +244,7 @@ export class PhoneShell {
                 '.honey-live-gifts', '.honey-live-gifts-list', '.honey-live-bottom',
                 '.mofo-app', '.mofo-list-col', '.mofo-detail-col',
                 '.mofo-editor-overlay', '.mofo-editor-panel', '.mofo-editor-body',
+                '.games-app', '.games-lobby-content', '.games-log',
                 '#phone-inline-reply-menu-pop', '.inline-reply-tabbar', '.inline-reply-page',
                 '#mofo-list-wrap', '#mofo-preview-wrap'
             ];

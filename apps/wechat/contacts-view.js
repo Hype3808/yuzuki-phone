@@ -101,19 +101,22 @@ export class ContactsView {
                         ${Object.keys(grouped).sort().map(letter => `
                             <div class="contacts-group">
                                 <div class="group-letter">${letter}</div>
-                                ${grouped[letter].map(contact => `
+                                ${grouped[letter].map(contact => {
+                                    const isHoneyContact = contact.sourceApp === 'honey' || contact.sourceLabel === '蜜语' || contact.sourceLabel === '主播';
+                                    const honeyLabel = contact.sourceLabel === '主播' || String(contact.relation || '').includes('主播') ? '主播' : '蜜语';
+                                    return `
                                     <div class="contact-item" data-contact-id="${contact.id}">
                                         <div class="contact-avatar">
                                             ${this.app.renderAvatar(contact.avatar, '👤', contact.name)}
                                         </div>
                                         <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex:1; min-width:0;">
                                             <div class="contact-name" style="min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${contact.name}</div>
-                                            ${contact.sourceApp === 'honey' || contact.sourceLabel === '蜜语'
-                                                ? '<span style="flex-shrink:0; display:inline-flex; align-items:center; gap:4px; padding:2px 6px; margin-right:16px; border-radius:999px; background:rgba(255,105,180,0.14); color:#ff5fa2; font-size:10px; line-height:1; border:1px solid rgba(255,105,180,0.24);"><i class="fa-solid fa-heart" style="font-size:9px;"></i>蜜语</span>'
+                                            ${isHoneyContact
+                                                ? `<span style="flex-shrink:0; display:inline-flex; align-items:center; gap:4px; padding:2px 6px; margin-right:16px; border-radius:999px; background:rgba(255,105,180,0.14); color:#ff5fa2; font-size:10px; line-height:1; border:1px solid rgba(255,105,180,0.24);"><i class="fa-solid fa-heart" style="font-size:9px;"></i>${honeyLabel}</span>`
                                                 : ''}
                                         </div>
                                     </div>
-                                `).join('')}
+                                `;}).join('')}
                             </div>
                         `).join('')}
                     </div>

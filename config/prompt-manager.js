@@ -35,114 +35,27 @@ export class PromptManager {
             try {
                 const parsed = JSON.parse(saved);
 
-                // 🔥 使用标志位记录是否有更新
-                let isUpdated = false;
-
                 // 深度合并默认配置，确保新增的字段不会丢失
                 for (const app in defaults) {
                     if (!parsed[app]) {
                         parsed[app] = defaults[app];
-                        isUpdated = true;
                     } else if (typeof defaults[app] === 'object' && defaults[app] !== null) {
                         // 深度合并：检查子级属性
                         for (const feature in defaults[app]) {
                             if (parsed[app][feature] === undefined) {
                                 parsed[app][feature] = defaults[app][feature];
-                                isUpdated = true;
                             }
                         }
                     }
                 }
 
-                // 兼容修复：历史乱码导致 honey 礼物 emoji 退化为 ?? 时自动替换
-                const honeyContent = parsed?.honey?.live?.content;
-                if (typeof honeyContent === 'string') {
-                    const repaired = this._repairHoneyPromptEncoding(honeyContent);
-                    if (repaired !== honeyContent) {
-                        parsed.honey.live.content = repaired;
-                        isUpdated = true;
-                    }
-                    const upgraded = this._upgradeHoneyLivePromptContent(parsed.honey.live.content);
-                    if (upgraded !== parsed.honey.live.content) {
-                        parsed.honey.live.content = upgraded;
-                        isUpdated = true;
-                    }
-                }
-                const honeyUserLiveContent = parsed?.honey?.userLive?.content;
-                if (typeof honeyUserLiveContent === 'string') {
-                    const upgraded = this._upgradeHoneyUserLivePromptContent(honeyUserLiveContent);
-                    if (upgraded !== honeyUserLiveContent) {
-                        parsed.honey.userLive.content = upgraded;
-                        isUpdated = true;
-                    }
-                }
-
-                // 强制同步：微博互动类提示词目前没有可编辑入口，始终以代码默认值为准
+                // 微博互动类提示词目前没有可编辑入口，运行时始终以代码默认值为准
                 if (!parsed.weibo) parsed.weibo = {};
                 if (JSON.stringify(parsed.weibo.interaction) !== JSON.stringify(defaults.weibo.interaction)) {
                     parsed.weibo.interaction = { ...defaults.weibo.interaction };
-                    isUpdated = true;
                 }
                 if (JSON.stringify(parsed.weibo.commentInteraction) !== JSON.stringify(defaults.weibo.commentInteraction)) {
                     parsed.weibo.commentInteraction = { ...defaults.weibo.commentInteraction };
-                    isUpdated = true;
-                }
-
-                const wechatOnlineContent = parsed?.wechat?.online?.content;
-                if (typeof wechatOnlineContent === 'string') {
-                    const upgraded = this._upgradeCallSocialReactionPromptContent(this._upgradeWechatOnlinePromptContent(wechatOnlineContent));
-                    if (upgraded !== wechatOnlineContent) {
-                        parsed.wechat.online.content = upgraded;
-                        isUpdated = true;
-                    }
-                }
-                const wechatOfflineContent = parsed?.wechat?.offline?.content;
-                if (typeof wechatOfflineContent === 'string') {
-                    const upgraded = this._upgradeCallSocialReactionPromptContent(this._upgradeWechatOfflinePromptContent(wechatOfflineContent));
-                    if (upgraded !== wechatOfflineContent) {
-                        parsed.wechat.offline.content = upgraded;
-                        isUpdated = true;
-                    }
-                }
-                const wechatGroupChatContent = parsed?.wechat?.groupChat?.content;
-                if (typeof wechatGroupChatContent === 'string') {
-                    const upgraded = this._upgradeCallSocialReactionPromptContent(this._upgradeWechatGroupChatPromptContent(wechatGroupChatContent));
-                    if (upgraded !== wechatGroupChatContent) {
-                        parsed.wechat.groupChat.content = upgraded;
-                        isUpdated = true;
-                    }
-                }
-                ['voiceCall', 'videoCall', 'groupVoiceCall', 'groupVideoCall'].forEach((feature) => {
-                    const callContent = parsed?.wechat?.[feature]?.content;
-                    if (typeof callContent !== 'string') return;
-                    const upgraded = this._upgradeCallSocialReactionPromptContent(callContent);
-                    if (upgraded !== callContent) {
-                        parsed.wechat[feature].content = upgraded;
-                        isUpdated = true;
-                    }
-                });
-                const phoneCallContent = parsed?.phone?.call?.content;
-                if (typeof phoneCallContent === 'string') {
-                    const upgraded = this._upgradeCallSocialReactionPromptContent(phoneCallContent);
-                    if (upgraded !== phoneCallContent) {
-                        parsed.phone.call.content = upgraded;
-                        isUpdated = true;
-                    }
-                }
-                ['recommend', 'hotSearch'].forEach((feature) => {
-                    const weiboContent = parsed?.weibo?.[feature]?.content;
-                    if (typeof weiboContent !== 'string') return;
-                    const upgraded = this._upgradeWeiboPublicBoundaryPromptContent(this._upgradeWeiboImagePromptContent(weiboContent));
-                    if (upgraded !== weiboContent) {
-                        parsed.weibo[feature].content = upgraded;
-                        isUpdated = true;
-                    }
-                });
-
-                // 🔥 修复：如果有更新，直接使用 storage.set 保存，而不是调用 savePrompts
-                // 因为此时 this.prompts 还未赋值
-                if (isUpdated) {
-                    this.storage.set('phone-prompts', JSON.stringify(parsed), true);
                 }
 
                 return parsed;
@@ -158,394 +71,6 @@ export class PromptManager {
         return defaults;
     }
 
-    _repairHoneyPromptEncoding(content) {
-        let text = String(content || '');
-        const giftPriceLine = '- 收益功能：打赏（🌹=1金币, 🍆=5金币, 🍑=5金币, 💋=10金币, 🔗=188金币, ⛓️=288金币, 📿=388金币, 🪢=666金币, 🏎️=520金币, 🚀=100金币, 💎=1000金币, 👑=10000金币, 🍾=88888金币）。打赏区动态滚动实时生成。';
-
-        text = text.replace(/用户A:xx打赏了\?\?×数量/g, '用户A:xx打赏了[礼物emoji]×数量');
-        text = text.replace(/用户B:xx打赏了\?\?×数量\)/g, '用户B:xx打赏了[礼物emoji]×数量)');
-        text = text.replace(/- 收益功能：打赏（\?\?=1金币, \?\?=5金币, \?\?=5金币, \?\?=10金币, \?\?=520金币, \?\?=100金币, \?\?=1000金币, \?\?=10000金币, \?\?=88888金币）。打赏区动态滚动实时生成。/g, giftPriceLine);
-
-        return text;
-    }
-
-    _getHoneyNaiPromptRules() {
-        return `- 仅为“当前激情直播”生成一条画面用 NovelAI 英文 tag，必须填在当前直播结构里的：画面：[NAI英文tag提示词: ...]。热门推荐、评论区、好友申请都不要生成画面 tag。
-- 严禁输出 <image>、image###、<imgthink>、解释文字、中文或自然语言句子；括号内只能是英文逗号分隔 tag。
-- AI 原始画面 tag 禁止写 masterpiece、best quality、very aesthetic、highres、sharp focus、cinematic lighting、detailed anime illustration 等通用质量/画风词；画风与质量词由用户在生图设置的固定前置/后置提示词里自行配置。也不要写 specific pose、specific outfit、specific background props、mood tags 这类占位词。
-- tag 必须从直播剧情中截取最值得画的一帧，先判断画面类型：solo performance / close-up / pov / interaction / collab scene。只画当前这一帧，不要把整段剧情流水账都塞进 tag。
-- tag 推荐顺序：rating:explicit 或 nsfw -> 人数与主体关系 -> 构图距离(cowboy shot / upper body / close-up / full body / pov) -> 角度(from front / from side / from behind / from above / from below) -> 主体锚点(male focus/female focus, 1boy/1girl/2boys/2girls) -> 外貌特征 -> 表情 -> 身体状态 -> 具体动作 -> 服装状态 -> 直播场景道具 -> 光影氛围。
-- 蜜语不限制最多两人。根据直播剧情可生成单人、双人、三人或多人画面；但必须明确主视觉焦点。多人画面优先细写 1-2 个核心主体，其余人物只用 faceless viewers、audience silhouettes、blurred figures、partial body 这类弱化背景 tag 概括，禁止使用 extra hands、extra arms、extra limbs 这类会诱发畸形的正面 tag。
-- 双人或多人画面建议使用 BREAK 隔开核心主体描述块。每个核心主体块开头必须有锚点：male focus, 1boy 或 female focus, 1girl；多人背景块可用 background audience / faceless viewers / silhouettes / blurred figures 等概括。同性别多个核心主体必须给出非外貌区分 tag，如 taller / shorter / glasses / lean build / athletic build / scar on cheek。
-- 动作 tag 必须直接写成 NAI 能识别的普通英文 tag，不要写 source#、target#、self# 这类标记。例如写 touching face、blushing、hands tied behind back，不要写 source#touching face。
-- 成人直播画面必须写出剧情中真实可见的成人身体状态或成人动作，不能只写 shirtless、abs、chest muscles、crotch area visible、one hand under desk 这种擦边或含糊 tag。若剧情中已经出现裸露、自慰、性器官或性行为，必须在 AI 原始画面 tag 里明确写出对应可绘制 tag，例如：penis、erection、pussy、nude、male masturbation、female masturbation、handjob、fellatio、sex、spread legs、cum、saliva trail。需要下半身或全身时使用 cowboy shot / full body / legs visible，避免 upper body close-up 裁掉关键画面。
-- 服装必须写状态，不只写衣服名：open shirt、shirt lift、towel slipping、messy clothes、wet clothes、half undressed、underwear only 等。环境必须包含直播属性：phone on tripod、comments overlay、webcam view、smartphone screen、bedroom/gym/bathroom 等；不要只写 live streaming room 或 screen glow。
-- 可以用 {{tag}} 或 {{{tag}}} 加权最核心的动作、表情、构图或身体状态，但不要整串都加权。tag 数量不设上限，按画面复杂度充分展开，越具体越好；但必须围绕同一帧可见内容，不要堆无关画风词或把剧情流水账塞进去。
-- 必须避开 underage、child、teen、loli、shota、minor、school uniform、student 等未成年或校园暗示 tag；角色年龄感必须是 adult character。`;
-    }
-
-    _upgradeHoneyLivePromptContent(content) {
-        let text = String(content || '');
-        if (!text) return text;
-        const honeyNaiRules = this._getHoneyNaiPromptRules();
-
-        text = text.replace(
-            /画面：\[NAI提示词: masterpiece, best quality, very aesthetic, highres, detailed anime illustration, adult character, 1girl\/1boy, live streaming room, portrait composition, clear face, expressive eyes, detailed hair, detailed skin shading, detailed hands, specific pose, specific outfit state, specific background props, cinematic lighting, depth of field, sharp focus, mood tags, scene-specific adult tags\.\.\.\]/g,
-            '画面：[NAI提示词: rating:explicit, nsfw, adult character, 1boy, male focus, cowboy shot, from front, looking at viewer, intense gaze, short black hair, sweat drops on face, muscular body, detailed hands, one hand on waistband, loose towel slipping, nude chest, exposed lower body, visible genitals, bedroom live stream, phone on tripod, comments overlay, warm lamp light, night, intimate atmosphere]'
-        );
-
-        text = text.replace(
-            /- NAI 提示词必须足够具体，禁止只写 nsfw\/live streaming\/specific pose 这类占位词。必须包含：质量词、主体人数与性别、角色年龄感必须为 adult、脸部\/眼睛\/头发\/手部细节、服装状态、明确姿势、镜头距离、背景地点、光影、画面氛围、构图、直播间道具、剧情主题标签。\n- NAI 提示词建议 45-90 个英文 tag，使用逗号分隔，不要写中文，不要写完整句子，不要输出解释。必须避开 underage、child、teen、loli、shota、minor 等未成年相关 tag。\n- 如果需要女性向成人主题，可以加入合适的题材 tag，如 dominant male, muscular male, adult woman, bedroom, live streaming, teasing expression, wet skin, messy clothes, cinematic lighting 等，但要让场景、人物和动作都能被画出来。/g,
-            `- NAI 画面提示词必须以可见画面细节为主体，不要把重点写成画风评价。AI 原始画面 tag 禁止写 masterpiece、best quality、very aesthetic、highres、sharp focus、cinematic lighting、detailed anime illustration 等通用质量/画风词；画风与质量词由用户在生图设置的固定前置/后置提示词里自行配置。
-- NAI 提示词必须足够具体，禁止只写 nsfw/live streaming/specific pose/specific outfit/mood tags 这类占位词。必须包含：rating:explicit 或 nsfw、adult character、主体人数与性别、镜头距离、构图角度、角色焦点、脸部/眼睛/头发/手部细节、具体表情、可见动作、服装状态、背景地点、直播设备或屏幕光、光影、画面氛围。
-- 当前激情直播是成人内容时，NAI tag 必须写出与直播剧情一致的成人可见部位或成人动作；不要只写 shirtless、abs、chest muscles 这种普通擦边胸像。需要下半身或全身内容时，使用 cowboy shot/full body/legs visible 等构图，避免 upper body close-up 裁掉关键画面。
-- NAI tag 推荐顺序：adult/rating 与人数关系 -> 构图/镜头/角度 -> 核心主体锚点与外貌 -> 表情/动作/姿势 -> 服装状态 -> 场景道具 -> 光影氛围。蜜语不限制最多两人；多人画面要明确主视觉焦点，并用 BREAK 隔开核心主体，背景人群可用 faceless viewers / audience silhouettes / blurred figures 概括，禁止把 extra hands、extra arms、extra limbs 写进正面提示词。
-- NAI 提示词不限制 tag 数量，按画面复杂度充分展开，越具体越好；使用逗号分隔，不要写中文，不要写完整句子，不要输出解释。至少 70% 的 tag 必须是能被画出来的具体画面元素，且必须围绕同一帧可见内容，避免堆无关画风词或剧情流水账。必须避开 underage、child、teen、loli、shota、minor 等未成年相关 tag。`
-        );
-
-        if (!text.includes('NAI 画面提示词必须以可见画面细节为主体')) {
-            text = `${text}
-
-【NAI 画面提示词强化规则】
-- NAI 画面提示词必须以可见画面细节为主体，不要把重点写成画风评价。AI 原始画面 tag 禁止写 masterpiece、best quality、very aesthetic、highres、sharp focus、cinematic lighting、detailed anime illustration 等通用质量/画风词；画风与质量词由用户在生图设置的固定前置/后置提示词里自行配置。
-- NAI tag 推荐顺序：adult/rating 与人数 -> 构图/镜头/角度 -> 角色锚点与外貌 -> 表情/动作/姿势 -> 服装状态 -> 场景道具 -> 光影氛围。
-- 当前激情直播是成人内容时，NAI tag 必须写出与直播剧情一致的成人可见部位或成人动作；不要只写 shirtless、abs、chest muscles 这种普通擦边胸像。需要下半身或全身内容时，使用 cowboy shot/full body/legs visible 等构图，避免 upper body close-up 裁掉关键画面。
-- 禁止输出 specific pose、specific outfit、specific background props、mood tags 这类占位词；必须换成当前直播画面里真实可见的具体 tag。
-- 蜜语不限制最多两人；多人画面要明确主视觉焦点，并用 BREAK 隔开核心主体，背景人群可用 faceless viewers / audience silhouettes / blurred figures 概括，禁止把 extra hands、extra arms、extra limbs 写进正面提示词。`;
-        }
-
-        text = text
-            .replace(/质量\/画风词最多 4-6 个，且只能放在开头；后续主要写人物、动作、镜头、服装、环境和光影。/g, 'AI 原始画面 tag 禁止写 masterpiece、best quality、very aesthetic、highres、sharp focus、cinematic lighting、detailed anime illustration 等通用质量/画风词；画风与质量词由用户在生图设置的固定前置/后置提示词里自行配置。')
-            .replace(/少量质量词 -> /g, '');
-
-        const naiRuleSection = text.match(/【二、画面Novel AI 英文提示词生成规则】([\s\S]*?)(?=\n\n【二、直播推荐与平台生态】)/);
-        const naiRuleBody = String(naiRuleSection?.[1] || '').trim();
-        if (/【二、画面Novel AI 英文提示词生成规则】/.test(text)
-            && (!naiRuleBody || naiRuleBody === '${this._getHoneyNaiPromptRules()}')) {
-            text = text.replace(
-                /【二、画面Novel AI 英文提示词生成规则】[\s\S]*?(?=\n\n【二、直播推荐与平台生态】)/,
-                `【二、画面Novel AI 英文提示词生成规则】\n${honeyNaiRules}`
-            );
-        }
-
-        if (!text.includes('评论区评论必须露骨、直白、淫欲、下流')) {
-            text = `${text}
-
-【补充强化规则】
-- 评论区评论必须露骨、直白、淫欲、下流，直接表达欲望、嫉妒、占有欲、下流起哄或性暗示，禁止写成分析、感想、夸夸群或含蓄点评。`;
-        }
-
-        if (!text.includes('直播剧情描写一旦输出，必须不少于三个自然段')) {
-            text = `${text}
-- 直播剧情描写一旦输出，必须不少于三个自然段，并持续描写画面、动作、反应、欲望变化，禁止只写一句总结或概括。`;
-        }
-
-        if (!text.includes('评论区话题必须持续扩展')) {
-            text = `${text}
-- 评论区话题必须持续扩展，不能总围绕前几轮已经说过的动作、羞辱、吃醋、催更或同一性暗示反复打转；应灵活覆盖身体细节、表情、声音、气氛、礼物反应、占有欲、比较欲、联播关系、围观起哄等不同角度。`;
-        }
-
-        if (!text.includes('榜单和用户打赏必须以系统记录为准')) {
-            text = `${text}
-- 榜单和用户打赏必须以系统记录为准：严禁把用户昵称写入“榜单”或“打赏记录”，除非当前上下文明确提供了“用户打赏记录”。用户没有实际送礼时，用户不得成为榜一、榜二、榜三，也不得被主播当作已打赏用户对待。`;
-        }
-
-        if (!text.includes('好友申请')) {
-            text = `${text}
-- 如你判断当前主播在本轮对用户产生了继续私下接触的兴趣，可额外输出“好友申请”区块，格式为：好友申请：\n主播昵称：申请好友的话术｜隐藏背景：主播是在这场直播里为什么开始注意用户、对用户现在的印象、后续私聊时想怎么试探靠近。`;
-        }
-
-        return text;
-    }
-
-    _upgradeHoneyUserLivePromptContent(content) {
-        let text = String(content || '');
-        if (!text) return text;
-
-        if (!/(?:^|\n)画面：\[NAI英文tag提示词:/i.test(text)) {
-            text = text.replace(
-                /(联播：无\/联播对象昵称\s*\n)/,
-                '$1画面：[NAI英文tag提示词: ]\n'
-            );
-            if (!/(?:^|\n)画面：\[NAI英文tag提示词:/i.test(text)) {
-                text = text.replace(
-                    /(粉丝数：\s*\n)/,
-                    '$1画面：[NAI英文tag提示词: ]\n'
-                );
-            }
-        }
-
-        if (!text.includes('用户开播画面 NovelAI 英文提示词规则')) {
-            text = `${text}
-
-【用户开播画面 NovelAI 英文提示词规则】
-- 每轮输出都必须根据用户直播间当前最新画面，填写一行：画面：[NAI英文tag提示词: ...]，用于支持当前剧情生成新图片。
-- 画面 tag 只能写英文逗号分隔 tag，不要写中文、解释文字、<image>、image### 或自然语言句子。
-- tag 必须从当前直播画面截取最值得画的一帧，只写这一帧真实可见的人物、动作、表情、服装状态、联播互动、直播设备、背景和氛围。
-- 成人直播画面必须写出剧情中真实可见的成人身体状态或成人动作。若出现裸露、自慰、性器官或性行为，必须明确写出对应可绘制 tag，例如：penis、erection、pussy、nude、male masturbation、female masturbation、handjob、fellatio、sex、spread legs、cum、saliva trail。
-- 需要下半身或全身时使用 cowboy shot / full body / legs visible，避免 upper body close-up 裁掉关键画面。必须避开 underage、child、teen、loli、shota、minor、school uniform、student 等未成年或校园暗示 tag。`;
-        }
-
-        if (!/联播请求：|其他直播间请求联播：/.test(text)) {
-            text = `${text}
-
-- 当你判断现在适合给用户一个“待选择”的联播通知时，可额外输出 0-3 条联播通知标签，并单独占行。支持两种格式：
-  [联播请求：网友昵称｜榜单第N / 未上榜]
-  [其他直播间请求联播：主播昵称｜主播类型]
-- 这些标签表示“待处理联播申请”，系统会弹窗给用户选择，你不要直接替用户同意。
-- 若当前已经有联播对象，除非原联播结束，否则不要继续刷新的联播申请标签。`;
-        }
-
-        if (!text.includes('评论区评论必须露骨、直白、淫欲')) {
-            text = `${text}
-- 评论区评论必须露骨、直白、淫欲，优先写成想睡你、想狠狠干你、想看你继续怎么被弄、嫉妒联播对象之类的下流弹幕，禁止写成委婉分析、普通夸奖或旁观总结。`;
-        }
-
-        if (!text.includes('直播实况一旦输出，必须不少于三个自然段')) {
-            text = `${text}
-- 直播实况一旦输出，必须不少于三个自然段，且每段都要有实时画面推进、动作变化、人物欲望或评论区反应，不能只写一句概括。`;
-        }
-
-        if (!text.includes('评论区话题必须持续扩展')) {
-            text = `${text}
-- 评论区话题必须持续扩展，不能总围绕前几轮已经说过的几个旧话题来回重复；应不断切换到身体细节、声音、语气、礼物刺激、围观起哄、占有欲、嫉妒、联播张力、对下一步的露骨要求等不同角度。`;
-        }
-
-        if (!text.includes('互动记录')) {
-            text = `${text}
-- 如本轮里某个观众、申请好友对象、已通过好友、联播对象与用户发生了值得后续微信继承的互动，可在“互动记录”里按“[昵称]：互动简要”输出 0-5 条。
-- 互动记录必须是累计后的精简摘要，突出你们在直播里发生过什么、对方现在怎么看用户、后续聊天可延续什么张力；禁止每轮把整场直播流水账重写一遍。
-- 互动记录只写未来可能继续出现的人，禁止把纯路人弹幕群众全部塞进去。`;
-        }
-
-        return text;
-    }
-
-    _upgradeWechatOnlinePromptContent(content) {
-        let text = String(content || '');
-        if (!text) return text;
-        const wechatImagePromptRule = '💡 图片描述规则：当你要发送图片时，必须使用 [图片]（English NovelAI tags） 格式。括号内只能写英文逗号分隔的 NAI 生图 tag，不要写中文、解释或完整句子；必须描述可见画面细节，如 subject count, gender, adult character, anime illustration, pose, expression, clothing, setting, camera angle, lighting。若内容涉及人物或拟人对象，必须用 1girl/1boy/2girls/2boys、female focus/male focus 等英文 tag 明确主体。';
-        const wechatSingleDirectionRule = `【单聊方向锁定】
-- 当前微信窗口的聊天对象永远是 {{chatName}}，不是 {{user}}。
-- {{user}} 只代表手机主人/玩家/用户本人，绝对不能作为聊天对象、联系人、窗口名或回复发送者。
-- 单聊模式下你只能代替 {{chatName}} 给 {{user}} 发送新增微信消息。
-- 即使角色卡主角、酒馆 assistant、正文叙事视角不是 {{chatName}}，在当前微信单聊里也必须以 {{chatName}} 的身份和口吻回复；角色卡和正文只作为世界观、关系、事件背景参考。
-- 输出区块必须是 ---{{chatName}}---，发送者也必须是 {{chatName}}；禁止输出 {{user}}:、用户:、玩家: 或其他角色名作为发送者。
-- 【用户最新输入】是 {{user}} 刚刚发出的消息，只能作为被回复的内容，禁止把它当成聊天对象或让 {{user}} 再次发言。
-- 微信消息内容必须是角色真实打进聊天框里的文字。禁止把动作、环境、神态、心理、写字过程、语气说明写进消息内容；禁止出现“她顿了顿/指尖悬停/又补了一条/语气里”等叙事句。如果需要表现迟疑，只拆成多条短微信。`;
-
-        // 清理历史版本里“单聊多窗口”段落，避免与当前窗口输出范围冲突
-        if (text.includes('💡 聊天多窗口回复：')) {
-            text = text.replace(
-                /\s*💡 聊天多窗口回复：[\s\S]*?(?=\n\[微博新闻\]|\s*$)/,
-                ''
-            );
-        }
-
-        text = text.replace(
-            '9. 绝对禁止提及、猜测、回应不是当前窗口的其他好友、群聊、未读消息或其他聊天内容。你对其他窗口一律不可见。',
-            '9. 输出范围仅限当前窗口 ---{{chatName}}--- 的新增微信回复；共同群聊、其他记录和正文剧情只能作为语气、事件和关系参考，不能直接输出成其他窗口消息。'
-        );
-
-        text = text.replace(
-            '💡 窗口隔离：单聊模式下只允许输出当前窗口 ---{{chatName}}---，禁止在同一个<wechat>标签内新增其他窗口。',
-            '💡 当前窗口输出范围：单聊模式下只输出当前窗口 ---{{chatName}}--- 的新增消息；系统提供的共同群聊、其他记录和正文剧情可以作为关系与现实状态参考，但不能直接生成其他窗口。'
-        );
-
-        if (!text.includes('使用 [图片]（English NovelAI tags）')) {
-            text = text.replace(
-                '发送者: [表情包](关键词) （直接发送表情包）',
-                `发送者: [表情包](关键词) （直接发送表情包）
-发送者: [图片]（English NovelAI tags）`
-            );
-        }
-
-        if (!text.includes('图片描述规则')) {
-            text = text.replace(
-                '💡 当你主动给{{user}}打微信语音或视频时，先输出：发送者: [拨打微信语音] 或 [拨打微信视频]。\n💡 当你要主动给{{user}}打微信语音时，先输出：发送者: [拨打微信语音]。如果你要补充“接通后会说的话”，就在后续继续按普通消息行输出（系统会在接通界面展示；若对方拒绝则不会展示这些后续行）。',
-                `💡 当你主动给{{user}}打微信语音或视频时，先输出：发送者: [拨打微信语音] 或 [拨打微信视频]。
-💡 当你要主动给{{user}}打微信语音时，先输出：发送者: [拨打微信语音]。如果你要补充“接通后会说的话”，就在后续继续按普通消息行输出（系统会在接通界面展示；若对方拒绝则不会展示这些后续行）。
-${wechatImagePromptRule}`
-            );
-        }
-        text = text.replace(/💡 图片描述规则：当你要发送图片时，必须使用 \[图片\][^\n]+/g, wechatImagePromptRule);
-
-        if (!text.includes('{{customEmojiList}}')) {
-            text = `${text}
-💡 你可以使用用户上传的本地专属表情包，当前可用清单：{{customEmojiList}}。
-💡 使用本地专属表情包时，格式：发送者: [表情包](表情名称)；若清单里没有合适项，也可继续使用关键词搜索。`;
-        }
-
-        if (!text.includes('发送者: [蜜语]（等待接受）')) {
-            text = `${text}
-💡 当当前微信好友想主动邀请{{user}}进入蜜语直播间或发起蜜语联播邀约时，输出：发送者: [蜜语]（等待接受）。系统会弹出接受/拒绝窗口；不要自行描写用户是否接受。
-💡 当【用户最新输入】显示“用户主动发起了蜜语邀约”时，表示{{user}}主动邀请当前微信好友进入蜜语。你必须以当前微信好友的人设、关系进展、欲望、顾虑和当下剧情判断是否接受：如果接受，必须回复一条 发送者: [蜜语]（接受），可以再追加多条自然微信消息；如果拒绝，必须回复一条 发送者: [蜜语]（拒绝），可以再追加多条符合人设的微信消息解释、调侃、推脱或转移话题。`;
-        }
-
-        if (!text.includes('蜜语是一款成人向 NSFW 私密直播间')) {
-            text = `${text}
-💡 蜜语是一款成人向 NSFW 私密直播间 APP；只有当当前微信好友基于暧昧、情色、私密互动或直播邀约等动机，想把{{user}}引导到蜜语继续互动时，才使用 [蜜语]（等待接受）。`;
-        }
-
-        if (!text.includes('当前窗口输出范围：单聊模式下只输出当前窗口')) {
-            text = `${text}
-💡 当前窗口输出范围：单聊模式下只输出当前窗口 ---{{chatName}}--- 的新增消息；系统提供的共同群聊、其他记录和正文剧情可以作为关系与现实状态参考，但不能直接生成其他窗口。`;
-        }
-
-        if (!text.includes('【单聊方向锁定】')) {
-            text = text.replace(
-                '📋 【当前聊天窗口名】：{{chatName}}',
-                `📋 【当前聊天窗口名】：{{chatName}}
-
-${wechatSingleDirectionRule}`
-            );
-            if (!text.includes('【单聊方向锁定】')) {
-                text = `${text}
-
-${wechatSingleDirectionRule}`;
-            }
-        }
-
-        return this._upgradeWechatVoiceBarPromptContent(text);
-    }
-
-    _upgradeWechatOfflinePromptContent(content) {
-        let text = String(content || '');
-        if (!text) return text;
-
-        if (!text.includes('[HH:MM] [拨打微信群语音]')) {
-            text = text.replace(
-                '[HH:MM] [拨打微信视频]',
-                `[HH:MM] [拨打微信视频]
-[HH:MM] [拨打微信群语音]
-[HH:MM] [拨打微信群视频]`
-            );
-        }
-
-        if (!text.includes('微信群语音通话')) {
-            text = text.replace(
-                '💡 如果你想主动和{{user}}视频通话，请输出 [HH:MM] [拨打微信视频]',
-                `💡 如果你想主动和{{user}}视频通话，请输出 [HH:MM] [拨打微信视频]
-💡 如果你想主动发起微信群语音通话，请输出 [HH:MM] [拨打微信群语音]（兼容 [发起群语音通话]）。
-💡 如果你想主动发起微信群视频通话，请输出 [HH:MM] [拨打微信群视频]（兼容 [发起群视频通话]）。`
-            );
-        }
-
-        if (!text.includes('[HH:MM] [蜜语]（等待接受）')) {
-            text = text.replace(
-                '[HH:MM] [拨打微信群视频]',
-                `[HH:MM] [拨打微信群视频]
-[HH:MM] [蜜语]（等待接受）`
-            );
-        }
-
-        if (!text.includes('主动邀请{{user}}进入蜜语直播间')) {
-            text = text.replace(
-                '- 微信转账最高额度不超过20万,微信红包最高不超过200元，请勿生成超过这个金额的转账或红包记录。',
-                `- 微信转账最高额度不超过20万,微信红包最高不超过200元，请勿生成超过这个金额的转账或红包记录。
-- 当微信好友/角色想主动邀请{{user}}进入蜜语直播间或发起蜜语联播邀约时，在该好友块内输出一条 [HH:MM] [蜜语]（等待接受）。系统会弹出接受/拒绝窗口；不要自行描写用户是否接受。`
-            );
-        }
-
-        text = text.replace(/{{user}}的微信昵称/g, '小手机微信里用户自己的昵称');
-
-        if (!text.includes('接收人：{{user}}')) {
-            text = text
-                .replace(
-                    '- 请在正文回复末尾使用<wechat>标签输出微信内容，并使用<!---->包裹。所有其他角色发送给user的微信消息放在同一个<wechat>标签内。用 ---联系人名字--- 分隔不同的联系人',
-                    `- 请在正文回复末尾使用<wechat>标签输出微信内容，并使用<!---->包裹。所有其他角色发送给user的微信消息放在同一个<wechat>标签内。用 ---联系人名字--- 分隔不同的联系人
-- 每个 ---联系人名字--- 块必须紧跟一行“接收人：{{user}}”。只有实际剧情中消息明确发给{{user}}或小手机微信里用户自己的昵称时才允许使用<wechat>标签；若接收人是{{char}}、NPC、其他亲友或不确定，一律不要输出该微信标签。`
-                )
-                .replace(/(---发送者名字---\n)(date:)/g, '$1接收人：{{user}}\n$2')
-                .replace(/(---张三---\n)(date:)/g, '$1接收人：{{user}}\n$2')
-                .replace(/(---李四---\n)(date:)/g, '$1接收人：{{user}}\n$2')
-                .replace(/(---群名---\n)(type:group)/g, '$1接收人：{{user}}\n$2');
-        }
-
-        if (!text.includes('[手机来电通话]接听人：{{user}}')) {
-            text = text
-                .replace(
-                    '在剧情中，仅当其他角色使用手机给{{user}}拨打电话时，必须在正文末尾输出该电话来电标签。注意⚠️：凡非{{user}}作为接收方的通话，一律严禁使用<Phone>标签，不需要在正文下输出任何标签。其中包括{{char}}与NPC之间、NPC与NPC之间，以及任何未拨打到{{user}}手机的通话。',
-                    '在剧情中，仅当其他角色使用手机给{{user}}拨打电话时，必须在正文末尾输出该电话来电标签。注意⚠️：凡非{{user}}作为接听人/接收方的通话，一律严禁使用<Phone>标签，不需要在正文下输出任何标签。其中包括{{char}}与NPC之间、NPC与NPC之间，以及任何未拨打到{{user}}手机的通话。'
-                )
-                .replace(
-                    '[手机来电通话]呼叫方：姓名。',
-                    `[手机来电通话]接听人：{{user}}
-[手机来电通话]呼叫方：姓名。`
-                );
-        }
-
-        return this._upgradeWechatVoiceBarPromptContent(text);
-    }
-
-    _upgradeWechatGroupChatPromptContent(content) {
-        let text = String(content || '');
-        if (!text) return text;
-        const wechatImagePromptRule = '💡 图片描述规则：当你要发送图片时，必须使用 [图片]（English NovelAI tags） 格式。括号内只能写英文逗号分隔的 NAI 生图 tag，不要写中文、解释或完整句子；必须描述可见画面细节，如 subject count, gender, adult character, anime illustration, pose, expression, clothing, setting, camera angle, lighting。若内容涉及人物或拟人对象，必须用 1girl/1boy/2girls/2boys、female focus/male focus 等英文 tag 明确主体。';
-
-        // 清理历史版本里“群聊跨窗口私聊”段落，默认强制单窗口输出
-        if (text.includes('💡 跨聊天多窗口回复：')) {
-            text = text.replace(
-                /\s*💡 跨聊天多窗口回复：[\s\S]*$/,
-                ''
-            );
-        }
-
-        if (!text.includes('发送者: [拨打微信群语音]')) {
-            text = text.replace(
-                '发送者: [表情包](关键词) （直接发送表情包）',
-                `发送者: [表情包](关键词) （直接发送表情包）
-发送者: [拨打微信群语音]
-发送者: [拨打微信群视频]`
-            );
-        }
-
-        if (!text.includes('主动发起群语音/视频通话')) {
-            text = text.replace(
-                '💡 提示：优先根据角色状态直接发送emoji（如 😀😂🥺😭😡😅）；仅在明确要发图片表情包时才使用 [表情包](关键词)。',
-                `💡 提示：优先根据角色状态直接发送emoji（如 😀😂🥺😭😡😅）；仅在明确要发图片表情包时才使用 [表情包](关键词)。
-💡 当剧情需要时，你可以主动发起群语音/视频通话，格式为：发送者: [拨打微信群语音] 或 发送者: [拨打微信群视频]。`
-            );
-        }
-        text = text.replace(/💡 图片描述规则：当你要发送图片时，必须使用 \[图片\][^\n]+/g, wechatImagePromptRule);
-        if (text.includes('发送者: [图片]') && !text.includes('English NovelAI tags')) {
-            text = `${text}
-${wechatImagePromptRule}`;
-        }
-
-        if (!text.includes('{{customEmojiList}}')) {
-            text = `${text}
-💡 你可以使用用户上传的本地专属表情包，当前可用清单：{{customEmojiList}}。
-💡 群聊中若要使用本地表情包，格式为：发送者: [表情包](表情名称)。`;
-        }
-
-        return this._upgradeWechatVoiceBarPromptContent(text);
-    }
-
-    _upgradeWechatVoiceBarPromptContent(content) {
-        let text = String(content || '');
-        if (!text) return text;
-
-        return text
-            .replace(/(\[HH:MM\]\s*)\[语音\]\s*[（(]\s*语音条转文字内容\s*[)）]/g, '$1[语音条]（语音条转文字内容）')
-            .replace(/(发送者:\s*)\[语音\]\s*[（(]\s*语音转化出的文字内容\s*[)）]/g, '$1[语音条]（语音转化出的文字内容）')
-            .replace(/(发送者:\s*)\[语音\]\s*语音转化出的文字内容/g, '$1[语音条]（语音转化出的文字内容）');
-    }
-
-    _upgradeWeiboImagePromptContent(content) {
-        let text = String(content || '');
-        if (!text) return text;
-        const weiboImagePromptRule = '配图占位：格式为[图片]（English NovelAI tags），括号内只能写英文逗号分隔 NAI 生图 tag，不要写中文、解释或完整句子；必须描述可见画面细节，如 subject count, gender, adult character, anime illustration, pose, expression, clothing, setting, camera angle, lighting。例如：[图片]（1girl, adult character, street snapshot, casual outfit, looking at phone, city background, anime illustration）。';
-        text = text.replace(/配图占位：\s*格式为\[图片\][^\n]+/g, weiboImagePromptRule);
-        text = text.replace(/配图：\[图片\]（文字描述）\[图片\]（文字描述）/g, '配图：[图片]（English NovelAI tags）[图片]（English NovelAI tags）');
-        text = text.replace(/配图：\[图片\]（文字描述）/g, '配图：[图片]（English NovelAI tags）');
-        if (text.includes('配图：') && !text.includes('English NovelAI tags')) {
-            text = text.replace('【微博账号与内容分布】', `${weiboImagePromptRule}\n【微博账号与内容分布】`);
-            text = text.replace('【账号与内容分布】', `${weiboImagePromptRule}\n【账号与内容分布】`);
-        }
-        return text;
-    }
-
     _getWeiboPublicBoundaryRule() {
         return `【微博与朋友圈分工边界】
 - 微博是公域平台，只生成公开舆论、热搜、路人讨论、粉丝/营销号/官方账号发声；可以参考角色卡和剧情，但只能转化为“外界可见的信息、公开动态、传闻或合理猜测”。
@@ -553,28 +78,6 @@ ${wechatImagePromptRule}`;
 - 角色本人可以发微博，但仅限角色卡或当前剧情明确显示其为公众人物、主播、网红、艺人、官方账号、组织账号，或剧情中明确要求公开发声/营业/回应热搜。普通私人角色不要主动生成本人微博。
 - 若角色本人发微博，内容必须是公开表达、营业、公告、澄清、转发或面向粉丝/公众的动态；不得暴露只有用户、微信联系人或私密场景才知道的细节。
 - 默认优先生成外部账号视角：官方、营销号、超话、粉丝、路人、媒体与吃瓜网友；避免让微博变成朋友圈的替代品。`;
-    }
-
-    _upgradeWeiboPublicBoundaryPromptContent(content) {
-        let text = String(content || '');
-        if (!text || text.includes('微博与朋友圈分工边界')) return text;
-        const rule = this._getWeiboPublicBoundaryRule();
-        if (text.includes('【核心规则】')) {
-            return text.replace('【核心规则】', `${rule}\n【核心规则】`);
-        }
-        return `${rule}\n${text}`;
-    }
-
-    _upgradeCallSocialReactionPromptContent(content) {
-        let text = String(content || '');
-        if (!text || text.includes('通话社交反应规则')) return text;
-        return `${text}
-
-【通话社交反应规则】
-- 通话记录是重要社交事件，不能当作无意义系统记录忽略。
-- 如果{{user}}拨打语音/视频/电话后很快挂断、接通后十几秒内没有说话、通话记录里没有有效对话，角色必须结合关系与当时情绪做出自然反应：担心、疑惑、试探、生气、委屈、以为{{user}}手滑、以为{{user}}在赌气、以为信号不好，或回拨/发微信追问。
-- 亲密关系优先表现主动关心或带情绪追问；暧昧/敏感关系可误会为冷落、生气、吃醋或试探；普通关系可简短问“刚才怎么了/是不是打错了/信号不好？”。
-- 如果下一轮剧情或微信回复发生在短通话之后，应主动承接这件事，例如“刚才怎么打了又不说话？”、“你是不是不高兴了？”、“我回拨你没接，出什么事了吗？”，而不是完全无视。`;
     }
 
     _getDefaultWechatOverridePrompt() {
@@ -749,7 +252,7 @@ date:{{STORY_DATE}}
             description: '手机内微信聊天规则',
             content: `【微信单聊模式】
 
-{{user}}正在手机微信上和{{chatName}}聊天，请根据剧情和角色的人设性格进行互动回复。
+{user}}正在手机微信上和{{chatName}}聊天，请根据剧情和角色的人设性格进行互动回复。
 
 📋 【当前聊天窗口名】：{{chatName}}
 
@@ -764,52 +267,41 @@ date:{{STORY_DATE}}
 8. 禁止替{{user}}回复内容
 9. 输出范围仅限当前窗口 ---{{chatName}}--- 的新增微信回复；共同群聊、其他记录和正文剧情只能作为语气、事件和关系参考，不能直接输出成其他窗口消息。
 
-✅ 【正确回复格式】：
+✅ 【以下为所有正确的消息回复格式示例】：
 <wechat>
 ---{{chatName}}---
 {{chatName}}: 在呢
 {{chatName}}: 怎么了？
 {{chatName}}: 有什么事吗
 {{chatName}}: [转线下]
-{{chatName}}: 😀
+{{chatName}}: 直接发送emoji（如 😀😭😅）
 {{chatName}}: [转账](金额：100元)
-{{chatName}}: [转账](金额：100元)
+{{chatName}}: [红包](金额：88.88元)
 {{chatName}}: [拨打微信语音]
 {{chatName}}: [拨打微信视频]
-{{chatName}}: [定位](地点位置) 
+{{chatName}}: [定位]（地点位置）
+{{chatName}}: [蜜语]（等待中...）
+{{chatName}}: [蜜语]（接受）/[蜜语]（拒绝）
+{{chatName}}: [语音条]（语音转化出的文字内容）
+{{chatName}}: [图片]（English NovelAI tags）
+{{chatName}}: [表情包]（表情名称）
+{{chatName}}: 「引用 {{user}}: 今晚吃什么」火锅怎么样？
 </wechat>
 
-❌ 【错误格式（禁止）】：
-在呢（不带标签直接回复）
----XiaoYu---（禁止用拼音）
----小雨---（禁止用昵称，必须用完整的微信名）
-from:林晓雨: 在呢
-[17:03] 林晓雨：在呢
-（看了看手机）怎么了？
+💡所有角色通用专属表情包库，格式：发送者: [表情包]（表情名称）；当角色想使用表情包时，若以下清单里没有符合语境和角色人设的表情包，可自行简洁描写表情包名称，系统会自行匹配清单外的其他表情包。
+【通用表情包库】：{{customEmojiList}}
 
-💬 引用/回复消息格式：
-当需要引用对方消息时，格式为：
+💡引用/回复消息格式：
+当角色想引用其他人微信消息时，格式为：
 发送者: 「引用 原发送者: 被引用内容」你的回复
 例如：{{chatName}}: 「引用 {{user}}: 今晚吃什么」火锅怎么样？
-
-📎 特殊消息格式：
-发送者: [转账](金额：xx元)
-发送者: [红包](金额：xx元)
-发送者: [拨打微信语音]
-发送者: [拨打微信视频]
-发送者: [语音条]（语音转化出的文字内容）
-发送者: 直接发送emoji（如 😀😭😅）
-发送者: [表情包](表情名称) 
-发送者: [图片]（English NovelAI tags）
-发送者: [蜜语]（等待接受）
-💡 当你要主动给{{user}}打微信语音时，先输出：发送者: [拨打微信语音]。如果你要补充“接通后会说的话”，就在后续继续按普通消息行输出（系统会在接通界面展示；若对方拒绝则不会展示这些后续行）。
+💡 当角色主动给{{user}}打微信语音时，先输出：发送者: [拨打微信语音]。如果你要补充“接通后会说的话”，就在后续继续按普通消息行输出（系统会在接通界面展示；若对方拒绝则不会展示这些后续行）。
 💡 图片描述规则：当你要发送图片时，必须使用 [图片]（English NovelAI tags） 格式。括号内只能写英文逗号分隔的 NAI 生图 tag，不要写中文、解释或完整句子；必须描述可见画面细节，如 subject count, gender, adult character, anime illustration, pose, expression, clothing, setting, camera angle, lighting。若内容涉及人物或拟人对象，必须用 1girl/1boy/2girls/2boys、female focus/male focus 等英文 tag 明确主体。
 💡 通话社交反应规则：如果{{user}}刚才拨打语音/视频后很快挂断、接通后十几秒内没有说话、或通话记录没有有效对话，必须把它当成社交事件自然承接。根据关系表现担心、疑惑、试探、生气、委屈、以为手滑/信号不好/在赌气，必要时可回拨或发微信追问，例如“刚才怎么打了又不说话？”、“你是不是不高兴了？”。
-💡 你可以使用用户上传的本地专属表情包，格式：发送者: [表情包](表情名称)；当角色想使用表情包时，若清单里没有合适项，可自行简洁描写表情包名称，后台会自行匹配。
- 根据语境和角色人设及性格使用一下表情包的清单：{{customEmojiList}}
-💡 蜜语是一款成人向 NSFW 私密直播间 APP；只有当当前微信好友基于暧昧、情色、私密互动或直播邀约等动机，想把{{user}}引导到蜜语继续互动时，才使用 [蜜语]（等待接受）。
-💡 当当前微信好友想主动邀请{{user}}进入蜜语直播间或发起蜜语联播邀约时，输出：发送者: [蜜语]（等待接受）。系统会弹出接受/拒绝窗口；不要自行描写用户是否接受。
-💡 当用户主动发起了蜜语邀约时，表示{{user}}主动邀请当前微信好友进入蜜语。你必须以当前微信好友的人设、关系进展、欲望、顾虑和当下剧情判断是否接受：如果接受，必须回复一条 发送者: [蜜语]（接受）；如果拒绝，必须回复一条 发送者: [蜜语]（拒绝），可以再追加多条符合人设的回复。
+
+❤️ 蜜语APP联动：
+💡 蜜语是一款成人向 NSFW 私密直播间 APP；当当前微信好友基于暧昧、情色、私密互动等动机主动发起或{{user}}想让微信好友主动发起邀约时，可使用蜜语APP邀约请求格式： [蜜语]（等待中...）。禁止自行描写用户是否接受，系统会弹出接受/拒绝窗口，必须等待用户回复。严禁在用户没有发起正式请求前使用 [蜜语]（接受）或 [蜜语]（拒绝）。
+💡 当用户主动发起了蜜语邀约时（格式为：[蜜语]（等待回应）），表示{{user}}主动邀请当前微信好友进入蜜语。你必须以当前微信好友的人设、关系进展、欲望、顾虑和当下剧情判断是否接受：如果接受，直接回复格式中加上： 发送者: [蜜语]（接受）；如果拒绝，回复格式 发送者: [蜜语]（拒绝），可以再追加多条符合人设的回复。
 
 
 🔥 微博新闻推送：
@@ -827,6 +319,14 @@ from:林晓雨: 在呢
 3. [网友昵称3] (ip[市区])：内容3
 4. [网友昵称4] 回复 [网友昵称2] (ip[市区])：回复内容4
 [/微博新闻] 
+
+❌ 【错误格式（禁止）】：
+在呢（不带wechat标签直接回复）
+---XiaoYu---（禁止用拼音）
+---小雨---（禁止用昵称，必须用完整的微信名）
+from:林晓雨: 在呢
+[17:03] 林晓雨：在呢
+（看了看手机）怎么了？
 
 💡 当前窗口输出范围：单聊模式下只输出当前窗口 ---{{chatName}}--- 的新增消息；系统提供的共同群聊、其他记录和正文剧情可以作为关系与现实状态参考，但不能直接生成其他窗口。
 💡 即使系统提供了共同群聊记录，也只能作为当前私聊的语气与话题参考，不能直接输出其他聊天窗口。`,
@@ -1626,6 +1126,7 @@ IP属地：根据故事背景，生成虚拟的命名城市的IP市区
 生成规则：
 - 请为用户的直播间，生成实时直播数据。你必须根据用户的输出，基于当前直播状态推进剧情。
 - 直播标题优先沿用系统提供的“今日直播主题”，不要写死成固定标题；如果用户中途修改主题，后续输出也要跟着更新。
+- 当系统提示当前直播间为【私密直播模式】或【私密中】时，无需回复评论区内容；可以省略“评论区”区块或输出空评论区。此时重点生成直播标题、在线人数、粉丝数、打赏记录、直播实况、好友申请和互动记录。
 - 评论区必须主要由陌生网友、路人粉丝、营销号、老色批观众组成，不要冒充系统，也不要反复重复同名。
 - 评论区评论必须露骨、直白、淫欲，优先使用想狠狠干你、想听你继续叫、想看联播对象狠狠干你之类的直接欲望表达，禁止写成委婉分析、普通夸奖或旁观总结。
 - 评论区话题必须持续扩展，不能总围绕前几轮已经说过的几个旧话题来回重复；应不断切换到身体细节、声音、语气、礼物刺激、围观起哄、占有欲、嫉妒、联播张力、对下一步的露骨要求等不同角度。

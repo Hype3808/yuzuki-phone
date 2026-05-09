@@ -1754,99 +1754,215 @@
     -webkit-line-clamp: 2;
 }
 
-.st-phone-honey-invite-modal {
-    position: fixed;
-    inset: 0;
-    z-index: 1000000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 18px;
-}
-
-.st-phone-honey-invite-backdrop {
+.st-phone-honey-invite-modal.honey-live-collab-modal,
+.phone-view-current .st-phone-honey-invite-modal.honey-live-collab-modal {
     position: absolute;
     inset: 0;
-    background: rgba(0, 0, 0, 0.42);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
+    z-index: 2600;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+    box-sizing: border-box;
+    pointer-events: none;
 }
 
-.st-phone-honey-invite-card {
+body > .st-phone-honey-invite-modal.honey-live-collab-modal {
+    position: fixed;
+    z-index: 1000000;
+}
+
+.st-phone-honey-invite-backdrop.honey-live-collab-modal-backdrop,
+.st-phone-honey-invite-modal .honey-live-collab-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    border: none;
+    background: rgba(10, 6, 12, 0.08);
+    pointer-events: auto;
+}
+
+.st-phone-honey-invite-panel.honey-live-collab-modal-panel,
+.st-phone-honey-invite-modal .honey-live-collab-modal-panel {
     position: relative;
-    width: min(310px, calc(100vw - 36px));
-    border-radius: 18px;
-    padding: 18px;
-    color: #fff;
-    background: linear-gradient(160deg, rgba(34, 15, 32, 0.96), rgba(83, 26, 62, 0.96));
-    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
+    width: min(220px, calc(100% - 28px));
+    border-radius: 9px;
+    border: 1px solid rgba(255, 216, 233, 0.16);
+    background: linear-gradient(145deg, rgba(44, 31, 45, 0.5), rgba(18, 13, 22, 0.34));
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.14),
+        0 4px 14px rgba(8, 5, 11, 0.34);
+    backdrop-filter: blur(6px) saturate(120%);
+    -webkit-backdrop-filter: blur(6px) saturate(120%);
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    pointer-events: auto;
 }
 
-.st-phone-honey-invite-top {
+.st-phone-honey-invite-modal .honey-live-collab-modal-head {
     display: flex;
     align-items: center;
-    gap: 12px;
+    justify-content: space-between;
+    gap: 8px;
 }
 
-.st-phone-honey-invite-avatar {
-    width: 44px;
-    height: 44px;
-    border-radius: 14px;
-    display: flex;
+.st-phone-honey-invite-modal .honey-live-collab-modal-title {
+    font-size: 9px;
+    font-weight: 700;
+    color: #ffd9ea !important;
+    letter-spacing: 0.2px;
+    opacity: 0.96;
+}
+
+.st-phone-honey-invite-modal .honey-live-collab-modal-close {
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 216, 233, 0.2);
+    background: rgba(255, 255, 255, 0.06);
+    color: #ffd9ea !important;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    color: #fff;
-    background: linear-gradient(135deg, #ff5d9e, #ff9466);
-    box-shadow: 0 8px 24px rgba(255, 93, 158, 0.26);
+    cursor: pointer;
+    flex-shrink: 0;
 }
 
-.st-phone-honey-invite-meta {
-    min-width: 0;
+.st-phone-honey-invite-modal .honey-live-collab-modal-close i {
+    font-size: 9px;
 }
 
-.st-phone-honey-invite-kicker {
-    font-size: 12px;
-    color: rgba(255, 231, 242, 0.72);
-}
-
-.st-phone-honey-invite-title {
-    margin-top: 2px;
-    font-size: 18px;
-    font-weight: 700;
-    color: #fff;
-}
-
-.st-phone-honey-invite-body {
-    margin-top: 14px;
-    font-size: 13px;
+.st-phone-honey-invite-text {
+    font-size: 10px;
     line-height: 1.5;
-    color: rgba(255, 255, 255, 0.82);
+    color: rgba(255, 235, 245, 0.88) !important;
 }
 
 .st-phone-honey-invite-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    margin-top: 18px;
+    gap: 6px;
 }
 
-.st-phone-honey-invite-btn {
-    height: 38px;
-    border: none;
-    border-radius: 12px;
-    font-size: 14px;
-    font-weight: 700;
+.st-phone-honey-invite-action {
+    height: 24px;
+    border-radius: 7px;
+    border: 1px solid rgba(255, 216, 233, 0.16);
     cursor: pointer;
+    font-size: 9px;
+    font-weight: 700;
+    color: #ffe8f3 !important;
+    background: rgba(255, 255, 255, 0.06);
 }
 
-.st-phone-honey-invite-btn.is-secondary {
-    color: rgba(255, 255, 255, 0.86);
-    background: rgba(255, 255, 255, 0.14);
+.st-phone-honey-invite-action.is-accept {
+    border-color: rgba(255, 102, 171, 0.28);
+    background: rgba(255, 102, 171, 0.2);
+    color: #ffd6e8 !important;
 }
 
-.st-phone-honey-invite-btn.is-primary {
-    color: #fff;
-    background: linear-gradient(135deg, #ff5d9e, #ff9466);
+.st-phone-honey-invite-action.is-reject {
+    color: rgba(255, 230, 242, 0.72) !important;
+}
+
+.message-honey-invite {
+    width: 172px;
+    max-width: 60vw;
+    border: 1px solid rgba(255, 216, 233, 0.16);
+    border-radius: 9px;
+    background: linear-gradient(145deg, rgba(44, 31, 45, 0.52), rgba(18, 13, 22, 0.36));
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.14),
+        0 4px 14px rgba(8, 5, 11, 0.24);
+    backdrop-filter: blur(6px) saturate(120%);
+    -webkit-backdrop-filter: blur(6px) saturate(120%);
+    padding: 7px 8px;
+    box-sizing: border-box;
+    color: #fff0f7 !important;
+}
+
+.message-honey-invite-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.message-honey-invite-title {
+    min-width: 0;
+    font-size: 10px;
+    font-weight: 700;
+    color: #fff0f7 !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.message-honey-invite-badge {
+    flex-shrink: 0;
+    border-radius: 999px;
+    padding: 1px 5px;
+    font-size: 8px;
+    font-weight: 700;
+    color: #ffe8f3 !important;
+    border: 1px solid rgba(255, 102, 171, 0.22);
+    background: rgba(255, 102, 171, 0.14);
+}
+
+.message-honey-invite-sub {
+    margin-top: 5px;
+    font-size: 8px;
+    line-height: 1.35;
+    color: rgba(255, 226, 240, 0.58) !important;
+}
+
+.message-honey-invite-foot {
+    margin-top: 5px;
+    font-size: 8px;
+    font-weight: 700;
+    line-height: 1.35;
+    color: #ffb5d5 !important;
+    text-align: right;
+}
+
+.message-honey-invite.is-accepted .message-honey-invite-foot {
+    color: #ffd6e8 !important;
+}
+
+.message-honey-invite.is-rejected {
+    border-color: rgba(255, 255, 255, 0.12);
+    background: linear-gradient(145deg, rgba(42, 37, 43, 0.46), rgba(18, 16, 20, 0.32));
+}
+
+.message-honey-invite.is-rejected .message-honey-invite-badge,
+.message-honey-invite.is-rejected .message-honey-invite-foot {
+    color: rgba(255, 230, 242, 0.62) !important;
+    border-color: rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.chat-message .message-honey-invite,
+.chat-message .message-honey-invite * {
+    color: inherit;
+}
+
+.chat-message .message-honey-invite-title {
+    color: #fff0f7 !important;
+}
+
+.chat-message .message-honey-invite-badge,
+.chat-message .message-honey-invite-foot {
+    color: #ffe8f3 !important;
+}
+
+.chat-message .message-honey-invite-sub {
+    color: rgba(255, 226, 240, 0.64) !important;
+}
+
+.chat-message .message-honey-invite.is-rejected .message-honey-invite-badge,
+.chat-message .message-honey-invite.is-rejected .message-honey-invite-foot {
+    color: rgba(255, 230, 242, 0.62) !important;
 }
 
 /* ========================================
@@ -3118,6 +3234,17 @@ input:checked + .toggle-slider:before {
     overflow-y: auto !important;
     overflow-x: hidden !important;
     -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-y !important;
+    overscroll-behavior-y: contain !important;
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
+}
+
+.phone-view-current .honey-page-live .honey-scene-modal-desc::-webkit-scrollbar,
+.honey-page-live .honey-scene-modal-desc::-webkit-scrollbar {
+    width: 0 !important;
+    height: 0 !important;
+    display: none !important;
 }
 
 /* 微信钱包评估弹窗滚动豁免：报告内容可在弹窗内纵向滚动 */

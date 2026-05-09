@@ -10,13 +10,13 @@
  * Copyright (c) yuzuki. All rights reserved.
  * ======================================================== */
 // ========================================
-// 虚拟手机互动系统 v1.0.7
+// 虚拟手机互动系统 v1.0.8
 // SillyTavern 扩展插件
 // ========================================
 
 const ST_PHONE_BASE_URL = new URL('./', import.meta.url).href;
 const ST_PHONE_GLOBAL_CSS_URL = new URL('./phone.css', import.meta.url).href;
-const ST_PHONE_VERSION = '1.0.7';
+const ST_PHONE_VERSION = '1.0.8';
 const ST_PHONE_UPDATE_MANIFEST_URLS = [
     'https://raw.githubusercontent.com/gaigai315/yuzuki-phone/main/manifest.json',
     'https://raw.githubusercontent.com/gaigai315/yuzuki-phone/master/manifest.json'
@@ -29,7 +29,11 @@ const ST_PHONE_CURRENT_UPDATE = {
     version: ST_PHONE_VERSION,
     date: '2026-05-09',
     items: [
-        '微博评论回复体验已优化：回复某条评论时会固定到对应楼层，后续网友或 AI 回复不会串到其他评论下面；发表评论或回复触发 API 时会显示“网友正在围观...”通知。'
+        '新增微信好友连接蜜语 App：微信好友现在可以通过蜜语邀约进入直播间互动，蜜语直播会与对应微信会话联动。',
+        '新增蜜语关注主播加微信好友：关注页可向主播发起加好友申请，AI 会结合直播互动和打赏记录判断是否通过，通过后同步为微信里的“主播”联系人。',
+        '优化蜜语主播加好友申请：拒绝时改为可阅读弹窗，申请上下文只取单一来源并保留完整直播正文，避免重复片段和正文截断。',
+        '微博评论回复体验已优化：回复某条评论时会固定到对应楼层，后续网友或 AI 回复不会串到其他评论下面；发表评论或回复触发 API 时会显示“网友正在围观...”通知。',
+        '早期版本迭代较频繁，更新后建议在设置中执行一次【一键恢复默认提示词】，以同步最新全局提示词。'
     ]
 };
 
@@ -1085,7 +1089,7 @@ if (window.GGP_Loaded) {
             const honeyApp = await ensureHoneyAppReady();
             const host = honeyApp.honeyData?.ensureFollowedHostFromWechat?.(safeContactName, {
                 title: `${safeContactName} 的直播间`,
-                intro: '微信好友主动发起的蜜语邀约。'
+                intro: '你接受了微信好友发起的蜜语邀约。'
             });
             wechatData.recordHoneyInviteDecision?.(safeContactName, 'accepted', { message });
             if (chatId) wechatData.setHoneyHistoryInjectionForChat?.(chatId, true);
@@ -1095,13 +1099,41 @@ if (window.GGP_Loaded) {
                 app?.openFollowedHostLive?.(host?.name || safeContactName, {
                     autoGenerateIfMissing: false,
                     title: `${safeContactName} 的直播间`,
-                    intro: '微信好友主动发起的蜜语邀约。'
+                    intro: '微信好友主动邀请你进入蜜语直播间。',
+                    inviteSource: 'friend_invite'
                 });
             }, 180);
         } catch (e) {
             console.error('[微信蜜语邀约] 接受失败:', e);
             phoneShell?.showNotification?.('蜜语邀约', '打开蜜语失败：' + (e?.message || e), '⚠️');
         }
+    }
+
+    function updateWechatHoneyInviteMessageStatus({ chatId = '', messageId = '', status = '' } = {}) {
+        const safeChatId = String(chatId || '').trim();
+        const safeStatus = String(status || '').trim();
+        if (!safeChatId || !safeStatus || !window.VirtualPhone?.cachedWechatData) return null;
+        const wechatData = window.VirtualPhone.cachedWechatData;
+        let safeMessageId = String(messageId || '').trim();
+        if (!safeMessageId) {
+            const messages = wechatData.getMessages?.(safeChatId) || [];
+            const lastInvite = [...messages].reverse().find(msg => msg?.type === 'honey_invite');
+            safeMessageId = String(lastInvite?.id || '').trim();
+        }
+        if (!safeMessageId) return null;
+        const updated = wechatData.updateMessageById?.(safeChatId, safeMessageId, {
+            honeyInviteStatus: safeStatus,
+            content: `[蜜语]（${safeStatus}）`
+        });
+
+        const wechatApp = window.VirtualPhone?.wechatApp;
+        const chatView = wechatApp?.chatView;
+        if (wechatApp?.currentChat?.id === safeChatId && typeof chatView?.smartUpdateMessages === 'function') {
+            const messages = wechatData.getMessages?.(safeChatId) || [];
+            const userInfo = wechatData.getUserInfo?.() || {};
+            chatView.smartUpdateMessages(messages, userInfo);
+        }
+        return updated;
     }
 
     function showWechatHoneyInvitePopup({ contactName, chatId, messageId, message = '' } = {}) {
@@ -1114,33 +1146,43 @@ if (window.GGP_Loaded) {
 
         const overlay = document.createElement('div');
         overlay.id = 'st-phone-honey-invite-modal';
-        overlay.className = 'st-phone-honey-invite-modal';
+        overlay.className = 'st-phone-honey-invite-modal honey-live-collab-modal';
         overlay.dataset.fingerprint = fingerprint;
         overlay.innerHTML = `
-            <div class="st-phone-honey-invite-backdrop"></div>
-            <div class="st-phone-honey-invite-card" role="dialog" aria-modal="true">
-                <div class="st-phone-honey-invite-top">
-                    <div class="st-phone-honey-invite-avatar"><i class="fa-solid fa-video"></i></div>
-                    <div class="st-phone-honey-invite-meta">
-                        <div class="st-phone-honey-invite-kicker">蜜语联播邀约</div>
-                        <div class="st-phone-honey-invite-title">${escapePhoneHtml(safeContactName)}</div>
-                    </div>
+            <button class="st-phone-honey-invite-backdrop honey-live-collab-modal-backdrop" type="button" data-action="dismiss" aria-label="关闭蜜语邀约"></button>
+            <div class="st-phone-honey-invite-panel honey-live-collab-modal-panel" role="dialog" aria-modal="true" aria-label="蜜语邀约">
+                <div class="honey-live-collab-modal-head">
+                    <div class="honey-live-collab-modal-title">蜜语邀请</div>
+                    <button class="honey-live-collab-modal-close" type="button" data-action="dismiss" aria-label="关闭蜜语邀约">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
                 </div>
-                <div class="st-phone-honey-invite-body">${escapePhoneHtml(message || '邀请你进入蜜语直播间')}</div>
+                <div class="st-phone-honey-invite-text">${escapePhoneHtml(safeContactName)} 邀请你进入蜜语直播间。</div>
                 <div class="st-phone-honey-invite-actions">
-                    <button type="button" class="st-phone-honey-invite-btn is-secondary" data-action="reject">拒绝</button>
-                    <button type="button" class="st-phone-honey-invite-btn is-primary" data-action="accept">接受</button>
+                    <button class="st-phone-honey-invite-action is-reject" type="button" data-action="reject">拒绝</button>
+                    <button class="st-phone-honey-invite-action is-accept" type="button" data-action="accept">接受</button>
                 </div>
             </div>
         `;
-        document.body.appendChild(overlay);
+        const host = document.querySelector('.phone-view-current .wechat-app')
+            || document.querySelector('.phone-view-current')
+            || document.getElementById('phone-panel')
+            || document.body;
+        host.appendChild(overlay);
 
         const close = () => overlay.remove();
-        overlay.querySelector('.st-phone-honey-invite-backdrop')?.addEventListener('click', close);
-        overlay.querySelectorAll('.st-phone-honey-invite-btn[data-action]').forEach(btn => {
+        overlay.querySelectorAll('[data-action="dismiss"]').forEach(el => {
+            el.addEventListener('click', close);
+        });
+        overlay.querySelectorAll('.st-phone-honey-invite-action[data-action]').forEach(btn => {
             btn.addEventListener('click', async () => {
                 const action = String(btn.dataset.action || '').trim();
                 close();
+                updateWechatHoneyInviteMessageStatus({
+                    chatId,
+                    messageId,
+                    status: action === 'accept' ? '已接受' : '已拒绝'
+                });
                 await handleWechatHoneyInviteAction({ action, contactName: safeContactName, chatId, message });
             });
         });
@@ -4529,7 +4571,7 @@ if (window.GGP_Loaded) {
         const honeyInviteMatch = HONEY_INVITE_TAG_REGEX.exec(String(content || '').trim());
         if (honeyInviteMatch) {
             msgObj.type = 'honey_invite';
-            msgObj.honeyInviteStatus = String(honeyInviteMatch[1] || '等待接受').trim() || '等待接受';
+            msgObj.honeyInviteStatus = String(honeyInviteMatch[1] || '等待中...').trim() || '等待中...';
             msgObj.content = '[蜜语]';
             return;
         }
@@ -4935,7 +4977,7 @@ if (window.GGP_Loaded) {
                                 contactName: messageSender,
                                 chatId: chat.id,
                                 messageId: latestMsg.id,
-                                message: msg.honeyInviteStatus || '等待接受'
+                                message: msg.honeyInviteStatus || '等待中...'
                             });
                         }, 260);
                     }
@@ -6285,6 +6327,7 @@ if (window.GGP_Loaded) {
             window.addEventListener('phone:goHome', () => {
                 currentApp = null;
                 window.currentWechatApp = null;
+                window.VirtualPhone?.gamesApp?.removePhoneChromeTheme?.();
                 if (homeScreen) homeScreen.render({ forceDomRefresh: true });
             });
 
@@ -6300,6 +6343,9 @@ if (window.GGP_Loaded) {
             window.addEventListener('phone:openApp', (e) => {
                 const { appId } = e.detail;
                 currentApp = appId;
+                if (appId !== 'games') {
+                    window.VirtualPhone?.gamesApp?.removePhoneChromeTheme?.();
+                }
 
                 const app = currentApps.find(a => a.id === appId);
                 if (app) {
@@ -6470,6 +6516,23 @@ if (window.GGP_Loaded) {
                         .catch(importError => {
                             console.error('❌ 导入 mofo-app.js 失败:', importError);
                             phoneShell?.showNotification('错误', '魔坊模块加载失败', '❌');
+                        });
+                } else if (appId === 'games') {
+                    import('./apps/games/games-app.js')
+                        .then(module => {
+                            try {
+                                if (!window.VirtualPhone.gamesApp) {
+                                    window.VirtualPhone.gamesApp = new module.GamesApp(phoneShell, storage);
+                                }
+                                window.VirtualPhone.gamesApp.render();
+                            } catch (initError) {
+                                console.error('❌ 游戏APP初始化失败:', initError);
+                                phoneShell?.showNotification('错误', '游戏加载失败', '❌');
+                            }
+                        })
+                        .catch(importError => {
+                            console.error('❌ 导入 games-app.js 失败:', importError);
+                            phoneShell?.showNotification('错误', '游戏模块加载失败', '❌');
                         });
                 } else {
                     phoneShell?.showNotification('APP', `${appId} 功能开发中...`, '🚧');
