@@ -1245,7 +1245,7 @@ IP属地：根据故事背景，生成虚拟的命名城市的IP市区
     }
 
     _savePromptUserPresets(data) {
-        this.storage.set('phone-prompt-user-presets', JSON.stringify(data || {}), true);
+        return this.storage.set('phone-prompt-user-presets', JSON.stringify(data || {}), true);
     }
 
     _loadActivePromptPresets() {
@@ -1261,7 +1261,7 @@ IP属地：根据故事背景，生成虚拟的命名城市的IP市区
     }
 
     _saveActivePromptPresets(data) {
-        this.storage.set('phone-prompt-active-presets', JSON.stringify(data || {}), true);
+        return this.storage.set('phone-prompt-active-presets', JSON.stringify(data || {}), true);
     }
 
     getPromptUserPresets(app, feature) {
@@ -1500,16 +1500,17 @@ IP属地：根据故事背景，生成虚拟的命名城市的IP市区
     // 保存配置
     savePrompts() {
         this.ensureLoaded();
-        this.storage.set('phone-prompts', JSON.stringify(this.prompts), true);
+        return this.storage.set('phone-prompts', JSON.stringify(this.prompts), true);
     }
 
     // 一键恢复所有提示词到默认最新版
-    resetAllPromptsToDefault() {
+    async resetAllPromptsToDefault() {
         const defaults = this.getDefaultPrompts();
         const nextPrompts = JSON.parse(JSON.stringify(defaults));
         const activePresets = this._loadActivePromptPresets();
         const presetStore = this._loadPromptUserPresets();
         const nextActivePresets = {};
+        let restoredActivePresetCount = 0;
 
         Object.keys(nextPrompts).forEach(app => {
             const appConfig = nextPrompts[app];
@@ -1529,15 +1530,20 @@ IP属地：根据故事背景，生成虚拟的命名城市的IP市区
                 promptConfig.content = String(activePreset.content || '');
                 if (!nextActivePresets[app]) nextActivePresets[app] = {};
                 nextActivePresets[app][feature] = activeId;
+                restoredActivePresetCount++;
             });
         });
 
         this.prompts = nextPrompts;
         this._loaded = true;
-        // 一键更新默认提示词时，只刷新官方默认库；正在使用的用户预设继续保持生效。
-        this._saveActivePromptPresets(nextActivePresets);
-        this.savePrompts();
-        return this.prompts;
+        // 同步官方默认库；若用户此前正在使用自定义预设，则更新后恢复该选择。
+        // 无效/已删除的旧 activeId 会被清理，避免继续指向不存在的预设。
+        await this._saveActivePromptPresets(nextActivePresets);
+        await this.savePrompts();
+        return {
+            prompts: this.prompts,
+            restoredActivePresetCount
+        };
     }
     
     // 导出配置

@@ -2087,11 +2087,17 @@ export class SettingsApp {
         });
 
         // 一键更新所有提示词（恢复默认）
-        document.getElementById('setting-reset-all-prompts')?.addEventListener('click', () => {
-            const ok = confirm('确定将所有 APP 提示词一键恢复为默认最新版本吗？\n\n此操作会覆盖你在各 App 中手动编辑过的提示词内容。');
+        document.getElementById('setting-reset-all-prompts')?.addEventListener('click', async () => {
+            const ok = confirm('确定将所有 APP 默认提示词一键同步为最新版本吗？\n\n若某项当前使用自定义预设，更新后会自动切回该自定义预设；已保存的自定义预设不会被覆盖。');
             if (!ok) return;
 
+            const btn = document.getElementById('setting-reset-all-prompts');
+            const oldText = btn?.innerHTML;
             try {
+                if (btn) {
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在更新...';
+                }
                 const promptManager = window.VirtualPhone?.promptManager;
                 if (!promptManager) {
                     alert('❌ 提示词管理器未初始化');
@@ -2099,23 +2105,28 @@ export class SettingsApp {
                 }
 
                 if (typeof promptManager.resetAllPromptsToDefault === 'function') {
-                    promptManager.resetAllPromptsToDefault();
+                    await promptManager.resetAllPromptsToDefault();
                 } else {
                     const defaults = promptManager.getDefaultPrompts?.();
                     if (!defaults) throw new Error('无法读取默认提示词');
                     promptManager.prompts = JSON.parse(JSON.stringify(defaults));
                     promptManager._loaded = true;
                     if (typeof promptManager.savePrompts === 'function') {
-                        promptManager.savePrompts();
+                        await promptManager.savePrompts();
                     } else {
-                        this.storage.set('phone-prompts', JSON.stringify(defaults), true);
+                        await this.storage.set('phone-prompts', JSON.stringify(defaults), true);
                     }
                 }
 
-                alert('✅ 已一键更新所有提示词为默认最新版本');
+                alert('✅ 已一键同步默认提示词为最新版本\n\n当前正在使用的有效自定义预设已自动保留。');
             } catch (e) {
                 console.error('❌ 一键更新所有提示词失败:', e);
                 alert('❌ 更新失败：' + (e?.message || e));
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = oldText || '<i class="fa-solid fa-rotate"></i> 一键更新所有提示词（恢复默认）';
+                }
             }
         });
 
