@@ -739,6 +739,23 @@ export class PhoneShell {
         }
     }
     
+    _syncChromeThemeForView(viewId = '', html = '') {
+        const panel = this.container?.querySelector?.('.phone-body-panel') || document.querySelector('.phone-body-panel');
+        if (!panel) return;
+
+        panel.classList.remove('phone-body-panel-honey', 'phone-body-panel-games');
+
+        const safeViewId = String(viewId || '');
+        const safeHtml = String(html || '');
+        if (safeViewId.startsWith('honey-') || /\bhoney-app\b/.test(safeHtml)) {
+            panel.classList.add('phone-body-panel-honey');
+            return;
+        }
+        if (safeViewId.startsWith('games-') || /\bgames-app\b/.test(safeHtml)) {
+            panel.classList.add('phone-body-panel-games');
+        }
+    }
+
     setContent(html, viewId = null) {
         if (!this.screen) return;
 
@@ -751,6 +768,7 @@ export class PhoneShell {
                 viewId = titleMatch ? 'view-' + titleMatch[1].replace(/<[^>]+>/g, '').trim() : 'view-' + Math.random().toString(36).substr(2, 5);
             }
         }
+        this._syncChromeThemeForView(viewId, html);
 
         // 2. 维护历史栈
         if (viewId === 'home') this.viewHistory =[];

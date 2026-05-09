@@ -2327,8 +2327,7 @@ export class HoneyView {
         const bgVideoStatus = bgVideoUrl
             ? '背景已上传'
             : '当前未设置动态背景。';
-        const honeyWorldbookRaw = this.app?.storage?.get?.('phone-honey-use-worldbook');
-        const useHoneyWorldbook = honeyWorldbookRaw === true || honeyWorldbookRaw === 'true';
+        const useHoneyWorldbook = window.VirtualPhone?.worldbookManager?.getEnabled?.('honey') ?? false;
         const honeyAutoImageRaw = this.app?.storage?.get?.('phone-image-honey-auto-generate');
         const useHoneyAutoImage = honeyAutoImageRaw === true || honeyAutoImageRaw === 'true';
 
@@ -4020,7 +4019,7 @@ export class HoneyView {
 
         root.querySelector('#phone-honey-use-worldbook')?.addEventListener('change', async (e) => {
             const enabled = !!e.target.checked;
-            await this.app?.storage?.set?.('phone-honey-use-worldbook', enabled);
+            await window.VirtualPhone?.worldbookManager?.setEnabled?.('honey', enabled);
             if (enabled) this.renderHoneyWorldbookList();
             this.app.phoneShell.showNotification(
                 enabled ? '已开启' : '已关闭',

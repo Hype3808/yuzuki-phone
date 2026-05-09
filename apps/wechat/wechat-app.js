@@ -4508,8 +4508,7 @@ export class WechatApp {
         const prompts = promptManager?.prompts?.wechat || {};
         const shellBg = this._getMainShellBackgroundConfig();
         const settingsContentStyle = shellBg.contentBgStyle || 'background: #ededed;';
-        const wechatWorldbookRaw = window.VirtualPhone?.storage?.get('wechat-use-worldbook');
-        const useWechatWorldbook = wechatWorldbookRaw !== false && wechatWorldbookRaw !== 'false';
+        const useWechatWorldbook = window.VirtualPhone?.worldbookManager?.getEnabled?.('wechat') ?? true;
         const userInfo = this.wechatData.getUserInfo();
         const momentsBackground = String(userInfo?.momentsBackground || '').trim();
         const momentsBackgroundPreview = momentsBackground
@@ -5095,7 +5094,7 @@ export class WechatApp {
 
         document.getElementById('wechat-use-worldbook')?.addEventListener('change', async (e) => {
             const enabled = !!e.target.checked;
-            await window.VirtualPhone?.storage?.set('wechat-use-worldbook', enabled);
+            await window.VirtualPhone?.worldbookManager?.setEnabled?.('wechat', enabled);
             if (enabled) this.renderWechatWorldbookList();
             this.phoneShell.showNotification(
                 enabled ? '已开启' : '已关闭',

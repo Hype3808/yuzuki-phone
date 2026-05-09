@@ -21,6 +21,12 @@ function uniqueStrings(values = []) {
     return result;
 }
 
+function parseBooleanSetting(value, fallback = false) {
+    if (value === true || value === 'true' || value === 1 || value === '1') return true;
+    if (value === false || value === 'false' || value === 0 || value === '0') return false;
+    return fallback;
+}
+
 function normalizeEntries(entries) {
     const rawEntries = Array.isArray(entries)
         ? entries
@@ -349,7 +355,35 @@ export class WorldbookManager {
     }
 
     getSelectionKey(appKey) {
+        return `chat_worldbook_selection_${appKey}`;
+    }
+
+    getLegacySelectionKey(appKey) {
         return `phone-worldbook-selection-${appKey}`;
+    }
+
+    getEnabledKey(appKey) {
+        return `chat_worldbook_enabled_${appKey}`;
+    }
+
+    getLegacyEnabledKey(appKey) {
+        return appKey === 'honey' ? 'phone-honey-use-worldbook' : 'wechat-use-worldbook';
+    }
+
+    getEnabled(appKey) {
+        const fallback = appKey === 'honey' ? false : true;
+        const scopedRaw = this.storage?.get?.(this.getEnabledKey(appKey), undefined);
+        if (scopedRaw !== undefined && scopedRaw !== null) {
+            return parseBooleanSetting(scopedRaw, fallback);
+        }
+
+        const legacyRaw = this.storage?.get?.(this.getLegacyEnabledKey(appKey), undefined);
+        return parseBooleanSetting(legacyRaw, fallback);
+    }
+
+    async setEnabled(appKey, enabled) {
+        await this.storage?.set?.(this.getEnabledKey(appKey), !!enabled);
+        return !!enabled;
     }
 
     getSelection(appKey) {
@@ -357,7 +391,10 @@ export class WorldbookManager {
     }
 
     getSelectionState(appKey) {
-        const raw = this.storage?.get?.(this.getSelectionKey(appKey), null);
+        let raw = this.storage?.get?.(this.getSelectionKey(appKey), undefined);
+        if (raw === undefined || raw === null) {
+            raw = this.storage?.get?.(this.getLegacySelectionKey(appKey), null);
+        }
         if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
             return {
                 initialized: raw.initialized === true,
@@ -395,12 +432,7 @@ export class WorldbookManager {
     }
 
     async buildWorldbookMessage(appKey, options = {}) {
-        const enabledKey = appKey === 'honey' ? 'phone-honey-use-worldbook' : 'wechat-use-worldbook';
-        const enabledRaw = this.storage?.get?.(enabledKey);
-        const enabled = appKey === 'honey'
-            ? (enabledRaw === true || enabledRaw === 'true')
-            : (enabledRaw !== false && enabledRaw !== 'false');
-        if (!enabled) return null;
+        if (!this.getEnabled(appKey)) return null;
 
         const sources = await this.listAvailableWorldbooks(options);
         if (sources.length === 0) return null;
