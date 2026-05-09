@@ -723,7 +723,7 @@ export class SettingsApp {
                         <div class="setting-section" style="padding: 12px 14px; border-radius: 14px;">
                             <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
                                 <div class="setting-label">版本</div>
-                                <div class="setting-value">v${window.VirtualPhone?.version || '1.0.8'}</div>
+                                <div class="setting-value">v${window.VirtualPhone?.version || '未知'}</div>
                             </div>
                             <div class="setting-desc" style="margin-top: 8px;">
                                 每个聊天会话窗口独立存储<br>
