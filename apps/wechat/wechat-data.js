@@ -2147,6 +2147,12 @@ parseAIResponse(text) {
             const originalLen = this.data.messages[chatId].length;
 
             this.data.messages[chatId] = this.data.messages[chatId].filter(m => {
+                // 首楼空会话的特殊保护：
+                // 用户先在小手机里发消息时，tavernMessageIndex 会兜底成 0。
+                // 首条 AI 正文生成/转线下也会触发 rollbackToFloor(0)，不能把这些本地手机消息误删。
+                if (Number(targetTavernIndex) <= 0 && !m.fromMainChatTag) {
+                    return true;
+                }
                 // 所有 >= 目标楼层的消息，都视为未来废案并直接物理删除
                 if (m.tavernMessageIndex !== undefined && m.tavernMessageIndex >= targetTavernIndex) {
                     return false;
