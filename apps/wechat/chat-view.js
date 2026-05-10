@@ -42,6 +42,7 @@ export class ChatView {
         this._wechatTtsCache = new Map();
         this._wechatTtsCacheOrder = [];
         this._wechatTtsCacheLimit = 80;
+        this._imagePromptGenerationLocks = new Set();
         this.customEmojiSelectionMode = false;
         this.selectedCustomEmojiIds = new Set();
         this.messageSelectionMode = false;
@@ -217,6 +218,12 @@ export class ChatView {
         if (shouldRender) {
             this.app.render();
         }
+    }
+
+    resetTransientInputPanels() {
+        this.showEmoji = false;
+        this.showMore = false;
+        this._setCustomEmojiSelectionMode(false);
     }
 
     _setCustomEmojiSelectionMode(enabled = false) {
@@ -1754,6 +1761,8 @@ renderChatRoom(chat) {
         const chatId = String(this.app.currentChat?.id || '').trim();
         const safeMessageId = String(messageId || '').trim();
         if (!chatId || !safeMessageId) return;
+        const generationLockKey = `${chatId}:${safeMessageId}`;
+        if (this._imagePromptGenerationLocks.has(generationLockKey)) return;
 
         const messages = this.app.wechatData.getMessages(chatId);
         const message = messages.find((item) => String(item?.id || '').trim() === safeMessageId);
@@ -1761,15 +1770,18 @@ renderChatRoom(chat) {
 
         const status = String(message.imageGenStatus || '').trim();
         if (status === 'loading') return;
+        this._imagePromptGenerationLocks.add(generationLockKey);
 
         const promptText = String(message.imagePrompt || message.content || '').trim();
         if (!promptText) {
+            this._imagePromptGenerationLocks.delete(generationLockKey);
             this.app.phoneShell?.showNotification('提示', '这条图片消息缺少描述，无法生成', '⚠️');
             return;
         }
 
         const imageManager = window.VirtualPhone?.imageGenerationManager;
         if (!imageManager || typeof imageManager.generate !== 'function') {
+            this._imagePromptGenerationLocks.delete(generationLockKey);
             this.app.phoneShell?.showNotification('生图失败', '生图管理器未初始化', '❌');
             return;
         }
@@ -1777,9 +1789,12 @@ renderChatRoom(chat) {
         if (storage && imageManager.storage !== storage) {
             imageManager.storage = storage;
         }
+        const novelAIReferences = await this._buildWechatPersonalImageReferences(message);
+        const generationId = `wechat_img_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
         this.app.wechatData.updateMessageById(chatId, safeMessageId, {
             imageGenStatus: 'loading',
+            imageGenerationId: generationId,
             imageGenError: '',
             imagePrompt: promptText,
             generatedImageUrl: '',
@@ -1793,12 +1808,16 @@ renderChatRoom(chat) {
         try {
             const result = await imageManager.generate({
                 app: 'wechat',
-                prompt: promptText
+                prompt: promptText,
+                novelAIReferences
             });
             const imageUrl = String(result?.imageUrl || result?.imageData || '').trim();
             if (!imageUrl) {
                 throw new Error('接口返回成功，但没有拿到图片地址');
             }
+            const latestMessage = this.app.wechatData.getMessages(chatId)
+                .find((item) => String(item?.id || '').trim() === safeMessageId);
+            if (String(latestMessage?.imageGenerationId || '') !== generationId) return;
 
             this.app.wechatData.updateMessageById(chatId, safeMessageId, {
                 imagePrompt: promptText,
@@ -1819,6 +1838,10 @@ renderChatRoom(chat) {
 
             console.error('微信图片生成失败:', error);
 
+            const latestMessage = this.app.wechatData.getMessages(chatId)
+                .find((item) => String(item?.id || '').trim() === safeMessageId);
+            if (String(latestMessage?.imageGenerationId || '') !== generationId) return;
+
             this.app.wechatData.updateMessageById(chatId, safeMessageId, {
                 imagePrompt: promptText,
                 imageGenStatus: 'failed',
@@ -1826,6 +1849,8 @@ renderChatRoom(chat) {
             });
             this._refreshVisibleChatMessages(chatId);
             this.app.phoneShell?.showNotification('生图失败', friendlyMessage, '❌');
+        } finally {
+            this._imagePromptGenerationLocks.delete(generationLockKey);
         }
     }
 
@@ -1833,6 +1858,65 @@ renderChatRoom(chat) {
         const safeUrl = String(imageUrl || '').trim();
         if (!safeUrl) return;
         this.app?.phoneShell?.showImageViewer?.(safeUrl, { alt });
+    }
+
+    async _imageUrlToWechatReferenceDataUrl(url) {
+        const safeUrl = String(url || '').trim();
+        if (!safeUrl) return '';
+        if (safeUrl.startsWith('data:image/')) return safeUrl;
+        const response = await fetch(safeUrl, {
+            credentials: 'include',
+            cache: 'no-store'
+        });
+        if (!response.ok) {
+            throw new Error(`个人形象参考图读取失败 (${response.status})`);
+        }
+        const blob = await response.blob();
+        const dataUrl = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ''));
+            reader.onerror = () => reject(reader.error || new Error('个人形象参考图读取失败'));
+            reader.readAsDataURL(blob);
+        });
+        if (!dataUrl.startsWith('data:image/')) return '';
+        return dataUrl;
+    }
+
+    _resolveWechatPersonalReferenceContact(message = {}) {
+        const mediaType = String(message?.mediaType || '').trim();
+        const contentText = String(message?.rawContent || message?.displayContent || message?.content || '').trim();
+        const explicitPersonalReference = message?.usePersonalReference === true;
+        const isPersonalImage = explicitPersonalReference
+            || mediaType === '个人图片'
+            || /^\[\s*个人图片\s*\]/.test(contentText);
+        if (!isPersonalImage || mediaType === '视频') return null;
+        if (mediaType === '图片' && !explicitPersonalReference && !/^\[\s*个人图片\s*\]/.test(contentText)) return null;
+        const senderName = String(message.from || '').trim();
+        if (!senderName || senderName === 'me') return null;
+        const contacts = this.app?.wechatData?.getContacts?.() || [];
+        return contacts.find(contact => this.app.wechatData._isSameLookupName?.(contact.name, senderName))
+            || contacts.find(contact => String(contact?.name || '').trim() === senderName)
+            || null;
+    }
+
+    async _buildWechatPersonalImageReferences(message = {}) {
+        const contact = this._resolveWechatPersonalReferenceContact(message);
+        if (!contact) return [];
+        const referenceImage = String(contact.naiReferenceImage || contact.referenceImage || '').trim();
+        if (!referenceImage || contact.naiReferenceEnabled === false || contact.naiReferenceEnabled === 'false') return [];
+        try {
+            const image = await this._imageUrlToWechatReferenceDataUrl(referenceImage);
+            if (!image) return [];
+            const rawStrength = Number(contact.naiReferenceStrength ?? 0.7);
+            const strength = Math.max(0, Math.min(1, Number.isFinite(rawStrength) ? rawStrength : 0.7));
+            const rawInfo = Number(contact.naiReferenceInformationExtracted ?? 1);
+            const informationExtracted = Math.max(0, Math.min(1, Number.isFinite(rawInfo) ? rawInfo : 1));
+            return [{ image, strength, informationExtracted }];
+        } catch (err) {
+            console.warn('[Wechat NAI] 个人形象参考图读取失败，已跳过:', err);
+            this.app?.phoneShell?.showNotification?.('微信', '个人形象参考图读取失败，本次将不使用参考图', '⚠️');
+            return [];
+        }
     }
 
     renderImagePromptCard(msg) {
@@ -2019,7 +2103,7 @@ renderChatRoom(chat) {
         }
         if (msg.type === 'image_prompt') {
             const promptText = String(msg.imagePrompt || msg.content || '待生成图片').trim() || '待生成图片';
-            const mediaType = msg.mediaType || '图片';
+            const mediaType = msg.usePersonalReference ? '个人图片' : (msg.mediaType || '图片');
             return `[${mediaType}]（${promptText}）`;
         }
         if (msg.type === 'transfer') {
@@ -2825,6 +2909,18 @@ renderChatRoom(chat) {
             };
         }
 
+        const imageMatch = String(content || '').trim().match(/^\[(个人图片|图片|视频)\]\s*[（(]\s*([^)）]+?)\s*[)）]\s*$/);
+        if (imageMatch) {
+            const promptText = String(imageMatch[2] || '').trim();
+            return {
+                type: 'image_prompt',
+                mediaType: imageMatch[1],
+                usePersonalReference: imageMatch[1] === '个人图片',
+                imagePrompt: promptText,
+                content: promptText
+            };
+        }
+
         return null;
     }
 
@@ -3462,22 +3558,26 @@ renderChatRoom(chat) {
     }
 
     async sendImageMessageFromDataUrl(dataUrl, filenamePrefix = 'phone_chatimg') {
-        if (!dataUrl || !this.app.currentChat) return;
+        const targetChatId = String(this.app.currentChat?.id || '').trim();
+        if (!dataUrl || !targetChatId) return;
 
         try {
             const finalUrl = await window.VirtualPhone?.imageManager?.uploadDataUrl?.(dataUrl, filenamePrefix);
             if (!finalUrl) throw new Error('图片上传管理器未初始化');
-            this.app.wechatData.addMessage(this.app.currentChat.id, {
+            this.app.wechatData.addMessage(targetChatId, {
                 from: 'me',
                 type: 'image',
                 content: finalUrl,
                 avatar: this.app.wechatData.getUserInfo().avatar
             });
 
-            this.app.render();
+            this.resetTransientInputPanels();
+            if (String(this.app.currentChat?.id || '') === targetChatId) {
+                this.app.render();
+            }
 
             if (this.isOnlineMode()) {
-                this._enqueuePendingChat(this.app.currentChat.id);
+                this._enqueuePendingChat(targetChatId);
             }
         } catch (uploadErr) {
             console.warn('聊天图片上传服务器失败:', uploadErr);
@@ -4747,7 +4847,10 @@ renderChatRoom(chat) {
                     if (candidatePreview) {
                         bgLatestPreview = candidatePreview.length > 34 ? `${candidatePreview.slice(0, 34)}...` : candidatePreview;
                     }
-                    this.app.wechatData.addMessage(bgChat.id, msgData);
+                    const bgAdded = this.app.wechatData.addMessage(bgChat.id, msgData);
+                    if (!bgAdded) {
+                        continue;
+                    }
                     if (special?.type === 'honey_invite') {
                         const latestMessages = this.app.wechatData.getMessages(bgChat.id) || [];
                         const latestMsg = latestMessages[latestMessages.length - 1] || {};
@@ -4859,7 +4962,10 @@ renderChatRoom(chat) {
                     ? { from: msg.sender, ...special, time: msg.time, avatar: senderContact?.avatar || (isGroupChat ? '' : savedChatAvatar) || '👤', replyBatchId: responseBatchId }
                     : { from: msg.sender, content: normalizedTextContent, time: msg.time, type: 'text', avatar: senderContact?.avatar || (isGroupChat ? '' : savedChatAvatar) || '👤', quote: msg.quote, replyBatchId: responseBatchId };
                 if (special?.type === 'redpacket') msgData.id = `rp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-                this.app.wechatData.addMessage(savedChatId, msgData);
+                const added = this.app.wechatData.addMessage(savedChatId, msgData);
+                if (!added) {
+                    continue;
+                }
                 if (special?.type === 'honey_invite') {
                     const latestMessages = this.app.wechatData.getMessages(savedChatId) || [];
                     const latestMsg = latestMessages[latestMessages.length - 1] || {};
@@ -5099,6 +5205,8 @@ renderChatRoom(chat) {
 
         const normalizedUrl = (() => {
             try {
+                if (/^\/backgrounds\//i.test(raw)) return raw;
+                if (/^https?:\/\//i.test(raw)) return raw;
                 return new URL(raw, window.location.origin).href;
             } catch (e) {
                 return raw;
@@ -5115,6 +5223,7 @@ renderChatRoom(chat) {
             }
             dataUrl = await this._blobToDataUrl(blob);
         } catch (err) {
+            console.warn('[Wechat] 图片发送给AI失败，已降级为文字图片标记:', raw, err?.message || err);
             dataUrl = '';
         }
 
@@ -5528,6 +5637,8 @@ renderChatRoom(chat) {
         }
         const recentWechatMessages = wechatMessages.slice(startIdx);
         const aiImageDataCache = new Map();
+        const aiImageNotes = [];
+        const aiImageTokenIds = [];
         const paymentStatusContext = !isGroupChat
             ? this._buildWechatPaymentStatusContext(recentWechatMessages, userName)
             : '';
@@ -5588,13 +5699,15 @@ renderChatRoom(chat) {
                             window.VirtualPhone._pendingImages = {};
                         }
                         window.VirtualPhone._pendingImages[imgId] = resolvedImageData;
+                        aiImageTokenIds.push(imgId);
+                        aiImageNotes.push(`${timeStr}${speaker}: ${quoteStr}${imageText} ${imgId}`);
                         wechatTranscript += `${timeStr}${speaker}: ${quoteStr}${imageText}\n`;
                     } else {
                         wechatTranscript += `${timeStr}${speaker}: ${quoteStr}${imageText}\n`;
                     }
                 } else if (msg.type === 'image_prompt') {
                     // 🔥 修复：将 [图片/视频] 标签原样包裹回去
-                    const mediaType = msg.mediaType || '图片';
+                    const mediaType = msg.usePersonalReference ? '个人图片' : (msg.mediaType || '图片');
                     const promptText = msg.imagePrompt || msg.content || '';
                     wechatTranscript += `${timeStr}${speaker}: ${quoteStr}[${mediaType}]（${promptText}）\n`;
                 } else if (msg.type === 'transfer') {
@@ -5728,14 +5841,11 @@ renderChatRoom(chat) {
         }
 
         // 🔥 把所有待发送的图片代币附加到 user 消息末尾（多模态只能在 user 消息中生效）
-        if (window.VirtualPhone?._pendingImages) {
-            const imgIds = Object.keys(window.VirtualPhone._pendingImages);
-            if (imgIds.length > 0) {
-                finalUserContent += '\n\n[以下是聊天记录中标注的图片，请结合上方时间线理解图片内容]\n';
-                imgIds.forEach(id => {
-                    finalUserContent += `${id}\n`;
-                });
-            }
+        if (aiImageTokenIds.length > 0 && aiImageNotes.length > 0) {
+            finalUserContent += '\n\n[以下是聊天记录中标注的图片，请结合上方时间线理解图片内容]\n';
+            aiImageNotes.forEach(note => {
+                finalUserContent += `${note}\n`;
+            });
         }
 
         messages.push({
@@ -5778,9 +5888,11 @@ renderChatRoom(chat) {
                 this.app.phoneShell.showNotification('位置', '正在获取位置...', '📍');
                 break;
             case 'transfer':
+                this.resetTransientInputPanels();
                 this.showTransferDialog();
                 break;
             case 'redpacket':
+                this.resetTransientInputPanels();
                 this.showRedPacketDialog();
                 break;
         }

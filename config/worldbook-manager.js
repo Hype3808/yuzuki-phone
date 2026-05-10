@@ -27,6 +27,13 @@ function parseBooleanSetting(value, fallback = false) {
     return fallback;
 }
 
+function safeStorageSegment(value) {
+    return safeString(value)
+        .replace(/[^\w\u4e00-\u9fa5.-]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 80);
+}
+
 function normalizeEntries(entries) {
     const rawEntries = Array.isArray(entries)
         ? entries
@@ -198,6 +205,17 @@ export class WorldbookManager {
         return null;
     }
 
+    _getCharacterScopeKey() {
+        const context = this._getContext();
+        const characterId = context?.characterId;
+        const characterName = safeString(context?.characters?.[characterId]?.name || context?.name2 || '');
+        const idText = characterId !== undefined && characterId !== null ? safeString(characterId) : '';
+        const rawKey = idText
+            ? `${idText}_${characterName || 'character'}`
+            : characterName;
+        return safeStorageSegment(rawKey || 'default_character');
+    }
+
     async _getContextWithWorldInfo() {
         const candidates = [];
         const stContextModule = await this._loadStContextModule();
@@ -355,7 +373,15 @@ export class WorldbookManager {
     }
 
     getSelectionKey(appKey) {
+        return `phone_worldbook_selection_${appKey}_char_${this._getCharacterScopeKey()}`;
+    }
+
+    getGlobalSelectionKey(appKey) {
         return `chat_worldbook_selection_${appKey}`;
+    }
+
+    getPreviousChatScopedSelectionKey(appKey) {
+        return `chat_worldbook_selection_${appKey}_char_${this._getCharacterScopeKey()}`;
     }
 
     getLegacySelectionKey(appKey) {
@@ -363,7 +389,15 @@ export class WorldbookManager {
     }
 
     getEnabledKey(appKey) {
+        return `phone_worldbook_enabled_${appKey}_char_${this._getCharacterScopeKey()}`;
+    }
+
+    getGlobalEnabledKey(appKey) {
         return `chat_worldbook_enabled_${appKey}`;
+    }
+
+    getPreviousChatScopedEnabledKey(appKey) {
+        return `chat_worldbook_enabled_${appKey}_char_${this._getCharacterScopeKey()}`;
     }
 
     getLegacyEnabledKey(appKey) {
@@ -375,6 +409,16 @@ export class WorldbookManager {
         const scopedRaw = this.storage?.get?.(this.getEnabledKey(appKey), undefined);
         if (scopedRaw !== undefined && scopedRaw !== null) {
             return parseBooleanSetting(scopedRaw, fallback);
+        }
+
+        const previousScopedRaw = this.storage?.get?.(this.getPreviousChatScopedEnabledKey(appKey), undefined);
+        if (previousScopedRaw !== undefined && previousScopedRaw !== null) {
+            return parseBooleanSetting(previousScopedRaw, fallback);
+        }
+
+        const globalRaw = this.storage?.get?.(this.getGlobalEnabledKey(appKey), undefined);
+        if (globalRaw !== undefined && globalRaw !== null) {
+            return parseBooleanSetting(globalRaw, fallback);
         }
 
         const legacyRaw = this.storage?.get?.(this.getLegacyEnabledKey(appKey), undefined);
@@ -392,6 +436,12 @@ export class WorldbookManager {
 
     getSelectionState(appKey) {
         let raw = this.storage?.get?.(this.getSelectionKey(appKey), undefined);
+        if (raw === undefined || raw === null) {
+            raw = this.storage?.get?.(this.getPreviousChatScopedSelectionKey(appKey), undefined);
+        }
+        if (raw === undefined || raw === null) {
+            raw = this.storage?.get?.(this.getGlobalSelectionKey(appKey), undefined);
+        }
         if (raw === undefined || raw === null) {
             raw = this.storage?.get?.(this.getLegacySelectionKey(appKey), null);
         }

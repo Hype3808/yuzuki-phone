@@ -465,10 +465,10 @@ export class DiaryView {
 
     renderSettings() {
         const pm = this._getPromptManager();
-        const diaryConfig = pm?.prompts?.diary || {};
-        const autoEnabled = diaryConfig.autoEnabled || false;
-        const autoFloor = diaryConfig.autoFloor || 50;
-        const batchMode = diaryConfig.batchMode !== false;
+        const autoSettings = this.app.diaryData.getAutoSettings();
+        const autoEnabled = autoSettings.autoEnabled || false;
+        const autoFloor = autoSettings.autoFloor || 50;
+        const batchMode = autoSettings.batchMode !== false;
         
         const context = (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) ? SillyTavern.getContext() : null;
         const totalFloor = context?.chat?.length || 0;
@@ -782,22 +782,30 @@ export class DiaryView {
 
         const sAuto = document.getElementById('diary-s-auto');
         if (sAuto) sAuto.onchange = (e) => {
-            const pm = this._getPromptManager();
-            if (pm?.prompts?.diary) {
-                pm.prompts.diary.autoEnabled = e.target.checked;
-                pm.savePrompts();
-            }
+            this.app.diaryData.setAutoSettings({ autoEnabled: e.target.checked });
         };
 
         const sFloor = document.getElementById('diary-s-floor');
         if (sFloor) sFloor.onchange = (e) => {
             const val = Math.max(10, Math.min(9999, parseInt(e.target.value) || 50));
             e.target.value = val;
-            const pm = this._getPromptManager();
-            if (pm?.prompts?.diary) {
-                pm.prompts.diary.autoFloor = val;
-                pm.savePrompts();
-            }
+            this.app.diaryData.setAutoSettings({ autoFloor: val });
+            const batchSizeInput = document.getElementById('diary-batch-size');
+            if (batchSizeInput) batchSizeInput.value = val;
+        };
+
+        const batchModeToggle = document.getElementById('diary-s-batch');
+        if (batchModeToggle) batchModeToggle.onchange = (e) => {
+            this.app.diaryData.setAutoSettings({ batchMode: e.target.checked });
+        };
+
+        const batchSizeInput = document.getElementById('diary-batch-size');
+        if (batchSizeInput) batchSizeInput.onchange = (e) => {
+            const val = Math.max(10, Math.min(200, parseInt(e.target.value) || 50));
+            e.target.value = val;
+            this.app.diaryData.setAutoSettings({ autoFloor: val });
+            const autoFloorInput = document.getElementById('diary-s-floor');
+            if (autoFloorInput) autoFloorInput.value = val;
         };
 
         // 🔥 新增：手动日记修正楼层按钮点击事件

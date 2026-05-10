@@ -2194,9 +2194,12 @@ export class HoneyData {
         const list = this.getFollowedHosts();
         const key = this._normalizeHostNameKey(safeHostName);
         const existingIndex = list.findIndex(item => this._normalizeHostNameKey(item?.name || '') === key);
+        const existingHost = existingIndex >= 0 ? list[existingIndex] : null;
+        const existingAvatarUrl = String(existingHost?.avatarUrl || '').trim();
+        const nextAvatarUrl = existingAvatarUrl || avatarUrl;
         const patch = {
             name: existingIndex >= 0 ? list[existingIndex].name : safeHostName,
-            avatarUrl: avatarUrl || (existingIndex >= 0 ? list[existingIndex].avatarUrl : ''),
+            avatarUrl: nextAvatarUrl,
             figure: existingIndex >= 0 ? list[existingIndex].figure : '微信好友',
             boundVideoUrl: existingIndex >= 0 ? list[existingIndex].boundVideoUrl : '',
             lastActiveAt: Date.now(),
@@ -2226,7 +2229,7 @@ export class HoneyData {
             app: 'honey',
             appContactId: this._getHoneyGlobalContactId({ name: safeHostName }),
             name: safeHostName,
-            avatar: avatarUrl || '',
+            avatar: nextAvatarUrl || '',
             relation: '微信邀约主播',
             extra: {
                 sourceApp: 'wechat',

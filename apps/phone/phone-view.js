@@ -17,18 +17,34 @@ import { applyPhoneTagFilter } from '../../config/tag-filter.js';
 export class PhoneCallView {
     constructor(app) {
         this.app = app;
-        this.currentView = 'main'; // 'main' | 'incoming' | 'active' | 'transcript' | 'settings'
+        this.currentView = 'main'; // 'main' | 'contacts' | 'dialing' | 'incoming' | 'active' | 'transcript' | 'settings'
         this.callTimer = null;
+        this.dialingTimer = null;
         this.callDuration = 0;
         this.chatMessages = [];
         this.currentCaller = '';
         this.audioPlayer = new Audio();
         this.currentPlayingBubble = null;
+        this.currentTtsRound = null;
+        this._phoneCallTtsCache = new Map();
+        this._phoneCallTtsCacheOrder = [];
+        this._phoneCallTtsCacheLimit = 80;
         this.returnViewAfterSettings = 'main';
+        this.contactSelectionMode = false;
+        this.selectedContactIds = new Set();
+        this.contactAddPanelOpen = false;
+        this.phoneWechatDataLoading = null;
+        this.phoneWechatDataLoadAttempted = false;
     }
 
     render() {
         switch (this.currentView) {
+            case 'contacts':
+                this.renderContacts();
+                break;
+            case 'dialing':
+                this.renderDialingCall(this.currentCaller);
+                break;
             case 'incoming':
                 this.renderIncomingCall(this.currentCaller);
                 break;
@@ -52,6 +68,9 @@ export class PhoneCallView {
     // ========================================
     renderMain() {
         this.currentView = 'main';
+        this.contactSelectionMode = false;
+        this.selectedContactIds.clear();
+        this.contactAddPanelOpen = false;
 
         // 安全清理历史栈中的通话遗留页面，防止按返回键又回到死去的通话界面
         if (this.app.phoneShell && this.app.phoneShell.viewHistory) {
@@ -70,11 +89,12 @@ export class PhoneCallView {
             const reversed = [...history].reverse();
             listHtml = '<div class="phone-call-history-list">';
             reversed.forEach((record, idx) => {
-                const isMissed = record.status === 'missed' || record.status === 'rejected';
+                const isMissed = record.status === 'missed' || record.status === 'rejected' || record.status === 'canceled';
                 const missedClass = isMissed ? 'phone-call-missed' : '';
                 const icon = isMissed ? '📵' : '📞';
                 const statusText = record.status === 'missed' ? '未接' :
-                    record.status === 'rejected' ? '已拒绝' : '已接通';
+                    record.status === 'rejected' ? '已拒绝' :
+                    record.status === 'canceled' ? '已取消' : '已接通';
                 const durationText = record.status === 'answered' && record.duration > 0
                     ? `${Math.floor(record.duration / 60)}分${record.duration % 60}秒`
                     : statusText;
@@ -110,6 +130,9 @@ export class PhoneCallView {
                             <span class="phone-call-toggle-slider"></span>
                         </label>
                         <span style="font-size: 12px; color: var(--phone-secondary-text, #999);">TTS</span>
+                        <button class="phone-call-settings-btn" id="phone-call-open-contacts" title="联系人">
+                            <i class="fa-solid fa-address-book"></i>
+                        </button>
                         <button class="phone-call-settings-btn" id="phone-call-open-settings">
                             <i class="fa-solid fa-gear"></i>
                         </button>
@@ -124,6 +147,10 @@ export class PhoneCallView {
         // 绑定TTS开关
         document.getElementById('phone-call-tts-toggle-main')?.addEventListener('change', (e) => {
             this.app.storage.set('phone-call-auto-tts', e.target.checked);
+        });
+
+        document.getElementById('phone-call-open-contacts')?.addEventListener('click', () => {
+            this.renderContacts();
         });
 
         // 绑定设置按钮
@@ -265,6 +292,276 @@ export class PhoneCallView {
 
         item.style.position = 'relative';
         item.appendChild(deleteBtn);
+    }
+
+    // ========================================
+    // 通话联系人页
+    // ========================================
+    renderContacts() {
+        this.currentView = 'contacts';
+        this._ensurePhoneWechatDataLoaded({ rerenderContacts: true });
+        const contacts = this.app.phoneCallData.getContacts();
+        const sortedContacts = [...contacts].sort((a, b) =>
+            String(a?.name || '').localeCompare(String(b?.name || ''), 'zh-Hans-CN')
+        );
+
+        const contactsHtml = sortedContacts.length > 0
+            ? sortedContacts.map(contact => `
+                <div class="phone-call-contact-item ${this.contactSelectionMode ? 'is-selecting' : ''}" data-contact-id="${this._escapeAttr(contact.id)}">
+                    <label class="phone-call-contact-check">
+                        <input type="checkbox" class="phone-call-contact-select" data-contact-id="${this._escapeAttr(contact.id)}" ${this.selectedContactIds.has(String(contact.id)) ? 'checked' : ''}>
+                        <span></span>
+                    </label>
+                    <div class="phone-call-contact-avatar">${this._getCallerAvatar(contact.name)}</div>
+                    <div class="phone-call-contact-name">${this._escapeHtml(contact.name)}</div>
+                    <button class="phone-call-contact-dial" data-contact-id="${this._escapeAttr(contact.id)}" title="拨打">
+                        <i class="fa-solid fa-phone"></i>
+                    </button>
+                </div>
+            `).join('')
+            : '<div class="phone-call-empty">暂无联系人，请先添加姓名</div>';
+
+        const html = `
+            <div class="phone-call-contacts">
+                <div class="phone-call-main-header">
+                    <button class="phone-call-settings-btn" id="phone-call-contacts-back">
+                        <i class="fa-solid fa-chevron-left"></i>
+                    </button>
+                    <div class="phone-call-main-title">${this.contactSelectionMode ? `已选 ${this.selectedContactIds.size}` : '电话联系人'}</div>
+                    <button class="phone-call-settings-btn" id="phone-call-contact-selection-delete" title="删除所选" style="${this.contactSelectionMode ? '' : 'display:none;'}">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                    <button class="phone-call-settings-btn" id="phone-call-contact-selection-cancel" title="取消选择" style="${this.contactSelectionMode ? '' : 'display:none;'}">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                    <button class="phone-call-settings-btn" id="phone-call-contact-add-toggle" title="添加联系人" style="${this.contactSelectionMode ? 'display:none;' : ''}">
+                        <i class="fa-solid fa-plus"></i>
+                    </button>
+                </div>
+                <div class="phone-call-contact-add" id="phone-call-contact-add-panel" style="${this.contactAddPanelOpen ? 'display:flex;' : 'display:none;'}">
+                    <input type="text" class="phone-call-contact-input" id="phone-call-contact-name" placeholder="输入联系人姓名">
+                    <button class="phone-call-contact-add-btn" id="phone-call-contact-add-btn">添加</button>
+                </div>
+                <div class="phone-call-contact-list">
+                    ${contactsHtml}
+                </div>
+            </div>
+        `;
+
+        this.app.phoneShell.setContent(html, 'phone-contacts');
+        const root = document.querySelector('.phone-view-current .phone-call-contacts');
+        if (!root) return;
+        const query = (selector) => root.querySelector(selector);
+        const queryAll = (selector) => Array.from(root.querySelectorAll(selector));
+        if (root.dataset.phoneContactsBound === '1') return;
+        root.dataset.phoneContactsBound = '1';
+
+        query('#phone-call-contacts-back')?.addEventListener('click', () => {
+            if (this.contactSelectionMode) {
+                this.contactSelectionMode = false;
+                this.selectedContactIds.clear();
+                this.renderContacts();
+                return;
+            }
+            this.renderMain();
+        });
+        query('#phone-call-contact-selection-cancel')?.addEventListener('click', () => {
+            this.contactSelectionMode = false;
+            this.selectedContactIds.clear();
+            this.renderContacts();
+        });
+        query('#phone-call-contact-selection-delete')?.addEventListener('click', () => {
+            if (!this.contactSelectionMode || this.selectedContactIds.size === 0) return;
+            Array.from(this.selectedContactIds).forEach(id => this.app.phoneCallData.deleteContact(id));
+            this.contactSelectionMode = false;
+            this.selectedContactIds.clear();
+            this.renderContacts();
+        });
+        query('#phone-call-contact-add-toggle')?.addEventListener('click', () => {
+            this.contactAddPanelOpen = !this.contactAddPanelOpen;
+            this.renderContacts();
+            if (this.contactAddPanelOpen) {
+                setTimeout(() => {
+                    const activeRoot = document.querySelector('.phone-view-current .phone-call-contacts');
+                    activeRoot?.querySelector?.('#phone-call-contact-name')?.focus?.();
+                }, 50);
+            }
+        });
+
+        const addContact = () => {
+            const input = query('#phone-call-contact-name');
+            const name = String(input?.value || '').trim();
+            if (!name) {
+                this.app.phoneShell.showNotification('提示', '请输入联系人姓名', '⚠️');
+                return;
+            }
+            this.app.phoneCallData.addContact(name);
+            this.contactAddPanelOpen = false;
+            this.renderContacts();
+        };
+
+        query('#phone-call-contact-add-btn')?.addEventListener('click', addContact);
+        query('#phone-call-contact-name')?.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                addContact();
+            }
+        });
+
+        queryAll('.phone-call-contact-dial').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (this.contactSelectionMode) return;
+                const contact = contacts.find(item => String(item?.id || '') === String(btn.dataset.contactId || ''));
+                if (contact?.name) this.renderDialingCall(contact.name);
+            });
+        });
+
+        queryAll('.phone-call-contact-select').forEach(input => {
+            input.addEventListener('click', (e) => e.stopPropagation());
+            input.addEventListener('change', (e) => {
+                const id = String(e.currentTarget.dataset.contactId || '').trim();
+                if (!id) return;
+                if (e.currentTarget.checked) {
+                    this.selectedContactIds.add(id);
+                } else {
+                    this.selectedContactIds.delete(id);
+                }
+                this.renderContacts();
+            });
+        });
+
+        queryAll('.phone-call-contact-item').forEach(item => {
+            const contactId = String(item.dataset.contactId || '').trim();
+            let pressTimer = null;
+            let startX = 0;
+            let startY = 0;
+
+            const clearPress = () => {
+                if (pressTimer) {
+                    clearTimeout(pressTimer);
+                    pressTimer = null;
+                }
+            };
+            const startPress = (x, y) => {
+                if (this.contactSelectionMode) return;
+                startX = x;
+                startY = y;
+                clearPress();
+                pressTimer = setTimeout(() => {
+                    pressTimer = null;
+                    this.contactSelectionMode = true;
+                    this.selectedContactIds = new Set([contactId]);
+                    this.renderContacts();
+                }, 520);
+            };
+            const movePress = (x, y) => {
+                if (!pressTimer) return;
+                if (Math.abs(x - startX) > 18 || Math.abs(y - startY) > 18) clearPress();
+            };
+
+            item.addEventListener('click', (e) => {
+                if (!this.contactSelectionMode) return;
+                e.preventDefault();
+                e.stopPropagation();
+                if (this.selectedContactIds.has(contactId)) {
+                    this.selectedContactIds.delete(contactId);
+                } else {
+                    this.selectedContactIds.add(contactId);
+                }
+                this.renderContacts();
+            });
+            item.addEventListener('touchstart', (e) => {
+                if (!e.touches || e.touches.length === 0) return;
+                const touch = e.touches[0];
+                startPress(touch.clientX, touch.clientY);
+            }, { passive: true });
+            item.addEventListener('touchmove', (e) => {
+                if (!e.touches || e.touches.length === 0) return;
+                const touch = e.touches[0];
+                movePress(touch.clientX, touch.clientY);
+            }, { passive: true });
+            item.addEventListener('touchend', clearPress);
+            item.addEventListener('touchcancel', clearPress);
+            item.addEventListener('mousedown', (e) => {
+                if (e.button !== 0) return;
+                startPress(e.clientX, e.clientY);
+            });
+            item.addEventListener('mousemove', (e) => movePress(e.clientX, e.clientY));
+            item.addEventListener('mouseup', clearPress);
+            item.addEventListener('mouseleave', clearPress);
+            item.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                this.contactSelectionMode = true;
+                this.selectedContactIds = new Set([contactId]);
+                this.renderContacts();
+            });
+        });
+    }
+
+    // ========================================
+    // 主动拨号等待页
+    // ========================================
+    renderDialingCall(callerName) {
+        const safeName = String(callerName || '').trim();
+        if (!safeName) return;
+        this.currentView = 'dialing';
+        this.currentCaller = safeName;
+        if (this.dialingTimer) {
+            clearTimeout(this.dialingTimer);
+            this.dialingTimer = null;
+        }
+
+        const avatarHtml = this._getCallerAvatar(safeName);
+        const html = `
+            <div class="phone-call-incoming phone-call-dialing">
+                <div class="phone-call-incoming-avatar">${avatarHtml}</div>
+                <div class="phone-call-incoming-name">${this._escapeHtml(safeName)}</div>
+                <div class="phone-call-incoming-status" id="phone-call-dialing-status">正在拨号<span class="phone-call-typing-dots"></span></div>
+                <div class="phone-call-incoming-btns">
+                    <button class="phone-call-btn phone-call-btn-reject" id="phone-call-dial-cancel">
+                        <i class="fa-solid fa-phone-slash"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+
+        this.app.phoneShell.setContent(html, 'phone-dialing');
+        const root = document.querySelector('.phone-view-current .phone-call-dialing') || document;
+        const query = (selector) => root.querySelector(selector);
+
+        let canceled = false;
+        const cancelDial = () => {
+            canceled = true;
+            if (this.dialingTimer) {
+                clearTimeout(this.dialingTimer);
+                this.dialingTimer = null;
+            }
+            this._addCallRecord(safeName, 'canceled', 0, []);
+            this.app.phoneShell.showNotification('已取消', `已取消拨打 ${safeName}`, '📵');
+            this.renderContacts();
+        };
+
+        query('#phone-call-dial-cancel')?.addEventListener('click', cancelDial);
+
+        this.dialingTimer = setTimeout(async () => {
+            if (canceled || this.currentView !== 'dialing' || this.currentCaller !== safeName) return;
+            const statusEl = query('#phone-call-dialing-status');
+            if (statusEl) statusEl.innerHTML = '等待对方接听<span class="phone-call-typing-dots"></span>';
+
+            const decision = await this.decideOutgoingCallAnswer(safeName);
+            if (canceled || this.currentView !== 'dialing' || this.currentCaller !== safeName) return;
+
+            if (decision.answered) {
+                this.renderActiveCall(safeName, { outgoing: true });
+                return;
+            }
+
+            this._addCallRecord(safeName, 'missed', 0, []);
+            this.app.phoneShell.showNotification('未接通', decision.reason || `${safeName} 未接听`, '📵');
+            this.renderContacts();
+        }, 1200);
     }
 
     // ========================================
@@ -438,6 +735,10 @@ export class PhoneCallView {
             this.renderIncomingCall(this.currentCaller);
             return;
         }
+        if (targetView === 'contacts') {
+            this.renderContacts();
+            return;
+        }
         this.renderMain();
     }
 
@@ -508,11 +809,15 @@ export class PhoneCallView {
     // ========================================
     // 通话界面
     // ========================================
-    renderActiveCall(callerName) {
+    renderActiveCall(callerName, options = {}) {
+        const previousView = this.currentView;
         this.currentView = 'active';
         this.currentCaller = callerName;
+        this._ensurePhoneWechatDataLoaded();
         this.callDuration = 0;
         this.chatMessages = [];
+        const isOutgoingCall = options.outgoing === true;
+        const shouldReplaceDialingView = isOutgoingCall && previousView === 'dialing';
 
         const avatarHtml = this._getCallerAvatar(callerName);
 
@@ -549,7 +854,9 @@ export class PhoneCallView {
             </div>
         `;
 
-        this.app.phoneShell.setContent(html, 'phone-active');
+        this._setPhoneShellContent(html, 'phone-active', {
+            replaceViewIds: shouldReplaceDialingView ? ['phone-dialing'] : []
+        });
 
         // 记录通话开始的剧情时间
         const timeManager = window.VirtualPhone?.timeManager;
@@ -642,7 +949,7 @@ export class PhoneCallView {
                 for (const line of aiLines) {
                     const bubbleId = `phone-ai-msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
                     messagesDiv.insertAdjacentHTML('beforeend',
-                        `<div class="phone-call-message-ai" id="${bubbleId}">${this._escapeHtml(line)}</div>`
+                        `<div class="phone-call-message-ai" id="${bubbleId}" data-phone-call-tts-text="${this._escapeAttr(line)}">${this._escapeHtml(line)}</div>`
                     );
                     bubbleIds.push(bubbleId);
                 }
@@ -694,6 +1001,18 @@ export class PhoneCallView {
                 } else {
                     setCallStatus('green');
                 }
+            }
+        };
+
+        const triggerOpeningLine = async () => {
+            if (!isOutgoingCall || isCallSending || this.currentView !== 'active' || this.currentCaller !== callerName) return;
+            isCallSending = true;
+            setCallStatus('red');
+            try {
+                await requestAIReply('【系统提示】电话已接通。现在是用户主动拨打给你，你必须先开口说第一句话，像真实电话接通后的自然开场。');
+            } finally {
+                isCallSending = false;
+                setCallStatus('green');
             }
         };
 
@@ -752,8 +1071,7 @@ export class PhoneCallView {
             if (!messagesDiv) return;
 
             // 停止正在播放的音频
-            this.audioPlayer.pause();
-            this.audioPlayer.src = '';
+            this.stopTTS();
 
             // 从 chatMessages 尾部删除所有连续的AI消息，直到遇到用户消息
             while (this.chatMessages.length > 0 && this.chatMessages[this.chatMessages.length - 1].from !== 'me') {
@@ -841,11 +1159,17 @@ export class PhoneCallView {
                 sendMessage();
             }
         });
+        const activeMessagesDiv = document.getElementById('phone-call-messages');
+        this._bindCallTtsBubbleClickEvents(activeMessagesDiv);
         document.getElementById('phone-call-regen')?.addEventListener('click', regenerate);
         setCallStatus('green');
 
         // 挂断
-        document.getElementById('phone-call-hangup')?.addEventListener('click', () => {
+        const hangupCall = (e) => {
+            if (e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
             if (this.callTimer) {
                 clearInterval(this.callTimer);
                 this.callTimer = null;
@@ -855,8 +1179,7 @@ export class PhoneCallView {
             isCallSending = false;
 
             // 停止音频播放
-            this.audioPlayer.pause();
-            this.audioPlayer.src = '';
+            this.stopTTS();
 
             const durationText = `${Math.floor(this.callDuration / 60)}分${this.callDuration % 60}秒`;
 
@@ -872,18 +1195,117 @@ export class PhoneCallView {
             this._addCallRecord(callerName, 'answered', this.callDuration, [...this.chatMessages], endTime);
 
             this.app.phoneShell.showNotification('通话结束', `通话 ${durationText}`, '📞');
-            this.renderMain();
+            this.renderContacts();
+        };
+        const hangupBtn = document.getElementById('phone-call-hangup');
+        hangupBtn?.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+        }, { passive: false });
+        hangupBtn?.addEventListener('touchend', hangupCall, { passive: false });
+        hangupBtn?.addEventListener('mousedown', (e) => {
+            e.preventDefault();
         });
+        hangupBtn?.addEventListener('click', hangupCall);
 
-        // 聚焦输入框
-        setTimeout(() => {
-            document.getElementById('phone-call-input')?.focus();
-        }, 300);
+        // 主动拨号接通后先展示通话界面，不自动弹出键盘覆盖界面
+        if (!isOutgoingCall) {
+            setTimeout(() => {
+                document.getElementById('phone-call-input')?.focus();
+            }, 300);
+        }
+
+        if (isOutgoingCall) {
+            setTimeout(() => {
+                if (this.currentView === 'active' && this.currentCaller === callerName) {
+                    triggerOpeningLine();
+                }
+            }, 450);
+        }
     }
 
     // ========================================
     // AI通信（完全重写，参照 chat-view.js:buildMessagesArray）
     // ========================================
+    async decideOutgoingCallAnswer(callerName) {
+        try {
+            const context = window.SillyTavern?.getContext?.();
+            const apiManager = window.VirtualPhone?.apiManager;
+            if (!context || !apiManager) {
+                return { answered: true, reason: '' };
+            }
+
+            const userName = context.name1 || '用户';
+            const callRoleName = String(callerName || '').trim() || '对方';
+            const recentChat = Array.isArray(context.chat)
+                ? context.chat.slice(-8).map(msg => {
+                    const speaker = msg.is_user ? userName : callRoleName;
+                    let content = String(msg.mes || msg.content || '').trim();
+                    content = applyPhoneTagFilter(content, { storage: this.app.storage });
+                    content = content.replace(/<[^>]+>/g, '').trim();
+                    return content ? `${speaker}: ${content}` : '';
+                }).filter(Boolean).join('\n')
+                : '';
+
+            const messages = [
+                {
+                    role: 'system',
+                    content: [
+                        '【主动拨打电话接听判定】',
+                        `${userName} 正在主动拨打 ${callRoleName} 的电话。`,
+                        `你只需要判断 ${callRoleName} 此刻是否会接听电话。`,
+                        '必须结合角色性格、关系、当前剧情、情绪和场景判断。',
+                        '只输出一行 JSON，不要解释，不要输出代码块。',
+                        '格式：{"answer":"yes","reason":"简短原因"} 或 {"answer":"no","reason":"简短原因"}'
+                    ].join('\n'),
+                    isPhoneMessage: true
+                }
+            ];
+
+            if (recentChat) {
+                messages.push({
+                    role: 'system',
+                    content: `【最近剧情】\n${recentChat}`,
+                    isPhoneMessage: true
+                });
+            }
+
+            messages.push({
+                role: 'user',
+                content: `判断 ${callRoleName} 是否接听 ${userName} 的电话。`,
+                isPhoneMessage: true
+            });
+
+            const result = await apiManager.callAI(messages, {
+                preserve_roles: true,
+                appId: 'phone_online',
+                max_tokens: 120
+            });
+            if (!result.success) throw new Error(result.error || '接听判定失败');
+
+            const raw = String(result.summary || result.content || result.text || '').trim();
+            const jsonText = raw.match(/\{[\s\S]*\}/)?.[0] || raw;
+            let parsed = null;
+            try {
+                parsed = JSON.parse(jsonText);
+            } catch (e) {
+                const negative = /不接|拒接|没接|挂断|no|false|decline|reject/i.test(raw);
+                return { answered: !negative, reason: negative ? `${callRoleName} 暂时没有接听` : '' };
+            }
+
+            const answer = String(parsed?.answer || parsed?.answered || '').toLowerCase();
+            const answered = parsed?.answered === true
+                || ['yes', 'true', '接听', '会接', '接'].includes(answer)
+                || (answer !== 'no' && answer !== 'false' && /接听|会接/.test(String(parsed?.answer || '')));
+            return {
+                answered,
+                reason: String(parsed?.reason || '').trim()
+            };
+        } catch (error) {
+            console.warn('📞 主动拨号接听判定失败，默认接通:', error);
+            return { answered: true, reason: '' };
+        }
+    }
+
     async sendCallMessageToAI(message, callerName, chatMessages) {
         try {
             const context = window.SillyTavern?.getContext?.();
@@ -1090,16 +1512,116 @@ export class PhoneCallView {
     // ========================================
     // TTS播放
     // ========================================
+    stopTTS() {
+        this.currentTtsRound = null;
+        if (this.audioPlayer) {
+            this.audioPlayer.pause();
+            this.audioPlayer.src = '';
+        }
+        if (this.currentPlayingBubble) {
+            this.currentPlayingBubble.classList.remove('voice-playing');
+            this.currentPlayingBubble = null;
+        }
+    }
+
+    clearTtsCache() {
+        this.stopTTS();
+        this._phoneCallTtsCache.forEach((blobUrl) => {
+            if (blobUrl) {
+                try { URL.revokeObjectURL(blobUrl); } catch (e) { /* ignore */ }
+            }
+        });
+        this._phoneCallTtsCache.clear();
+        this._phoneCallTtsCacheOrder = [];
+    }
+
+    _getGlobalTtsVoice() {
+        const storage = window.VirtualPhone?.storage || this.app?.storage;
+        const provider = String(storage?.get?.('phone-tts-provider') || 'minimax_cn').trim() || 'minimax_cn';
+        const scopedVoice = String(storage?.get?.(`phone-tts-${provider}-voice`) || '').trim();
+        if (scopedVoice) return scopedVoice;
+        if (provider !== 'volcengine') {
+            return String(storage?.get?.('phone-tts-voice') || '').trim();
+        }
+        return '';
+    }
+
+    _buildPhoneCallTtsCacheKey({ bubbleId = '', caller = '', provider = '', voice = '', text = '' } = {}) {
+        return [
+            String(bubbleId || '').trim(),
+            String(caller || '').trim(),
+            String(provider || '').trim(),
+            String(voice || '').trim(),
+            String(text || '').trim()
+        ].join('\u001f');
+    }
+
+    _touchPhoneCallTtsCacheKey(cacheKey = '') {
+        if (!cacheKey) return;
+        this._phoneCallTtsCacheOrder = this._phoneCallTtsCacheOrder.filter(key => key !== cacheKey);
+        this._phoneCallTtsCacheOrder.push(cacheKey);
+    }
+
+    _storePhoneCallTtsCache(cacheKey = '', blobUrl = '') {
+        if (!cacheKey || !blobUrl) return;
+        const existed = this._phoneCallTtsCache.get(cacheKey);
+        if (existed && existed !== blobUrl) {
+            try { URL.revokeObjectURL(existed); } catch (e) { /* ignore */ }
+        }
+        this._phoneCallTtsCache.set(cacheKey, blobUrl);
+        this._touchPhoneCallTtsCacheKey(cacheKey);
+
+        while (this._phoneCallTtsCacheOrder.length > this._phoneCallTtsCacheLimit) {
+            const oldKey = this._phoneCallTtsCacheOrder.shift();
+            const oldUrl = this._phoneCallTtsCache.get(oldKey);
+            this._phoneCallTtsCache.delete(oldKey);
+            if (oldUrl) {
+                try { URL.revokeObjectURL(oldUrl); } catch (e) { /* ignore */ }
+            }
+        }
+    }
+
+    _bindCallTtsBubbleClickEvents(messagesDiv) {
+        if (!messagesDiv || messagesDiv._phoneCallTtsBound) return;
+        messagesDiv._phoneCallTtsBound = true;
+        messagesDiv.addEventListener('click', async (e) => {
+            const bubble = e.target.closest('.phone-call-message-ai');
+            if (!bubble) return;
+
+            if (this.currentPlayingBubble === bubble && !this.audioPlayer.paused) {
+                this.stopTTS();
+                return;
+            }
+
+            const allBubbles = Array.from(messagesDiv.querySelectorAll('.phone-call-message-ai'));
+            const startIndex = allBubbles.indexOf(bubble);
+            if (startIndex < 0) return;
+
+            const roundId = `manual_${Date.now()}`;
+            this.currentTtsRound = roundId;
+            for (let i = startIndex; i < allBubbles.length; i++) {
+                if (this.currentTtsRound !== roundId) break;
+                const targetBubble = allBubbles[i];
+                const text = String(targetBubble.dataset?.phoneCallTtsText || targetBubble.textContent || '').trim();
+                if (!text) continue;
+                await this.playTTS(text, targetBubble);
+            }
+        });
+    }
+
     async playTTS(text, bubble) {
+        await this._ensurePhoneWechatDataLoaded();
         const ttsManager = window.VirtualPhone?.ttsManager;
         const ttsConfig = this._resolveCallerTtsVoice(this.currentCaller, { allowGlobalFallback: true });
         const voice = String(ttsConfig?.voice || '').trim();
         const provider = String(ttsConfig?.provider || '').trim();
+        const textToSpeak = String(text || '').trim();
 
         if (!ttsManager) {
             console.warn('📞 [TTS] ttsManager 未初始化');
             return;
         }
+        if (!textToSpeak) return;
 
         try {
             // 停止之前播放的
@@ -1107,8 +1629,20 @@ export class PhoneCallView {
                 this.currentPlayingBubble.classList.remove('voice-playing');
             }
 
-            let blobUrl = '';
-            blobUrl = await ttsManager.requestTTS(text, { provider: provider || undefined, voice: voice || undefined });
+            const cacheKey = this._buildPhoneCallTtsCacheKey({
+                bubbleId: bubble?.id || '',
+                caller: this.currentCaller,
+                provider,
+                voice,
+                text: textToSpeak
+            });
+            let blobUrl = this._phoneCallTtsCache.get(cacheKey) || '';
+            if (blobUrl) {
+                this._touchPhoneCallTtsCacheKey(cacheKey);
+            } else {
+                blobUrl = await ttsManager.requestTTS(textToSpeak, { provider: provider || undefined, voice: voice || undefined });
+                this._storePhoneCallTtsCache(cacheKey, blobUrl);
+            }
 
             // 播放并等待播放完毕
             this.audioPlayer.src = blobUrl;
@@ -1118,17 +1652,15 @@ export class PhoneCallView {
             await new Promise((resolve, reject) => {
                 this.audioPlayer.onended = () => {
                     if (bubble) bubble.classList.remove('voice-playing');
-                    URL.revokeObjectURL(blobUrl);
                     this.currentPlayingBubble = null;
                     resolve();
                 };
                 this.audioPlayer.onerror = (e) => {
                     if (bubble) bubble.classList.remove('voice-playing');
-                    URL.revokeObjectURL(blobUrl);
                     this.currentPlayingBubble = null;
-                    reject(e);
+                    resolve();
                 };
-                this.audioPlayer.play().catch(reject);
+                this.audioPlayer.play().catch(() => resolve());
             });
 
         } catch (error) {
@@ -1140,6 +1672,32 @@ export class PhoneCallView {
     // ========================================
     // 工具方法
     // ========================================
+
+    _setPhoneShellContent(html, viewId, { replaceViewIds = [] } = {}) {
+        const idsToReplace = Array.isArray(replaceViewIds)
+            ? replaceViewIds.map(id => String(id || '').trim()).filter(Boolean)
+            : [];
+
+        if (idsToReplace.length > 0 && this.app?.phoneShell) {
+            const shell = this.app.phoneShell;
+            const replacementSet = new Set(idsToReplace);
+            const history = Array.isArray(shell.viewHistory) ? shell.viewHistory : [];
+            const firstReplaceIndex = history.findIndex(item => replacementSet.has(String(item?.id || '')));
+            if (firstReplaceIndex !== -1) {
+                shell.viewHistory = [
+                    ...history.slice(0, firstReplaceIndex),
+                    { id: viewId }
+                ];
+            }
+
+            const stack = shell.screen?.querySelector?.('.view-stack-container');
+            idsToReplace.forEach(id => {
+                stack?.querySelector?.(`[data-view-id="${this._escapeCssAttr(id)}"]`)?.remove?.();
+            });
+        }
+
+        this.app.phoneShell.setContent(html, viewId);
+    }
 
     _addCallRecord(callerName, status, duration, transcript, timeInfo) {
         const timeManager = window.VirtualPhone?.timeManager;
@@ -1161,7 +1719,7 @@ export class PhoneCallView {
 
     _resolveWechatContact(callerName) {
         try {
-            const wechatData = window.VirtualPhone?.wechatApp?.wechatData;
+            const wechatData = this._getPhoneWechatData();
             if (!wechatData) return null;
             return wechatData.findContactByNameLoose?.(callerName, { includeChats: true })
                 || wechatData.getContactByName?.(callerName)
@@ -1171,11 +1729,46 @@ export class PhoneCallView {
         }
     }
 
+    _getPhoneWechatData() {
+        return window.VirtualPhone?.wechatApp?.wechatData || window.VirtualPhone?.cachedWechatData || null;
+    }
+
+    _ensurePhoneWechatDataLoaded({ rerenderContacts = false } = {}) {
+        if (this._getPhoneWechatData()) return Promise.resolve(this._getPhoneWechatData());
+        if (this.phoneWechatDataLoading) return this.phoneWechatDataLoading;
+        if (this.phoneWechatDataLoadAttempted) return Promise.resolve(null);
+
+        this.phoneWechatDataLoadAttempted = true;
+        this.phoneWechatDataLoading = import('../wechat/wechat-data.js')
+            .then(module => {
+                const storage = this.app?.storage || window.VirtualPhone?.storage;
+                if (!storage || !module?.WechatData) return null;
+                const wechatData = window.VirtualPhone?.wechatApp?.wechatData || new module.WechatData(storage);
+                if (window.VirtualPhone && !window.VirtualPhone.cachedWechatData) {
+                    window.VirtualPhone.cachedWechatData = wechatData;
+                }
+                return wechatData;
+            })
+            .catch(error => {
+                console.warn('📞 [通话] 静默加载微信数据失败:', error);
+                return null;
+            })
+            .finally(() => {
+                this.phoneWechatDataLoading = null;
+                if (rerenderContacts && this.currentView === 'contacts') {
+                    this.renderContacts();
+                }
+            });
+
+        return this.phoneWechatDataLoading;
+    }
+
     _resolveCallerTtsVoice(callerName, { allowGlobalFallback = true } = {}) {
-        const globalVoice = String(this.app.storage.get('phone-tts-voice') || '').trim();
-        const globalProvider = String(this.app.storage.get('phone-tts-provider') || '').trim();
+        const storage = window.VirtualPhone?.storage || this.app?.storage;
+        const globalVoice = this._getGlobalTtsVoice();
+        const globalProvider = String(storage?.get?.('phone-tts-provider') || 'minimax_cn').trim() || 'minimax_cn';
         try {
-            const wechatData = window.VirtualPhone?.wechatApp?.wechatData;
+            const wechatData = this._getPhoneWechatData();
             if (wechatData?.resolveTtsVoiceByName) {
                 const resolved = wechatData.resolveTtsVoiceByName(callerName, { includeChats: true });
                 const boundVoice = String(resolved?.voice || '').trim();
@@ -1199,11 +1792,52 @@ export class PhoneCallView {
         // 尝试从微信联系人匹配头像
         try {
             const contact = this._resolveWechatContact(callerName);
-            if (contact?.avatar) {
-                return `<img src="${contact.avatar}" style="width:100%;height:100%;object-fit:cover;">`;
+            const avatar = this._normalizeWechatAvatarPath(contact?.avatar);
+            if (avatar && avatar !== '👤') {
+                return `<img src="${this._escapeAttr(avatar)}" style="width:100%;height:100%;object-fit:cover;">`;
+            }
+            const rawAvatar = String(contact?.avatar || '').trim();
+            if (rawAvatar && rawAvatar !== '👤') return this._escapeHtml(rawAvatar);
+
+            const wechatData = this._getPhoneWechatData();
+            const autoAvatar = this._normalizeWechatAvatarPath(
+                wechatData?.getContactAutoAvatar?.(contact?.id || callerName)
+                || wechatData?.getContactAutoAvatar?.(callerName)
+                || ''
+            );
+            if (autoAvatar) {
+                return `<img src="${this._escapeAttr(autoAvatar)}" style="width:100%;height:100%;object-fit:cover;">`;
+            }
+
+            const autoMap = typeof wechatData?.getContactAutoAvatarMap === 'function'
+                ? wechatData.getContactAutoAvatarMap()
+                : null;
+            if (autoMap && typeof autoMap === 'object') {
+                const keySet = new Set([contact?.id, contact?.name, callerName].filter(Boolean).map(v => String(v).trim()));
+                for (const key of keySet) {
+                    const mappedAvatar = this._normalizeWechatAvatarPath(autoMap[key]);
+                    if (mappedAvatar) {
+                        return `<img src="${this._escapeAttr(mappedAvatar)}" style="width:100%;height:100%;object-fit:cover;">`;
+                    }
+                }
             }
         } catch (e) { /* ignore */ }
         return '👤';
+    }
+
+    _normalizeWechatAvatarPath(value) {
+        const raw = String(value || '').trim();
+        if (!raw || raw === '👤') return '';
+        if (/^(?:https?:\/\/|\/|data:image|blob:)/i.test(raw)) return raw;
+        const cleaned = raw.replace(/^['"]|['"]$/g, '').replace(/^\.?\/*/, '').replace(/^apps\/wechat\/avatars\//i, '').replace(/^wechat\/avatars\//i, '').replace(/^avatars\//i, '');
+        if (!cleaned || /\s/.test(cleaned)) return '';
+        if (/^(?:male|female)\d+$/i.test(cleaned)) {
+            return new URL(`../wechat/avatars/${cleaned}.png`, import.meta.url).href;
+        }
+        if (/^[a-z0-9._-]+\.(?:png|jpg|jpeg|webp|gif)$/i.test(cleaned)) {
+            return new URL(`../wechat/avatars/${cleaned}`, import.meta.url).href;
+        }
+        return '';
     }
 
     _getPromptManager() {
@@ -1244,5 +1878,15 @@ export class PhoneCallView {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    _escapeAttr(text) {
+        return this._escapeHtml(text).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    _escapeCssAttr(text) {
+        const value = String(text || '');
+        if (window.CSS?.escape) return window.CSS.escape(value);
+        return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/]/g, '\\]');
     }
 }

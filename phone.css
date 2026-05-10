@@ -84,6 +84,7 @@
     box-sizing: border-box;
     padding: 14px;
     overflow: hidden;
+    touch-action: pan-y;
     background: rgba(10, 12, 16, 0.42);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
@@ -97,13 +98,22 @@
     padding: 18px;
     box-sizing: border-box;
     overflow: auto;
+    touch-action: pan-y;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
     border-radius: 18px;
     border: 1px solid rgba(255, 255, 255, 0.72);
     background: rgba(255, 255, 255, 0.96);
     box-shadow: 0 18px 60px rgba(0, 0, 0, 0.28);
     color: #17181c;
+}
+
+.st-phone-update-dialog::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
 }
 
 .st-phone-update-mark {
@@ -396,11 +406,6 @@
 
     #phone-panel.drawer-content.phone-panel-desktop-dragging .phone-body-panel {
         cursor: grabbing !important;
-        transform: translate3d(
-            var(--phone-panel-drag-x, 0px),
-            var(--phone-panel-drag-y, 0px),
-            0
-        ) scale(0.985) !important;
         transition: none !important;
         box-shadow:
             inset 0 0 0 1px color-mix(in srgb, var(--phone-frame-color, #1a1a1a) 82%, #ffffff),
@@ -2212,6 +2217,284 @@ input:checked + .toggle-slider:before {
 }
 
 /* ========================================
+   🛡️ 手机控件主题隔离
+   防止酒馆主题/其他插件覆盖 checkbox 与 switch 外观
+   ======================================== */
+
+.phone-screen input[type="checkbox"]:not(.st-phone-toggle-input) {
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    position: relative !important;
+    display: inline-block !important;
+    width: 16px !important;
+    height: 16px !important;
+    min-width: 16px !important;
+    min-height: 16px !important;
+    max-width: 16px !important;
+    max-height: 16px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 1.5px solid rgba(60, 60, 67, 0.5) !important;
+    border-radius: 2px !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    background-image: none !important;
+    color: var(--phone-global-text, #111111) !important;
+    accent-color: initial !important;
+    opacity: 1 !important;
+    box-shadow: none !important;
+    filter: none !important;
+    transform: none !important;
+    flex: 0 0 16px !important;
+    vertical-align: middle !important;
+}
+
+.phone-screen input[type="checkbox"]:not(.st-phone-toggle-input):checked {
+    border-color: currentColor !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    background-image: none !important;
+}
+
+.phone-screen input[type="checkbox"]:not(.st-phone-toggle-input)::after {
+    content: "" !important;
+    position: absolute !important;
+    left: 4px !important;
+    top: 1px !important;
+    width: 5px !important;
+    height: 9px !important;
+    border: solid currentColor !important;
+    border-width: 0 2px 2px 0 !important;
+    transform: rotate(45deg) scale(0) !important;
+    transform-origin: center !important;
+    opacity: 0 !important;
+}
+
+.phone-screen input[type="checkbox"]:not(.st-phone-toggle-input):checked::after {
+    opacity: 1 !important;
+    transform: rotate(45deg) scale(1) !important;
+}
+
+.phone-screen .wechat-worldbook-choice,
+.phone-screen .phone-honey-worldbook-choice,
+.phone-screen .phone-memory-perm {
+    margin-top: 2px !important;
+}
+
+.phone-screen .st-phone-toggle-switch {
+    position: relative !important;
+    display: inline-block !important;
+    width: 42px !important;
+    min-width: 42px !important;
+    height: 26px !important;
+    flex: 0 0 42px !important;
+    overflow: visible !important;
+    border: 0 !important;
+    border-radius: 999px !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    line-height: 0 !important;
+    cursor: pointer !important;
+}
+
+.phone-screen .st-phone-toggle-switch input {
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    position: absolute !important;
+    opacity: 0 !important;
+    width: 0 !important;
+    height: 0 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    pointer-events: none !important;
+}
+
+.phone-screen .st-phone-toggle-slider {
+    display: block !important;
+    position: absolute !important;
+    inset: 0 !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    border-radius: 999px !important;
+    cursor: pointer !important;
+    background: #e5e5ea !important;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+    transition: background 0.2s ease, box-shadow 0.2s ease !important;
+    transform: none !important;
+    filter: none !important;
+}
+
+.phone-screen .st-phone-toggle-slider::before {
+    content: "" !important;
+    position: absolute !important;
+    display: block !important;
+    box-sizing: border-box !important;
+    width: 22px !important;
+    height: 22px !important;
+    left: 2px !important;
+    top: 2px !important;
+    bottom: auto !important;
+    border-radius: 50% !important;
+    background: #fff !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2) !important;
+    transition: transform 0.2s ease !important;
+    transform-origin: center !important;
+    filter: none !important;
+}
+
+.phone-screen .st-phone-toggle-switch input:checked + .st-phone-toggle-slider {
+    background: linear-gradient(135deg, #34c759 0%, #30d158 100%) !important;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1), 0 0 8px rgba(52, 199, 89, 0.3) !important;
+}
+
+.phone-screen .st-phone-toggle-switch input:checked + .st-phone-toggle-slider::before {
+    transform: translateX(16px) !important;
+}
+
+.phone-screen .toggle-switch,
+.phone-screen .st-phone-toggle-switch,
+.phone-screen .honey-toggle-switch,
+.phone-screen .phone-call-toggle {
+    position: relative !important;
+    display: inline-block !important;
+    overflow: visible !important;
+    border: 0 !important;
+    border-radius: 999px !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    line-height: 0 !important;
+    cursor: pointer !important;
+    flex-shrink: 0 !important;
+}
+
+.phone-screen .toggle-switch input,
+.phone-screen .st-phone-toggle-switch input,
+.phone-screen .honey-toggle-switch input,
+.phone-screen .phone-call-toggle input {
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    position: absolute !important;
+    opacity: 0 !important;
+    width: 0 !important;
+    height: 0 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    pointer-events: none !important;
+}
+
+.phone-screen .toggle-slider,
+.phone-screen .st-phone-toggle-slider,
+.phone-screen .honey-toggle-slider,
+.phone-screen .phone-call-toggle-slider {
+    display: block !important;
+    position: absolute !important;
+    inset: 0 !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    border-radius: 999px !important;
+    cursor: pointer !important;
+    transform: none !important;
+    filter: none !important;
+}
+
+.phone-screen .toggle-slider::before,
+.phone-screen .st-phone-toggle-slider::before,
+.phone-screen .honey-toggle-slider::before,
+.phone-screen .phone-call-toggle-slider::before {
+    content: "" !important;
+    position: absolute !important;
+    display: block !important;
+    box-sizing: border-box !important;
+    border-radius: 50% !important;
+    background: #fff !important;
+    transform-origin: center !important;
+    filter: none !important;
+}
+
+.phone-screen .toggle-switch {
+    width: 42px !important;
+    min-width: 42px !important;
+    height: 26px !important;
+    flex-basis: 42px !important;
+}
+
+.phone-screen .toggle-switch .toggle-slider {
+    background: #e5e5ea !important;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+    transition: background 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+.phone-screen .toggle-switch .toggle-slider::before {
+    width: 22px !important;
+    height: 22px !important;
+    left: 2px !important;
+    top: 2px !important;
+    bottom: auto !important;
+    transition: transform 0.2s ease !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2) !important;
+}
+
+.phone-screen .toggle-switch input:checked + .toggle-slider {
+    background: linear-gradient(135deg, #34c759 0%, #30d158 100%) !important;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1), 0 0 8px rgba(52, 199, 89, 0.3) !important;
+}
+
+.phone-screen .toggle-switch input:checked + .toggle-slider::before {
+    transform: translateX(16px) !important;
+}
+
+.phone-screen .honey-toggle-switch,
+.phone-screen .phone-call-toggle {
+    width: 44px !important;
+    min-width: 44px !important;
+    height: 24px !important;
+    flex-basis: 44px !important;
+}
+
+.phone-screen .honey-toggle-slider {
+    background: rgba(255, 255, 255, 0.22) !important;
+    transition: background 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+.phone-screen .phone-call-toggle-slider {
+    background: #ccc !important;
+    transition: background 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+.phone-screen .honey-toggle-slider::before,
+.phone-screen .phone-call-toggle-slider::before {
+    width: 20px !important;
+    height: 20px !important;
+    left: 2px !important;
+    top: 2px !important;
+    bottom: auto !important;
+    transition: transform 0.2s ease !important;
+}
+
+.phone-screen .honey-toggle-switch input:checked + .honey-toggle-slider {
+    background: rgba(255, 71, 133, 0.65) !important;
+}
+
+.phone-screen .phone-call-toggle input:checked + .phone-call-toggle-slider {
+    background: #34c759 !important;
+}
+
+.phone-screen .honey-toggle-switch input:checked + .honey-toggle-slider::before,
+.phone-screen .phone-call-toggle input:checked + .phone-call-toggle-slider::before {
+    transform: translateX(20px) !important;
+}
+
+/* ========================================
    🔘 设置按钮优化
    ======================================== */
 
@@ -3163,6 +3446,8 @@ input:checked + .toggle-slider:before {
     font-size: 17px;
     font-weight: 600;
     color: var(--phone-text-color, #333);
+    flex: 1;
+    min-width: 0;
 }
 
 .phone-call-settings-btn {
@@ -3180,6 +3465,162 @@ input:checked + .toggle-slider:before {
     padding: 0;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-y: contain;
+}
+
+.phone-call-contacts {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background: var(--phone-chat-bg, #f5f5f5);
+    touch-action: pan-y;
+    overflow: hidden;
+}
+
+.phone-call-contact-add {
+    display: flex;
+    gap: 8px;
+    padding: 10px 12px;
+    background: var(--phone-header-bg, #ededed);
+    border-bottom: 1px solid var(--phone-border-color, #ddd);
+    flex-shrink: 0;
+}
+
+.phone-call-contact-input {
+    flex: 1;
+    min-width: 0;
+    height: 34px;
+    border: 1px solid var(--phone-border-color, #ddd);
+    border-radius: 10px;
+    padding: 0 10px;
+    background: rgba(255, 255, 255, 0.72);
+    color: var(--phone-text-color, #333);
+    outline: none;
+    font-size: 13px;
+}
+
+.phone-call-contact-add-btn {
+    height: 34px;
+    border: none;
+    border-radius: 10px;
+    padding: 0 12px;
+    background: #34c759;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.phone-call-contact-list {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    overscroll-behavior-y: contain;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.phone-call-contact-list::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+}
+
+.phone-call-contact-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 12px;
+    border-bottom: 1px solid var(--phone-border-color, #eee);
+    color: var(--phone-text-color, #333);
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+}
+
+.phone-call-contact-check {
+    display: none;
+    width: 22px;
+    height: 22px;
+    flex: 0 0 22px;
+    align-items: center;
+    justify-content: center;
+}
+
+.phone-call-contact-item.is-selecting .phone-call-contact-check {
+    display: flex;
+}
+
+.phone-call-contact-check input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.phone-call-contact-check span {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid rgba(120, 128, 145, 0.45);
+    box-sizing: border-box;
+    background: rgba(255, 255, 255, 0.72);
+}
+
+.phone-call-contact-check input:checked + span {
+    border-color: #34c759;
+    background: #34c759;
+    box-shadow: inset 0 0 0 4px #fff;
+}
+
+.phone-call-contact-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.phone-call-contact-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.phone-call-contact-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 15px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.phone-call-contact-dial {
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.phone-call-contact-dial {
+    background: rgba(52, 199, 89, 0.14);
+    color: #20a94d;
+}
+
+.phone-call-contact-item.is-selecting .phone-call-contact-dial {
+    display: none;
 }
 
 /* 蜜语热门推荐/关注滚动豁免：允许在手机壳内纵向下滑 */

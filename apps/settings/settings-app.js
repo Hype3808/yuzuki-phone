@@ -355,6 +355,32 @@ export class SettingsApp {
                     .settings-app .toggle-switch input:checked + .toggle-slider::before {
                         transform: translateX(16px) !important;
                     }
+                    .settings-app .phone-version-value {
+                        display: inline-flex;
+                        align-items: center;
+                        justify-content: flex-end;
+                        gap: 6px;
+                    }
+                    .settings-app .phone-version-info-btn {
+                        width: 20px;
+                        height: 20px;
+                        padding: 0;
+                        display: inline-flex;
+                        align-items: center;
+                        justify-content: center;
+                        border: none;
+                        border-radius: 999px;
+                        background: rgba(0, 122, 255, 0.12);
+                        color: #007aff;
+                        font-size: 12px;
+                        line-height: 1;
+                        cursor: pointer;
+                        -webkit-tap-highlight-color: transparent;
+                    }
+                    .settings-app .phone-version-info-btn:active {
+                        transform: scale(0.94);
+                        background: rgba(0, 122, 255, 0.2);
+                    }
                 </style>
                 <div class="settings-app-header" style="background: #f7f7f7; color: #000; border-bottom: 0.5px solid #d8d8d8; display: flex; align-items: center; justify-content: center; position: sticky; top: 0; z-index: 100; height: 78px; min-height: 78px; padding: 34px 14px 0; box-sizing: border-box; flex-shrink: 0;">
                     <h2 style="color: #000; font-size: 17px; font-weight: 500; margin: 0;">设置</h2>
@@ -723,7 +749,12 @@ export class SettingsApp {
                         <div class="setting-section" style="padding: 12px 14px; border-radius: 14px;">
                             <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
                                 <div class="setting-label">版本</div>
-                                <div class="setting-value">v${window.VirtualPhone?.version || '未知'}</div>
+                                <div class="setting-value phone-version-value">
+                                    <span>v${window.VirtualPhone?.version || '未知'}</span>
+                                    <button type="button" class="phone-version-info-btn" id="phone-version-info-btn" aria-label="查看当前版本更新内容" title="查看更新内容">
+                                        <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+                                    </button>
+                                </div>
                             </div>
                             <div class="setting-desc" style="margin-top: 8px;">
                                 每个聊天会话窗口独立存储<br>
@@ -1902,6 +1933,14 @@ export class SettingsApp {
         });
 
         // 上传壁纸 - 支持裁剪
+        document.getElementById('phone-version-info-btn')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof window.VirtualPhone?.showCurrentUpdateInfo === 'function') {
+                window.VirtualPhone.showCurrentUpdateInfo();
+            }
+        });
+
         document.getElementById('upload-wallpaper')?.addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;

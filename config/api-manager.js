@@ -118,6 +118,83 @@ export class ApiManager {
         };
     }
 
+    _normalizeMessageContentForText(content) {
+        if (Array.isArray(content)) {
+            return content
+                .map((part) => {
+                    if (typeof part === 'string') return part;
+                    if (part?.type === 'text') return String(part.text || '');
+                    if (part?.type === 'image_url') return '[图片]';
+                    return '';
+                })
+                .join('');
+        }
+        return String(content || '');
+    }
+
+    _replacePhoneImageTokens(content, options = {}) {
+        const consume = options.consume !== false;
+        const pendingImages = (typeof window !== 'undefined' && window.VirtualPhone?._pendingImages)
+            ? window.VirtualPhone._pendingImages
+            : null;
+
+        if (Array.isArray(content)) return content;
+        const text = String(content || '');
+        if (!text.includes('__ST_PHONE_IMAGE_')) return text;
+
+        const parts = text.split(/(__ST_PHONE_IMAGE_\d+_[a-z0-9]+__)/g);
+        const nextContent = [];
+        let replaced = false;
+
+        parts.forEach((part) => {
+            if (!part) return;
+            if (part.startsWith('__ST_PHONE_IMAGE_') && pendingImages?.[part]) {
+                nextContent.push({ type: 'image_url', image_url: { url: pendingImages[part] } });
+                if (consume) delete pendingImages[part];
+                replaced = true;
+                return;
+            }
+            if (part.trim()) {
+                nextContent.push({ type: 'text', text: part });
+            }
+        });
+
+        return replaced ? nextContent : text;
+    }
+
+    _contentToGeminiParts(content) {
+        if (!Array.isArray(content)) {
+            return [{ text: String(content || '') }];
+        }
+
+        const parts = [];
+        content.forEach((part) => {
+            if (typeof part === 'string') {
+                if (part) parts.push({ text: part });
+                return;
+            }
+            if (part?.type === 'text') {
+                const text = String(part.text || '');
+                if (text) parts.push({ text });
+                return;
+            }
+            if (part?.type === 'image_url') {
+                const url = String(part.image_url?.url || '');
+                const match = /^data:([^;,]+);base64,(.+)$/i.exec(url);
+                if (match) {
+                    parts.push({
+                        inline_data: {
+                            mime_type: match[1],
+                            data: match[2]
+                        }
+                    });
+                }
+            }
+        });
+
+        return parts.length > 0 ? parts : [{ text: '' }];
+    }
+
     _updateGaigaiLastRequestData(messages, meta = {}) {
         try {
             if (!Array.isArray(messages)) return;
@@ -139,7 +216,7 @@ export class ApiManager {
                 .map((m) => {
                     const role = (m?.role === 'system' || m?.role === 'assistant') ? m.role : 'user';
                     const hasSignal = !!m?.gaigaiPhoneSignal;
-                    const content = String(m?.content || '').trim();
+                    const content = this._normalizeMessageContentForText(m?.content).trim();
 
                     // 某些预设会在发送阶段合并/清空内容，必须保留带权限信号的壳消息给记忆插件兜底识别。
                     if (!content && !hasSignal) return null;
@@ -307,8 +384,9 @@ export class ApiManager {
             const cleanMessages = sourceMessages
                 .map((m, idx) => {
                     const role = m?.role === 'system' || m?.role === 'assistant' ? m.role : 'user';
-                    const content = String(m?.content || '').trim();
-                    if (!content) return null;
+                    const content = this._replacePhoneImageTokens(m?.content, { consume: true });
+                    const textContent = this._normalizeMessageContentForText(content).trim();
+                    if (!textContent && (!Array.isArray(content) || content.length === 0)) return null;
                     const normalized = { role, content };
                     if (idx === sourceMessages.length - 1 && m?.gaigaiPhoneSignal) normalized.gaigaiPhoneSignal = m.gaigaiPhoneSignal;
                     if (m?.isPhoneMessage) normalized.isPhoneMessage = true;
@@ -565,11 +643,13 @@ export class ApiManager {
             : [{ role: 'user', content: String(messages || '') }];
         const preserveSystem = ['openai', 'deepseek', 'claude', 'gemini', 'siliconflow', 'proxy_only', 'compatible'].includes(provider);
         const cleanMessages = sourceMessages.map((m, idx) => {
+            const rawContent = this._replacePhoneImageTokens(m?.content, { consume: true });
+            const content = preserveSystem
+                ? rawContent
+                : (m?.role === 'system' ? `[System]: ${this._normalizeMessageContentForText(rawContent)}` : rawContent);
             const normalized = {
                 role: preserveSystem ? (m?.role === 'system' ? 'system' : (m?.role === 'assistant' ? 'assistant' : 'user')) : (m?.role === 'system' ? 'user' : (m?.role || 'user')),
-                content: preserveSystem
-                    ? String(m?.content || '')
-                    : (m?.role === 'system' ? `[System]: ${String(m?.content || '')}` : String(m?.content || ''))
+                content
             };
 
             // 独立 API 路径也必须透传手机权限信号，避免记忆插件误判为“无信号请求”后回退到全注入。
@@ -805,7 +885,7 @@ export class ApiManager {
                 requestBody = {
                     contents: cleanMessages.map((m) => ({
                         role: m.role === 'user' ? 'user' : 'model',
-                        parts: [{ text: m.content }]
+                        parts: this._contentToGeminiParts(m.content)
                     })),
                     generationConfig: {
                         temperature,

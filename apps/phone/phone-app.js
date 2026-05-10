@@ -47,8 +47,10 @@ export class PhoneApp {
         // 2. 领地保护：确认当前视图属于通话APP
         const domCurrentView = document.querySelector('.phone-view-current');
         if (!domCurrentView || (!domCurrentView.querySelector('.phone-call-main') &&
+            !domCurrentView.querySelector('.phone-call-contacts') &&
             !domCurrentView.querySelector('.phone-call-transcript') &&
             !domCurrentView.querySelector('.phone-call-settings') &&
+            !domCurrentView.querySelector('.phone-call-dialing') &&
             !domCurrentView.querySelector('.phone-call-incoming') &&
             !domCurrentView.querySelector('.phone-call-active'))) return;
 
@@ -57,11 +59,17 @@ export class PhoneApp {
         if (view === 'transcript') {
             const btn = domCurrentView.querySelector('#phone-call-transcript-back');
             if (btn) btn.click();
+        } else if (view === 'contacts') {
+            const btn = domCurrentView.querySelector('#phone-call-contacts-back');
+            if (btn) btn.click();
         } else if (view === 'settings') {
             const btn = domCurrentView.querySelector('#phone-call-settings-back');
             if (btn) btn.click();
         } else if (view === 'main') {
             window.dispatchEvent(new CustomEvent('phone:goHome'));
+        } else if (view === 'dialing') {
+            const btn = domCurrentView.querySelector('#phone-call-dial-cancel');
+            if (btn) btn.click();
         } else if (view === 'incoming') {
             // 来电时右滑等同于拒绝
             const btn = domCurrentView.querySelector('#phone-call-reject');
@@ -89,7 +97,11 @@ export class PhoneApp {
             clearInterval(this.phoneCallView.callTimer);
             this.phoneCallView.callTimer = null;
         }
+        if (this.phoneCallView.dialingTimer) {
+            clearTimeout(this.phoneCallView.dialingTimer);
+            this.phoneCallView.dialingTimer = null;
+        }
+        this.phoneCallView.clearTtsCache?.();
         this.phoneCallView.chatMessages = [];
     }
 }
-

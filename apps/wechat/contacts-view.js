@@ -28,6 +28,78 @@ export class ContactsView {
             .replace(/>/g, '&gt;');
     }
 
+    _normalizeWechatReferenceImage(value = '') {
+        const raw = String(value || '').trim();
+        if (!raw || /^data:image\/[a-z0-9.+-]+;base64,/i.test(raw)) return '';
+        return /^(?:https?:\/\/|\/backgrounds\/)/i.test(raw) ? raw : '';
+    }
+
+    _getWechatReferenceTargetSize(sourceWidth, sourceHeight) {
+        const width = Number(sourceWidth || 0);
+        const height = Number(sourceHeight || 0);
+        if (!width || !height) return { width: 1024, height: 1536 };
+        const ratio = width / height;
+        const targetSizes = [
+            { width: 1024, height: 1536 },
+            { width: 1472, height: 1472 },
+            { width: 1536, height: 1024 }
+        ];
+        return targetSizes.reduce((best, item) => {
+            const bestDiff = Math.abs((best.width / best.height) - ratio);
+            const itemDiff = Math.abs((item.width / item.height) - ratio);
+            return itemDiff < bestDiff ? item : best;
+        }, targetSizes[0]);
+    }
+
+    _readFileAsDataUrl(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ''));
+            reader.onerror = () => reject(reader.error || new Error('图片读取失败'));
+            reader.readAsDataURL(file);
+        });
+    }
+
+    _loadImageFromDataUrl(dataUrl) {
+        return new Promise((resolve, reject) => {
+            const image = new Image();
+            image.onload = () => resolve(image);
+            image.onerror = () => reject(new Error('图片解析失败'));
+            image.src = dataUrl;
+        });
+    }
+
+    async _prepareWechatReferenceImageFile(file) {
+        if (!file || !String(file.type || '').startsWith('image/')) {
+            throw new Error('请选择图片文件');
+        }
+        if (Number(file.size || 0) > 8 * 1024 * 1024) {
+            throw new Error('个人形象参考图最大支持 8MB');
+        }
+
+        const dataUrl = await this._readFileAsDataUrl(file);
+        const image = await this._loadImageFromDataUrl(dataUrl);
+        const sourceWidth = Number(image.naturalWidth || image.width || 0);
+        const sourceHeight = Number(image.naturalHeight || image.height || 0);
+        if (!sourceWidth || !sourceHeight) return dataUrl;
+
+        const target = this._getWechatReferenceTargetSize(sourceWidth, sourceHeight);
+        const canvas = document.createElement('canvas');
+        canvas.width = target.width;
+        canvas.height = target.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return dataUrl;
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        const scale = Math.min(canvas.width / sourceWidth, canvas.height / sourceHeight);
+        const drawWidth = Math.max(1, Math.round(sourceWidth * scale));
+        const drawHeight = Math.max(1, Math.round(sourceHeight * scale));
+        const drawX = Math.round((canvas.width - drawWidth) / 2);
+        const drawY = Math.round((canvas.height - drawHeight) / 2);
+        ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+        return canvas.toDataURL('image/png');
+    }
+
     _getTtsProviderOptions() {
         return [
             { id: 'minimax_cn', label: 'MiniMax 国内', placeholder: '例如 female-shaonv' },
@@ -295,6 +367,13 @@ export class ContactsView {
         const contactTtsProvider = String(contact.ttsProvider || '').trim();
         const legacyTtsVoice = String(contact.ttsVoice || '').trim();
         const ttsHistoryOptions = this._getTtsVoiceHistoryOptions();
+        const referenceImage = this._normalizeWechatReferenceImage(contact.naiReferenceImage || contact.referenceImage || '');
+        const referenceEnabled = !!referenceImage && contact.naiReferenceEnabled !== false && contact.naiReferenceEnabled !== 'false';
+        const rawReferenceStrength = Number(contact.naiReferenceStrength ?? 0.7);
+        const referenceStrength = Math.max(0, Math.min(1, Number.isFinite(rawReferenceStrength) ? rawReferenceStrength : 0.7));
+        const referencePreviewStyle = referenceImage
+            ? `background-image:url('${this._escapeAttr(`${referenceImage}${referenceImage.includes('?') ? '&' : '?'}t=${Date.now()}`)}'); background-size:cover; background-position:center;`
+            : '';
 
         const html = `
             <div class="wechat-app">
@@ -352,6 +431,43 @@ export class ContactsView {
                                 margin-bottom: 6px;
                             ">
                             <div style="font-size: 11px; color: #999;">备注请直接写在昵称里（例如：张三（同事））</div>
+                        </div>
+
+                        <div style="margin-top: 15px; border-top: 1px solid #f0f0f0; padding-top: 15px;">
+                            <div style="font-size: 12px; color: #000; font-weight: 500; margin-bottom: 8px;">🖼️ 个人形象参考图</div>
+                            <div style="display: flex; gap: 10px; align-items: flex-start;">
+                                <button id="edit-contact-reference-preview" type="button" style="
+                                    width: 64px;
+                                    height: 64px;
+                                    border-radius: 8px;
+                                    border: 1px dashed #d8d8d8;
+                                    background: #fafafa;
+                                    color: #999;
+                                    display: flex;
+                                    align-items: center;
+                                    justify-content: center;
+                                    overflow: hidden;
+                                    cursor: pointer;
+                                    flex: 0 0 auto;
+                                    ${referencePreviewStyle}
+                                ">${referenceImage ? '' : '<i class="fa-regular fa-image"></i>'}</button>
+                                <div style="flex: 1; min-width: 0;">
+                                    <div style="font-size: 11px; color: #666; line-height: 1.45;">仅当 AI 回复 <b>[个人图片]（描述）</b> 时，NovelAI 生图才会使用这张参考图；普通 <b>[图片]（描述）</b> 不会使用参考图。</div>
+                                    <input type="file" id="edit-contact-reference-upload" accept="image/png, image/jpeg, image/gif, image/webp, image/*" style="display: none;">
+                                    <div style="display: flex; gap: 6px; margin-top: 8px;">
+                                        <button id="upload-edit-contact-reference" type="button" style="padding: 5px 9px; border: none; border-radius: 5px; background: #f0f0f0; color: #333; font-size: 11px; cursor: pointer;">${referenceImage ? '替换形象' : '上传形象'}</button>
+                                        <button id="delete-edit-contact-reference" type="button" ${referenceImage ? '' : 'disabled'} style="padding: 5px 9px; border: none; border-radius: 5px; background: #fff1f0; color: #d93025; font-size: 11px; cursor: pointer; opacity:${referenceImage ? '1' : '0.45'};">删除</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <label style="display: flex; align-items: center; gap: 6px; margin-top: 9px; font-size: 11px; color: #666;">
+                                <input type="checkbox" id="edit-contact-reference-enabled" ${referenceEnabled ? 'checked' : ''} ${referenceImage ? '' : 'disabled'}>
+                                启用个人形象参考图
+                            </label>
+                            <label style="display: block; margin-top: 8px;">
+                                <div style="font-size: 11px; color: #666; margin-bottom: 3px;">参考强度：<span id="edit-contact-reference-strength-text">${referenceStrength.toFixed(2)}</span></div>
+                                <input type="range" id="edit-contact-reference-strength" min="0" max="1" step="0.05" value="${referenceStrength}" ${referenceImage ? '' : 'disabled'} style="width: 100%;">
+                            </label>
                         </div>
 
                         <!-- 🔥 新增：专属音色绑定 -->
@@ -428,8 +544,48 @@ export class ContactsView {
         this.app.phoneShell.setContent(html);
 
         let selectedAvatar = contact.avatar;
+        const originalReferenceImage = referenceImage;
+        let selectedReferenceImage = referenceImage;
+        let referenceImageDeleted = false;
+        const pendingReferenceCleanup = new Set();
+        const cleanupReferenceImages = (items) => {
+            Array.from(items || [])
+                .map(item => String(item || '').trim())
+                .filter(Boolean)
+                .forEach((item) => {
+                    window.VirtualPhone?.imageManager?.deleteManagedBackgroundByPath?.(item, { quiet: true, skipIfReferenced: true })?.catch?.(() => {});
+                });
+        };
+        const updateReferenceControls = () => {
+            const hasImage = !!selectedReferenceImage;
+            const preview = document.getElementById('edit-contact-reference-preview');
+            const uploadBtn = document.getElementById('upload-edit-contact-reference');
+            const deleteBtn = document.getElementById('delete-edit-contact-reference');
+            const enabledInput = document.getElementById('edit-contact-reference-enabled');
+            const strengthInput = document.getElementById('edit-contact-reference-strength');
+            if (preview) {
+                preview.style.backgroundImage = hasImage ? `url("${selectedReferenceImage}${selectedReferenceImage.includes('?') ? '&' : '?'}t=${Date.now()}")` : '';
+                preview.style.backgroundSize = hasImage ? 'cover' : '';
+                preview.style.backgroundPosition = hasImage ? 'center' : '';
+                preview.innerHTML = hasImage ? '' : '<i class="fa-regular fa-image"></i>';
+            }
+            if (uploadBtn) uploadBtn.textContent = hasImage ? '替换形象' : '上传形象';
+            if (deleteBtn) {
+                deleteBtn.disabled = !hasImage;
+                deleteBtn.style.opacity = hasImage ? '1' : '0.45';
+            }
+            if (enabledInput) {
+                enabledInput.disabled = !hasImage;
+                if (hasImage) enabledInput.checked = true;
+            }
+            if (strengthInput) strengthInput.disabled = !hasImage;
+        };
 
         document.getElementById('back-from-edit-contact')?.addEventListener('click', () => {
+            if (selectedReferenceImage && selectedReferenceImage !== originalReferenceImage) {
+                pendingReferenceCleanup.add(selectedReferenceImage);
+            }
+            cleanupReferenceImages(pendingReferenceCleanup);
             this.app.currentView = 'contacts';
             this.app.render();
         });
@@ -486,6 +642,58 @@ export class ContactsView {
             }
         });
 
+        document.getElementById('edit-contact-reference-preview')?.addEventListener('click', () => {
+            document.getElementById('edit-contact-reference-upload')?.click();
+        });
+
+        document.getElementById('upload-edit-contact-reference')?.addEventListener('click', () => {
+            document.getElementById('edit-contact-reference-upload')?.click();
+        });
+
+        document.getElementById('edit-contact-reference-upload')?.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            e.target.value = '';
+            const oldReferenceImage = selectedReferenceImage || '';
+            try {
+                this.app.phoneShell.showNotification('处理中', '正在上传个人形象...', '⏳');
+                const dataUrl = await this._prepareWechatReferenceImageFile(file);
+                const blobResp = await fetch(dataUrl);
+                const blob = await blobResp.blob();
+                const safeName = String(contact.name || contactId || 'contact')
+                    .replace(/[^\w\u4e00-\u9fff-]+/g, '_')
+                    .slice(0, 24) || 'contact';
+                const uploadedUrl = await window.VirtualPhone?.imageManager?.uploadBlob?.(blob, `wechat_ref_${safeName}`);
+                if (!uploadedUrl) throw new Error('图片上传管理器未初始化');
+                if (oldReferenceImage && oldReferenceImage !== originalReferenceImage) {
+                    pendingReferenceCleanup.add(oldReferenceImage);
+                }
+                selectedReferenceImage = uploadedUrl;
+                referenceImageDeleted = false;
+                updateReferenceControls();
+                this.app.phoneShell.showNotification('成功', '个人形象参考图已上传', '✅');
+            } catch (err) {
+                console.warn('个人形象参考图上传失败:', err);
+                this.app.phoneShell.showNotification('上传失败', err?.message || '个人形象上传失败', '❌');
+            }
+        });
+
+        document.getElementById('delete-edit-contact-reference')?.addEventListener('click', () => {
+            if (!selectedReferenceImage) return;
+            if (selectedReferenceImage !== originalReferenceImage) {
+                pendingReferenceCleanup.add(selectedReferenceImage);
+            }
+            selectedReferenceImage = '';
+            referenceImageDeleted = true;
+            updateReferenceControls();
+        });
+
+        document.getElementById('edit-contact-reference-strength')?.addEventListener('input', (e) => {
+            const value = Math.max(0, Math.min(1, Number(e.target.value) || 0));
+            const text = document.getElementById('edit-contact-reference-strength-text');
+            if (text) text.textContent = value.toFixed(2);
+        });
+
         document.getElementById('save-edit-contact-btn')?.addEventListener('click', () => {
             const name = document.getElementById('edit-contact-name-input').value.trim();
 
@@ -514,6 +722,8 @@ export class ContactsView {
             });
             const ttsVoice = String(currentProviderTtsVoice || '').trim();
             const oldAvatar = String(contact.avatar || '').trim();
+            const oldReferenceImage = String(contact.naiReferenceImage || contact.referenceImage || '').trim();
+            const referenceStrengthValue = Math.max(0, Math.min(1, Number(document.getElementById('edit-contact-reference-strength')?.value) || 0.7));
 
             this.app.wechatData.updateContact(contactId, {
                 name: name,
@@ -521,7 +731,11 @@ export class ContactsView {
                 letter: this.app.wechatData.getFirstLetter(name),
                 ttsVoice: ttsVoice, // 🔥 旧字段兜底
                 ttsVoices: ttsVoices, // 🔥 按服务商保存音色
-                ttsProvider: ttsProvider // 🔥 该角色默认服务商；空值表示跟随全局
+                ttsProvider: ttsProvider, // 🔥 该角色默认服务商；空值表示跟随全局
+                naiReferenceImage: selectedReferenceImage,
+                naiReferenceEnabled: !!selectedReferenceImage && !!document.getElementById('edit-contact-reference-enabled')?.checked,
+                naiReferenceStrength: referenceStrengthValue,
+                naiReferenceInformationExtracted: 1
             });
 
             this.app.wechatData.syncContactAvatar(contactId, selectedAvatar);
@@ -529,6 +743,12 @@ export class ContactsView {
                 const cleanupTask = window.VirtualPhone?.imageManager?.deleteManagedBackgroundByPath?.(oldAvatar, { quiet: true, skipIfReferenced: true });
                 cleanupTask?.catch?.(() => { });
             }
+            if (referenceImageDeleted && oldReferenceImage) {
+                pendingReferenceCleanup.add(oldReferenceImage);
+            } else if (oldReferenceImage && oldReferenceImage !== selectedReferenceImage) {
+                pendingReferenceCleanup.add(oldReferenceImage);
+            }
+            cleanupReferenceImages(pendingReferenceCleanup);
             this.app.phoneShell.showNotification('保存成功', '联系人信息已更新', '✅');
 
             setTimeout(() => {
@@ -613,7 +833,12 @@ export class ContactsView {
             if (isDeleting) return;
             isDeleting = true;
 
+            const contact = this.app.wechatData.getContact(contactId);
+            const oldReferenceImage = String(contact?.naiReferenceImage || contact?.referenceImage || '').trim();
             this.app.wechatData.deleteContactAndChat(contactId);
+            if (oldReferenceImage) {
+                window.VirtualPhone?.imageManager?.deleteManagedBackgroundByPath?.(oldReferenceImage, { quiet: true, skipIfReferenced: true })?.catch?.(() => {});
+            }
             this.app.phoneShell.showNotification('已删除', `${contactName} 及相关聊天已删除`, '✅');
 
             setTimeout(() => {

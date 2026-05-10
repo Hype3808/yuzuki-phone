@@ -3276,25 +3276,40 @@
 }
 
 .honey-live-visibility-btn {
-    height: 42px;
-    border: 0;
+    height: 38px;
+    border: 1px solid rgba(255, 216, 237, 0.24);
     border-radius: 10px;
-    color: #fff;
-    font-size: 13px;
-    font-weight: 800;
+    background: rgba(255, 255, 255, 0.08);
+    color: #ffe4f2 !important;
+    font-size: 12px;
+    font-weight: 700;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 6px;
     cursor: pointer;
+    box-shadow: none;
+    transition: background 0.16s ease, border-color 0.16s ease, transform 0.12s ease;
+}
+
+.honey-live-visibility-btn,
+.honey-live-visibility-btn span,
+.honey-live-visibility-btn i {
+    color: #ffffff !important;
+}
+
+.honey-live-visibility-btn:active {
+    transform: scale(0.98);
 }
 
 .honey-live-visibility-btn.is-private {
-    background: linear-gradient(135deg, #5b4acb, #2a214f);
+    border-color: rgba(255, 216, 237, 0.24);
+    background: rgba(255, 255, 255, 0.08);
 }
 
 .honey-live-visibility-btn.is-public {
-    background: linear-gradient(135deg, #ff4b8e, #b1145d);
+    border-color: rgba(255, 150, 182, 0.4);
+    background: linear-gradient(145deg, rgba(120, 38, 68, 0.42), rgba(84, 28, 52, 0.54));
 }
 
 .honey-host-wechat-reject-modal {

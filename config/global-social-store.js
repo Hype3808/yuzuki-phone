@@ -132,7 +132,7 @@ export class GlobalSocialStore {
             contact.name = safeName;
             if (nameKey) store.aliases[nameKey] = contact.id;
         }
-        if (avatar) contact.avatar = String(avatar || '').trim();
+        if (avatar && !contact.avatar) contact.avatar = String(avatar || '').trim();
         if (relation) contact.relation = String(relation || '').trim();
 
         const safeApp = String(app || '').trim().toLowerCase();
@@ -141,6 +141,7 @@ export class GlobalSocialStore {
             if (!contact.appRefs || typeof contact.appRefs !== 'object') contact.appRefs = {};
             contact.appRefs[safeApp] = {
                 appContactId: safeContactId,
+                avatar: String(avatar || '').trim(),
                 syncedAt: Date.now(),
                 extra: (extra && typeof extra === 'object') ? this._clone(extra) : {}
             };
@@ -160,12 +161,13 @@ export class GlobalSocialStore {
             .filter(contact => contact?.appRefs?.[safeApp]?.appContactId)
             .map(contact => {
                 const ref = contact.appRefs[safeApp];
+                const hasAppAvatar = Object.prototype.hasOwnProperty.call(ref || {}, 'avatar');
                 return {
                     globalId: contact.id,
                     app,
                     appContactId: String(ref.appContactId || ''),
                     name: String(contact.name || '').trim(),
-                    avatar: String(contact.avatar || '').trim(),
+                    avatar: String((hasAppAvatar ? ref.avatar : contact.avatar) || '').trim(),
                     relation: String(contact.relation || '').trim(),
                     extra: (ref.extra && typeof ref.extra === 'object') ? this._clone(ref.extra) : {},
                     updatedAt: this._toNumber(contact.updatedAt)

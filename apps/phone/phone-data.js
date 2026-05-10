@@ -17,6 +17,7 @@ export class PhoneCallData {
     constructor(storage) {
         this.storage = storage;
         this._callHistory = null; // Lazy-loaded
+        this._contacts = null;
     }
 
     // 获取通话记录（lazy load）
@@ -64,9 +65,58 @@ export class PhoneCallData {
         }
     }
 
+    getContacts() {
+        if (!this._contacts) {
+            const saved = this.storage.get('phone_call_contacts', null);
+            if (saved) {
+                try {
+                    this._contacts = typeof saved === 'string' ? JSON.parse(saved) : saved;
+                } catch (e) {
+                    console.error('[PhoneCallData] 解析通话联系人失败:', e);
+                    this._contacts = [];
+                }
+            } else {
+                this._contacts = [];
+            }
+        }
+        return Array.isArray(this._contacts) ? this._contacts : [];
+    }
+
+    saveContacts() {
+        this.storage.set('phone_call_contacts', this.getContacts());
+    }
+
+    addContact(name) {
+        const safeName = String(name || '').trim();
+        if (!safeName) return null;
+        const contacts = this.getContacts();
+        const exists = contacts.find(item => String(item?.name || '').trim() === safeName);
+        if (exists) return exists;
+
+        const contact = {
+            id: `phone_contact_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            name: safeName,
+            createdAt: Date.now()
+        };
+        contacts.push(contact);
+        this.saveContacts();
+        return contact;
+    }
+
+    deleteContact(id) {
+        const safeId = String(id || '').trim();
+        if (!safeId) return false;
+        const contacts = this.getContacts();
+        const idx = contacts.findIndex(item => String(item?.id || '').trim() === safeId);
+        if (idx < 0) return false;
+        contacts.splice(idx, 1);
+        this.saveContacts();
+        return true;
+    }
+
     // 清空缓存（切换聊天时调用）
     clearCache() {
         this._callHistory = null;
+        this._contacts = null;
     }
 }
-

@@ -16,7 +16,7 @@
 
 const ST_PHONE_BASE_URL = new URL('./', import.meta.url).href;
 const ST_PHONE_GLOBAL_CSS_URL = new URL('./phone.css', import.meta.url).href;
-const ST_PHONE_VERSION = '1.0.8';
+const ST_PHONE_VERSION = '1.0.9';
 const ST_PHONE_UPDATE_MANIFEST_URLS = [
     'https://raw.githubusercontent.com/gaigai315/yuzuki-phone/main/manifest.json',
     'https://raw.githubusercontent.com/gaigai315/yuzuki-phone/master/manifest.json'
@@ -33,7 +33,28 @@ const ST_PHONE_CURRENT_UPDATE = {
         '修复小手机部分页面渲染异常。',
         '修复头像、图片与背景素材重复上传问题：相同文件会自动复用同一路径，避免图库生成多份重复资源。',
         '修复微信群聊非成员串入问题：群聊消息会按成员白名单自动清洗，并加强群聊与私聊联动格式约束。',
-        '加固一键更新提示词功能稳定性：同步官方默认提示词时会保留并继续使用当前有效的自定义预设。'
+        '加固一键更新提示词功能稳定性：同步官方默认提示词时会保留并继续使用当前有效的自定义预设。',
+        '修复独立 API / 后端代理发送图片时识图失效问题：手机图片代币会在发包前恢复为多模态图片对象。',
+        '修复正文 AI 生成与小手机在线回复并发时的微信消息误回滚问题，避免出现只有通知但聊天记录未写入。',
+        '优化微信与蜜语世界书记忆：开关与勾选状态改为跟随当前角色卡，并在同角色卡的新旧会话间同步。',
+        '优化微博生成上下文：角色卡信息与用户信息完整注入，世界书改为复用微信/蜜语的角色卡级开关与勾选逻辑，避免重复拼接。',
+        '修复微信与蜜语同名联系人头像互相覆盖问题：跨应用同步时会保留各自应用的头像，不再因加好友或邀约导致蜜语头像重置。',
+        '优化微信线下提示词群聊功能：好友列表与群聊列表分开展示，群聊会标注成员名单，提升单聊与群聊同时回复时的解析稳定性。',
+        '新增微信好友个人形象参考图：好友编辑页可上传形象图，AI 使用 [个人图片] 标签时才会在 NovelAI 生图中启用参考图，普通 [图片] 不受影响。',
+        '修复微信流式正文期间消息被吞问题：正文生成未结束时不再提前落库微信标签，避免先弹通知后又被同楼层回滚清掉聊天记录。',
+        '优化电脑端小手机拖拽手感：拖动时实时跟随鼠标位置，并保留移动端原有手势逻辑不变。',
+        '修复自动写日记跨聊天窗口串用设置问题：自动开关、触发楼层与分批设置改为当前聊天独立保存，延迟触发时会校验会话避免切窗后误写。',
+        '加固微信个人图片重新生成：识别 [个人图片] 旧消息与重试场景，重新生成时也会继续携带对应好友的 NovelAI 个人形象参考图。',
+        '加固微信生图并发防重：同一条图片消息生成中会加内存锁与生成批次校验，避免流式刷新、重复点击或旧请求回写导致重复生成/覆盖。',
+        '优化更新内容弹窗：隐藏右侧滚动条，同时加入移动端手势白名单，长更新内容仍可正常上下滑动。',
+        '新增通话 App 主动拨号功能：可在电话联系人页手动添加联系人并拨打电话，AI 会先判断是否接听，接通后复用现有通话界面与独立/非独立 API 路由。',
+        '修复通话联系人页加号返回后卡死问题：联系人页按钮和输入框事件改为绑定当前视图，避免历史图层同名 ID 干扰。',
+        '优化主动拨号体验：AI 判定接听后会自动生成对方的电话开场白，并加强通话提示词要求接通后先自然讲话。',
+        '优化电话联系人头像：无需先打开微信，电话联系人会后台只读加载微信数据层，按姓名复用微信已保存头像或默认头像映射，不主动初始化或影响微信头像池。',
+        '优化微博转发到微信头像：转发面板无需先打开微信，也会只读复用微信好友已保存头像或默认头像映射。',
+        '修复通话 TTS 与最新语音设置未对齐问题：主动拨号和通话回复会读取微信好友绑定音色，AI 文字气泡也支持点击播放。',
+        '修复主动拨号接通后的界面叠层与开场回复中断问题：等待接听会直接切换为通话中，AI 会正常生成接通后的第一句话，挂断或右滑挂断后返回电话联系人页。',
+        '优化通话 TTS 缓存：通话里的 AI 语音播放会像微信语音条一样复用已生成音频，避免重复请求同一段语音。'
     ]
 };
 
@@ -347,6 +368,8 @@ if (window.GGP_Loaded) {
         let suppressClickUntil = 0;
         let suppressClickCleanup = null;
         let dragStartRect = null;
+        let dragBodySize = null;
+        let dragOriginalPosition = null;
         let activePhoneBody = null;
         let rafId = 0;
         let pendingDeltaX = 0;
@@ -368,8 +391,15 @@ if (window.GGP_Loaded) {
 
         const applyDragFrame = () => {
             rafId = 0;
-            panel.style.setProperty('--phone-panel-drag-x', `${Math.round(pendingDeltaX)}px`);
-            panel.style.setProperty('--phone-panel-drag-y', `${Math.round(pendingDeltaY)}px`);
+            if (!dragStartRect) return;
+            const nextPosition = clampPhonePanelDesktopPosition({
+                x: dragStartRect.left + pendingDeltaX,
+                y: dragStartRect.top + pendingDeltaY
+            }, dragBodySize);
+            panel.style.setProperty('--phone-panel-desktop-x', `${nextPosition.x}px`);
+            panel.style.setProperty('--phone-panel-desktop-y', `${nextPosition.y}px`);
+            panel.dataset.desktopX = String(nextPosition.x);
+            panel.dataset.desktopY = String(nextPosition.y);
         };
 
         const scheduleDragFrame = (deltaX, deltaY) => {
@@ -426,6 +456,8 @@ if (window.GGP_Loaded) {
             currentY = 0;
             isDragging = false;
             dragStartRect = null;
+            dragBodySize = null;
+            dragOriginalPosition = null;
             activePhoneBody = null;
         };
 
@@ -435,8 +467,12 @@ if (window.GGP_Loaded) {
                 'input',
                 'textarea',
                 'select',
+                'button',
+                'a',
                 '[contenteditable="true"]',
                 '[contenteditable="plaintext-only"]',
+                '[role="button"]',
+                '[data-action]',
                 '.chat-input',
                 '.chat-input-area textarea',
                 '.chat-input-area input'
@@ -448,6 +484,24 @@ if (window.GGP_Loaded) {
             if (target.closest('.phone-punch-hole')) return true;
             const phoneBody = target.closest('.phone-body-panel');
             return !!phoneBody && !target.closest('.phone-screen');
+        };
+
+        const isDesktopPhonePanelDragHotZone = (event, phoneBody) => {
+            if (!event || !phoneBody) return false;
+            const rect = phoneBody.getBoundingClientRect();
+            if (!rect || rect.width <= 0 || rect.height <= 0) return false;
+
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            if (x < 0 || y < 0 || x > rect.width || y > rect.height) return false;
+
+            const edgeSize = 24;
+            return (
+                x <= edgeSize ||
+                y <= edgeSize ||
+                x >= rect.width - edgeSize ||
+                y >= rect.height - edgeSize
+            );
         };
 
         const getPhoneBodyFromEvent = (event) => {
@@ -480,6 +534,14 @@ if (window.GGP_Loaded) {
             phoneBody.style.removeProperty('transition');
             phoneBody.style.removeProperty('opacity');
             dragStartRect = phoneBody.getBoundingClientRect();
+            dragBodySize = {
+                width: Math.max(220, Math.round(dragStartRect.width || 300)),
+                height: Math.max(360, Math.round(dragStartRect.height || 620))
+            };
+            dragOriginalPosition = {
+                x: Number.parseFloat(panel.dataset.desktopX || '') || dragStartRect.left,
+                y: Number.parseFloat(panel.dataset.desktopY || '') || dragStartRect.top
+            };
             panel.classList.add('phone-panel-desktop-dragging');
             scheduleDragFrame(currentX - startX, currentY - startY);
 
@@ -493,7 +555,7 @@ if (window.GGP_Loaded) {
 
             const phoneBody = getPhoneBodyFromEvent(event);
             if (!phoneBody || isBlockedDragTarget(event.target)) return;
-            if (!isPhonePanelDragHandle(event.target)) return;
+            if (!isPhonePanelDragHandle(event.target) && !isDesktopPhonePanelDragHotZone(event, phoneBody)) return;
 
             resetDragState();
             activePointerId = event.pointerId;
@@ -535,10 +597,10 @@ if (window.GGP_Loaded) {
             const deltaX = currentX - startX;
             const deltaY = currentY - startY;
             const nextPosition = dragStartRect
-                ? {
+                ? clampPhonePanelDesktopPosition({
                     x: dragStartRect.left + deltaX,
                     y: dragStartRect.top + deltaY
-                }
+                }, dragBodySize)
                 : {
                     x: currentX,
                     y: currentY
@@ -550,8 +612,6 @@ if (window.GGP_Loaded) {
             }
 
             panel.classList.remove('phone-panel-desktop-dragging');
-            panel.style.removeProperty('--phone-panel-drag-x');
-            panel.style.removeProperty('--phone-panel-drag-y');
             try {
                 panel.releasePointerCapture?.(event.pointerId);
             } catch {}
@@ -566,13 +626,15 @@ if (window.GGP_Loaded) {
         const cancelPointer = (event) => {
             if (activePointerId !== event.pointerId) return;
             unbindDocumentDragEvents();
+            const restorePosition = dragOriginalPosition;
             panel.classList.remove('phone-panel-desktop-dragging');
-            panel.style.removeProperty('--phone-panel-drag-x');
-            panel.style.removeProperty('--phone-panel-drag-y');
             try {
                 panel.releasePointerCapture?.(event.pointerId);
             } catch {}
             resetDragState();
+            if (restorePosition) {
+                applyPhonePanelDesktopPosition(restorePosition);
+            }
         };
 
         panel.addEventListener('click', (event) => {
@@ -893,7 +955,7 @@ if (window.GGP_Loaded) {
 
         const text = document.createElement('span');
         text.className = 'notification-avatar-text';
-        const fallbackText = String(meta.avatarText || (icon === '📱' ? '微' : '👤')).trim();
+        const fallbackText = String(meta.avatarText || (meta.isGroup ? Array.from(String(meta.name || '').trim())[0] || '群' : (icon === '📱' ? '微' : '👤'))).trim();
         text.textContent = avatarRaw || fallbackText;
         avatarEl.appendChild(text);
         return avatarEl;
@@ -1220,11 +1282,11 @@ if (window.GGP_Loaded) {
         const version = String(data.version || ST_PHONE_VERSION);
         const fallbackItems = mode === 'local' ? getKnownUpdateNotes(version).items : [];
         const items = Array.isArray(data.items) && data.items.length ? data.items : fallbackItems;
-        const title = mode === 'remote' ? '发现新版本' : '已更新';
+        const title = options.title || (mode === 'remote' ? '发现新版本' : '已更新');
         const subtitle = mode === 'remote'
             ? `当前版本 ${ST_PHONE_VERSION}，最新版本 ${version}`
             : `版本 ${version}${data.date ? ` · ${data.date}` : ''}`;
-        const primaryText = mode === 'remote' ? '知道了' : '不再显示';
+        const primaryText = options.primaryText || (mode === 'remote' ? '知道了' : '不再显示');
 
         document.getElementById('st-phone-update-modal')?.remove();
 
@@ -1991,7 +2053,7 @@ if (window.GGP_Loaded) {
                     border: 1px solid rgba(151,171,207,0.46);
                     background: rgba(255,255,255,0.26);
                     box-shadow: inset 0 1px 0 rgba(255,255,255,0.5);
-                    cursor: pointer; color: var(--SmartThemeBodyColor, #fff); font-size: 14px;
+                    cursor: pointer; color: var(--phone-global-text, #1f2f46) !important; font-size: 14px;
                     transition: background 0.2s, border-color 0.2s, transform 0.12s;
                     user-select: none;
                     position: relative;
@@ -2008,6 +2070,7 @@ if (window.GGP_Loaded) {
                     overflow: hidden;
                     text-overflow: ellipsis;
                     white-space: nowrap;
+                    color: var(--phone-global-text, #1f2f46) !important;
                 }
                 .inline-reply-tabbar {
                     display: flex;
@@ -4622,12 +4685,13 @@ if (window.GGP_Loaded) {
             return;
         }
 
-        // [图片/视频](描述) / [图片/视频]（描述）
-        const imageMatch = /^\[(图片|视频)\]\s*[（(]\s*([^)）]+?)\s*[)）]\s*$/.exec(content);
+        // [个人图片/图片/视频](描述) / [个人图片/图片/视频]（描述）
+        const imageMatch = /^\[(个人图片|图片|视频)\]\s*[（(]\s*([^)）]+?)\s*[)）]\s*$/.exec(content);
         if (imageMatch) {
             const promptText = String(imageMatch[2] || '').trim();
             msgObj.type = 'image_prompt';
             msgObj.mediaType = imageMatch[1]; // 记录是图片还是视频
+            msgObj.usePersonalReference = imageMatch[1] === '个人图片';
             msgObj.imagePrompt = promptText;
             msgObj.content = promptText;
             return;
@@ -5019,6 +5083,9 @@ if (window.GGP_Loaded) {
                     time: finalTime,
                     date: data.date || baseDate,
                     type: msg.type || 'text',
+                    mediaType: msg.mediaType,
+                    imagePrompt: msg.imagePrompt,
+                    usePersonalReference: msg.usePersonalReference,
                     avatar: senderAvatar,
                     duration: msg.duration,
                     voiceText: msg.voiceText,
@@ -5108,9 +5175,14 @@ if (window.GGP_Loaded) {
                 if (previewText.length > 34) previewText = `${previewText.slice(0, 34)}...`;
 
                 const finalNotifyAvatar = _resolveWechatNotificationAvatar(wechatData, chat, existingContact, data);
+                const isNotifyGroup = (chat?.type === 'group') || String(data.chatType || '').toLowerCase() === 'group';
 
                 showUnifiedPhoneNotification('微信消息', previewText, '', {
                     avatar: finalNotifyAvatar,
+                    avatarText: isNotifyGroup ? (Array.from(String(data.contact || chat?.name || '').trim())[0] || '群') : undefined,
+                    avatarBg: isNotifyGroup && !finalNotifyAvatar ? '#fff' : undefined,
+                    avatarColor: isNotifyGroup && !finalNotifyAvatar ? '#000' : undefined,
+                    isGroup: isNotifyGroup,
                     name: data.contact || '微信',
                     content: previewText,
                     timeText: '刚刚',
@@ -5685,8 +5757,27 @@ if (window.GGP_Loaded) {
             // 🔥 保存内容哈希，用于下次判断内容是否变化（重新生成检测）
             message._phone_lastContentHash = text.length + '_' + text.substring(0, 50);
 
+            // 🔒 流式生成中不要落库微信/手机标签：否则会出现“通知已弹出，但同楼层后续流式事件又回滚清掉消息”。
+            // 等酒馆生成结束后再解析最终楼层内容，保证通知和聊天记录一致。
+            if (!isHistoryReplay && !message.is_user && isTavernPrimaryGenerationBusy()) {
+                if (message._phone_stream_parse_timer) {
+                    clearTimeout(message._phone_stream_parse_timer);
+                }
+                message._phone_processed = false;
+                message._phone_stream_parse_timer = setTimeout(() => {
+                    message._phone_stream_parse_timer = null;
+                    onMessageReceived(index);
+                }, 900);
+                return;
+            }
+
             // 🔥 新增：生成当前解析批次ID，用于清洗流式输出导致的重复片段
-            const currentBatchId = 'batch_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+            const currentContentKey = String(text.length || 0) + '_' + String(text || '').slice(0, 120);
+            if (message._phone_batch_content_key !== currentContentKey) {
+                message._phone_batch_content_key = currentContentKey;
+                message._phone_stable_batch_id = `batch_${context.chatId || 'chat'}_${index}_${swipeIndex}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+            }
+            const currentBatchId = message._phone_stable_batch_id || `batch_${context.chatId || 'chat'}_${index}_${swipeIndex}`;
 
             // 🔥 新增：单独拦截用户消息，处理 <回复xx> 标签
             if (message.is_user) {
@@ -5928,28 +6019,37 @@ if (window.GGP_Loaded) {
 
             // 🔥 自动写日记检测
             try {
-                const promptMgr = window.VirtualPhone?.promptManager;
-                if (promptMgr) {
-                    promptMgr.ensureLoaded();
-                    const diaryConfig = promptMgr.prompts?.diary;
-                    if (diaryConfig?.autoEnabled) {
+                const triggerCtx = getContext();
+                const triggerChatId = String(triggerCtx?.chatMetadata?.file_name || triggerCtx?.chatId || 'default_chat');
+                const triggerChatLength = Array.isArray(triggerCtx?.chat) ? triggerCtx.chat.length : 0;
+                if (triggerChatLength > 0) {
+                    // 懒加载 DiaryData 检查楼层差
+                    import('./apps/diary/diary-data.js').then(module => {
+                        const diaryData = window.VirtualPhone.diaryApp?.diaryData
+                            || new module.DiaryData(storage);
+                        const diaryConfig = diaryData.getAutoSettings();
+                        if (!diaryConfig?.autoEnabled) return;
+
                         const autoFloor = diaryConfig.autoFloor || 50;
-                        // 懒加载 DiaryData 检查楼层差
-                        import('./apps/diary/diary-data.js').then(module => {
-                            const diaryData = window.VirtualPhone.diaryApp?.diaryData
-                                || new module.DiaryData(storage);
 
-                            // 🔥 核心修改：使用专属的自动记录独立标记，不再被手动日记干扰
-                            const lastIdx = diaryData.getAutoLastFloor();
+                        // 🔥 核心修改：使用专属的自动记录独立标记，不再被手动日记干扰
+                        const rawLastIdx = parseInt(diaryData.getAutoLastFloor(), 10);
+                        let lastIdx = Number.isFinite(rawLastIdx) ? rawLastIdx : 0;
+                        const latestFloor = Math.max(0, triggerChatLength - 1);
+                        lastIdx = Math.max(0, Math.min(lastIdx, latestFloor));
+                        if (lastIdx !== rawLastIdx) diaryData.setAutoLastFloor(lastIdx);
 
-                            const ctx = getContext();
-                            if (ctx && ctx.chat && (ctx.chat.length - 1 - lastIdx) >= autoFloor) {
-                                // 🔥 延迟 5-8 秒执行，防止与其他扩展 API 并发冲突
-                                const delay = 5000 + Math.random() * 3000;
-                                setTimeout(() => diaryData.autoGenerateDiary(), delay);
-                            }
-                        }).catch(e => console.warn('[Diary] 自动日记模块加载失败:', e));
-                    }
+                        if ((latestFloor - lastIdx) >= autoFloor) {
+                            // 🔥 延迟 5-8 秒执行，防止与其他扩展 API 并发冲突；执行前校验会话，避免切窗串写
+                            const delay = 5000 + Math.random() * 3000;
+                            setTimeout(() => {
+                                const currentCtx = getContext();
+                                const currentChatId = String(currentCtx?.chatMetadata?.file_name || currentCtx?.chatId || 'default_chat');
+                                if (currentChatId !== triggerChatId) return;
+                                diaryData.autoGenerateDiary({ chatId: triggerChatId });
+                            }, delay);
+                        }
+                    }).catch(e => console.warn('[Diary] 自动日记模块加载失败:', e));
                 }
             } catch (diaryErr) {
                 console.warn('[Diary] 自动日记检测异常:', diaryErr);
@@ -6266,6 +6366,9 @@ if (window.GGP_Loaded) {
                 mofoApp: null,
                 cachedMofoData: null,
                 notify: showUnifiedPhoneNotification,
+                showCurrentUpdateInfo: () => showPhoneUpdateModal('local', ST_PHONE_CURRENT_UPDATE, {
+                    primaryText: '知道了'
+                }),
                 triggerWechatIncomingCall: triggerWechatIncomingCall,
                 loadTimeManager: loadTimeManager,
                 loadPromptManager: loadPromptManager,
@@ -7407,6 +7510,8 @@ if (window.GGP_Loaded) {
 
                                                 // 🔥 获取微信好友和群聊名称列表
                                                 let wechatContactsList = '';
+                                                let wechatFriendsList = '';
+                                                let wechatGroupsList = '';
                                                 try {
                                                     let wechatDataParsed = null;
                                                     if (window.VirtualPhone?.wechatApp?.wechatData?.data) {
@@ -7422,23 +7527,36 @@ if (window.GGP_Loaded) {
 
                                                     if (wechatDataParsed) {
                                                         const contactNames = [];
-                                                        const groupNames = [];
+                                                        const groupItems = [];
                                                         const contacts = wechatDataParsed.contacts || [];
                                                         contacts.forEach(c => { if (c.name) contactNames.push(c.name); });
                                                         const chats = wechatDataParsed.chats || [];
                                                         chats.forEach(chat => {
-                                                            if (chat.type === 'group' && chat.name) groupNames.push(chat.name);
+                                                            if (chat.type === 'group' && chat.name) {
+                                                                const members = Array.isArray(chat.members)
+                                                                    ? chat.members.map(item => String(item || '').trim()).filter(Boolean)
+                                                                    : [];
+                                                                groupItems.push(members.length > 0
+                                                                    ? `${chat.name}（成员：${members.join('、')}）`
+                                                                    : `${chat.name}（成员：暂无记录）`);
+                                                            }
                                                         });
+                                                        wechatFriendsList = contactNames.length > 0 ? contactNames.join('、') : '暂无好友';
+                                                        wechatGroupsList = groupItems.length > 0 ? groupItems.join('；') : '暂无群聊';
                                                         const parts = [];
-                                                        if (contactNames.length > 0) parts.push(`好友：${contactNames.join('、')}`);
-                                                        if (groupNames.length > 0) parts.push(`群聊：${groupNames.join('、')}`);
+                                                        if (contactNames.length > 0) parts.push(`好友：${wechatFriendsList}`);
+                                                        if (groupItems.length > 0) parts.push(`群聊：${wechatGroupsList}`);
                                                         wechatContactsList = parts.join('；') || '暂无联系人';
                                                     } else {
                                                         wechatContactsList = '暂无联系人';
+                                                        wechatFriendsList = '暂无好友';
+                                                        wechatGroupsList = '暂无群聊';
                                                     }
                                                 } catch (e) {
                                                     console.warn('⚠️ 获取微信联系人列表失败:', e);
                                                     wechatContactsList = '暂无联系人';
+                                                    wechatFriendsList = '暂无好友';
+                                                    wechatGroupsList = '暂无群聊';
                                                 }
 
                                                 wechatPrompt = wechatPrompt
@@ -7446,6 +7564,8 @@ if (window.GGP_Loaded) {
                                                     .replace(/\{\{STORY_TIME\}\}/g, latestPhoneTime)
                                                     .replace(/\{\{STORY_DATE\}\}/g, latestPhoneDate)
                                                     .replace(/\{\{STORY_TIME\+1\}\}/g, nextMinute)
+                                                    .replace(/\{\{wechatFriends\}\}/g, wechatFriendsList)
+                                                    .replace(/\{\{wechatGroups\}\}/g, wechatGroupsList)
                                                     .replace(/\{\{wechatContacts\}\}/g, wechatContactsList);
                                                 phoneRulesContent += `【微信线下模式】\n${wechatPrompt}\n\n`;
                                             }

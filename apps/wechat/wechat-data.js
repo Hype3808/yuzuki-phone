@@ -1010,10 +1010,11 @@ export class WechatData {
         // 🔥 动态拦截表情包与语音（线上模式）
         if ((message.type === 'text' || !message.type) && message.content) {
             const contentStr = message.content.trim();
-            const imageMatch = /^\[(图片|视频)\]\s*[（(]\s*([^)）]+?)\s*[)）]\s*$/.exec(contentStr);
+            const imageMatch = /^\[(个人图片|图片|视频)\]\s*[（(]\s*([^)）]+?)\s*[)）]\s*$/.exec(contentStr);
             if (imageMatch) {
                 message.type = 'image_prompt';
                 message.mediaType = imageMatch[1]; // 记录是图片还是视频
+                message.usePersonalReference = imageMatch[1] === '个人图片';
                 message.imagePrompt = imageMatch[2].trim();
                 message.content = message.imagePrompt;
             }
@@ -1171,7 +1172,7 @@ getMessagePreview(message) {
             }
             return '[图片]';
        case 'image_prompt':
-            return `[${message.mediaType || '图片'}]`;
+            return `[${message.usePersonalReference ? '个人图片' : (message.mediaType || '图片')}]`;
         case 'location':
             return `[定位] ${stripSpeechPrefix(message.content || message.locationText || '')}`.trim();
         case 'voice':
@@ -2150,10 +2151,11 @@ parseAIResponse(text) {
                 // 首楼空会话的特殊保护：
                 // 用户先在小手机里发消息时，tavernMessageIndex 会兜底成 0。
                 // 首条 AI 正文生成/转线下也会触发 rollbackToFloor(0)，不能把这些本地手机消息误删。
-                if (Number(targetTavernIndex) <= 0 && !m.fromMainChatTag) {
+                if (!m.fromMainChatTag) {
                     return true;
                 }
-                // 所有 >= 目标楼层的消息，都视为未来废案并直接物理删除
+                // 只有正文 <wechat>/<回复> 标签同步出来的消息，才跟随酒馆楼层回滚。
+                // 小手机线上聊天是独立会话流，不能被正文生成/重抽/滑动清掉。
                 if (m.tavernMessageIndex !== undefined && m.tavernMessageIndex >= targetTavernIndex) {
                     return false;
                 }

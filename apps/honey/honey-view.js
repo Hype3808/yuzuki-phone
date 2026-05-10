@@ -2276,6 +2276,7 @@ export class HoneyView {
                         </div>
                     </div>
                 </div>
+                ${this._buildLiveVisibilityModalHtml()}
             </div>
         `;
 
@@ -3275,15 +3276,27 @@ export class HoneyView {
         root.querySelector('#honey-settings-btn')?.addEventListener('click', () => {
             this.openSettings();
         });
-        root.querySelectorAll('[data-action="close-live-visibility"]').forEach(el => {
-            el.addEventListener('click', () => this._hideLiveVisibilityModal());
-        });
-        root.querySelector('[data-action="start-private-live"]')?.addEventListener('click', () => {
-            this._startMyLiveWithVisibility('private');
-        });
-        root.querySelector('[data-action="start-public-live"]')?.addEventListener('click', () => {
-            this._startMyLiveWithVisibility('public');
-        });
+        const bindTap = (selector, handler) => {
+            root.querySelectorAll(selector).forEach(el => {
+                const run = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handler(e);
+                };
+                el.addEventListener('pointerup', (e) => {
+                    el.dataset.lastPointerAt = String(Date.now());
+                    run(e);
+                });
+                el.addEventListener('click', (e) => {
+                    const lastPointerAt = Number(el.dataset.lastPointerAt || 0);
+                    if (lastPointerAt && Date.now() - lastPointerAt < 500) return;
+                    run(e);
+                });
+            });
+        };
+        bindTap('[data-action="close-live-visibility"]', () => this._hideLiveVisibilityModal());
+        bindTap('[data-action="start-private-live"]', () => this._startMyLiveWithVisibility('private'));
+        bindTap('[data-action="start-public-live"]', () => this._startMyLiveWithVisibility('public'));
 
         root.querySelector('#honey-tab-recommend')?.addEventListener('click', () => {
             this.currentPage = 'recommend';
@@ -3370,7 +3383,7 @@ export class HoneyView {
             }
         });
 
-        root.querySelector('#honey-start-my-live')?.addEventListener('click', () => {
+        bindTap('#honey-start-my-live', () => {
             saveMineProfile();
             this._showLiveVisibilityModal();
         });

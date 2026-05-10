@@ -354,7 +354,7 @@ export class WeiboData {
     // 🌐 收集上下文（复用moments-view模式）
     // ========================================
 
-    _collectContextMessages(options = {}) {
+    async _collectContextMessages(options = {}) {
         const context = this._getContext();
         if (!context) return [];
 
@@ -378,33 +378,18 @@ export class WeiboData {
         if (context.characterId !== undefined && context.characters?.[context.characterId]) {
             char = context.characters[context.characterId];
             let charInfo = `【角色卡信息】\n角色名：${char.name || '未知'}`;
-            if (char.description) charInfo += `\n描述：${char.description.substring(0, 800)}`;
+            if (char.description) charInfo += `\n描述：${char.description}`;
             if (char.personality) charInfo += `\n性格：${char.personality}`;
             if (char.scenario) charInfo += `\n场景/背景：${char.scenario}`;
-            if (char.data?.system_prompt) charInfo += `\n角色系统提示词：${char.data.system_prompt.substring(0, 500)}`;
+            if (char.data?.system_prompt) charInfo += `\n角色系统提示词：${char.data.system_prompt}`;
             pushSystemMessage(charInfo, 'SYSTEM (角色卡信息)');
         }
 
-        // 世界书背景（可选）
+        // 世界书背景（复用微信/蜜语的角色卡级开关与勾选逻辑）
         try {
-            const entriesRaw = char?.data?.character_book?.entries;
-            const entries = Array.isArray(entriesRaw)
-                ? entriesRaw
-                : (entriesRaw && typeof entriesRaw === 'object' ? Object.values(entriesRaw) : []);
-
-            if (entries.length > 0) {
-                const chunks = [];
-                for (const entry of entries) {
-                    if (!entry || entry.enabled === false) continue;
-                    const content = String(entry.content || '').trim();
-                    if (!content) continue;
-                    const title = String(entry.comment || entry.keys || '').trim() || '条目';
-                    chunks.push(`【${title.substring(0, 24)}】\n${content.substring(0, 260)}`);
-                    if (chunks.length >= 12) break;
-                }
-                if (chunks.length > 0) {
-                    pushSystemMessage(`【世界书背景】\n${chunks.join('\n\n')}`, 'SYSTEM (世界书背景)');
-                }
+            const worldInfoMessage = await window.VirtualPhone?.worldbookManager?.buildWorldbookMessage?.('weibo');
+            if (worldInfoMessage?.content) {
+                contextMessages.push(worldInfoMessage);
             }
         } catch (e) {
             console.warn('[Weibo] 读取世界书失败:', e);
@@ -414,7 +399,7 @@ export class WeiboData {
         const userName = context.name1 || '用户';
         const personaTextarea = document.getElementById('persona_description');
         if (personaTextarea?.value?.trim()) {
-            pushSystemMessage(`【用户信息】\n用户名：${userName}\n用户设定：${personaTextarea.value.trim().substring(0, 500)}`, 'SYSTEM (用户信息)');
+            pushSystemMessage(`【用户信息】\n用户名：${userName}\n用户设定：${personaTextarea.value.trim()}`, 'SYSTEM (用户信息)');
         } else {
             pushSystemMessage(`【用户信息】\n用户名：${userName}`, 'SYSTEM (用户信息)');
         }
@@ -455,15 +440,6 @@ export class WeiboData {
                 });
             });
         }
-
-        // 微博隐私硬规则
-        pushSystemMessage(
-            `【微博生成隐私规则】\n` +
-            `1. 严禁把私密聊天、微信私聊、手机通话、短信等内容直接写成公开微博。\n` +
-            `2. 若剧情仅出现私密对话，微博应生成与公共可见事件相关的话题，不得泄露私聊原句与细节。\n` +
-            `3. 禁止让路人网友精准复述主角私聊内容。`,
-            'SYSTEM (微博隐私规则)'
-        );
 
         // 当前账号状态（用于让 AI 在回复时感知并更新粉丝数）
         const currentFollowers = this._getCurrentFollowersCount();
@@ -693,7 +669,7 @@ export class WeiboData {
         return this.queueApiCall(async () => {
             if (onProgress) onProgress('正在生成推荐内容...');
 
-            const contextMessages = this._collectContextMessages(options);
+            const contextMessages = await this._collectContextMessages(options);
             const promptManager = window.VirtualPhone?.promptManager;
             promptManager?.ensureLoaded();
             let recommendPrompt = promptManager?.getPromptForFeature('weibo', 'recommend') || '';
@@ -730,7 +706,7 @@ export class WeiboData {
         return this.queueApiCall(async () => {
             if (onProgress) onProgress('正在生成热搜内容...');
 
-            const contextMessages = this._collectContextMessages();
+            const contextMessages = await this._collectContextMessages();
             const promptManager = window.VirtualPhone?.promptManager;
             promptManager?.ensureLoaded();
             let hotSearchPrompt = promptManager?.getPromptForFeature('weibo', 'hotSearch') || '';
@@ -774,7 +750,7 @@ export class WeiboData {
             if (onProgress) onProgress('正在追加生成...');
 
             const existing = this.getHotSearchDetail(title);
-            const contextMessages = this._collectContextMessages();
+            const contextMessages = await this._collectContextMessages();
             const promptManager = window.VirtualPhone?.promptManager;
             promptManager?.ensureLoaded();
             let hotSearchPrompt = promptManager?.getPromptForFeature('weibo', 'hotSearch') || '';
@@ -1434,7 +1410,7 @@ export class WeiboData {
         return this.queueApiCall(async () => {
             const context = this._getContext();
             const userName = context?.name1 || '用户';
-            const contextMessages = this._collectContextMessages();
+            const contextMessages = await this._collectContextMessages();
             const currentFollowers = this._getCurrentFollowersCount();
             const promptManager = window.VirtualPhone?.promptManager;
             promptManager?.ensureLoaded();
@@ -1514,7 +1490,7 @@ export class WeiboData {
         return this.queueApiCall(async () => {
             const context = this._getContext();
             const userName = context?.name1 || '用户';
-            const contextMessages = this._collectContextMessages();
+            const contextMessages = await this._collectContextMessages();
             const currentFollowers = this._getCurrentFollowersCount();
             const promptManager = window.VirtualPhone?.promptManager;
             promptManager?.ensureLoaded();
@@ -1608,7 +1584,7 @@ export class WeiboData {
             }
             if (!post) throw new Error('找不到该微博');
 
-            const contextMessages = this._collectContextMessages();
+            const contextMessages = await this._collectContextMessages();
             const promptManager = window.VirtualPhone?.promptManager;
             promptManager?.ensureLoaded();
             let commentPrompt = promptManager?.getPromptForFeature('weibo', 'moreComments') || '';

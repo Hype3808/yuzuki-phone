@@ -680,7 +680,7 @@ export class WeiboView {
                     <div class="weibo-nav-right" style="min-width: 36px;"></div>
                 </div>
 
-                <div class="weibo-detail-page-body" id="weibo-detail-scroll-area" style="flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: 60px;">
+                <div class="weibo-detail-page-body" id="weibo-detail-scroll-area" style="flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; touch-action: pan-y; scrollbar-width: none; -ms-overflow-style: none; padding-bottom: 60px;">
                     ${this.renderWeiboPost(post, 'detail')}
 
                     <!-- 加载更多评论 -->
@@ -955,6 +955,7 @@ export class WeiboView {
         const currentChatFloor = context?.chat?.length || 0;
         const profile = this.app.weiboData.getProfile();
         const userName = context?.name1 || '微博用户';
+        const useWeiboWorldbook = window.VirtualPhone?.worldbookManager?.getEnabled?.('weibo') ?? true;
 
         const html = `
             <div class="weibo-app weibo-subpage">
@@ -989,6 +990,15 @@ export class WeiboView {
                             <span class="weibo-settings-label">关注数</span>
                             <input type="number" id="weibo-set-following" class="weibo-settings-input"
                                    value="${profile.following ?? 25}" min="0">
+                        </div>
+
+                        <div class="weibo-settings-item">
+                            <span class="weibo-settings-label">粉丝数</span>
+                            <input type="number" id="weibo-set-followers" class="weibo-settings-input"
+                                   value="${profile.followers ?? 0}" min="0">
+                        </div>
+                        <div class="weibo-settings-desc" style="margin-top: -4px;">
+                            用户可手动设置；AI 返回粉丝数时会在当前基础上同步波动。
                         </div>
 
                         <button class="weibo-settings-btn" id="weibo-save-profile">
@@ -1063,6 +1073,35 @@ export class WeiboView {
                             <button class="weibo-settings-btn" id="weibo-save-frame-css">
                                 <i class="fa-solid fa-check"></i> 保存自定义 CSS
                             </button>
+                        </div>
+                    </div>
+
+                    <!-- 生成上下文 -->
+                    <div class="weibo-settings-section">
+                        <div class="weibo-settings-title">生成上下文</div>
+                        <div class="weibo-settings-item">
+                            <div style="min-width: 0;">
+                                <span class="weibo-settings-label">使用酒馆世界书</span>
+                                <div class="weibo-settings-desc" style="margin-top: 4px;">开启后，微博生成会注入下方勾选的酒馆世界书；开关与勾选状态跟随当前角色卡。</div>
+                            </div>
+                            <label class="toggle-switch" style="flex: 0 0 auto;">
+                                <input type="checkbox" id="weibo-use-worldbook" ${useWeiboWorldbook ? 'checked' : ''}>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="phone-prompt-fold weibo-worldbook-fold" data-default-open="false" style="margin-top: 10px;">
+                            <div class="phone-prompt-fold-header">
+                                <div class="phone-prompt-fold-main">
+                                    <div class="phone-prompt-fold-title">世界书选择</div>
+                                    <div class="phone-prompt-fold-desc">展开后勾选要注入微博生成的酒馆世界书</div>
+                                </div>
+                                <i class="fa-solid fa-chevron-right phone-prompt-fold-arrow"></i>
+                            </div>
+                            <div class="phone-prompt-fold-content">
+                                <div id="weibo-worldbook-list">
+                                    <div class="weibo-settings-desc" style="padding-top: 8px;">正在读取当前可用世界书...</div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -1428,8 +1467,15 @@ export class WeiboView {
         const groupChats = wechatData ? wechatData.getChatList().filter(c => c.type === 'group') : [];
         // 将群聊伪装成联系人格式，合并到展示列表中
         const forwardTargets = [
-            ...contacts,
-            ...groupChats.map(g => ({ name: g.name, avatar: g.avatar || '👥', isGroup: true }))
+            ...contacts.map(contact => ({
+                ...contact,
+                avatar: this._resolveWechatForwardAvatar(contact, wechatData) || contact.avatar || ''
+            })),
+            ...groupChats.map(g => ({
+                ...g,
+                avatar: this._resolveWechatForwardAvatar(g, wechatData, { isGroup: true }) || g.avatar || '👥',
+                isGroup: true
+            }))
         ];
 
         if (forwardTargets.length === 0) {
@@ -1502,7 +1548,7 @@ export class WeiboView {
                 <div class="weibo-forward-list">
                     ${forwardTargets.map(c => `
                         <div class="weibo-forward-contact" data-name="${this._escapeAttr(c.name)}">
-                            <div class="weibo-forward-contact-avatar">${this._renderForwardTargetAvatar(c.avatar, c.name)}</div>
+                            <div class="weibo-forward-contact-avatar">${this._renderForwardTargetAvatar(c.avatar, c.name, c.isGroup)}</div>
                             <div class="weibo-forward-contact-name">${this._escapeHtml(c.name)}</div>
                         </div>
                     `).join('')}
@@ -1538,7 +1584,7 @@ export class WeiboView {
                     </div>
 
                     <div class="weibo-forward-recipient-row">
-                        <div class="weibo-forward-contact-avatar">${this._renderForwardTargetAvatar(target.avatar, target.name)}</div>
+                        <div class="weibo-forward-contact-avatar">${this._renderForwardTargetAvatar(target.avatar, target.name, target.isGroup)}</div>
                         <div class="weibo-forward-contact-name">${this._escapeHtml(target.name)}</div>
                         <i class="fa-solid fa-chevron-right"></i>
                     </div>
@@ -2785,12 +2831,20 @@ export class WeiboView {
             this.render();
         });
 
+        this.renderWeiboWorldbookList();
+        document.getElementById('weibo-use-worldbook')?.addEventListener('change', async (e) => {
+            const enabled = !!e.target.checked;
+            await window.VirtualPhone?.worldbookManager?.setEnabled?.('weibo', enabled);
+            if (enabled) this.renderWeiboWorldbookList();
+        });
+
         // 保存个人资料
         document.getElementById('weibo-save-profile')?.addEventListener('click', () => {
             const profile = this.app.weiboData.getProfile();
             profile.nickname = document.getElementById('weibo-set-nickname')?.value?.trim() || '';
             profile.ipLocation = document.getElementById('weibo-set-ip')?.value?.trim() || '';
             profile.following = Math.max(0, parseInt(document.getElementById('weibo-set-following')?.value) || 0);
+            profile.followers = Math.max(0, parseInt(document.getElementById('weibo-set-followers')?.value) || 0);
             this.app.weiboData.saveProfile(profile);
             this.app.phoneShell.showNotification('保存成功', '个人资料已更新', '✅');
         });
@@ -2954,6 +3008,10 @@ export class WeiboView {
             clearAllDataBtn.onclick = async () => {
                 if (confirm('⚠️ 警告：此操作将清空当前所有微博数据，并从酒馆聊天记录中永久擦除所有 <Weibo> 标签！\\n\\n此操作不可逆，是否继续？')) {
                     this.app.phoneShell.showNotification('清理中', '正在擦除数据...', '⏳');
+                    const imagesToDelete = [
+                        ...this._collectManagedWeiboImages(this.app.weiboData.getRecommendPosts()),
+                        ...this._collectManagedWeiboImages(this.app.weiboData.getUserPosts())
+                    ];
                     
                     // 1. 清空插件数据库、动态缓存与全局微博美化 CSS
                     this.app.weiboData.clearAllData();
@@ -2963,10 +3021,11 @@ export class WeiboView {
                     if (cssTextarea) {
                         cssTextarea.value = '';
                     }
-                    
+                     
                     // 2. 深入酒馆源文件擦除遗留标签
                     await this.app.weiboData.clearWeiboChatHistory();
-                    
+                    await this._deleteServerImages(imagesToDelete);
+                     
                     this.app.phoneShell.showNotification('清理完成', '微博数据、自定义 CSS 与历史标签已彻底清空', '✅');
                     
                     // 刷新回首页
@@ -3209,6 +3268,45 @@ export class WeiboView {
         });
     }
 
+    async renderWeiboWorldbookList() {
+        const container = document.getElementById('weibo-worldbook-list');
+        const manager = window.VirtualPhone?.worldbookManager;
+        if (!container || !manager) return;
+
+        try {
+            const sources = await manager.listAvailableWorldbooks({ includeEntries: true, force: true });
+            const selection = manager.getSelectionState('weibo');
+            if (sources.length === 0) {
+                container.innerHTML = '<div class="weibo-settings-desc" style="padding: 8px 0;">未读取到酒馆世界书列表。</div>';
+                return;
+            }
+
+            container.innerHTML = sources.map(source => {
+                const checked = (selection.initialized && manager.matchesSelection?.(source, selection.ids)) ? 'checked' : '';
+                const disabledText = source.entries?.length ? '' : '（读取失败或为空）';
+                return `
+                    <label style="display: flex; align-items: flex-start; gap: 8px; padding: 8px 0; border-top: 1px solid #f2f2f2;">
+                        <input type="checkbox" class="weibo-worldbook-choice" value="${this._escapeAttr(source.id)}" ${checked} style="margin-top: 2px;">
+                        <span style="min-width: 0;">
+                            <span style="display: block; font-size: 13px; color: var(--phone-global-text, #333);">${this._escapeHtml(source.name)}${this._escapeHtml(disabledText)}</span>
+                            <span style="display: block; font-size: 11px; color: #999; margin-top: 2px;">${this._escapeHtml(source.sourceLabel || '世界书')} · ${Number(source.entries?.length || 0)} 条</span>
+                        </span>
+                    </label>
+                `;
+            }).join('');
+
+            container.querySelectorAll('.weibo-worldbook-choice').forEach(input => {
+                input.addEventListener('change', async () => {
+                    const ids = Array.from(container.querySelectorAll('.weibo-worldbook-choice:checked')).map(item => item.value);
+                    await manager.setSelection('weibo', ids);
+                });
+            });
+        } catch (error) {
+            console.warn('[Weibo] 世界书列表渲染失败:', error);
+            container.innerHTML = '<div class="weibo-settings-desc" style="color:#d93025; padding: 8px 0;">世界书读取失败，请稍后重试。</div>';
+        }
+    }
+
    // ========================================
     // 🔄 推荐刷新
     // ========================================
@@ -3220,12 +3318,17 @@ export class WeiboView {
         this._syncRecommendRefreshIndicatorByState();
 
         try {
+            const oldRecommendImages = this._collectManagedWeiboImages(this.app.weiboData.getRecommendPosts());
+
             // 刷新前先清内存缓存，避免微博与热搜对象长期堆积占用
             this.app.weiboData.clearCache();
 
             await this.app.weiboData.generateRecommend((msg) => {
                 // 静默处理进度
             });
+            if (oldRecommendImages.length > 0) {
+                await this._deleteServerImages(oldRecommendImages);
+            }
             this._recommendRefreshStatus = 'success';
 
             // 🔥 核心修复：只有当用户还在看微博推荐页时，才执行刷新。防止暴力切屏。
@@ -3687,13 +3790,64 @@ export class WeiboView {
         return Array.from(raw)[0];
     }
 
-    _renderForwardTargetAvatar(avatar, fallbackName = '') {
+    _resolveWechatForwardAvatar(target, wechatData, { isGroup = false } = {}) {
+        if (!target) return '';
+        const directAvatar = this._normalizeWechatForwardAvatarPath(target.avatar);
+        if (directAvatar) return directAvatar;
+        if (!wechatData || isGroup) return '';
+
+        const keySet = new Set([
+            target.id,
+            target.contactId,
+            target.name
+        ].filter(Boolean).map(value => String(value).trim()));
+
+        for (const key of keySet) {
+            const autoAvatar = this._normalizeWechatForwardAvatarPath(wechatData.getContactAutoAvatar?.(key));
+            if (autoAvatar) return autoAvatar;
+        }
+
+        const autoMap = typeof wechatData.getContactAutoAvatarMap === 'function'
+            ? wechatData.getContactAutoAvatarMap()
+            : null;
+        if (autoMap && typeof autoMap === 'object') {
+            for (const key of keySet) {
+                const mappedAvatar = this._normalizeWechatForwardAvatarPath(autoMap[key]);
+                if (mappedAvatar) return mappedAvatar;
+            }
+        }
+
+        return '';
+    }
+
+    _normalizeWechatForwardAvatarPath(value) {
+        const raw = String(value || '').trim();
+        if (!raw || raw === '👤' || raw === '👥') return '';
+        if (/^(?:data:image|https?:\/\/|\/|blob:)/i.test(raw)) return raw;
+        const cleaned = raw
+            .replace(/^['"]|['"]$/g, '')
+            .replace(/^\.?\/*/, '')
+            .replace(/^apps\/wechat\/avatars\//i, '')
+            .replace(/^wechat\/avatars\//i, '')
+            .replace(/^avatars\//i, '');
+        if (!cleaned || /\s/.test(cleaned)) return '';
+        if (/^(?:male|female)\d+$/i.test(cleaned)) {
+            return new URL(`../wechat/avatars/${cleaned}.png`, import.meta.url).href;
+        }
+        if (/^[a-z0-9._-]+\.(?:png|jpg|jpeg|webp|gif)$/i.test(cleaned)) {
+            return new URL(`../wechat/avatars/${cleaned}`, import.meta.url).href;
+        }
+        return '';
+    }
+
+    _renderForwardTargetAvatar(avatar, fallbackName = '', isGroup = false) {
         const avatarStr = String(avatar || '').trim();
-        if (avatarStr && (avatarStr.startsWith('data:image') || avatarStr.startsWith('http://') || avatarStr.startsWith('https://') || avatarStr.startsWith('/'))) {
-            return `<img src="${avatarStr}" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;">`;
+        const imageAvatar = this._normalizeWechatForwardAvatarPath(avatarStr);
+        if (imageAvatar) {
+            return `<img src="${this._escapeAttr(imageAvatar)}" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;">`;
         }
         if (avatarStr) return this._escapeHtml(avatarStr);
-        return this._escapeHtml(this._getAvatarInitial(fallbackName || '微'));
+        return this._escapeHtml(isGroup ? '👥' : this._getAvatarInitial(fallbackName || '微'));
     }
 
     _escapeHtml(str) {
@@ -3723,6 +3877,40 @@ export class WeiboView {
     // ========================================
     // 🗑️ 服务器文件清理工具
     // ========================================
+    _collectManagedWeiboImages(posts) {
+        const result = [];
+        const seen = new Set();
+        const collectFromValue = (value) => {
+            const raw = String(value || '').trim();
+            if (!raw) return;
+            const media = this._parseWeiboMediaItem(raw);
+            const candidates = [
+                raw,
+                media.realUrl,
+                media.realUrl ? `[${media.mediaType}]${media.realUrl}` : ''
+            ];
+            candidates.forEach((candidate) => {
+                const text = String(candidate || '').trim();
+                const match = text.match(/(?:^\[[^\]]+\]\s*)?(\/backgrounds\/phone_weibo_img_[^?#\s)）]+)/i);
+                if (!match) return;
+                const url = match[1];
+                if (seen.has(url)) return;
+                seen.add(url);
+                result.push(url);
+            });
+        };
+
+        (Array.isArray(posts) ? posts : []).forEach((post) => {
+            if (Array.isArray(post?.images)) {
+                post.images.forEach(collectFromValue);
+            }
+            if (Array.isArray(post?.imageGenerationStates)) {
+                post.imageGenerationStates.forEach((state) => collectFromValue(state?.generatedImageUrl));
+            }
+        });
+        return result;
+    }
+
     async _deleteServerImages(images) {
         if (!Array.isArray(images) || images.length === 0) return;
         const buildDeleteHeaders = async () => {

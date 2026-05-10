@@ -237,7 +237,9 @@ export class PhoneShell {
                 '#wechat-weibo-preview-modal', '#wechat-weibo-preview-modal > div',
                 '.wechat-call-transcript-overlay', '.wechat-call-transcript-panel', '.wechat-call-transcript-body',
                 '.phone-image-viewer-overlay', '.phone-image-viewer-stage',
-                '.phone-call-history-list', '.phone-call-main', '.phone-call-transcript', '#phone-call-transcript-messages',
+                '#st-phone-update-modal', '.st-phone-update-dialog', '.st-phone-update-content', '.st-phone-update-list',
+                '.phone-call-history-list', '.phone-call-main', '.phone-call-contacts', '.phone-call-contact-list',
+                '.phone-call-transcript', '#phone-call-transcript-messages',
                 '.phone-call-settings', '.phone-call-settings-body', '.phone-call-settings-section',
                 '.phone-call-prompt-textarea', '#phone-call-call-prompt',
                 '.phone-call-active', '.phone-call-messages', '#phone-call-messages', '.phone-call-bottom', '#phone-call-input',
@@ -756,6 +758,19 @@ export class PhoneShell {
         }
     }
 
+    _scopePhoneFormControls(root) {
+        if (!root) return;
+        root.querySelectorAll?.('.toggle-switch, .honey-toggle-switch, .phone-call-toggle, .st-phone-toggle-switch').forEach((el) => {
+            el.classList.add('st-phone-toggle-switch');
+            el.querySelectorAll?.('input[type="checkbox"]').forEach((input) => {
+                input.classList.add('st-phone-toggle-input');
+            });
+        });
+        root.querySelectorAll?.('.toggle-slider, .honey-toggle-slider, .phone-call-toggle-slider, .st-phone-toggle-slider').forEach((el) => {
+            el.classList.add('st-phone-toggle-slider');
+        });
+    }
+
     setContent(html, viewId = null) {
         if (!this.screen) return;
 
@@ -805,6 +820,7 @@ export class PhoneShell {
             // 存下原始生成的 HTML 字符串，作为指纹
             targetView.setAttribute('data-raw-html', html);
         }
+        this._scopePhoneFormControls(targetView);
 
         // 6. 图层 Z-Index 管理（完美的 iOS/微信 原生堆叠效果）
         const allViews = stack.querySelectorAll('[data-view-id]');
@@ -962,7 +978,7 @@ export class PhoneShell {
             } else {
                 const avatarText = document.createElement('span');
                 avatarText.className = 'notification-avatar-text';
-                avatarText.textContent = avatarRaw || String(meta.avatarText || (data.icon === '📱' ? '微' : '👤'));
+                avatarText.textContent = avatarRaw || String(meta.avatarText || (meta.isGroup ? Array.from(String(meta.name || '').trim())[0] || '群' : (data.icon === '📱' ? '微' : '👤')));
                 avatarEl.appendChild(avatarText);
             }
 

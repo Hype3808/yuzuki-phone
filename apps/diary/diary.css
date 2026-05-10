@@ -15,15 +15,29 @@
 
 /* ==================== 封面视图 ==================== */
 .diary-app {
+    --diary-text-primary: var(--phone-global-text, #4f3f30);
+    --diary-text-secondary: color-mix(in srgb, var(--phone-global-text, #4f3f30) 72%, transparent);
+    --diary-text-muted: color-mix(in srgb, var(--phone-global-text, #4f3f30) 56%, transparent);
     width: 100%;
     height: 100%;
     display: flex;
     flex-direction: column;
     background: rgba(245, 242, 238, 0.95);
+    color: var(--diary-text-primary) !important;
     backdrop-filter: blur(10px);
     overflow: hidden;
     position: relative;
     overscroll-behavior: none;
+}
+
+.phone-body-panel .diary-app :where(
+    p, span, strong, em, small, label, a,
+    li, dt, dd, h1, h2, h3, h4, h5, h6,
+    button, input, textarea, select, option,
+    div
+) {
+    color: inherit !important;
+    text-shadow: none !important;
 }
 
 .diary-cover {
@@ -57,11 +71,13 @@
     font-size: 22px;
     letter-spacing: 4px;
     margin-bottom: 8px;
+    color: var(--diary-text-primary) !important;
 }
 
 .diary-cover-subtitle {
     font-size: 12px;
     letter-spacing: 2px;
+    color: var(--diary-text-secondary) !important;
 }
 
 .diary-cover-decoration {
@@ -423,7 +439,7 @@
     border-radius: 50%;
     border: none;
     background: rgba(0,0,0,0.05);
-    color: #8a7a6a;
+    color: #8a7a6a !important;
     font-size: 16px;
     cursor: pointer;
     display: flex;
@@ -460,6 +476,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    color: #8a7a6a !important;
 }
 
 .diary-page-body {
@@ -495,6 +512,7 @@
     padding-top: 4px;
     white-space: pre-wrap;
     word-break: break-word;
+    color: var(--diary-text-primary) !important;
 }
 
 .diary-page-content .diary-date-header {
@@ -503,6 +521,7 @@
     margin-bottom: 12px;
     padding-bottom: 8px;
     border-bottom: 1px dashed rgba(128,128,128,0.3);
+    color: var(--diary-text-secondary) !important;
 }
 
 /* ==================== 页面设置面板 ==================== */
@@ -529,6 +548,7 @@
 .diary-settings-panel-title {
     font-size: 13px;
     margin-bottom: 14px;
+    color: var(--diary-text-primary) !important;
 }
 
 .diary-setting-row {
@@ -557,7 +577,7 @@
     border: 1px solid #e8e0d4;
     border-radius: 6px;
     background: #faf6ef;
-    color: #5a4a3a;
+    color: #5a4a3a !important;
     cursor: pointer;
     text-align: center;
     transition: background 0.15s;
@@ -604,7 +624,7 @@
     margin: 16px;
     padding: 12px;
     background: linear-gradient(135deg, #d4a853, #c49a40);
-    color: #fff;
+    color: #fff !important;
     border: none;
     border-radius: 10px;
     font-size: 15px;
@@ -714,6 +734,7 @@
     -webkit-backdrop-filter: blur(8px);
     overflow: hidden;
     min-height: 0;
+    color: var(--diary-text-primary) !important;
 }
 
 .diary-settings-view .diary-toc-header {
@@ -742,6 +763,7 @@
 .diary-s-section-title {
     font-size: 14px;
     margin-bottom: 10px;
+    color: var(--diary-text-primary) !important;
 }
 
 .diary-s-row {
@@ -753,6 +775,7 @@
 
 .diary-s-label {
     font-size: 13px;
+    color: var(--diary-text-primary) !important;
 }
 
 .diary-s-desc {
@@ -760,6 +783,7 @@
     opacity: 0.7;
     margin-bottom: 8px;
     line-height: 1.4;
+    color: var(--diary-text-secondary) !important;
 }
 
 .diary-s-slider {
@@ -775,6 +799,7 @@
     text-align: center;
     font-size: 14px;
     background: rgba(255, 255, 255, 0.2);
+    color: var(--diary-text-primary) !important;
     -webkit-user-select: text;
     user-select: text;
     -webkit-touch-callout: default;
@@ -792,6 +817,7 @@
     resize: vertical;
     font-family: monospace;
     background: rgba(255, 255, 255, 0.2);
+    color: var(--diary-text-primary) !important;
     box-sizing: border-box;
     margin-bottom: 10px;
     -webkit-user-select: text;
@@ -821,13 +847,13 @@
 
 .diary-s-btn-primary {
     background: #fffef9;
-    color: #5a4a3a;
+    color: #5a4a3a !important;
     border: 1px solid #e0d8cc;
 }
 
 .diary-s-btn-warn {
     background: #fffef9;
-    color: #ff9500;
+    color: #ff9500 !important;
     border: 1px solid #e0d8cc;
 }
 
@@ -873,6 +899,7 @@
     resize: none;
     font-family: inherit;
     background: rgba(255, 255, 255, 0.8);
+    color: var(--diary-text-primary) !important;
     box-sizing: border-box;
     overflow-y: auto;
     -webkit-user-select: text;
@@ -886,7 +913,7 @@
     border: none;
     border-radius: 6px;
     background: #d4a853;
-    color: #fff;
+    color: #fff !important;
     font-size: 13px;
     cursor: pointer;
 }
@@ -908,7 +935,7 @@
 .diary-import-preview {
     font-size: 12px;
     line-height: 1.5;
-    color: #7a6958;
+    color: #7a6958 !important;
 }
 
 .diary-import-tools {
@@ -918,6 +945,36 @@
 
 .diary-import-textarea {
     min-height: 0;
+}
+
+.phone-body-panel .diary-app .diary-page-content,
+.phone-body-panel .diary-app .diary-text-body,
+.phone-body-panel .diary-app .diary-settings-view,
+.phone-body-panel .diary-app .diary-s-section,
+.phone-body-panel .diary-app .diary-s-label,
+.phone-body-panel .diary-app .diary-s-section-title {
+    color: var(--diary-text-primary) !important;
+}
+
+.phone-body-panel .diary-app .diary-s-desc,
+.phone-body-panel .diary-app .diary-import-desc,
+.phone-body-panel .diary-app .diary-import-preview,
+.phone-body-panel .diary-app .diary-date-header {
+    color: var(--diary-text-secondary) !important;
+}
+
+.phone-body-panel .diary-app .diary-write-btn,
+.phone-body-panel .diary-app .diary-edit-save-btn {
+    color: #fff !important;
+}
+
+.phone-body-panel .diary-app .diary-s-btn-primary,
+.phone-body-panel .diary-app .diary-bg-btn {
+    color: #5a4a3a !important;
+}
+
+.phone-body-panel .diary-app .diary-s-btn-warn {
+    color: #ff9500 !important;
 }
 
 /* 复用手机设置的 toggle-switch（如果已有则跳过） */

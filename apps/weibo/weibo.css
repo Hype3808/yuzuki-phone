@@ -288,7 +288,7 @@
     padding: 8px 0;
     font-size: 11px;
     font-weight: 500;
-    color: #bbb;
+    color: var(--phone-global-text, #333333) !important;
     cursor: pointer;
     transition: color 0.3s;
     position: relative;
@@ -296,7 +296,7 @@
 }
 
 .weibo-tab.active {
-    color: #ff8200;
+    color: #ff8200 !important;
     font-weight: 600;
 }
 
@@ -1493,7 +1493,9 @@ label[for="weibo-settings-banner-upload"].weibo-settings-btn {
    滚动条隐藏   ======================================== */
 .weibo-app::-webkit-scrollbar,
 .weibo-tab-content::-webkit-scrollbar,
-.weibo-detail-posts::-webkit-scrollbar {
+.weibo-detail-posts::-webkit-scrollbar,
+.weibo-detail-page-body::-webkit-scrollbar,
+#weibo-detail-scroll-area::-webkit-scrollbar {
     display: none;
 }
 
@@ -1506,7 +1508,9 @@ label[for="weibo-settings-banner-upload"].weibo-settings-btn {
 .weibo-settings-content, .weibo-detail-posts, .weibo-detail-page-body {
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
 }
-
-

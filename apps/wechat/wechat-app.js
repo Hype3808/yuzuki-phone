@@ -2882,6 +2882,9 @@ export class WechatApp {
 
         this._wechatPanelMode = 'main';
         this._isAvatarManagerOpen = false;
+        if (!this.currentChat) {
+            this.chatView?.resetTransientInputPanels?.();
+        }
         this._applyCustomChatStyle(this._getUserCustomChatCss());
         const chatList = this.wechatData.getChatList();
 
@@ -3568,6 +3571,7 @@ export class WechatApp {
         // 通用返回按钮
         addClickListener('#wechat-back', () => {
             if (this.currentChat) {
+                this.chatView?.resetTransientInputPanels?.();
                 this.currentChat = null;
                 this.render();
             } else {
@@ -3613,10 +3617,16 @@ export class WechatApp {
         addClickListener('#wechat-settings-btn', () => this.showSettings());
 
         // 聊天窗口右上角的"..."按钮
-        addClickListener('#chat-info', () => this.chatView.showChatMenu());
+        addClickListener('#chat-info', () => {
+            this.chatView?.resetTransientInputPanels?.();
+            this.chatView.showChatMenu();
+        });
 
         // 🔥 群聊头部标题点击 - 进入群设置页面
-        addClickListener('#group-header-title', () => this.chatView.showGroupSettings());
+        addClickListener('#group-header-title', () => {
+            this.chatView?.resetTransientInputPanels?.();
+            this.chatView.showGroupSettings();
+        });
 
         // 🔥 确保子视图的事件也被绑定
         if (this.currentChat) {
@@ -4060,6 +4070,9 @@ export class WechatApp {
     openChat(chatId) {
         const chat = this.wechatData.getChat(chatId);
         if (chat) {
+            if (String(this.currentChat?.id || '') !== String(chatId || '')) {
+                this.chatView?.resetTransientInputPanels?.();
+            }
             // 🔥 核心修复：在进入聊天窗口之前，强行触发一次 getMessages 拉取独立存储，防止界面白板
             this.wechatData.getMessages(chatId);
             this.currentChat = chat;
@@ -5160,14 +5173,31 @@ export class WechatApp {
                 const contactName = String(contact?.name || '').trim() || '未命名';
                 const safeContactName = escapeHtml(contactName);
                 const gender = this.wechatData?.getContactGender?.(contactId) || 'unknown';
+                const genderOptions = [
+                    { value: 'unknown', label: '未标记' },
+                    { value: 'male', label: '男' },
+                    { value: 'female', label: '女' }
+                ];
                 return `
-                    <div class="wechat-avatar-row" style="display:grid; grid-template-columns:minmax(0,1fr) 64px; align-items:center; column-gap:10px; padding:10px 0; border-bottom:0.5px solid #f1f1f1;">
+                    <div class="wechat-avatar-row" style="display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; column-gap:10px; padding:10px 0; border-bottom:0.5px solid #f1f1f1;">
                         <div style="min-width:0; font-size:14px; color:#111; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1.2;">${safeContactName}</div>
-                        <select class="wechat-contact-gender-select" data-contact-id="${contactId}" style="width:64px; min-width:64px; max-width:64px; height:26px; border:1px solid #e1e1e1; border-radius:7px; background:#fafafa; font-size:11px; color:#333; padding:0 4px; justify-self:end;">
-                            <option value="unknown" ${gender === 'unknown' ? 'selected' : ''}>未标记</option>
-                            <option value="male" ${gender === 'male' ? 'selected' : ''}>男</option>
-                            <option value="female" ${gender === 'female' ? 'selected' : ''}>女</option>
-                        </select>
+                        <div class="wechat-contact-gender-buttons" data-contact-id="${contactId}" style="display:flex; gap:4px; justify-self:end;">
+                            ${genderOptions.map(option => `
+                                <button type="button" class="wechat-contact-gender-btn" data-gender="${option.value}" style="
+                                    min-width:${option.value === 'unknown' ? '50px' : '28px'};
+                                    height:28px;
+                                    padding:0 7px;
+                                    border:1px solid ${gender === option.value ? '#07c160' : '#d9d9d9'};
+                                    border-radius:8px;
+                                    background:${gender === option.value ? '#07c160' : '#fafafa'};
+                                    color:${gender === option.value ? '#fff' : '#333'};
+                                    font-size:11px;
+                                    cursor:pointer;
+                                    touch-action:manipulation;
+                                    -webkit-tap-highlight-color:transparent;
+                                ">${option.label}</button>
+                            `).join('')}
+                        </div>
                     </div>
                 `;
             }).join('')
@@ -5218,12 +5248,31 @@ export class WechatApp {
             this.phoneShell.showNotification('头像池', '正在刷新头像素材...', '🔄');
         });
 
-        document.querySelectorAll('.wechat-contact-gender-select').forEach((selectEl) => {
-            selectEl.addEventListener('change', (e) => {
-                const contactId = String(e.target?.dataset?.contactId || '').trim();
-                const gender = String(e.target?.value || 'unknown').trim();
+        document.querySelectorAll('.wechat-contact-gender-btn').forEach((buttonEl) => {
+            const applyGender = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const button = e.currentTarget;
+                const group = button?.closest?.('.wechat-contact-gender-buttons');
+                const contactId = String(group?.dataset?.contactId || '').trim();
+                const gender = String(button?.dataset?.gender || 'unknown').trim();
                 if (!contactId) return;
                 this.wechatData?.setContactGender?.(contactId, gender);
+                group.querySelectorAll('.wechat-contact-gender-btn').forEach(btn => {
+                    const active = btn === button;
+                    btn.style.borderColor = active ? '#07c160' : '#d9d9d9';
+                    btn.style.background = active ? '#07c160' : '#fafafa';
+                    btn.style.color = active ? '#fff' : '#333';
+                });
+            };
+            buttonEl.addEventListener('pointerup', (e) => {
+                buttonEl.dataset.lastPointerAt = String(Date.now());
+                applyGender(e);
+            });
+            buttonEl.addEventListener('click', (e) => {
+                const lastPointerAt = Number(buttonEl.dataset.lastPointerAt || 0);
+                if (lastPointerAt && Date.now() - lastPointerAt < 500) return;
+                applyGender(e);
             });
         });
     }
