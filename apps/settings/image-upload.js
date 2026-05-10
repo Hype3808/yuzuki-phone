@@ -44,6 +44,115 @@ export class ImageUploadManager {
         return headers;
     }
 
+    _getBlobExtension(blob) {
+        const mime = String(blob?.type || '').toLowerCase();
+        if (mime.includes('png')) return 'png';
+        if (mime.includes('webp')) return 'webp';
+        if (mime.includes('gif')) return 'gif';
+        if (mime.includes('jpeg') || mime.includes('jpg')) return 'jpg';
+        if (mime.includes('mp4')) return 'mp4';
+        if (mime.includes('webm')) return 'webm';
+        return 'jpg';
+    }
+
+    _sanitizeFilenamePrefix(prefix) {
+        return String(prefix || 'image')
+            .trim()
+            .replace(/[^\w-]+/g, '_')
+            .replace(/^_+|_+$/g, '')
+            .slice(0, 64) || 'image';
+    }
+
+    async _hashBlob(blob) {
+        if (!blob) return String(Date.now());
+        const buffer = await blob.arrayBuffer();
+        try {
+            if (window.crypto?.subtle) {
+                const digest = await window.crypto.subtle.digest('SHA-256', buffer);
+                return Array.from(new Uint8Array(digest))
+                    .map(byte => byte.toString(16).padStart(2, '0'))
+                    .join('')
+                    .slice(0, 16);
+            }
+        } catch (e) { }
+
+        let hash = 2166136261;
+        const bytes = new Uint8Array(buffer);
+        for (const byte of bytes) {
+            hash ^= byte;
+            hash = Math.imul(hash, 16777619);
+        }
+        return (hash >>> 0).toString(16).padStart(8, '0');
+    }
+
+    async _buildManagedFilename(blob, prefix) {
+        const safePrefix = this._sanitizeFilenamePrefix(prefix);
+        const hash = await this._hashBlob(blob);
+        const ext = this._getBlobExtension(blob);
+        return `phone_${safePrefix}_${hash}.${ext}`;
+    }
+
+    async _backgroundExists(pathLike) {
+        const url = String(pathLike || '').trim();
+        if (!url) return false;
+        try {
+            const headResp = await fetch(url, {
+                method: 'HEAD',
+                credentials: 'include',
+                cache: 'no-store'
+            });
+            if (headResp.ok) return true;
+            if (headResp.status !== 405 && headResp.status !== 501) return false;
+        } catch (e) { }
+
+        try {
+            const getResp = await fetch(url, {
+                method: 'GET',
+                credentials: 'include',
+                cache: 'no-store'
+            });
+            return !!getResp.ok;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    async uploadBlob(blob, prefix, options = {}) {
+        if (!blob || !/^(image|video)\//i.test(String(blob.type || ''))) {
+            throw new Error('请选择图片或视频文件');
+        }
+
+        const filename = options.filename || await this._buildManagedFilename(blob, prefix);
+        const finalUrl = `/backgrounds/${filename}`;
+        if (await this._backgroundExists(finalUrl)) {
+            return finalUrl;
+        }
+
+        const formData = new FormData();
+        formData.append('avatar', blob, filename);
+        const headers = await this._buildRequestHeaders();
+        const response = await fetch('/api/backgrounds/upload', {
+            method: 'POST',
+            body: formData,
+            headers,
+            credentials: options.credentials || 'include'
+        });
+        if (response.ok) return finalUrl;
+
+        let reason = '';
+        try {
+            reason = (await response.text() || '').trim();
+        } catch (e) { }
+        throw new Error(reason ? `上传失败（HTTP ${response.status}）：${reason}` : `上传失败（HTTP ${response.status}）`);
+    }
+
+    async uploadDataUrl(dataUrl, prefix, options = {}) {
+        if (!dataUrl || !String(dataUrl).startsWith('data:image')) return dataUrl;
+        const response = await fetch(dataUrl);
+        const blob = await response.blob();
+        return this.uploadBlob(blob, prefix, options);
+    }
+
     // ========================================
     // 🔧 加载缓存（从酒馆 extensionSettings 读取）
     // ========================================
@@ -187,29 +296,7 @@ export class ImageUploadManager {
         const allowBase64Fallback = options.allowBase64Fallback === true;
         if (!base64 || !base64.startsWith('data:image')) return base64;
         try {
-            const res = await fetch(base64);
-            const blob = await res.blob();
-            const ext = blob.type === 'image/png' ? 'png' : 'jpg';
-            const filename = `phone_${prefix}_${Date.now()}.${ext}`;
-            const formData = new FormData();
-            formData.append('avatar', blob, filename);
-            const headers = await this._buildRequestHeaders();
-
-            const response = await fetch('/api/backgrounds/upload', { method: 'POST', body: formData, headers });
-            if (response.ok) return `/backgrounds/${filename}`;
-
-            let reason = '';
-            try {
-                reason = (await response.text() || '').trim();
-            } catch (e) { }
-            const message = reason
-                ? `上传失败（HTTP ${response.status}）：${reason}`
-                : `上传失败（HTTP ${response.status}）`;
-            if (allowBase64Fallback) {
-                console.warn('[ImageUpload] 上传失败，已回退为 base64:', message);
-                return base64;
-            }
-            throw new Error(message);
+            return await this.uploadDataUrl(base64, prefix);
         } catch (e) {
             console.error('[ImageUpload] 上传图片到服务端失败:', e);
             if (!allowBase64Fallback) {
@@ -244,7 +331,7 @@ export class ImageUploadManager {
 
     async uploadAvatar(characterId, file) {
         return this.processImage(file, async (base64) => {
-            await this.deleteManagedBackgroundByPath(this.cache?.avatars?.[characterId], { quiet: true });
+            await this.deleteManagedBackgroundByPath(this.cache?.avatars?.[characterId], { quiet: true, skipIfReferenced: true });
             const serverUrl = await this._uploadToServer(base64, `avatar_${characterId}`, { allowBase64Fallback: false });
             this.cache.avatars[characterId] = serverUrl;
             await this._saveCache();
@@ -386,6 +473,10 @@ export class ImageUploadManager {
             return { attempted: false, success: false, filename: null };
         }
 
+        if (options.skipIfReferenced === true && this._countManagedBackgroundReferences(pathLike) > 0) {
+            return { attempted: false, success: false, filename, skipped: 'referenced' };
+        }
+
         let success = false;
         try {
             success = await this._deleteBackgroundFile(filename);
@@ -397,6 +488,43 @@ export class ImageUploadManager {
         }
 
         return { attempted: true, success, filename };
+    }
+
+    _normalizeBackgroundPath(pathLike) {
+        const raw = String(pathLike || '').trim();
+        if (!raw) return '';
+        try {
+            if (/^https?:\/\//i.test(raw)) return new URL(raw).pathname;
+        } catch (e) { }
+        return raw.split('?')[0].split('#')[0];
+    }
+
+    _countManagedBackgroundReferences(pathLike) {
+        const target = this._normalizeBackgroundPath(pathLike);
+        if (!target) return 0;
+
+        let count = 0;
+        const visit = (value, seen = new Set()) => {
+            if (value === null || value === undefined) return;
+            if (typeof value === 'string') {
+                if (this._normalizeBackgroundPath(value) === target) count += 1;
+                return;
+            }
+            if (typeof value !== 'object' || seen.has(value)) return;
+            seen.add(value);
+            if (Array.isArray(value)) {
+                value.forEach(item => visit(item, seen));
+                return;
+            }
+            Object.values(value).forEach(item => visit(item, seen));
+        };
+
+        try { visit(window.VirtualPhone?.wechatApp?.wechatData?.data); } catch (e) { }
+        try { visit(window.VirtualPhone?.weiboApp?.weiboData?.getProfile?.()); } catch (e) { }
+        try { visit(window.VirtualPhone?.honeyApp?.honeyData?.getHoneyUserProfile?.()); } catch (e) { }
+        try { visit(this.cache); } catch (e) { }
+
+        return count;
     }
 
     async resetAppIconsAndCleanupUploads() {

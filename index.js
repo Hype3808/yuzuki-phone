@@ -30,7 +30,10 @@ const ST_PHONE_CURRENT_UPDATE = {
     date: '2026-05-09',
     items: [
         '早期版本迭代较频繁，更新后建议在设置中执行一次【一键恢复默认提示词】，以同步最新全局提示词。',
-        '修复小手机部分页面渲染异常。'
+        '修复小手机部分页面渲染异常。',
+        '修复头像、图片与背景素材重复上传问题：相同文件会自动复用同一路径，避免图库生成多份重复资源。',
+        '修复微信群聊非成员串入问题：群聊消息会按成员白名单自动清洗，并加强群聊与私聊联动格式约束。',
+        '加固一键更新提示词功能稳定性：同步官方默认提示词时会保留并继续使用当前有效的自定义预设。'
     ]
 };
 
@@ -4289,6 +4292,29 @@ if (window.GGP_Loaded) {
         return chatType === 'group' || isWechatKnownGroupName(contact);
     }
 
+    function normalizeWechatGroupMemberKey(value) {
+        return String(value || '')
+            .trim()
+            .replace(/^@/, '')
+            .replace(/[「」『』"'“”‘’]/g, '')
+            .replace(/\s+/g, '')
+            .replace(/[（(][^（）()]*[）)]/g, '')
+            .toLowerCase();
+    }
+
+    function normalizeWechatGroupSpeakerName(name, members = []) {
+        const rawName = String(name || '').trim();
+        if (!rawName) return '';
+        const memberList = Array.isArray(members) ? members.map(item => String(item || '').trim()).filter(Boolean) : [];
+        if (memberList.includes(rawName)) return rawName;
+
+        const rawKey = normalizeWechatGroupMemberKey(rawName);
+        if (!rawKey) return '';
+        const exact = memberList.find(item => normalizeWechatGroupMemberKey(item) === rawKey);
+        if (exact) return exact;
+        return '';
+    }
+
     // 🔥 新版：解析轻量级XML格式微信标签（支持 ---联系人--- 分隔多人）
     function parseLightweightWechatTag(text) {
         if (!text || !isPhoneFeatureEnabled()) return [];
@@ -4362,6 +4388,26 @@ if (window.GGP_Loaded) {
             // 🔥 辅助函数：保存当前联系人的消息
             const saveCurrentContact = () => {
                 if (currentContact && currentMessages.length > 0) {
+                    const allowedGroupMembers = Array.from(new Set((knownGroupMembers.length > 0 ? knownGroupMembers : groupMembers).filter(Boolean)));
+                    let messagesToSave = currentMessages;
+                    if (currentChatType === 'group' && allowedGroupMembers.length > 0) {
+                        messagesToSave = currentMessages
+                            .map((msg) => {
+                                const normalizedSender = normalizeWechatGroupSpeakerName(msg.sender, allowedGroupMembers);
+                                if (!normalizedSender) {
+                                    console.warn('⚠️ [微信] 已丢弃非群成员发言:', {
+                                        group: currentContact,
+                                        sender: msg.sender,
+                                        allowed: allowedGroupMembers
+                                    });
+                                    return null;
+                                }
+                                return { ...msg, sender: normalizedSender };
+                            })
+                            .filter(Boolean);
+                        if (messagesToSave.length === 0) return;
+                    }
+
                     const shouldCheckRecipient = isOfflineCommentTag || currentRecipientExplicit;
                     if (shouldCheckRecipient && !isWechatRecipientAllowed(currentRecipient, {
                         contact: currentContact,
@@ -4381,10 +4427,10 @@ if (window.GGP_Loaded) {
                         chatTypeSource: currentChatTypeSource,
                         date: currentDate,
                         recipient: currentRecipient || '',
-                        messages: [...currentMessages],
-                        members: currentChatType === 'group' ? Array.from(new Set([...knownGroupMembers, ...groupMembers])) : [],
+                        messages: [...messagesToSave],
+                        members: currentChatType === 'group' ? allowedGroupMembers : [],
                         status: 'online',
-                        notification: `${currentContact}: ${currentMessages[0].content.substring(0, 20)}...`
+                        notification: `${currentContact}: ${messagesToSave[0].content.substring(0, 20)}...`
                     });
                 }
             };
@@ -4453,17 +4499,20 @@ if (window.GGP_Loaded) {
                     continue;
                 }
 
-                // 🔥🔥🔥 群聊格式：[21:30] 发送者: 消息内容
+                // 🔥🔥🔥 群聊格式：[21:30] 发送者: 消息内容 / 发送者: 消息内容
                 // 🔥 严格限制发送者名称，防止把正文里带冒号的句子（如时间10:30）误判为发送者
                 const senderMessageRegex = currentChatType === 'group'
                     ? /^\[([0-9A-Za-z:：]+)\]\s*([^:：]{1,40})[：:]\s*(.+)$/
                     : /^\[([0-9A-Za-z:：]+)\]\s*([^\s:：，。,\.!?！？\[\]【】()（）]{1,20})[：:]\s*(.+)$/;
                 const senderMatch = senderMessageRegex.exec(trimmedLine);
+                const groupSimpleSenderMatch = !senderMatch && currentChatType === 'group'
+                    ? /^([^:：]{1,40})[：:]\s*(.+)$/.exec(trimmedLine)
+                    : null;
 
-                if (senderMatch) {
-                    const msgTime = senderMatch[1];
-                    const msgSender = senderMatch[2].trim();
-                    let msgContent = senderMatch[3].trim();
+                if (senderMatch || groupSimpleSenderMatch) {
+                    const msgTime = senderMatch ? senderMatch[1] : '';
+                    const msgSender = (senderMatch ? senderMatch[2] : groupSimpleSenderMatch[1]).trim();
+                    let msgContent = (senderMatch ? senderMatch[3] : groupSimpleSenderMatch[2]).trim();
                     let quote = null;
 
                     // 🔥 提取引用格式：「引用 xxx: yyy」
@@ -4857,6 +4906,16 @@ if (window.GGP_Loaded) {
                 }
             }
 
+            const chatMemberNames = Array.isArray(chat?.members)
+                ? chat.members.map(item => String(item || '').trim()).filter(Boolean)
+                : [];
+            const parsedMemberNames = Array.isArray(data?.members)
+                ? data.members.map(item => String(item || '').trim()).filter(Boolean)
+                : [];
+            const allowedGroupSpeakerNames = effectiveIsGroupChat
+                ? Array.from(new Set((chatMemberNames.length > 0 ? chatMemberNames : parsedMemberNames)))
+                : [];
+
             data.messages.forEach((msg, index) => {
                 if (hasIncomingCall) {
                     const queuedLine = String(msg.content || '').trim();
@@ -4921,10 +4980,19 @@ if (window.GGP_Loaded) {
 
                 if (effectiveIsGroupChat && msg.sender) {
                     // 群聊消息，使用每条消息的发送者
-                    messageSender = msg.sender;
+                    const normalizedGroupSender = normalizeWechatGroupSpeakerName(msg.sender, allowedGroupSpeakerNames);
+                    if (allowedGroupSpeakerNames.length > 0 && !normalizedGroupSender) {
+                        console.warn('⚠️ [微信] 写入前丢弃非群成员发言:', {
+                            group: chat.name,
+                            sender: msg.sender,
+                            allowed: allowedGroupSpeakerNames
+                        });
+                        return;
+                    }
+                    messageSender = normalizedGroupSender || msg.sender;
 
                     // 尝试获取发送者的头像
-                    const senderContact = wechatData.getContactByName(msg.sender);
+                    const senderContact = wechatData.getContactByName(messageSender);
                     if (senderContact && senderContact.avatar) {
                         senderAvatar = senderContact.avatar;
                     } else {

@@ -2104,8 +2104,9 @@ export class SettingsApp {
                     return;
                 }
 
+                let resetResult = null;
                 if (typeof promptManager.resetAllPromptsToDefault === 'function') {
-                    await promptManager.resetAllPromptsToDefault();
+                    resetResult = await promptManager.resetAllPromptsToDefault();
                 } else {
                     const defaults = promptManager.getDefaultPrompts?.();
                     if (!defaults) throw new Error('无法读取默认提示词');
@@ -2118,7 +2119,15 @@ export class SettingsApp {
                     }
                 }
 
-                alert('✅ 已一键同步默认提示词为最新版本\n\n当前正在使用的有效自定义预设已自动保留。');
+                const restoredCount = Number(resetResult?.restoredActivePresetCount || 0);
+                const defaultCount = Number(resetResult?.defaultPromptCount || 0);
+                const details = [
+                    defaultCount > 0 ? `已同步 ${defaultCount} 个官方默认提示词。` : '已同步官方默认提示词。',
+                    restoredCount > 0
+                        ? `当前正在使用的 ${restoredCount} 个自定义预设已自动保留并继续生效。`
+                        : '当前使用默认预设的项目已切换到最新官方默认版本。'
+                ];
+                alert(`✅ 已一键同步默认提示词为最新版本\n\n${details.join('\n')}\n\n已保存的自定义预设不会被覆盖。`);
             } catch (e) {
                 console.error('❌ 一键更新所有提示词失败:', e);
                 alert('❌ 更新失败：' + (e?.message || e));

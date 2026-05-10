@@ -71,44 +71,9 @@ export class DiaryData {
     async _uploadImageToServer(base64, type) {
         if (!base64 || !base64.startsWith('data:image')) return base64; // 如果已经是链接则跳过
         try {
-            // 将 base64 转为 Blob 实体对象
-            const res = await fetch(base64);
-            const blob = await res.blob();
-            const ext = blob.type === 'image/png' ? 'png' : 'jpg';
-            // 生成唯一文件名，防止互相覆盖
-            const filename = `diary_${type}_${Date.now()}.${ext}`;
-            
-            const formData = new FormData();
-            formData.append('avatar', blob, filename); // 酒馆背景接口使用 avatar 作为字段名
-
-            const headers = typeof window.getRequestHeaders === 'function' ? window.getRequestHeaders() : {};
-            delete headers['Content-Type'];
-            delete headers['content-type'];
-            if (!headers['X-CSRF-Token'] && !headers['x-csrf-token']) {
-                const csrfResp = await fetch('/csrf-token');
-                if (csrfResp.ok) {
-                    const csrfJson = await csrfResp.json();
-                    if (csrfJson?.token) headers['X-CSRF-Token'] = csrfJson.token;
-                }
-            }
-            
-            // 调用酒馆自带的上传接口
-            const response = await fetch('/api/backgrounds/upload', {
-                method: 'POST',
-                body: formData,
-                headers
-            });
-            
-            if (response.ok) {
-                // 上传成功，返回酒馆静态文件的真实相对路径
-                return `/backgrounds/${filename}`;
-            }
-
-            let reason = '';
-            try {
-                reason = (await response.text() || '').trim();
-            } catch (e) { }
-            throw new Error(reason ? `上传失败（HTTP ${response.status}）：${reason}` : `上传失败（HTTP ${response.status}）`);
+            const uploadedUrl = await window.VirtualPhone?.imageManager?.uploadDataUrl?.(base64, `diary_${type}`);
+            if (!uploadedUrl) throw new Error('图片上传管理器未初始化');
+            return uploadedUrl;
         } catch (e) {
             console.error('[Diary] 上传图片到服务器文件夹失败:', e);
             throw e instanceof Error ? e : new Error('上传失败');

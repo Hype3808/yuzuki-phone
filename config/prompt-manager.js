@@ -34,6 +34,8 @@ export class PromptManager {
         if (saved) {
             try {
                 const parsed = JSON.parse(saved);
+                const activePresets = this._loadActivePromptPresets();
+                const presetStore = this._loadPromptUserPresets();
 
                 // 深度合并默认配置，确保新增的字段不会丢失
                 for (const app in defaults) {
@@ -57,6 +59,28 @@ export class PromptManager {
                 if (JSON.stringify(parsed.weibo.commentInteraction) !== JSON.stringify(defaults.weibo.commentInteraction)) {
                     parsed.weibo.commentInteraction = { ...defaults.weibo.commentInteraction };
                 }
+                if (parsed.wechat?.groupChat?.content && !String(parsed.wechat.groupChat.content).includes('非群成员发微信')) {
+                    parsed.wechat.groupChat.content = defaults.wechat.groupChat.content;
+                }
+                Object.keys(defaults).forEach(app => {
+                    const appConfig = defaults[app];
+                    if (!appConfig || typeof appConfig !== 'object') return;
+                    Object.keys(appConfig).forEach(feature => {
+                        const defaultPrompt = appConfig[feature];
+                        if (!defaultPrompt || typeof defaultPrompt.content !== 'string') return;
+
+                        const activeId = String(activePresets?.[app]?.[feature] || '').trim();
+                        if (!activeId) return;
+
+                        const presets = Array.isArray(presetStore?.[app]?.[feature]) ? presetStore[app][feature] : [];
+                        const activePreset = presets.find(preset => String(preset?.id || '') === activeId);
+                        if (!activePreset) return;
+
+                        if (!parsed[app]) parsed[app] = {};
+                        if (!parsed[app][feature]) parsed[app][feature] = { ...defaultPrompt };
+                        parsed[app][feature].content = String(activePreset.content || '');
+                    });
+                });
 
                 return parsed;
             } catch (e) {
@@ -127,7 +151,7 @@ getDefaultPrompts() {
         override: {
             enabled: true,
             name: '🧩 线上破限词',
-            description: '微信线上聊天、语音、通话、视频请求开头注入',
+            description: '微信线上请求开头注入',
             content: this._getDefaultWechatOverridePrompt(),
             order: 1
         },
@@ -605,31 +629,53 @@ from:林晓雨: 在呢
 
 {{user}}正在微信群"{{groupName}}"里聊天。
 
-📋 【群成员白名单 - 只有以下人可以发言】：
+📋 【群成员白名单 - 群内只有以下角色可以发言】：
 {{groupMembers}}
 
-📋 【{{user}}的微信好友列表】：
-{{wechatContacts}}
-
 🚫🚫🚫 【铁律 - 违反即失败】🚫🚫🚫
-1. 发送者名字必须完全使用上方【群成员白名单】中的某一个，一字不差！
-2. 禁止使用白名单之外的任何名字（包括昵称、英文名、简称等）
-3. 禁止替{{user}}发送任何消息
-4. 禁止提及{{user}}正在做什么（如"陈纪迟在开车"）
+1. 当前群聊窗口 ---{{groupName}}--- 里的每一条消息，发送者名字必须完全使用上方【群成员白名单】中的某一个，一字不差！
+2. 禁止使用白名单之外的任何名字（包括昵称、英文名、简称、临时路人、其他聊天窗口的人）。
+3. 如果你想让非群成员发微信，绝对不能写进 ---{{groupName}}---；只能在多窗口联动里另开私聊窗口。
+4. 禁止替{{user}}发送任何消息。
+5. 禁止提及{{user}}正在做什么（如"陈纪迟在开车"）。
+6. 若无法确定某人是否在群成员白名单中，就不要让 TA 在群聊里发言。
 
 ⚠️ 【回复规则】：
 1. 使用<wechat>标签包裹回复
 2. 用 ---{{groupName}}--- 标记当前群聊窗口（必须完全匹配群名）
 3. 每条消息一行，格式：发送者: 消息内容
-4. 发送者名字必须从【群成员白名单】中选择，原样复制！
-5. 可以有1-5个群成员发言
+4. 发送者名字必须从【群成员白名单】中选择，角色名称必须一致，严禁在群内调用不属于该群成员的其他角色！
+5. 可多个群成员在群内发言
 6. 禁止旁白、动作描写、心理活动
 
-✅ 【正确回复格式】：
+✅ 【群聊无私聊窗口的正确回复格式】：
 <wechat>
 ---{{groupName}}---
-张三: 大家好
-李四: 晚上好啊
+群友A: 晚上好啊
+群友B: 「引用 群友A: 晚上好啊」晚上好！
+群友B: [转账](金额：xx元)
+群友C: [红包](金额：xx元)
+群友D: [语音条]（语音转化出的文字内容）
+群友B: [图片]（English NovelAI tags）
+群友B: 直接发送emoji（如 😀😭😅）
+群友B: [表情包](关键词) （直接发送表情包）
+群友A: [拨打微信群语音]
+群友D: [拨打微信群视频]
+群友B: [定位]（地点位置）
+</wechat>
+
+💡所有角色通用专属表情包库，格式：发送者: [表情包]（表情名称）；当角色想使用表情包时，若以下清单里没有符合语境和角色人设的表情包，可自行简洁描写表情包名称，系统会自行匹配清单外的其他表情包。
+【通用表情包库】：{{customEmojiList}}
+
+💡 图片描述规则：当你要发送图片时，必须使用 [图片]（English NovelAI tags） 格式。括号内只能写英文逗号分隔的 NAI 生图 tag，不要写中文、解释或完整句子；必须描述可见画面细节，如 subject count, gender, adult character, anime illustration, pose, expression, clothing, setting, camera angle, lighting。若内容涉及人物或拟人对象，必须用 1girl/1boy/2girls/2boys、female focus/male focus 等英文 tag 明确主体。
+
+💬 引用消息格式（严禁引用后的内容留空）：
+群友B: 「引用 群友A: 被引用内容」回复内容
+正确格式：
+<wechat>
+---{{groupName}}---
+群友A: 晚上好啊
+群友B: 「引用 群友A: 晚上好啊」晚上好！
 </wechat>
 
 ❌ 【错误格式（禁止）】：
@@ -637,41 +683,22 @@ from:林晓雨: 在呢
 ---读书群---（禁止用简称，必须用完整群名"{{groupName}}"）
 小张: 大家好（禁止用昵称，必须用白名单里的完整名字）
 {{user}}: 你好啊（禁止替用户发言）
-
-💬 引用消息格式：
-发送者: 「引用 原发送者: 被引用内容」回复内容
-注意：回复内容严禁留空。
-例如：
-张三: 「引用 李四: 今天吃什么？」还没有想好，你定？
-
-📎 特殊消息（可选）：
-发送者: [转账](金额：xx元)
-发送者: [红包](金额：xx元)
-发送者: [语音条]（语音转化出的文字内容）
-发送者: [图片](English NovelAI tags)
-发送者: 直接发送emoji（如 😀😭😅）
-发送者: [表情包](关键词) （直接发送表情包）
-发送者: [拨打微信群语音]
-发送者: [拨打微信群视频]
-发送者: [定位]（地点位置）
-💡 提示：根据角色的人设及性格使用emoji（如 😀😂🥺😭😡😅）；仅在明确要发图片表情包时才使用 [表情包](关键词)。
-💡 当剧情需要时，你可以主动发起群语音/视频通话，格式为：发送者: [拨打微信群语音] 或 发送者: [拨打微信群视频]。
-💡 你可以使用用户上传的本地专属表情包，当前可用清单：{{customEmojiList}}。
-💡 群聊中若要使用本地表情包，格式为：发送者: [表情包](表情名称)。
-
+---{{groupName}}---
+好友名字: 私聊的话（禁止：好友名字不在群成员白名单时，不得写进群聊窗口）
 
 💡 多窗口联动（仅群聊模式可选）：
 1. 默认只输出当前群窗口 ---{{groupName}}---。
-2. 当群聊时，当前有群成员转私聊{{user}}时，允许在同一个<wechat>标签内追加私聊窗口。
-3. 私聊窗口名必须使用【{{user}}的微信好友列表】中的完整好友名。
-4. 输出顺序必须先群聊窗口，再私聊窗口；禁止只输出私聊不输出群聊。
-5. 触发双窗口时，必须严格使用以下模板：
+2. 当群聊时，当前有群成员转私聊{{user}}时，允许在同一个<wechat>标签内增加私聊窗口。输出顺序必须先群聊窗口，再私聊窗口；禁止只输出私聊不输出群聊。
+📋 【{{user}}的微信好友列表】：
+{{wechatContacts}}
+3. 私聊窗口的角色必须同时满足即在群内又在好友名单的列表中，这里的 {{chatName}} 代表“要私聊的好友完整微信名”，严禁使用群名或者省略该格式。
+触发多窗口时，必须严格使用以下结构示例：
 <wechat>
 ---{{groupName}}---
 张三: 大家好
 李四: 晚上好啊
----好友名字---
-好友名字: 私聊的话
+---{{chatName}}---
+{{chatName}}: 私聊的话
 </wechat>`,
         order: 8
     }
@@ -1542,6 +1569,10 @@ IP属地：根据故事背景，生成虚拟的命名城市的IP市区
         await this.savePrompts();
         return {
             prompts: this.prompts,
+            defaultPromptCount: Object.values(nextPrompts).reduce((sum, appConfig) => {
+                if (!appConfig || typeof appConfig !== 'object') return sum;
+                return sum + Object.values(appConfig).filter(item => item && typeof item.content === 'string').length;
+            }, 0),
             restoredActivePresetCount
         };
     }

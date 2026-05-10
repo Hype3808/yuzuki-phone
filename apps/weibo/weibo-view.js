@@ -1273,26 +1273,8 @@ export class WeiboView {
                     });
                     
                     const croppedImage = await cropper.open(file);
-                    const imgResp = await fetch(croppedImage);
-                    const blob = await imgResp.blob();
-                    const ext = blob.type === 'image/png' ? 'png' : 'jpg';
-                    const filename = `phone_weibo_img_${Date.now()}_${Math.random().toString(36).substr(2, 5)}.${ext}`;
-                    
-                    const formData = new FormData();
-                    formData.append('avatar', blob, filename);
-
-                    const headers = typeof window.getRequestHeaders === 'function' ? window.getRequestHeaders() : {};
-                    delete headers['Content-Type']; 
-                    if (!headers['X-CSRF-Token']) {
-                        const csrfResp = await fetch('/csrf-token');
-                        if (csrfResp.ok) headers['X-CSRF-Token'] = (await csrfResp.json()).token;
-                    }
-
-                    const uploadResp = await fetch('/api/backgrounds/upload', { method: 'POST', body: formData, headers });
-                    if (!uploadResp.ok) {
-                        throw new Error(`上传失败（HTTP ${uploadResp.status}）`);
-                    }
-                    const finalUrl = `/backgrounds/${filename}?t=${Date.now()}`;
+                    const finalUrl = await window.VirtualPhone?.imageManager?.uploadDataUrl?.(croppedImage, 'weibo_img');
+                    if (!finalUrl) throw new Error('图片上传管理器未初始化');
 
                     // 写入预览数组并立刻渲染
                     if (!this.pendingPostImages) this.pendingPostImages = [];
@@ -2861,33 +2843,14 @@ export class WeiboView {
                     maxFileSize: 2 * 1024 * 1024
                 });
                 const croppedImage = await cropper.open(file);
-                const res = await fetch(croppedImage);
-                const blob = await res.blob();
-                const ext = blob.type === 'image/png' ? 'png' : 'jpg';
-                const filename = `phone_weibo_avatar_${Date.now()}.${ext}`;
-                const formData = new FormData();
-                formData.append('avatar', blob, filename);
-                const headers = typeof window.getRequestHeaders === 'function' ? window.getRequestHeaders() : {};
-                delete headers['Content-Type'];
-                delete headers['content-type'];
-                if (!headers['X-CSRF-Token'] && !headers['x-csrf-token']) {
-                    const csrfResp = await fetch('/csrf-token');
-                    if (csrfResp.ok) {
-                        const csrfJson = await csrfResp.json();
-                        if (csrfJson?.token) headers['X-CSRF-Token'] = csrfJson.token;
-                    }
-                }
-                const uploadResp = await fetch('/api/backgrounds/upload', { method: 'POST', body: formData, headers });
-                if (!uploadResp.ok) {
-                    throw new Error(`上传失败（HTTP ${uploadResp.status}）`);
-                }
-                const avatarUrl = `/backgrounds/${filename}`;
+                const avatarUrl = await window.VirtualPhone?.imageManager?.uploadDataUrl?.(croppedImage, 'weibo_avatar');
+                if (!avatarUrl) throw new Error('图片上传管理器未初始化');
                 const profile = this.app.weiboData.getProfile();
                 const oldAvatar = String(profile.avatar || '').trim();
                 profile.avatar = avatarUrl;
                 this.app.weiboData.saveProfile(profile);
                 if (oldAvatar && oldAvatar !== avatarUrl) {
-                    const cleanupTask = window.VirtualPhone?.imageManager?.deleteManagedBackgroundByPath?.(oldAvatar, { quiet: true });
+                    const cleanupTask = window.VirtualPhone?.imageManager?.deleteManagedBackgroundByPath?.(oldAvatar, { quiet: true, skipIfReferenced: true });
                     cleanupTask?.catch?.(() => { });
                 }
                 this.app.phoneShell.showNotification('成功', '头像已更新', '✅');
@@ -2912,33 +2875,14 @@ export class WeiboView {
                     maxFileSize: 5 * 1024 * 1024
                 });
                 const croppedImage = await cropper.open(file);
-                const res = await fetch(croppedImage);
-                const blob = await res.blob();
-                const ext = blob.type === 'image/png' ? 'png' : 'jpg';
-                const filename = `phone_weibo_banner_${Date.now()}.${ext}`;
-                const formData = new FormData();
-                formData.append('avatar', blob, filename);
-                const headers = typeof window.getRequestHeaders === 'function' ? window.getRequestHeaders() : {};
-                delete headers['Content-Type'];
-                delete headers['content-type'];
-                if (!headers['X-CSRF-Token'] && !headers['x-csrf-token']) {
-                    const csrfResp = await fetch('/csrf-token');
-                    if (csrfResp.ok) {
-                        const csrfJson = await csrfResp.json();
-                        if (csrfJson?.token) headers['X-CSRF-Token'] = csrfJson.token;
-                    }
-                }
-                const uploadResp = await fetch('/api/backgrounds/upload', { method: 'POST', body: formData, headers });
-                if (!uploadResp.ok) {
-                    throw new Error(`上传失败（HTTP ${uploadResp.status}）`);
-                }
-                const bannerUrl = `/backgrounds/${filename}`;
+                const bannerUrl = await window.VirtualPhone?.imageManager?.uploadDataUrl?.(croppedImage, 'weibo_banner');
+                if (!bannerUrl) throw new Error('图片上传管理器未初始化');
                 const profile = this.app.weiboData.getProfile();
                 const oldBanner = String(profile.banner || '').trim();
                 profile.banner = bannerUrl;
                 this.app.weiboData.saveProfile(profile);
                 if (oldBanner && oldBanner !== bannerUrl) {
-                    const cleanupTask = window.VirtualPhone?.imageManager?.deleteManagedBackgroundByPath?.(oldBanner, { quiet: true });
+                    const cleanupTask = window.VirtualPhone?.imageManager?.deleteManagedBackgroundByPath?.(oldBanner, { quiet: true, skipIfReferenced: true });
                     cleanupTask?.catch?.(() => { });
                 }
                 this.app.phoneShell.showNotification('成功', '背景图已更新', '✅');

@@ -476,24 +476,8 @@ export class ContactsView {
                 }
 
                 this.app.phoneShell.showNotification('处理中', '正在上传头像...', '⏳');
-                const formData = new FormData();
-                const imgResp = await fetch(croppedImage);
-                const blob = await imgResp.blob();
-                const ext = blob.type === 'image/png' ? 'png' : 'jpg';
-                const filename = `phone_contact_${Date.now()}.${ext}`;
-                formData.append('avatar', blob, filename);
-
-                const headers = typeof window.getRequestHeaders === 'function' ? window.getRequestHeaders() : {};
-                delete headers['Content-Type']; // 🔥 加在这里！
-                if (!headers['X-CSRF-Token']) {
-                    const csrfResp = await fetch('/csrf-token');
-                    if (csrfResp.ok) headers['X-CSRF-Token'] = (await csrfResp.json()).token;
-                }
-                const uploadResp = await fetch('/api/backgrounds/upload', { method: 'POST', body: formData, headers });
-                if (!uploadResp.ok) {
-                    throw new Error(`上传失败（HTTP ${uploadResp.status}）`);
-                }
-                selectedAvatar = `/backgrounds/${filename}`; // 覆盖为服务器真实路径
+                selectedAvatar = await window.VirtualPhone?.imageManager?.uploadDataUrl?.(croppedImage, 'contact_avatar');
+                if (!selectedAvatar) throw new Error('图片上传管理器未初始化');
                 this.app.phoneShell.showNotification('成功', '头像已上传', '✅');
             } catch (err) {
                 if (String(err?.message || '') === '用户取消') return;
@@ -542,7 +526,7 @@ export class ContactsView {
 
             this.app.wechatData.syncContactAvatar(contactId, selectedAvatar);
             if (oldAvatar && oldAvatar !== selectedAvatar) {
-                const cleanupTask = window.VirtualPhone?.imageManager?.deleteManagedBackgroundByPath?.(oldAvatar, { quiet: true });
+                const cleanupTask = window.VirtualPhone?.imageManager?.deleteManagedBackgroundByPath?.(oldAvatar, { quiet: true, skipIfReferenced: true });
                 cleanupTask?.catch?.(() => { });
             }
             this.app.phoneShell.showNotification('保存成功', '联系人信息已更新', '✅');
@@ -808,24 +792,8 @@ export class ContactsView {
                 }
 
                 this.app.phoneShell.showNotification('处理中', '正在上传头像...', '⏳');
-                const formData = new FormData();
-                const imgResp = await fetch(croppedImage);
-                const blob = await imgResp.blob();
-                const ext = blob.type === 'image/png' ? 'png' : 'jpg';
-                const filename = `phone_friend_${Date.now()}.${ext}`;
-                formData.append('avatar', blob, filename);
-
-                const headers = typeof window.getRequestHeaders === 'function' ? window.getRequestHeaders() : {};
-                delete headers['Content-Type']; // 🔥 加在这里！
-                if (!headers['X-CSRF-Token']) {
-                    const csrfResp = await fetch('/csrf-token');
-                    if (csrfResp.ok) headers['X-CSRF-Token'] = (await csrfResp.json()).token;
-                }
-                const uploadResp = await fetch('/api/backgrounds/upload', { method: 'POST', body: formData, headers });
-                if (!uploadResp.ok) {
-                    throw new Error(`上传失败（HTTP ${uploadResp.status}）`);
-                }
-                selectedAvatar = `/backgrounds/${filename}`;
+                selectedAvatar = await window.VirtualPhone?.imageManager?.uploadDataUrl?.(croppedImage, 'friend_avatar');
+                if (!selectedAvatar) throw new Error('图片上传管理器未初始化');
                 this.app.phoneShell.showNotification('成功', '头像已上传', '✅');
             } catch (err) {
                 if (String(err?.message || '') === '用户取消') return;

@@ -1473,24 +1473,8 @@ ${momentsPrompt}
 
                 const croppedImage = await cropper.open(file);
 
-                // 🔥 核心修复：朋友圈图片真实上传（严格模式：失败不回退）
-                const res = await fetch(croppedImage);
-                const blob = await res.blob();
-                const ext = blob.type === 'image/png' ? 'png' : 'jpg';
-                const filename = `phone_moment_${Date.now()}.${ext}`;
-                const formData = new FormData();
-                formData.append('avatar', blob, filename);
-                const headers = typeof window.getRequestHeaders === 'function' ? window.getRequestHeaders() : {};
-                delete headers['Content-Type'];
-                if (!headers['X-CSRF-Token']) {
-                    const csrfResp = await fetch('/csrf-token');
-                    if (csrfResp.ok) headers['X-CSRF-Token'] = (await csrfResp.json()).token;
-                }
-                const uploadResp = await fetch('/api/backgrounds/upload', { method: 'POST', body: formData, headers });
-                if (!uploadResp.ok) {
-                    throw new Error(`上传失败（HTTP ${uploadResp.status}）`);
-                }
-                const finalUrl = `/backgrounds/${filename}`;
+                const finalUrl = await window.VirtualPhone?.imageManager?.uploadDataUrl?.(croppedImage, 'moment_image');
+                if (!finalUrl) throw new Error('图片上传管理器未初始化');
 
                 if (!this.pendingMomentImages) {
                     this.pendingMomentImages = [];

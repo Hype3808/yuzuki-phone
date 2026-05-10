@@ -231,40 +231,12 @@ export class HoneyView {
         const blobResp = await fetch(safeDataUrl);
         const blob = await blobResp.blob();
         if (!blob || blob.size <= 0) throw new Error('生成图片为空，无法保存');
-        const ext = blob.type === 'image/jpeg'
-            ? 'jpg'
-            : (blob.type === 'image/webp' ? 'webp' : 'png');
         const safeHost = `h${this._simpleHash(String(hostName || 'live')).toString(36)}`;
         const safeSeed = String(seed || '').replace(/[^\w-]+/g, '').slice(0, 24);
-        const filename = `phone_honey_nai_${safeHost}_${safeSeed ? `${safeSeed}_` : ''}${Date.now()}.${ext}`;
-        const formData = new FormData();
-        formData.append('avatar', blob, filename);
-
-        const headers = typeof window.getRequestHeaders === 'function' ? window.getRequestHeaders() : {};
-        delete headers['Content-Type'];
-        delete headers['content-type'];
-        if (!headers['X-CSRF-Token'] && !headers['x-csrf-token']) {
-            const csrfResp = await fetch('/csrf-token', { credentials: 'include' });
-            if (csrfResp.ok) {
-                const csrfData = await csrfResp.json().catch(() => ({}));
-                if (csrfData?.token) headers['X-CSRF-Token'] = csrfData.token;
-            }
-        }
-
-        const uploadResp = await fetch('/api/backgrounds/upload', {
-            method: 'POST',
-            body: formData,
-            headers,
-            credentials: 'include'
-        });
-        if (!uploadResp.ok) {
-            const detail = await this._readUploadErrorDetail(uploadResp);
-            throw new Error(detail ? `保存生成图片失败 (${uploadResp.status}): ${detail}` : `保存生成图片失败 (${uploadResp.status})`);
-        }
-
-        const uploadedUrl = await this._resolveUploadFinalUrl(uploadResp, filename);
+        const uploadedUrl = await window.VirtualPhone?.imageManager?.uploadBlob?.(blob, `honey_nai_${safeHost}_${safeSeed}`);
+        if (!uploadedUrl) throw new Error('图片上传管理器未初始化');
         if (oldImageUrl && oldImageUrl !== uploadedUrl && this._isManagedBackgroundUrl(oldImageUrl)) {
-            window.VirtualPhone?.imageManager?.deleteManagedBackgroundByPath?.(oldImageUrl, { quiet: true });
+            window.VirtualPhone?.imageManager?.deleteManagedBackgroundByPath?.(oldImageUrl, { quiet: true, skipIfReferenced: true });
         }
         return uploadedUrl;
     }
@@ -3386,31 +3358,8 @@ export class HoneyView {
 
             this.app.phoneShell.showNotification('处理中', '正在上传直播头像...', '⏳');
             try {
-                const filename = `phone_honey_user_avatar_${Date.now()}.${ext}`;
-                const formData = new FormData();
-                formData.append('avatar', file, filename);
-
-                const headers = typeof window.getRequestHeaders === 'function' ? window.getRequestHeaders() : {};
-                delete headers['Content-Type'];
-                if (!headers['X-CSRF-Token']) {
-                    const csrfResp = await fetch('/csrf-token', { credentials: 'include' });
-                    if (csrfResp.ok) {
-                        const csrfData = await csrfResp.json().catch(() => ({}));
-                        if (csrfData?.token) headers['X-CSRF-Token'] = csrfData.token;
-                    }
-                }
-
-                const uploadResp = await fetch('/api/backgrounds/upload', {
-                    method: 'POST',
-                    body: formData,
-                    headers,
-                    credentials: 'include'
-                });
-                if (!uploadResp.ok) {
-                    const detail = await this._readUploadErrorDetail(uploadResp);
-                    throw new Error(detail ? `HTTP ${uploadResp.status}: ${detail}` : `HTTP ${uploadResp.status}`);
-                }
-                const uploadedUrl = await this._resolveUploadFinalUrl(uploadResp, filename);
+                const uploadedUrl = await window.VirtualPhone?.imageManager?.uploadBlob?.(file, 'honey_user_avatar');
+                if (!uploadedUrl) throw new Error('图片上传管理器未初始化');
 
                 saveMineProfile({ avatarUrl: uploadedUrl });
                 this.app.phoneShell.showNotification('头像已更新', '你的直播头像已保存', '✅');
@@ -4136,28 +4085,8 @@ export class HoneyView {
                 this.app.phoneShell.showNotification('处理中', '正在上传动态背景...', '⏳');
 
                 try {
-                    const filename = `phone_honey_bg_${Date.now()}.${ext}`;
-                    const formData = new FormData();
-                    formData.append('avatar', file, filename);
-
-                    const headers = typeof window.getRequestHeaders === 'function' ? window.getRequestHeaders() : {};
-                    delete headers['Content-Type'];
-                    if (!headers['X-CSRF-Token']) {
-                        const csrfResp = await fetch('/csrf-token', { credentials: 'include' });
-                        if (csrfResp.ok) headers['X-CSRF-Token'] = (await csrfResp.json()).token;
-                    }
-
-                    const uploadResp = await fetch('/api/backgrounds/upload', {
-                        method: 'POST',
-                        body: formData,
-                        headers
-                    });
-                    if (!uploadResp.ok) {
-                        const detail = await this._readUploadErrorDetail(uploadResp);
-                        throw new Error(detail ? `HTTP ${uploadResp.status}: ${detail}` : `HTTP ${uploadResp.status}`);
-                    }
-
-                    const finalUrl = await this._resolveUploadFinalUrl(uploadResp, filename);
+                    const finalUrl = await window.VirtualPhone?.imageManager?.uploadBlob?.(file, 'honey_bg');
+                    if (!finalUrl) throw new Error('图片上传管理器未初始化');
 
                     this.app.honeyData?.saveRecommendBgVideo?.(finalUrl);
                     this.app.phoneShell.showNotification('成功', '动态背景已更新', '✅');
@@ -4206,28 +4135,8 @@ export class HoneyView {
                 this.app.phoneShell.showNotification('处理中', '正在上传并添加到视频池...', '⏳');
 
                 try {
-                    const filename = `${customName}.${ext}`;
-                    const formData = new FormData();
-                    formData.append('avatar', file, filename);
-
-                    const headers = typeof window.getRequestHeaders === 'function' ? window.getRequestHeaders() : {};
-                    delete headers['Content-Type'];
-                    if (!headers['X-CSRF-Token']) {
-                        const csrfResp = await fetch('/csrf-token', { credentials: 'include' });
-                        if (csrfResp.ok) headers['X-CSRF-Token'] = (await csrfResp.json()).token;
-                    }
-
-                    const uploadResp = await fetch('/api/backgrounds/upload', {
-                        method: 'POST',
-                        body: formData,
-                        headers
-                    });
-                    if (!uploadResp.ok) {
-                        const detail = await this._readUploadErrorDetail(uploadResp);
-                        throw new Error(detail ? `HTTP ${uploadResp.status}: ${detail}` : `HTTP ${uploadResp.status}`);
-                    }
-
-                    const finalUrl = await this._resolveUploadFinalUrl(uploadResp, filename);
+                    const finalUrl = await window.VirtualPhone?.imageManager?.uploadBlob?.(file, `honey_live_${customName}`);
+                    if (!finalUrl) throw new Error('图片上传管理器未初始化');
                     this.app.honeyData?.addCustomLiveVideo?.(finalUrl);
                     this.app.phoneShell.showNotification('成功', '视频已添加到随机池', '✅');
                     this._renderCustomVideoList();
@@ -6239,34 +6148,9 @@ export class HoneyView {
         const safeName = String(hostName || 'host')
             .replace(/[^\w\u4e00-\u9fff-]+/g, '_')
             .slice(0, 24) || 'host';
-        const filename = `phone_honey_ref_${safeName}_${Date.now()}.jpg`;
-        const formData = new FormData();
-        formData.append('avatar', blob, filename);
-
-        const headers = typeof window.getRequestHeaders === 'function' ? window.getRequestHeaders() : {};
-        delete headers['Content-Type'];
-        delete headers['content-type'];
-        if (!headers['X-CSRF-Token'] && !headers['x-csrf-token']) {
-            const csrfResp = await fetch('/csrf-token', { credentials: 'include' });
-            if (csrfResp.ok) {
-                const csrfData = await csrfResp.json().catch(() => ({}));
-                if (csrfData?.token) headers['X-CSRF-Token'] = csrfData.token;
-            }
-        }
-
-        const uploadResp = await fetch('/api/backgrounds/upload', {
-            method: 'POST',
-            body: formData,
-            headers,
-            credentials: 'include'
-        });
-        if (!uploadResp.ok) {
-            const detail = await this._readUploadErrorDetail(uploadResp);
-            throw new Error(detail ? `HTTP ${uploadResp.status}: ${detail}` : `HTTP ${uploadResp.status}`);
-        }
-
-        const uploadedUrl = await this._resolveUploadFinalUrl(uploadResp, filename);
-        window.VirtualPhone?.imageManager?.deleteManagedBackgroundByPath?.(oldReferenceImage, { quiet: true });
+        const uploadedUrl = await window.VirtualPhone?.imageManager?.uploadBlob?.(blob, `honey_ref_${safeName}`);
+        if (!uploadedUrl) throw new Error('图片上传管理器未初始化');
+        window.VirtualPhone?.imageManager?.deleteManagedBackgroundByPath?.(oldReferenceImage, { quiet: true, skipIfReferenced: true });
         return uploadedUrl;
     }
 

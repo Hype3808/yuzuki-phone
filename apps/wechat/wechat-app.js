@@ -2732,11 +2732,11 @@ export class WechatApp {
             </div>
             
             <div class="wechat-content" style="${editorContentStyle}">
-                <div style="background: #fff; border-radius: 12px; padding: 15px;">
-                    <div style="font-size: 16px; font-weight: 500; margin-bottom: 8px;">
+                <div style="background: rgba(255,255,255,0.94); color: #1f2933; border-radius: 12px; padding: 15px;">
+                    <div style="font-size: 16px; font-weight: 500; color: #1f2933; margin-bottom: 8px;">
                         ${prompt.name}
                     </div>
-                    <div style="font-size: 12px; color: #666; margin-bottom: 15px;">
+                    <div style="font-size: 12px; color: #5f6368; margin-bottom: 15px;">
                         ${prompt.description}
                     </div>
                     
@@ -2746,6 +2746,9 @@ export class WechatApp {
                         width: 100%;
                         min-height: 300px;
                         padding: 12px;
+                        background: #f7f7f7;
+                        color: #1f2933;
+                        caret-color: #07c160;
                         border: 1px solid #e5e5e5;
                         border-radius: 8px;
                         font-size: 14px;
@@ -4437,27 +4440,14 @@ export class WechatApp {
 
                 this.phoneShell.showNotification('处理中', '正在上传头像...', '⏳');
 
-                const imgResp = await fetch(croppedImage);
-                const blob = await imgResp.blob();
-                const ext = blob.type === 'image/png' ? 'png' : 'jpg';
-                const filename = `phone_wechat_avatar_${Date.now()}.${ext}`;
-                const formData = new FormData();
-                formData.append('avatar', blob, filename);
-
-                const headers = typeof window.getRequestHeaders === 'function' ? window.getRequestHeaders() : {};
-                delete headers['Content-Type'];
-                if (!headers['X-CSRF-Token']) {
-                    const csrfResp = await fetch('/csrf-token');
-                    if (csrfResp.ok) headers['X-CSRF-Token'] = (await csrfResp.json()).token;
-                }
-                const uploadResp = await fetch('/api/backgrounds/upload', { method: 'POST', body: formData, headers });
-
-                if (uploadResp.ok) {
-                    const finalUrl = `/backgrounds/${filename}`;
+                const imageManager = window.VirtualPhone?.imageManager;
+                const finalUrl = await imageManager?.uploadDataUrl?.(croppedImage, 'wechat_avatar');
+                if (!finalUrl) throw new Error('图片上传管理器未初始化');
+                if (finalUrl) {
                     const oldAvatar = String(this.wechatData.getUserInfo()?.avatar || '').trim();
                     this.wechatData.updateUserInfo({ avatar: finalUrl });
                     if (oldAvatar && oldAvatar !== finalUrl) {
-                        const cleanupTask = window.VirtualPhone?.imageManager?.deleteManagedBackgroundByPath?.(oldAvatar, { quiet: true });
+                        const cleanupTask = window.VirtualPhone?.imageManager?.deleteManagedBackgroundByPath?.(oldAvatar, { quiet: true, skipIfReferenced: true });
                         cleanupTask?.catch?.(() => { });
                     }
                     this.phoneShell.showNotification('成功', '头像已上传并保存', '✅');
@@ -4740,7 +4730,26 @@ export class WechatApp {
                                 ">编辑提示词</button>
                             </div>
 
-                            <!-- 子项4：群语音通话 -->
+                            <!-- 子项4：群聊 -->
+                            <div style="background: #f9f9f9; border-radius: 8px; padding: 12px; margin-top: 10px;">
+                                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                                    <span style="font-size: 14px;">👥 群聊</span>
+                                </div>
+                                <div style="font-size: 11px; color: #999; margin-bottom: 8px;">
+                                    ${prompts.groupChat?.description || '微信群聊规则'}
+                                </div>
+                                <button class="edit-prompt-btn" data-feature="groupChat" style="
+                                    padding: 5px 10px;
+                                    background: #fff;
+                                    border: 1px solid #e0e0e0;
+                                    border-radius: 4px;
+                                    font-size: 11px;
+                                    color: #333;
+                                    cursor: pointer;
+                                ">编辑提示词</button>
+                            </div>
+
+                            <!-- 子项5：群语音通话 -->
                             <div style="background: #f9f9f9; border-radius: 8px; padding: 12px; margin-top: 10px;">
                                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
                                     <span style="font-size: 14px;">👥📞 群语音通话</span>
@@ -4759,7 +4768,7 @@ export class WechatApp {
                                 ">编辑提示词</button>
                             </div>
 
-                            <!-- 子项5：群视频通话 -->
+                            <!-- 子项6：群视频通话 -->
                             <div style="background: #f9f9f9; border-radius: 8px; padding: 12px; margin-top: 10px;">
                                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
                                     <span style="font-size: 14px;">👥📹 群视频通话</span>
@@ -4768,25 +4777,6 @@ export class WechatApp {
                                     ${prompts.groupVideoCall?.description || '微信群视频通话规则'}
                                 </div>
                                 <button class="edit-prompt-btn" data-feature="groupVideoCall" style="
-                                    padding: 5px 10px;
-                                    background: #fff;
-                                    border: 1px solid #e0e0e0;
-                                    border-radius: 4px;
-                                    font-size: 11px;
-                                    color: #333;
-                                    cursor: pointer;
-                                ">编辑提示词</button>
-                            </div>
-
-                            <!-- 子项6：群聊 -->
-                            <div style="background: #f9f9f9; border-radius: 8px; padding: 12px;">
-                                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                                    <span style="font-size: 14px;">👥 群聊</span>
-                                </div>
-                                <div style="font-size: 11px; color: #999; margin-bottom: 8px;">
-                                    ${prompts.groupChat?.description || '微信群聊规则'}
-                                </div>
-                                <button class="edit-prompt-btn" data-feature="groupChat" style="
                                     padding: 5px 10px;
                                     background: #fff;
                                     border: 1px solid #e0e0e0;
@@ -4982,40 +4972,14 @@ export class WechatApp {
                 });
 
                 const croppedImage = await cropper.open(file);
-                const res = await fetch(croppedImage);
-                const blob = await res.blob();
-                const ext = blob.type === 'image/png' ? 'png' : 'jpg';
-                const filename = `phone_moments_bg_${Date.now()}.${ext}`;
-                const formData = new FormData();
-                formData.append('avatar', blob, filename);
-                const headers = typeof window.getRequestHeaders === 'function' ? window.getRequestHeaders() : {};
-                delete headers['Content-Type'];
-                delete headers['content-type'];
-                if (!headers['X-CSRF-Token'] && !headers['x-csrf-token']) {
-                    const csrfResp = await fetch('/csrf-token', { credentials: 'include' });
-                    if (csrfResp.ok) {
-                        const csrfData = await csrfResp.json().catch(() => ({}));
-                        if (csrfData?.token) headers['X-CSRF-Token'] = csrfData.token;
-                    }
-                }
-
-                const uploadResp = await fetch('/api/backgrounds/upload', {
-                    method: 'POST',
-                    body: formData,
-                    headers,
-                    credentials: 'include'
-                });
-                if (!uploadResp.ok) {
-                    throw new Error(`上传失败（HTTP ${uploadResp.status}）`);
-                }
-
-                const finalUrl = `/backgrounds/${filename}`;
+                const finalUrl = await window.VirtualPhone?.imageManager?.uploadDataUrl?.(croppedImage, 'moments_bg');
+                if (!finalUrl) throw new Error('图片上传管理器未初始化');
                 const currentUserInfo = this.wechatData.getUserInfo();
                 const oldBackground = String(currentUserInfo?.momentsBackground || '').trim();
                 currentUserInfo.momentsBackground = finalUrl;
                 this.wechatData.saveData();
                 if (oldBackground && oldBackground !== finalUrl) {
-                    const cleanupTask = window.VirtualPhone?.imageManager?.deleteManagedBackgroundByPath?.(oldBackground, { quiet: true });
+                    const cleanupTask = window.VirtualPhone?.imageManager?.deleteManagedBackgroundByPath?.(oldBackground, { quiet: true, skipIfReferenced: true });
                     cleanupTask?.catch?.(() => { });
                 }
                 this.phoneShell.showNotification('成功', '朋友圈背景已更新', '✅');
