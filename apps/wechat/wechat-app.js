@@ -1917,6 +1917,15 @@ export class WechatApp {
     color: #000;
 }
 
+.contacts-function-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
 .contacts-list {
     background: #fff;
     /* 🔥 删除这行（如果有）：overflow-y: auto; */
@@ -1936,7 +1945,36 @@ export class WechatApp {
     z-index: 10;
 }
 
-.contact-item {
+.contacts-group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+}
+
+.contacts-group-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+}
+
+.contacts-group-create-btn {
+    border: none;
+    background: transparent;
+    color: #576b95;
+    font-size: 18px;
+    line-height: 1;
+    width: 24px;
+    height: 20px;
+    padding: 0;
+    cursor: pointer;
+    font-weight: 400;
+    flex-shrink: 0;
+}
+
+.contact-item,
+.contact-group-item {
     display: flex;
     align-items: center;
     padding: 6px 15px;
@@ -1945,8 +1983,17 @@ export class WechatApp {
     transition: background 0.2s;
 }
 
-.contact-item:active {
+.contact-item:active,
+.contact-group-item:active {
     background: #f0f0f0;
+}
+
+.contacts-empty-row {
+    padding: 10px 15px;
+    color: #999;
+    font-size: 13px;
+    background: #fff;
+    border-bottom: 0.5px solid #e5e5e5;
 }
 
 .contact-avatar {
@@ -1981,22 +2028,29 @@ export class WechatApp {
 .letter-index {
     position: absolute;
     right: 2px;
-    top: 50%;
-    transform: translateY(-50%);
+    top: 164px;
+    bottom: 42px;
+    transform: none;
     display: flex;
     flex-direction: column;
-    gap: 1px;
+    justify-content: space-between;
+    gap: 0;
     z-index: 100;
     padding: 4px 0;
+    overflow: hidden;
+    box-sizing: border-box;
 }
 
 .letter-item {
-    font-size: 10px;
+    font-size: clamp(7px, 1.9vh, 10px);
     color: #667eea;
     font-weight: 600;
     cursor: pointer;
-    padding: 2px 4px;
+    padding: 0 4px;
     transition: all 0.2s;
+    line-height: 1;
+    text-align: center;
+    box-sizing: border-box;
 }
 
 .letter-item:active {
@@ -2840,7 +2894,7 @@ export class WechatApp {
             const exists = this.wechatData.getContacts().find(c => c.name === contact.name);
 
             if (!exists) {
-                this.wechatData.addContact({
+                const addedContact = this.wechatData.addContact({
                     id: `contact_${Date.now()}_${Math.random()}`,
                     name: contact.name,
                     avatar: contact.avatar || '👤',
@@ -2848,7 +2902,12 @@ export class WechatApp {
                     relation: contact.relation || '',
                     letter: this.wechatData.getFirstLetter(contact.name)
                 });
+                if (contact.gender) {
+                    this.wechatData.setContactGender?.(addedContact?.id || contact.name, contact.gender);
+                }
                 addedCount++;
+            } else if (contact.gender && this.wechatData.getContactGender?.(exists.id || exists.name) === 'unknown') {
+                this.wechatData.setContactGender?.(exists.id || exists.name, contact.gender);
             }
         });
 
@@ -3861,7 +3920,7 @@ export class WechatApp {
         };
     }
 
-    // 会话列表：长按松开后弹出“删除聊天”按钮
+    // 会话列表：长按松开后弹出“编辑/删除”操作
     bindChatListLongPressDelete() {
         if (this.currentChat || this.currentView !== 'chats') return;
         const list = document.querySelector('.wechat-chat-list');
@@ -3872,6 +3931,31 @@ export class WechatApp {
             if (old) old.remove();
         };
 
+        const openChatEditor = (chatId) => {
+            const chat = this.wechatData.getChat(chatId);
+            if (!chat) return;
+
+            if (chat.type === 'group') {
+                this.currentView = 'chats';
+                this.currentChat = chat;
+                this.wechatData.getMessages(chat.id);
+                this.chatView?.showGroupSettings?.({ returnToChatList: true });
+                return;
+            }
+
+            const contact = chat.contactId
+                ? this.wechatData.getContact(chat.contactId)
+                : this.wechatData.findContactByNameLoose?.(chat.name, { includeChats: false });
+            if (contact?.id && this.contactsView?.showEditContactPage) {
+                this.currentView = 'contacts';
+                this.currentChat = null;
+                this.contactsView.showEditContactPage(contact.id, { returnToChatList: true });
+                return;
+            }
+
+            this.phoneShell.showNotification('提示', '未找到对应联系人，请先到通讯录添加', '⚠️');
+        };
+
         const showDeleteMenu = (chatId, itemEl) => {
             closeDeleteMenu();
 
@@ -3880,7 +3964,7 @@ export class WechatApp {
             const hostRect = host.getBoundingClientRect ? host.getBoundingClientRect() : { top: 0, left: 0 };
             const isBodyHost = host === document.body;
             const topPx = Math.max(8, rect.top + (rect.height / 2) - 16);
-            const leftPx = Math.max(8, rect.right - 90);
+            const leftPx = Math.max(8, rect.right - 126);
             const menu = document.createElement('div');
             menu.className = 'wechat-chat-delete-pop';
             menu.style.cssText = `
@@ -3894,12 +3978,10 @@ export class WechatApp {
                 padding: 0;
                 box-shadow: 0 2px 10px rgba(0,0,0,0.2);
                 overflow: hidden;
+                display: flex;
             `;
 
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.textContent = '删除聊天';
-            btn.style.cssText = `
+            const baseBtnStyle = `
                 border: none;
                 background: transparent;
                 color: #111;
@@ -3909,7 +3991,21 @@ export class WechatApp {
                 cursor: pointer;
             `;
 
-            btn.addEventListener('click', (e) => {
+            const editBtn = document.createElement('button');
+            editBtn.type = 'button';
+            editBtn.textContent = '编辑';
+            editBtn.style.cssText = `${baseBtnStyle}border-right: 0.5px solid #e5e5e5;color:#576b95;`;
+            editBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                closeDeleteMenu();
+                openChatEditor(chatId);
+            });
+
+            const deleteBtn = document.createElement('button');
+            deleteBtn.type = 'button';
+            deleteBtn.textContent = '删除';
+            deleteBtn.style.cssText = baseBtnStyle;
+            deleteBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const chat = this.wechatData.getChat(chatId);
                 if (!chat) {
@@ -3926,7 +4022,8 @@ export class WechatApp {
                 this.render();
             });
 
-            menu.appendChild(btn);
+            menu.appendChild(editBtn);
+            menu.appendChild(deleteBtn);
             host.appendChild(menu);
 
             setTimeout(() => {

@@ -91,6 +91,34 @@ export class WeiboView {
         this.isBackNav = false;
     }
 
+    returnFromPostDetail(mode = this.currentPostMode) {
+        if (this.entrySource?.appId === 'wechat' && typeof this.app.returnToWechatFromCard === 'function') {
+            this.app.returnToWechatFromCard();
+            return;
+        }
+
+        const returningPostId = String(this.currentPostId || '').trim();
+        this.currentPostId = null;
+        this.currentPostMode = null;
+        if (mode === 'hotSearch') {
+            this.currentView = 'hotSearchDetail';
+        } else {
+            this.currentView = 'home';
+        }
+        this.render();
+
+        if (returningPostId) {
+            requestAnimationFrame(() => {
+                const escapedPostId = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+                    ? CSS.escape(returningPostId)
+                    : returningPostId.replace(/["\\]/g, '\\$&');
+                document.querySelectorAll(`.weibo-post[data-post-id="${escapedPostId}"]`).forEach((el) => {
+                    el.dataset.suppressClickUntil = String(Date.now() + 650);
+                });
+            });
+        }
+    }
+
     // ========================================
     // 🏠 首页
     // ========================================
@@ -750,21 +778,10 @@ export class WeiboView {
 
     bindPostDetailEvents(postId, mode) {
         // 返回
-        document.getElementById('weibo-detail-page-back')?.addEventListener('click', () => {
-            // 从微信跳入微博正文时，直接回微信聊天窗口
-            if (this.entrySource?.appId === 'wechat' && typeof this.app.returnToWechatFromCard === 'function') {
-                this.app.returnToWechatFromCard();
-                return;
-            }
-
-            this.currentPostId = null;
-            this.currentPostMode = null;
-            if (mode === 'hotSearch') {
-                this.currentView = 'hotSearchDetail';
-            } else {
-                this.currentView = 'home';
-            }
-            this.render();
+        document.getElementById('weibo-detail-page-back')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.returnFromPostDetail(mode);
         });
 
         // 帖子交互（详情页内的点赞、评论、转发）

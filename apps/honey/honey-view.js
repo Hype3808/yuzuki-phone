@@ -65,6 +65,7 @@ export class HoneyView {
         this._livePendingUserLines = [];
         this._livePendingDisplayLines = [];
         this._liveSendInFlight = false;
+        this._isGiftPickerOpen = false;
         this._lastLiveTurnRetry = null;
         this._restoreSessionState();
         this._loadCSS();
@@ -280,6 +281,7 @@ export class HoneyView {
             }
             this._livePendingUserLines = [];
             this._liveSendInFlight = false;
+            this._isGiftPickerOpen = false;
             this.isScenePanelOpen = false;
             this._isEndCollabConfirmOpen = false;
         }
@@ -1193,12 +1195,10 @@ export class HoneyView {
                 </div>
             `;
         }).join('');
-        const giftRowsDuplicated = shouldScrollGifts ? `${giftRows}${giftRows}` : giftRows;
-
         const giftListHtml = mixedFeed.length > 0 ? `
             <div class="honey-live-gifts-list ${shouldScrollGifts ? 'is-scrolling' : ''}" ${giftListStyle}>
                 <div class="honey-live-gifts-track">
-                    ${giftRowsDuplicated}
+                    ${giftRows}
                 </div>
             </div>
         ` : '';
@@ -1414,6 +1414,10 @@ export class HoneyView {
             this._setLiveStatusDot('red', root);
             return;
         }
+        if (this._isGiftPickerOpen) {
+            this._setLiveStatusDot('green', root);
+            return;
+        }
         if (this._liveBatchTimer && !isEditing) {
             this._setLiveStatusDot('yellow', root);
             return;
@@ -1491,11 +1495,10 @@ export class HoneyView {
                 </div>
             `;
         }).join('');
-        const giftRowsDuplicated = shouldScrollGifts ? `${giftRows}${giftRows}` : giftRows;
         const giftListHtml = mixedFeed.length > 0 ? `
             <div class="honey-live-gifts-list ${shouldScrollGifts ? 'is-scrolling' : ''}" ${giftListStyle}>
                 <div class="honey-live-gifts-track">
-                    ${giftRowsDuplicated}
+                    ${giftRows}
                 </div>
             </div>
         ` : '';
@@ -2720,7 +2723,8 @@ export class HoneyView {
                 && Array.isArray(this._livePendingUserLines)
                 && this._livePendingUserLines.length > 0
                 && !this._liveSendInFlight
-                && !this._isGeneratingScene;
+                && !this._isGeneratingScene
+                && !this._isGiftPickerOpen;
             if (!canRestart) {
                 if (text !== '' || isEditing || this._isGeneratingScene) {
                     clearLiveBatchTimer();
@@ -2983,7 +2987,6 @@ export class HoneyView {
                         : (this.app?.honeyData?.getHoneyUserNickname?.() || '你')
                 ).trim() || '你';
                 this._livePendingDisplayLines.push(`${speakerName}：${text}`);
-                this._livePendingDisplayLines = this._livePendingDisplayLines.slice(-12);
                 input.value = '';
                 this._refreshLivePageDom({ sourceRoot: root, scene: this.currentSceneData });
 
@@ -3067,11 +3070,19 @@ export class HoneyView {
 
         const setGiftPickerOpen = (open) => {
             if (!giftPicker) return;
-            giftPicker.classList.toggle('show', !!open);
-            root.classList.toggle('is-gift-picker-open', !!open);
+            const isOpen = !!open;
+            this._isGiftPickerOpen = isOpen;
+            giftPicker.classList.toggle('show', isOpen);
+            root.classList.toggle('is-gift-picker-open', isOpen);
             // 样式兜底：即使 CSS 未生效，也能通过 JS 强制开关面板
-            giftPicker.style.display = open ? 'grid' : 'none';
-            giftPicker.style.pointerEvents = open ? 'auto' : 'none';
+            giftPicker.style.display = isOpen ? 'grid' : 'none';
+            giftPicker.style.pointerEvents = isOpen ? 'auto' : 'none';
+            if (isOpen) {
+                clearLiveBatchTimer();
+            } else {
+                restartLivePendingTimerIfNeeded();
+            }
+            syncLiveStatusDot();
         };
 
         // 初始关闭，避免历史层残留状态干扰
@@ -4163,10 +4174,15 @@ export class HoneyView {
         }
 
         root.querySelector('#honey-clear-data')?.addEventListener('click', async () => {
-            const ok = confirm('确定一键清理蜜语的所有生成内容？\n\n将删除：\n1) 推荐与直播缓存\n2) 关注列表与关注历史备份\n3) 当前会话中的 <Honey> 标签内容\n\n此操作不可恢复。');
+            const ok = confirm('确定一键清理蜜语的所有生成内容？\n\n将删除：\n1) 推荐与直播缓存\n2) 关注列表与关注历史备份\n3) 当前会话中的 <Honey> 标签内容\n4) 蜜语生成并保存到 /backgrounds/ 的直播图片\n\n此操作不可恢复。');
             if (!ok) return;
 
             try {
+                const imageCleanup = await this.app?.honeyData?.cleanupGeneratedImageFiles?.([
+                    this.currentSceneData,
+                    this.selectedTopic,
+                    this.recommendTopics
+                ]);
                 this.app?.honeyData?.clearGeneratedSessionData?.();
                 this.app?.honeyData?.saveRecommendTopics?.([]);
                 this.app?.honeyData?.clearCache?.();
@@ -4179,7 +4195,12 @@ export class HoneyView {
 
                 this.currentPage = 'settings';
                 this.render();
-                this.app.phoneShell.showNotification('已清理', '蜜语内容已清空', '🧹');
+                const attempted = Number(imageCleanup?.attempted || 0);
+                const failed = Number(imageCleanup?.failed || 0);
+                const imageText = attempted > 0
+                    ? `，生成图${attempted - failed}/${attempted}张已清理`
+                    : '';
+                this.app.phoneShell.showNotification('已清理', `蜜语内容已清空${imageText}`, '🧹');
             } catch (err) {
                 console.error('蜜语一键清理失败:', err);
                 this.app.phoneShell.showNotification('错误', err.message || String(err), '❌');
@@ -4415,9 +4436,52 @@ export class HoneyView {
         return String(hostEl?.textContent || hostEl?.innerText || '').trim();
     }
 
+    _normalizeHoneyTtsGender(gender = '') {
+        const raw = String(gender || '').trim().toLowerCase();
+        if (raw === 'male' || raw === 'm' || raw === '男') return 'male';
+        if (raw === 'female' || raw === 'f' || raw === '女') return 'female';
+        return '';
+    }
+
+    _getHoneyGlobalTtsVoiceConfig() {
+        const storage = this.app?.storage;
+        const provider = String(storage?.get?.('phone-tts-provider') || 'minimax_cn').trim() || 'minimax_cn';
+        const scopedVoice = String(storage?.get?.(`phone-tts-${provider}-voice`) || '').trim();
+        if (scopedVoice) return { provider, voice: scopedVoice, source: 'global' };
+        if (provider !== 'volcengine') {
+            return {
+                provider,
+                voice: String(storage?.get?.('phone-tts-voice') || '').trim(),
+                source: 'global'
+            };
+        }
+        return { provider, voice: '', source: 'global' };
+    }
+
+    _getHoneyGenderFallbackTtsVoice(gender = '') {
+        const storage = this.app?.storage;
+        const safeGender = this._normalizeHoneyTtsGender(gender);
+        const globalConfig = this._getHoneyGlobalTtsVoiceConfig();
+        if (!safeGender) return globalConfig;
+
+        const provider = String(storage?.get?.(`phone-tts-fallback-${safeGender}-provider`) || globalConfig.provider || 'minimax_cn').trim() || 'minimax_cn';
+        const voice = String(storage?.get?.(`phone-tts-fallback-${safeGender}-voice`) || '').trim();
+        if (voice) {
+            return { provider, voice, source: `fallback_${safeGender}` };
+        }
+        return globalConfig;
+    }
+
+    _resolveHoneyFallbackHostGender() {
+        const profile = this.app?.honeyData?.getHoneyUserProfile?.() || {};
+        const userGender = this._normalizeHoneyTtsGender(profile?.gender || 'female') || 'female';
+        const scene = this.currentSceneData || this.selectedTopic || {};
+        if (this._isUserLiveScene(scene)) return userGender;
+        return userGender === 'male' ? 'female' : 'male';
+    }
+
     _resolveHoneyTtsVoice(root = null) {
-        const globalVoice = String(this.app?.storage?.get?.('phone-tts-voice') || '').trim();
-        const globalProvider = String(this.app?.storage?.get?.('phone-tts-provider') || 'minimax_cn').trim() || 'minimax_cn';
+        const globalConfig = this._getHoneyGlobalTtsVoiceConfig();
         const hostName = this._resolveHoneyTtsHostName(root);
 
         if (hostName) {
@@ -4428,7 +4492,7 @@ export class HoneyView {
                 if (boundVoice) {
                     return {
                         voice: boundVoice,
-                        provider: String(resolved?.provider || globalProvider).trim() || globalProvider,
+                        provider: String(resolved?.provider || globalConfig.provider).trim() || globalConfig.provider,
                         hostName,
                         contact: resolved.contact || null,
                         source: 'bound'
@@ -4439,12 +4503,15 @@ export class HoneyView {
             }
         }
 
+        const fallbackGender = this._resolveHoneyFallbackHostGender();
+        const fallback = this._getHoneyGenderFallbackTtsVoice(fallbackGender);
         return {
-            voice: globalVoice,
-            provider: globalProvider,
+            voice: fallback.voice,
+            provider: fallback.provider,
             hostName,
             contact: null,
-            source: 'global'
+            fallbackGender,
+            source: fallback.source || 'global'
         };
     }
 
@@ -4464,7 +4531,7 @@ export class HoneyView {
         const apiKey = String(resolvedConfig?.apiKey || storage?.get?.('phone-tts-key') || '').trim();
         const apiUrl = String(resolvedConfig?.apiUrl || storage?.get?.('phone-tts-url') || providerDefault.url || '').trim();
         const model = String(resolvedConfig?.model || storage?.get?.('phone-tts-model') || providerDefault.model || '').trim();
-        const voice = String(resolvedVoice.voice || providerDefault.voice || '').trim();
+        const voice = String(resolvedVoice.voice || '').trim();
         return {
             provider,
             apiKey,
@@ -4473,7 +4540,7 @@ export class HoneyView {
             voice,
             hostName: resolvedVoice.hostName || '',
             voiceSource: resolvedVoice.source || 'global',
-            ready: !!apiKey && !!apiUrl
+            ready: !!apiKey && !!apiUrl && !!voice
         };
     }
 
@@ -4628,7 +4695,10 @@ export class HoneyView {
 
         const root = btn?.closest?.('.honey-page-live') || null;
         const config = this._getHoneyTtsConfig(root);
-        if (!config.ready) throw new Error('请先在设置中配置 TTS 接口信息');
+        if (!config.ready) {
+            if (!config.voice) throw new Error('请先在设置中配置全局兜底音色，或给该主播绑定专属音色');
+            throw new Error('请先在设置中配置 TTS 接口信息');
+        }
 
         this._stopHoneyTtsPlayback();
         const useCache = this.app?.storage?.get?.('phone-honey-tts-cache-enabled') !== false;
@@ -5895,6 +5965,43 @@ export class HoneyView {
         return firstToken.slice(0, 4);
     }
 
+    _splitLiveCommentLines(text = '') {
+        return String(text || '')
+            .replace(/\r/g, '')
+            .split('\n')
+            .map(line => String(line || '').trim())
+            .filter(Boolean);
+    }
+
+    _buildLocalUserCommentLines(message = '', speakerName = '') {
+        const safeSpeakerName = String(speakerName || '').replace(/\s+/g, ' ').trim() || '你';
+        return this._splitLiveCommentLines(message).map(line => `${safeSpeakerName}：${line}`);
+    }
+
+    _appendUniqueParsedTickerComments(target = [], lines = []) {
+        if (!Array.isArray(target) || !Array.isArray(lines)) return target;
+
+        lines.map(line => this._parseCommentFeedLine(line))
+            .filter(Boolean)
+            .forEach((info) => {
+                const exists = target.some((item) => {
+                    const left = `${String(item?.user || '').trim()}::${String(item?.content || '').trim()}`;
+                    const right = `${String(info.user || '').trim()}::${String(info.content || '').trim()}`;
+                    return left && left === right;
+                });
+                if (!exists) {
+                    target.push({
+                        type: 'comment',
+                        rank: info.rank,
+                        user: info.user,
+                        content: info.content
+                    });
+                }
+            });
+
+        return target;
+    }
+
     _parseCommentFeedLine(text) {
         const raw = String(text || '').trim();
         if (!raw) return null;
@@ -6297,7 +6404,6 @@ export class HoneyView {
         const gifts = (Array.isArray(data?.gifts) ? data.gifts : [])
             .map(line => this._formatGiftFeedDisplayText(line))
             .filter(Boolean)
-            .slice(-10)
             .map(text => ({
                 type: 'gift',
                 text
@@ -6313,45 +6419,16 @@ export class HoneyView {
                 content: info.content
             }));
         const latestUserCommentText = String(data?.lastUserComment || '').trim();
-        const latestUserComment = !isPrivateLive && latestUserCommentText
-            ? this._parseCommentFeedLine(latestUserCommentText)
-            : null;
-        if (latestUserComment) {
-            const existsLatestUserComment = parsedComments.some((item) => {
-                const left = `${String(item?.user || '').trim()}::${String(item?.content || '').trim()}`;
-                const right = `${String(latestUserComment.user || '').trim()}::${String(latestUserComment.content || '').trim()}`;
-                return left && left === right;
-            });
-            if (!existsLatestUserComment) {
-                parsedComments.push({
-                    type: 'comment',
-                    rank: latestUserComment.rank,
-                    user: latestUserComment.user,
-                    content: latestUserComment.content
-                });
-            }
+        if (!isPrivateLive && latestUserCommentText) {
+            this._appendUniqueParsedTickerComments(
+                parsedComments,
+                this._splitLiveCommentLines(latestUserCommentText)
+            );
         }
         if (Array.isArray(this._livePendingDisplayLines) && this._livePendingDisplayLines.length > 0) {
-            this._livePendingDisplayLines
-                .map(line => this._parseCommentFeedLine(line))
-                .filter(Boolean)
-                .forEach((info) => {
-                    const exists = parsedComments.some((item) => {
-                        const left = `${String(item?.user || '').trim()}::${String(item?.content || '').trim()}`;
-                        const right = `${String(info.user || '').trim()}::${String(info.content || '').trim()}`;
-                        return left && left === right;
-                    });
-                    if (!exists) {
-                        parsedComments.push({
-                            type: 'comment',
-                            rank: info.rank,
-                            user: info.user,
-                            content: info.content
-                        });
-                    }
-                });
+            this._appendUniqueParsedTickerComments(parsedComments, this._livePendingDisplayLines);
         }
-        const comments = parsedComments.slice(-12);
+        const comments = parsedComments;
 
         const merged = [...gifts, ...comments];
         if (!merged.length) return [];
@@ -6359,7 +6436,7 @@ export class HoneyView {
         // 仅打乱展示顺序，不改底层记录顺序
         const shuffleSeed = this._simpleHash(JSON.stringify(merged));
         const shuffled = this._seededShuffle(merged, shuffleSeed);
-        return shuffled.slice(-18);
+        return shuffled;
     }
 
     _renderGiftPickerHtml() {
@@ -7240,11 +7317,15 @@ export class HoneyView {
                 ? (this.app?.honeyData?.getHoneyUserProfile?.() || {})
                 : null;
             const userLiveSpeakerName = String(userLiveProfile?.nickname || honeyNickname || '你').trim() || '你';
-            const localUserComment = normalizedUserMessage
-                ? `${isUserLiveTopic ? userLiveSpeakerName : honeyNickname}：${normalizedUserMessage}`
-                : '';
+            const localUserCommentLines = normalizedUserMessage
+                ? this._buildLocalUserCommentLines(
+                    normalizedUserMessage,
+                    isUserLiveTopic ? userLiveSpeakerName : honeyNickname
+                )
+                : [];
+            const localUserComment = localUserCommentLines.join('\n');
             if (normalizedUserMessage) {
-                workingScene.userChats = [...previousUserChats, localUserComment].slice(-200);
+                workingScene.userChats = [...previousUserChats, ...localUserCommentLines].slice(-200);
                 workingScene.comments = [];
                 workingScene.lastUserComment = localUserComment;
                 workingScene.description = 'AI 正在根据你的弹幕继续推进直播剧情...';
@@ -7389,11 +7470,15 @@ export class HoneyView {
             const aiComments = Array.isArray(aiData?.comments) ? aiData.comments : [];
             const aiHasOnlyFallbackComment = aiComments.length === 1 && /系统公告[:：]/.test(String(aiComments[0] || ''));
             const useAiComments = aiComments.length > 0 && !(normalizedUserMessage && aiHasOnlyFallbackComment);
-            let mergedComments = useAiComments ? aiComments.slice(-20) : [];
+            let mergedComments = useAiComments ? aiComments : [];
             if (this._isPrivateLiveScene(workingScene || this.currentSceneData || this.selectedTopic)) {
                 mergedComments = [];
             }
             const nextLastUserComment = localUserComment || previousLastUserComment;
+            const aiDescription = String(aiData?.description || '').trim();
+            const nextDescription = this._hasMeaningfulSceneDescription(aiDescription)
+                ? aiDescription
+                : (normalizedUserMessage ? '' : previousDescription);
 
             const resolvedSceneHostName = String(aiData?.host || workingScene?.host || '').trim();
             const aiParsedFavorability = this._normalizeFavorability(aiData?.favorability, null);
@@ -7417,6 +7502,7 @@ export class HoneyView {
                 friendRequests: mergedFriendRequests.list,
                 gifts: mergedGifts,
                 comments: mergedComments,
+                description: nextDescription || workingScene.description || '',
                 lastUserComment: nextLastUserComment,
                 visibility: workingScene?.visibility || this.currentSceneData?.visibility || this.selectedTopic?.visibility || 'public',
                 isPrivateLive: this._isPrivateLiveScene(workingScene || this.currentSceneData || this.selectedTopic),

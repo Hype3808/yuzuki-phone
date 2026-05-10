@@ -2660,7 +2660,7 @@
 
 @keyframes honeyGiftFeedScroll {
     from { transform: translate3d(0, 0, 0); }
-    to { transform: translate3d(0, -50%, 0); }
+    to { transform: translate3d(0, calc(-100% + (var(--honey-gift-visible-rows, 3) * var(--honey-gift-row-height, 34px))), 0); }
 }
 
 @keyframes honeyIntroMarquee {
@@ -2981,7 +2981,7 @@
     border-radius: 999px;
     border: 1px solid rgba(255, 201, 224, 0.72);
     background: rgba(255, 152, 196, 0.26);
-    color: #fff2f9;
+    color: #fff4fa !important;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -2991,6 +2991,7 @@
 }
 
 .honey-scene-tts-btn i {
+    color: #fff4fa !important;
     font-size: 11px;
     line-height: 1;
 }
@@ -3007,7 +3008,7 @@
 .honey-scene-tts-btn.is-playing {
     background: rgba(255, 132, 183, 0.48);
     border-color: rgba(255, 226, 240, 0.95);
-    color: #ffffff;
+    color: #ffffff !important;
 }
 
 .honey-scene-tts-btn.is-loading {

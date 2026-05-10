@@ -409,13 +409,98 @@ export class HoneyData {
     }
 
     _formatLiveUserMessageForPrompt(message, nickname = '') {
-        const safeMessage = this._sanitizeInlineText(message || '', 220);
-        if (!safeMessage) return '';
-        if (/^【系统强制提示[:：]/.test(safeMessage)) return safeMessage;
-        if (/^[^：:\n]{1,24}\s*[：:]\s*\S/.test(safeMessage)) return safeMessage;
+        const safeLines = String(message || '')
+            .replace(/\r/g, '')
+            .split('\n')
+            .map(line => this._sanitizeInlineText(line, 220))
+            .filter(Boolean);
+        if (safeLines.length <= 0) return '';
 
         const safeNickname = this._sanitizeInlineText(nickname || this.getHoneyUserNickname() || '你', 24) || '你';
-        return `${safeNickname}：${safeMessage}`;
+        return safeLines.map((safeMessage) => {
+            if (/^【系统强制提示[:：]/.test(safeMessage)) return safeMessage;
+            if (/^[^：:\n]{1,24}\s*[：:]\s*\S/.test(safeMessage)) return safeMessage;
+            return `${safeNickname}：${safeMessage}`;
+        }).join('\n');
+    }
+
+    _normalizeHoneyCommentIdentityKey(value = '') {
+        return this._normalizeHostNameKey(
+            String(value || '')
+                .replace(/^[#@＠]+/, '')
+                .trim()
+        );
+    }
+
+    _buildHoneyUserCommentAliasKeys(options = {}) {
+        const aliases = new Set();
+        const pushAlias = (value) => {
+            const key = this._normalizeHoneyCommentIdentityKey(value);
+            if (key) aliases.add(key);
+        };
+
+        const context = this._getContext();
+        pushAlias(this.getHoneyUserNickname());
+        pushAlias(context?.name1 || '');
+        pushAlias('你');
+        pushAlias('用户');
+        pushAlias('user');
+        pushAlias('{{user}}');
+
+        if (options?.includeProfileNickname) {
+            pushAlias(this.getHoneyUserProfile?.()?.nickname || '');
+        }
+
+        const extraNames = Array.isArray(options?.extraNames) ? options.extraNames : [];
+        extraNames.forEach(pushAlias);
+        return aliases;
+    }
+
+    _extractHoneyCommentSpeakerKey(line = '') {
+        const normalizedLine = this._normalizeCommentLine(line);
+        if (!normalizedLine) return '';
+        const match = normalizedLine.match(/^(?:\[[^\]]+\])?\s*([^:：\s]{1,24})\s*[:：]\s*(.+)$/);
+        if (!match?.[1]) return '';
+        return this._normalizeHoneyCommentIdentityKey(match[1]);
+    }
+
+    _filterOutUserSpokenHoneyComments(list = [], options = {}) {
+        const aliasKeys = this._buildHoneyUserCommentAliasKeys(options);
+        const dropped = [];
+        const kept = [];
+
+        (Array.isArray(list) ? list : []).forEach((item) => {
+            const normalizedLine = this._normalizeCommentLine(item);
+            if (!normalizedLine) return;
+
+            if (this._isHoneyCommentStatusLine(normalizedLine)) {
+                dropped.push(normalizedLine);
+                return;
+            }
+
+            const speakerKey = this._extractHoneyCommentSpeakerKey(normalizedLine);
+            if (speakerKey && aliasKeys.has(speakerKey)) {
+                dropped.push(normalizedLine);
+                return;
+            }
+
+            kept.push(normalizedLine);
+        });
+
+        if (dropped.length > 0) {
+            console.warn('⚠️ [蜜语] 已清理评论区中代替用户发言的内容:', dropped);
+        }
+
+        return kept;
+    }
+
+    _isHoneyCommentStatusLine(line = '') {
+        const text = String(line || '').trim();
+        if (!text) return true;
+        if (/^(?:当前)?好感(?:度|值)\s*[:：]/.test(text)) return true;
+        if (/^(?:热评|置顶|房管|官方|榜[一二三四五六七八九十0-9]+)?\s*(?:当前)?好感(?:度|值)\s*[:：]/.test(text)) return true;
+        if (/^(?:系统公告|系统消息)\s*[:：]\s*(?:当前)?好感(?:度|值)/.test(text)) return true;
+        return false;
     }
 
     _buildLiveRuntimeContext(options = {}) {
@@ -2503,6 +2588,92 @@ export class HoneyData {
         this._scheduleFlushChatPersistence();
     }
 
+    _collectHoneyGeneratedImageUrlsFromValue(value, out = new Set(), depth = 0) {
+        if (value === null || value === undefined || depth > 8) return out;
+
+        if (typeof value === 'string') {
+            const safe = value.trim();
+            if (/^\/backgrounds\/honey_nai_/i.test(safe)) out.add(safe);
+            return out;
+        }
+
+        if (Array.isArray(value)) {
+            value.forEach(item => this._collectHoneyGeneratedImageUrlsFromValue(item, out, depth + 1));
+            return out;
+        }
+
+        if (typeof value !== 'object') return out;
+
+        ['naiImageUrl', 'generatedImageUrl', 'imageUrl'].forEach((key) => {
+            const safe = String(value?.[key] || '').trim();
+            if (/^\/backgrounds\/honey_nai_/i.test(safe)) out.add(safe);
+        });
+
+        Object.values(value).forEach(item => this._collectHoneyGeneratedImageUrlsFromValue(item, out, depth + 1));
+        return out;
+    }
+
+    collectGeneratedImageUrlsForCleanup(extraSources = []) {
+        const urls = new Set();
+        const push = (value) => this._collectHoneyGeneratedImageUrlsFromValue(value, urls);
+
+        push(this.getRecommendTopics());
+        push(this.getTopicScenes());
+        push(this.getLastSceneData());
+        (Array.isArray(extraSources) ? extraSources : []).forEach(push);
+
+        const followedHosts = this.getFollowedHosts();
+        followedHosts.forEach((item) => {
+            const hostName = String(item?.name || '').trim();
+            if (!hostName) return;
+            push(this.getHostHistory(hostName));
+        });
+
+        const chatStore = this.storage?._getChatMetadataStore?.();
+        if (chatStore && typeof chatStore === 'object') {
+            Object.keys(chatStore)
+                .filter(key => /^(?:honey_history_|global_honey_history_)/i.test(String(key || '')))
+                .forEach((key) => push(chatStore[key]));
+        }
+
+        return Array.from(urls);
+    }
+
+    async cleanupGeneratedImageFiles(extraSources = []) {
+        const urls = this.collectGeneratedImageUrlsForCleanup(extraSources);
+        const imageManager = window.VirtualPhone?.imageManager;
+        if (!imageManager?.deleteManagedBackgroundByPath) {
+            return {
+                attempted: urls.length,
+                success: 0,
+                failed: urls.length,
+                skipped: urls.length
+            };
+        }
+
+        let success = 0;
+        let failed = 0;
+        for (const url of urls) {
+            try {
+                await imageManager.deleteManagedBackgroundByPath(url, {
+                    quiet: true,
+                    skipIfReferenced: true
+                });
+                success += 1;
+            } catch (e) {
+                failed += 1;
+                console.warn('[HoneyData] 清理蜜语生成图片失败:', url, e);
+            }
+        }
+
+        return {
+            attempted: urls.length,
+            success,
+            failed,
+            skipped: 0
+        };
+    }
+
     _mergeSceneDataForRestore(currentSceneData, topicScene) {
         const current = (currentSceneData && typeof currentSceneData === 'object') ? currentSceneData : {};
         const topic = (topicScene && typeof topicScene === 'object') ? topicScene : {};
@@ -2712,7 +2883,7 @@ export class HoneyData {
             })
             .map(line => this._normalizeCommentLine(line))
             .filter(Boolean)
-            .slice(-24);
+            .filter(line => !this._isHoneyCommentStatusLine(line));
     }
 
     parseHoneyUserLiveContent(rawText) {
@@ -2725,7 +2896,13 @@ export class HoneyData {
         // 兼容旧版 JSON，但优先按当前 <Honey> 行结构解析
         if ((!text || !/(?:在线人数|粉丝数|榜单|打赏记录|好友申请|互动记录|直播剧情描写|评论区)[：:]/.test(text)) && payload) {
             const live = (payload?.live && typeof payload.live === 'object') ? payload.live : (payload || {});
-            const comments = this._normalizeHoneyCommentObjects(live?.comments);
+            const comments = this._filterOutUserSpokenHoneyComments(
+                this._normalizeHoneyCommentObjects(live?.comments),
+                {
+                    includeProfileNickname: true,
+                    extraNames: [profile.nickname]
+                }
+            );
             const gifts = (Array.isArray(live?.gifts) ? live.gifts : [])
                 .map(item => this._sanitizeInlineText(item, 100))
                 .filter(line => this._isHoneyGiftRecordLine(line))
@@ -2812,14 +2989,14 @@ export class HoneyData {
             { start: /(?:^|\n)\s*榜单\s*[：:]\s*/i, end: /(?:^|\n)\s*(?:画面|打赏记录(?:（[^）]*）|\([^\)]*\))?|评论区|直播剧情描写|剧情面板|直播实况|好友申请)\s*[：:]/i }
         ]);
         const giftsSection = this._extractSectionByPatternPairs(text, [
-            { start: /(?:^|\n)\s*打赏记录(?:（[^）]*）|\([^\)]*\))?\s*[：:]\s*/i, end: /(?:^|\n)\s*(?:画面|评论区|直播剧情描写|剧情面板|直播实况|好友申请)\s*[：:]/i }
+            { start: /(?:^|\n)\s*(?:\[\s*打赏记录\s*\]|打赏记录)(?:（[^）]*）|\([^\)]*\))?\s*[：:]?\s*(?:\n|$)?/i, end: /(?:^|\n)\s*(?:画面|\[\s*评论区\s*\]|评论区|\[\s*直播剧情描写\s*\]|直播剧情描写|剧情面板|直播实况|好友申请)\s*[：:]?/i }
         ]);
         const commentsSection = this._extractSectionByPatternPairs(text, [
-            { start: /(?:^|\n)\s*(?:评论区)\s*[：:]\s*/i, end: /(?:^|\n)\s*(?:直播剧情描写|剧情面板|直播实况|好友申请)\s*[：:]/i }
+            { start: /(?:^|\n)\s*(?:\[\s*评论区\s*\]|评论区)\s*[：:]?\s*(?:\n|$)?/i, end: /(?:^|\n)\s*(?:\[\s*直播剧情描写\s*\]|直播剧情描写|剧情面板|直播实况|好友申请)\s*[：:]?/i }
         ]);
         const storySection = this._extractSectionByPatternPairs(text, [
-            { start: /(?:^|\n)\s*(?:直播剧情描写|剧情面板|直播实况)\s*[：:]\s*/i, end: /(?:^|\n)\s*(?:好友申请|互动记录)\s*[：:]/i },
-            { start: /(?:^|\n)\s*(?:直播剧情描写|剧情面板|直播实况)\s*(?:\n|$)/i, end: /(?:^|\n)\s*(?:好友申请|互动记录)\s*[：:]/i }
+            { start: /(?:^|\n)\s*(?:\[\s*直播剧情描写\s*\]|直播剧情描写|剧情面板|直播实况)\s*[：:]?\s*(?:\n|$)?/i, end: /(?:^|\n)\s*(?:好友申请|互动记录)\s*[：:]?/i },
+            { start: /(?:^|\n)\s*(?:\[\s*直播剧情描写\s*\]|直播剧情描写|剧情面板|直播实况)\s*(?:\n|$)/i, end: /(?:^|\n)\s*(?:好友申请|互动记录)\s*[：:]?/i }
         ]);
         const friendRequestSection = this._extractSectionByPatternPairs(text, [
             { start: /(?:^|\n)\s*好友申请\s*[：:]\s*/i, end: /(?:^|\n)\s*互动记录\s*[：:]/i },
@@ -2836,11 +3013,16 @@ export class HoneyData {
             .map(line => this._sanitizeInlineText(line, 100))
             .filter(line => this._isHoneyGiftRecordLine(line))
             .slice(-8);
-        const comments = String(commentsSection || '')
-            .split('\n')
-            .map(line => this._normalizeCommentLine(line))
-            .filter(Boolean)
-            .slice(-24);
+        const comments = this._filterOutUserSpokenHoneyComments(
+            String(commentsSection || '')
+                .split('\n')
+                .map(line => this._normalizeCommentLine(line))
+                .filter(Boolean),
+            {
+                includeProfileNickname: true,
+                extraNames: [profile.nickname]
+            }
+        );
         const friendRequests = String(friendRequestSection || '')
             .split('\n')
             .map(line => this._parseHoneyFriendRequestLine(line, '直播间'))
@@ -2899,7 +3081,12 @@ export class HoneyData {
         const runtimeContext = this._buildLiveRuntimeContext(options);
         const friends = this.getHoneyFriends();
         const pendingRequests = this.getHoneyFriendRequests();
-        const safeUserMessage = this._sanitizeInlineText(options?.userMessage || '', 220);
+        const safeUserMessage = String(options?.userMessage || '')
+            .replace(/\r/g, '')
+            .split('\n')
+            .map(line => this._sanitizeInlineText(line, 220))
+            .filter(Boolean)
+            .join('\n');
         const safeUserMessageWithNick = this._formatLiveUserMessageForPrompt(safeUserMessage, profile.nickname);
         const historyTurns = this._normalizeContinuePromptTurns(options?.promptTurns);
         const mode = String(options?.requestMode || '').trim();
@@ -3051,7 +3238,12 @@ export class HoneyData {
         const overridePrompt = this._getHoneyOverridePrompt(promptManager);
         const runtimeContext = this._buildLiveRuntimeContext(options);
         const honeyNickname = this._sanitizeInlineText(this.getHoneyUserNickname(), 24) || '你';
-        const safeUserMessage = this._sanitizeInlineText(options?.userMessage || '', 220);
+        const safeUserMessage = String(options?.userMessage || '')
+            .replace(/\r/g, '')
+            .split('\n')
+            .map(line => this._sanitizeInlineText(line, 220))
+            .filter(Boolean)
+            .join('\n');
         const safeUserMessageWithNick = this._formatLiveUserMessageForPrompt(safeUserMessage, honeyNickname);
         const historyTurns = this._normalizeContinuePromptTurns(options?.promptTurns);
         const isPrivateLive = String(options?.visibility || options?.currentScene?.visibility || '').trim() === 'private'
@@ -3376,12 +3568,12 @@ export class HoneyData {
 
         const giftsSection = this._extractSectionByPatternPairs(liveSection, [
             {
-                start: /(?:^|\n)\s*\[\s*打赏记录\s*\]\s*(?:\n|$)/i,
-                end: /(?:^|\n)\s*(?:\[\s*(?:直播剧情描写|评论区)\s*\]|直播剧情描写\s*[：:]|评论区\s*[：:]|\[\s*评论区\s*\])\s*/i
+                start: /(?:^|\n)\s*\[\s*打赏记录\s*\]\s*[：:]?\s*(?:\n|$)?/i,
+                end: /(?:^|\n)\s*(?:\[\s*(?:直播剧情描写|评论区)\s*\]\s*[：:]?|直播剧情描写\s*[：:]|评论区\s*[：:]|\[\s*评论区\s*\]\s*[：:]?)\s*/i
             },
             {
                 start: /(?:^|\n)\s*打赏记录\s*[：:]\s*/i,
-                end: /(?:^|\n)\s*(?:\[\s*(?:直播剧情描写|评论区)\s*\]|直播剧情描写\s*[：:]|评论区\s*[：:]|\[\s*评论区\s*\])\s*/i
+                end: /(?:^|\n)\s*(?:\[\s*(?:直播剧情描写|评论区)\s*\]\s*[：:]?|直播剧情描写\s*[：:]|评论区\s*[：:]|\[\s*评论区\s*\]\s*[：:]?)\s*/i
             }
         ]);
         if (giftsSection) {
@@ -3391,10 +3583,10 @@ export class HoneyData {
                 .filter(line => this._isHoneyGiftRecordLine(line));
         }
 
-        const commentHeaderPattern = /(?:^|\n)\s*(?:\[\s*评论区\s*\][^\n]*|评论区\s*[：:][^\n]*)(?:\n|$)/i;
+        const commentHeaderPattern = /(?:^|\n)\s*(?:\[\s*评论区\s*\]\s*[：:]?[^\n]*|评论区\s*[：:][^\n]*)(?:\n|$)/i;
 
         const storySection = this._extractSectionByPatternPairs(liveSection, [
-            { start: /(?:^|\n)\s*\[\s*直播剧情描写\s*\]\s*(?:\n|$)/i, end: commentHeaderPattern },
+            { start: /(?:^|\n)\s*\[\s*直播剧情描写\s*\]\s*[：:]?\s*(?:\n|$)?/i, end: commentHeaderPattern },
             { start: /(?:^|\n)\s*直播剧情描写\s*[：:]\s*/i, end: commentHeaderPattern }
         ]);
         if (storySection) {
@@ -3418,11 +3610,12 @@ export class HoneyData {
             { start: commentHeaderPattern, end: null }
         ]);
         if (commentsSection) {
-            const comments = commentsSection
-                .split('\n')
-                .map(line => this._normalizeCommentLine(line))
-                .filter(Boolean)
-                .slice(-24);
+            const comments = this._filterOutUserSpokenHoneyComments(
+                commentsSection
+                    .split('\n')
+                    .map(line => this._normalizeCommentLine(line))
+                    .filter(Boolean)
+            );
             if (comments.length > 0) {
                 data.comments = comments;
             }

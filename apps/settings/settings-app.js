@@ -117,8 +117,23 @@ export class SettingsApp {
         const currentTtsVolcCloneAppId = this._getTtsProviderValue('volcengine', 'clone-app-id', 'phone-tts-volc-clone-app-id');
         const isTtsMiniMaxSectionOpen = this.storage.get('phone-tts-minimax-section-open') === true;
         const isTtsVolcSectionOpen = this.storage.get('phone-tts-volc-section-open') === true;
+        const isTtsFallbackSectionOpen = this.storage.get('phone-tts-fallback-section-open') === true;
         const isTtsWechatSectionOpen = this.storage.get('phone-tts-wechat-section-open') === true;
         const isTtsHoneySectionOpen = this.storage.get('phone-tts-honey-section-open') === true;
+        const ttsProviderOptions = [
+            { id: 'minimax_cn', label: 'MiniMax 国内' },
+            { id: 'minimax_intl', label: 'MiniMax 国际' },
+            { id: 'openai', label: 'OpenAI' },
+            { id: 'volcengine', label: '豆包 / 火山引擎' }
+        ];
+        const currentGlobalTtsProvider = this._getCurrentTtsProvider();
+        const fallbackMaleProvider = String(this.storage.get('phone-tts-fallback-male-provider') || currentGlobalTtsProvider || 'minimax_cn').trim() || 'minimax_cn';
+        const fallbackFemaleProvider = String(this.storage.get('phone-tts-fallback-female-provider') || currentGlobalTtsProvider || 'minimax_cn').trim() || 'minimax_cn';
+        const fallbackMaleVoice = String(this.storage.get('phone-tts-fallback-male-voice') || '').trim();
+        const fallbackFemaleVoice = String(this.storage.get('phone-tts-fallback-female-voice') || '').trim();
+        const renderTtsProviderOptions = (selectedProvider = '') => ttsProviderOptions
+            .map(option => `<option value="${option.id}" ${selectedProvider === option.id ? 'selected' : ''}>${option.label}</option>`)
+            .join('');
         const isGeneralInteractionOpen = this.storage.get('phone-settings-general-interaction-open') === true;
         const isGeneralLimitsOpen = this.storage.get('phone-settings-general-limits-open') === true;
         const isGeneralPersonalizationOpen = this.storage.get('phone-settings-general-personalization-open') === true;
@@ -1054,6 +1069,38 @@ export class SettingsApp {
                                         </div>
                                         <button id="phone-tts-volc-clone-use" style="width: 100%; height: 30px; margin-top: 8px; border: 1px solid #d8d8d8; border-radius: 8px; background: #fafafa; color: #222; font-size: 12px; cursor: pointer;">设为当前音色</button>
                                         <div id="phone-tts-volc-clone-result" class="setting-desc" style="margin-top: 8px; min-height: 16px;"></div>
+                                    </div>
+                                </div>
+                            </details>
+
+                            <details data-tts-fold-key="phone-tts-fallback-section-open" ${isTtsFallbackSectionOpen ? 'open' : ''} style="margin: 8px 0 8px; border: 1px solid #ececec; border-radius: 10px; background: #fff; overflow: hidden;">
+                                <summary style="height: 38px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; list-style: none; font-size: 13px; font-weight: 700; color: #333; background: #fafafa;">
+                                    <span>全局兜底音色</span>
+                                    ${SETTINGS_FOLD_ARROW_HTML}
+                                </summary>
+                                <div style="padding: 10px 10px 4px;">
+                                    <div class="setting-desc" style="margin-bottom: 10px;">联系人或蜜语主播没有绑定专属音色时，会按角色性别调用这里的男/女兜底音色。</div>
+                                    <div class="setting-item" style="margin-top: 0;">
+                                        <div style="font-size: 13px; font-weight: 700; color: #333; margin-bottom: 8px;">男声兜底</div>
+                                        <select id="phone-tts-fallback-male-provider" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box;">
+                                            ${renderTtsProviderOptions(fallbackMaleProvider)}
+                                        </select>
+                                        <input type="text" id="phone-tts-fallback-male-voice"
+                                               value="${this._escapeHtml(fallbackMaleVoice)}"
+                                               placeholder="男声音色 ID"
+                                               style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; margin-top: 6px; box-sizing: border-box;">
+                                        <button id="phone-tts-fallback-male-preview" style="width: 100%; height: 30px; margin-top: 8px; border: 1px solid #d8d8d8; border-radius: 8px; background: #fafafa; color: #222; font-size: 12px; cursor: pointer;">试听男声兜底</button>
+                                    </div>
+                                    <div class="setting-item">
+                                        <div style="font-size: 13px; font-weight: 700; color: #333; margin-bottom: 8px;">女声兜底</div>
+                                        <select id="phone-tts-fallback-female-provider" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box;">
+                                            ${renderTtsProviderOptions(fallbackFemaleProvider)}
+                                        </select>
+                                        <input type="text" id="phone-tts-fallback-female-voice"
+                                               value="${this._escapeHtml(fallbackFemaleVoice)}"
+                                               placeholder="女声音色 ID"
+                                               style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; margin-top: 6px; box-sizing: border-box;">
+                                        <button id="phone-tts-fallback-female-preview" style="width: 100%; height: 30px; margin-top: 8px; border: 1px solid #d8d8d8; border-radius: 8px; background: #fafafa; color: #222; font-size: 12px; cursor: pointer;">试听女声兜底</button>
                                     </div>
                                 </div>
                             </details>
@@ -2654,6 +2701,12 @@ export class SettingsApp {
         const ttsVolcCloneStatusBtn = document.getElementById('phone-tts-volc-clone-status');
         const ttsVolcCloneUseBtn = document.getElementById('phone-tts-volc-clone-use');
         const ttsVolcCloneResult = document.getElementById('phone-tts-volc-clone-result');
+        const ttsFallbackMaleProvider = document.getElementById('phone-tts-fallback-male-provider');
+        const ttsFallbackMaleVoice = document.getElementById('phone-tts-fallback-male-voice');
+        const ttsFallbackMalePreviewBtn = document.getElementById('phone-tts-fallback-male-preview');
+        const ttsFallbackFemaleProvider = document.getElementById('phone-tts-fallback-female-provider');
+        const ttsFallbackFemaleVoice = document.getElementById('phone-tts-fallback-female-voice');
+        const ttsFallbackFemalePreviewBtn = document.getElementById('phone-tts-fallback-female-preview');
         const wechatCallAutoTtsToggle = document.getElementById('wechat-call-auto-tts');
         const honeyTtsEnabledToggle = document.getElementById('phone-honey-tts-enabled');
         const honeyTtsModeSelect = document.getElementById('phone-honey-tts-mode');
@@ -2783,6 +2836,13 @@ export class SettingsApp {
                 }
             });
         };
+        const saveTtsGenderFallback = async (gender, providerEl, voiceEl) => {
+            const safeGender = String(gender || '').trim() === 'male' ? 'male' : 'female';
+            const provider = String(providerEl?.value || this._getCurrentTtsProvider()).trim() || 'minimax_cn';
+            const voice = String(voiceEl?.value || '').trim();
+            await this.storage.set(`phone-tts-fallback-${safeGender}-provider`, provider);
+            await this.storage.set(`phone-tts-fallback-${safeGender}-voice`, voice);
+        };
 
         if (ttsProvider) ttsProvider.addEventListener('change', async (e) => {
             const val = e.target.value;
@@ -2875,6 +2935,34 @@ export class SettingsApp {
                 }
                 await saveVolcTtsVoice(voice);
                 await playTtsPreview('volcengine', voice || undefined, ttsVolcPreviewBtn);
+            });
+        }
+        if (ttsFallbackMaleProvider) ttsFallbackMaleProvider.addEventListener('change', async () => {
+            await saveTtsGenderFallback('male', ttsFallbackMaleProvider, ttsFallbackMaleVoice);
+        });
+        if (ttsFallbackMaleVoice) ttsFallbackMaleVoice.addEventListener('change', async () => {
+            await saveTtsGenderFallback('male', ttsFallbackMaleProvider, ttsFallbackMaleVoice);
+        });
+        if (ttsFallbackMalePreviewBtn) {
+            ttsFallbackMalePreviewBtn.addEventListener('click', async () => {
+                await saveTtsGenderFallback('male', ttsFallbackMaleProvider, ttsFallbackMaleVoice);
+                const provider = String(ttsFallbackMaleProvider?.value || this._getCurrentTtsProvider()).trim() || 'minimax_cn';
+                const voice = String(ttsFallbackMaleVoice?.value || '').trim();
+                await playTtsPreview(provider, voice || undefined, ttsFallbackMalePreviewBtn);
+            });
+        }
+        if (ttsFallbackFemaleProvider) ttsFallbackFemaleProvider.addEventListener('change', async () => {
+            await saveTtsGenderFallback('female', ttsFallbackFemaleProvider, ttsFallbackFemaleVoice);
+        });
+        if (ttsFallbackFemaleVoice) ttsFallbackFemaleVoice.addEventListener('change', async () => {
+            await saveTtsGenderFallback('female', ttsFallbackFemaleProvider, ttsFallbackFemaleVoice);
+        });
+        if (ttsFallbackFemalePreviewBtn) {
+            ttsFallbackFemalePreviewBtn.addEventListener('click', async () => {
+                await saveTtsGenderFallback('female', ttsFallbackFemaleProvider, ttsFallbackFemaleVoice);
+                const provider = String(ttsFallbackFemaleProvider?.value || this._getCurrentTtsProvider()).trim() || 'minimax_cn';
+                const voice = String(ttsFallbackFemaleVoice?.value || '').trim();
+                await playTtsPreview(provider, voice || undefined, ttsFallbackFemalePreviewBtn);
             });
         }
         if (ttsVolcCloneUploadBtn) {

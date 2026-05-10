@@ -18,6 +18,7 @@ export class ContactsView {
     constructor(wechatApp) {
         this.app = wechatApp;
         this.searchText = '';
+        this.groupsCollapsed = true;
     }
 
     _escapeAttr(value = '') {
@@ -143,8 +144,34 @@ export class ContactsView {
         }
     }
 
+    renderGroupChatRows(groupChats = null) {
+        const chats = Array.isArray(groupChats)
+            ? groupChats
+            : this.app.wechatData.getChatList()
+                .filter(chat => chat?.type === 'group')
+                .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'zh-CN'));
+
+        if (chats.length === 0) {
+            return '<div class="contacts-empty-row">暂无群聊</div>';
+        }
+
+        return chats.map(chat => `
+            <div class="contact-group-item" data-chat-id="${chat.id}">
+                <div class="contact-avatar">
+                    ${this.app.renderAvatar(chat.avatar, '👥', chat.name)}
+                </div>
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex:1; min-width:0;">
+                    <div class="contact-name" style="min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${chat.name}</div>
+                </div>
+            </div>
+        `).join('');
+    }
+
     render() {
         const contacts = this.app.wechatData.getContacts();
+        const groupChats = this.app.wechatData.getChatList()
+            .filter(chat => chat?.type === 'group')
+            .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'zh-CN'));
         const grouped = this.groupContacts(contacts);
 
         return `
@@ -164,12 +191,23 @@ export class ContactsView {
                             <div class="function-icon" style="background: rgba(255,255,255,0.6); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.3);">
                                 <i class="fa-solid fa-users" style="color: #666;"></i>
                             </div>
-                            <div class="function-name">群聊</div>
+                            <div class="function-name contacts-function-main">
+                                <span class="contacts-group-title">
+                                    群聊
+                                </span>
+                                <button type="button" class="contacts-group-create-btn" id="create-group-from-function" aria-label="新建群聊">+</button>
+                            </div>
                         </div>
                     </div>
                     
                     <!-- 联系人列表 -->
                     <div class="contacts-list">
+                        <div class="contacts-group" data-section="groups">
+                            ${this.groupsCollapsed ? '' : this.renderGroupChatRows(groupChats)}
+                        </div>
+                        <div class="contacts-group" data-section="contacts">
+                            <div class="group-letter">联系人</div>
+                        </div>
                         ${Object.keys(grouped).sort().map(letter => `
                             <div class="contacts-group">
                                 <div class="group-letter">${letter}</div>
@@ -253,9 +291,21 @@ export class ContactsView {
                 this.scrollToLetter(letter);
             });
         });
+        document.getElementById('create-group-from-function')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.showCreateGroupPage();
+        });
+        const groupsFunctionItem = document.querySelector('.function-item[data-func="groups"]');
+        if (groupsFunctionItem) {
+            groupsFunctionItem.onclick = (e) => {
+                if (e.target.closest('#create-group-from-function')) return;
+                this.toggleGroupSection();
+            };
+        }
+        this.bindGroupChatItems();
 
         // 联系人点击和长按
-        document.querySelectorAll('.contact-item').forEach(item => {
+        document.querySelectorAll('.contact-item[data-contact-id]').forEach(item => {
             let pressTimer;
             let isLongPress = false;
 
@@ -289,6 +339,7 @@ export class ContactsView {
 
         // 功能入口点击
         document.querySelectorAll('.function-item').forEach(item => {
+            if (item.dataset.func === 'groups') return;
             item.addEventListener('click', () => {
                 const func = item.dataset.func;
                 this.handleFunction(func);
@@ -357,15 +408,27 @@ export class ContactsView {
         }, 100);
     }
 
-    showEditContactPage(contactId) {
+    showEditContactPage(contactId, options = {}) {
         const contact = this.app.wechatData.getContact(contactId);
         if (!contact) return;
+        const returnToChatList = options?.returnToChatList === true;
+        const returnFromEditContact = () => {
+            if (returnToChatList) {
+                this.app.currentView = 'chats';
+                this.app.currentChat = null;
+            } else {
+                this.app.currentView = 'contacts';
+                this.app.currentChat = null;
+            }
+            this.app.render();
+        };
 
         const avatarHtml = this.app.renderAvatar(contact.avatar, '👤', contact.name);
         const currentTtsProvider = this._getCurrentTtsProvider();
         const contactTtsVoices = this._getContactTtsVoices(contact);
         const contactTtsProvider = String(contact.ttsProvider || '').trim();
         const legacyTtsVoice = String(contact.ttsVoice || '').trim();
+        const contactGender = String(this.app.wechatData?.getContactGender?.(contactId) || 'unknown').trim();
         const ttsHistoryOptions = this._getTtsVoiceHistoryOptions();
         const referenceImage = this._normalizeWechatReferenceImage(contact.naiReferenceImage || contact.referenceImage || '');
         const referenceEnabled = !!referenceImage && contact.naiReferenceEnabled !== false && contact.naiReferenceEnabled !== 'false';
@@ -431,6 +494,23 @@ export class ContactsView {
                                 margin-bottom: 6px;
                             ">
                             <div style="font-size: 11px; color: #999;">备注请直接写在昵称里（例如：张三（同事））</div>
+                        </div>
+
+                        <div style="margin-bottom: 10px;">
+                            <div style="font-size: 11px; color: #999; margin-bottom: 4px;">性别（用于未绑定音色时选择全局兜底）</div>
+                            <select id="edit-contact-gender-select" style="
+                                width: 100%;
+                                height: 30px;
+                                padding: 0 8px;
+                                border: 1px solid #e5e5e5;
+                                border-radius: 6px;
+                                font-size: 12px;
+                                background: #fafafa;
+                                box-sizing: border-box;
+                            ">
+                                <option value="female" ${contactGender !== 'male' ? 'selected' : ''}>女</option>
+                                <option value="male" ${contactGender === 'male' ? 'selected' : ''}>男</option>
+                            </select>
                         </div>
 
                         <div style="margin-top: 15px; border-top: 1px solid #f0f0f0; padding-top: 15px;">
@@ -586,8 +666,7 @@ export class ContactsView {
                 pendingReferenceCleanup.add(selectedReferenceImage);
             }
             cleanupReferenceImages(pendingReferenceCleanup);
-            this.app.currentView = 'contacts';
-            this.app.render();
+            returnFromEditContact();
         });
 
         // 🔥 下拉框选择后，自动把选中的音色填入输入框
@@ -737,6 +816,10 @@ export class ContactsView {
                 naiReferenceStrength: referenceStrengthValue,
                 naiReferenceInformationExtracted: 1
             });
+            this.app.wechatData.setContactGender?.(
+                contactId,
+                String(document.getElementById('edit-contact-gender-select')?.value || 'female').trim() === 'male' ? 'male' : 'female'
+            );
 
             this.app.wechatData.syncContactAvatar(contactId, selectedAvatar);
             if (oldAvatar && oldAvatar !== selectedAvatar) {
@@ -752,8 +835,7 @@ export class ContactsView {
             this.app.phoneShell.showNotification('保存成功', '联系人信息已更新', '✅');
 
             setTimeout(() => {
-                this.app.currentView = 'contacts';
-                this.app.render();
+                returnFromEditContact();
             }, 1000);
         });
     }
@@ -885,15 +967,52 @@ export class ContactsView {
         }
     }
 
+    bindGroupChatItems() {
+        document.querySelectorAll('.contact-group-item').forEach(item => {
+            item.onclick = () => {
+                const chatId = item.dataset.chatId;
+                this.openGroupChat(chatId);
+            };
+        });
+    }
+
+    toggleGroupSection() {
+        this.groupsCollapsed = !this.groupsCollapsed;
+        const groupSection = document.querySelector('.contacts-group[data-section="groups"]');
+        if (!groupSection) return;
+        groupSection.innerHTML = this.groupsCollapsed ? '' : this.renderGroupChatRows();
+        this.bindGroupChatItems();
+    }
+
+    openGroupChat(chatId) {
+        const chat = this.app.wechatData.getChat(chatId);
+        if (chat && chat.type === 'group') {
+            this.app.currentView = 'chats';
+            this.app.currentChat = chat;
+            this.app.wechatData.getMessages(chat.id);
+            this.app.render();
+        }
+    }
+
     handleFunction(func) {
         switch (func) {
             case 'new-friends':
                 this.showAddFriendPage();
                 break;
             case 'groups':
-                this.showCreateGroupPage();
+                this.toggleGroupSection();
                 break;
         }
+    }
+
+    scrollToGroupSection() {
+        const contactsList = document.querySelector('.contacts-scrollable');
+        const groupSection = document.querySelector('.contacts-group[data-section="groups"]');
+        if (!contactsList || !groupSection) return;
+        contactsList.scrollTo({
+            top: Math.max(0, groupSection.offsetTop - contactsList.offsetTop),
+            behavior: 'smooth'
+        });
     }
 
     showAddFriendPage() {

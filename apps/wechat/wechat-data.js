@@ -1464,7 +1464,8 @@ async loadContactsFromCharacter() {
                 avatar,
                 remark: options.remark || '',
                 letter: this.getFirstLetter(displayName),
-                relation
+                relation,
+                gender: this._normalizeGenderValue(options.gender)
             };
             this.data.contacts.push(newContact);
             existingContactKeys.add(key);
@@ -1475,9 +1476,17 @@ async loadContactsFromCharacter() {
             const result = ensureContact(contact?.name, {
                 avatar: contact?.avatar || '',
                 relation: contact?.relation || '',
-                remark: contact?.remark || ''
+                remark: contact?.remark || '',
+                gender: contact?.gender || ''
             });
             if (result?.created) addedCount++;
+            const parsedGender = this._normalizeGenderValue(contact?.gender);
+            if (result?.contact && parsedGender !== 'unknown') {
+                const currentGender = this.getContactGender(result.contact.id || result.contact.name);
+                if (result.created || currentGender === 'unknown') {
+                    this.setContactGender(result.contact.id || result.contact.name, parsedGender);
+                }
+            }
         });
         
         // ✅ 添加群聊（仅补全缺失，不覆盖已有）
@@ -1739,6 +1748,50 @@ parseAIResponse(text) {
     }
     const initText = initMatch[1];
 
+    const normalizeParsedGender = (value = '') => {
+        const raw = String(value || '').trim().toLowerCase();
+        if (/^(男|男性|男生|男孩|male|m|boy)$/.test(raw)) return 'male';
+        if (/^(女|女性|女生|女孩|female|f|girl)$/.test(raw)) return 'female';
+        return 'unknown';
+    };
+    const stripInlineGender = (value = '') => {
+        let textValue = String(value || '').trim();
+        textValue = textValue.replace(/\s*(?:-|—|–|：|:|=|＝)\s*(?:性别\s*[:：]?\s*)?(男|男性|男生|男孩|女|女性|女生|女孩|male|female|m|f|boy|girl)\s*$/i, '').trim();
+        textValue = textValue.replace(/\s*(?:性别\s*[:：]\s*)(男|男性|男生|男孩|女|女性|女生|女孩|male|female|m|f|boy|girl)\s*$/i, '').trim();
+        textValue = textValue.replace(/\s*性别\s*$/i, '').trim();
+        return textValue;
+    };
+    const parseContactLine = (line = '') => {
+        let rawLine = String(line || '').trim();
+        if (!rawLine) return null;
+
+        let gender = 'unknown';
+        const genderMatch = rawLine.match(/\s*(?:-|—|–|：|:|=|＝)\s*(?:性别\s*[:：]?\s*)?(男|男性|男生|男孩|女|女性|女生|女孩|male|female|m|f|boy|girl)\s*$/i)
+            || rawLine.match(/\s*(?:性别\s*[:：]\s*)(男|男性|男生|男孩|女|女性|女生|女孩|male|female|m|f|boy|girl)\s*$/i);
+        if (genderMatch) {
+            gender = normalizeParsedGender(genderMatch[1]);
+            rawLine = stripInlineGender(rawLine);
+        }
+
+        let name = rawLine;
+        let relation = '';
+        const relationMatch = rawLine.match(/^(.+?)\s*[（(]\s*([^()（）]+)\s*[）)]\s*$/);
+        if (relationMatch) {
+            name = relationMatch[1].trim();
+            relation = relationMatch[2].trim();
+        }
+        name = stripInlineGender(name);
+        relation = stripInlineGender(relation);
+        if (!name) return null;
+        return {
+            name,
+            avatar: '',
+            relation,
+            remark: '',
+            gender
+        };
+    };
+
     const groupBlockMatch = initText.match(/---【微信群】---([\s\S]*?)(?=---【微信好友】---)/);
     if (!groupBlockMatch) {
         throw new Error('未找到微信群段落');
@@ -1747,6 +1800,7 @@ parseAIResponse(text) {
         return String(raw || '')
             .split(/[、,，/|；;]+/)
             .map(s => s.trim())
+            .map(s => stripInlineGender(s))
             .map(s => s.replace(/\s*[（(][^()（）]+[）)]\s*$/g, '').trim())
             .filter(Boolean);
     };
@@ -1759,7 +1813,7 @@ parseAIResponse(text) {
             let members = [];
 
             // 格式1：群名（成员1、成员2）/ 群名（成员1）
-            const withParenMatch = rawLine.match(/^(.+?)\s*[（(]\s*([^()（）]+)\s*[）)]\s*$/);
+            const withParenMatch = rawLine.match(/^(.+?)\s*[（(]\s*([\s\S]+)\s*[）)]\s*$/);
             if (withParenMatch) {
                 name = withParenMatch[1].trim();
                 members = parseMemberList(withParenMatch[2]);
@@ -1788,22 +1842,7 @@ parseAIResponse(text) {
         .split('\n')
         .map(line => line.replace(/^\s*\d+\.\s*/, '').replace(/^[\-•]\s*/, '').trim())
         .filter(Boolean)
-        .map(rawLine => {
-            let name = rawLine;
-            let relation = '';
-            const relationMatch = rawLine.match(/^(.+?)\s*[（(]\s*([^()（）]+)\s*[）)]\s*$/);
-            if (relationMatch) {
-                name = relationMatch[1].trim();
-                relation = relationMatch[2].trim();
-            }
-            if (!name) return null;
-            return {
-                name,
-                avatar: '',
-                relation,
-                remark: ''
-            };
-        })
+        .map(rawLine => parseContactLine(rawLine))
         .filter(Boolean);
 
     const timeBlockMatch = initText.match(/---【初始时间】---([\s\S]*)/);

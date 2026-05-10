@@ -574,6 +574,38 @@ export class PhoneShell {
      bindPanelEvents() {
         // 🔥 初始绑定 Home 指示器
         this.bindHomeIndicator();
+        this.bindPhoneInputIsolation();
+    }
+
+    bindPhoneInputIsolation() {
+        if (!this.container || this.container._phoneInputIsolationBound) return;
+        this.container._phoneInputIsolationBound = true;
+
+        const isPhoneEditableTarget = (target) => {
+            if (!target || typeof target.closest !== 'function') return false;
+            const editable = target.closest('input, textarea, select, [contenteditable="true"], [contenteditable="plaintext-only"], [contenteditable]');
+            return !!editable && !!editable.closest('.phone-screen');
+        };
+        const isolate = (event) => {
+            if (!isPhoneEditableTarget(event.target)) return;
+            event.stopPropagation();
+        };
+        [
+            'beforeinput',
+            'input',
+            'change',
+            'keydown',
+            'keyup',
+            'keypress',
+            'compositionstart',
+            'compositionupdate',
+            'compositionend',
+            'paste',
+            'cut',
+            'copy'
+        ].forEach((eventName) => {
+            this.container.addEventListener(eventName, isolate);
+        });
     }
     
     getCurrentTime() {
@@ -685,13 +717,25 @@ export class PhoneShell {
         closeBtn?.addEventListener('touchstart', closeFromControl, { passive: false });
         closeBtn?.addEventListener('click', closeFromControl);
         const downloadBtn = overlay.querySelector('.phone-image-viewer-download');
+        let lastDownloadTriggerTs = 0;
+        let downloadInFlight = false;
         const downloadFromControl = async (e) => {
             e?.preventDefault?.();
             e?.stopPropagation?.();
-            await this._downloadImageFromViewer(safeUrl, downloadName);
+            const now = Date.now();
+            if (downloadInFlight || now - lastDownloadTriggerTs < 800) return;
+            lastDownloadTriggerTs = now;
+            downloadInFlight = true;
+            if (downloadBtn) downloadBtn.disabled = true;
+            try {
+                await this._downloadImageFromViewer(safeUrl, downloadName);
+            } finally {
+                downloadInFlight = false;
+                if (downloadBtn?.isConnected) {
+                    downloadBtn.disabled = false;
+                }
+            }
         };
-        downloadBtn?.addEventListener('pointerdown', downloadFromControl);
-        downloadBtn?.addEventListener('touchstart', downloadFromControl, { passive: false });
         downloadBtn?.addEventListener('click', downloadFromControl);
         overlay.addEventListener('wheel', (e) => e.stopPropagation(), { passive: true });
         overlay.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });

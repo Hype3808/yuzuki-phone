@@ -160,20 +160,7 @@ export class WeiboApp {
         // 根据当前视图决定返回行为
         switch (this.weiboView.currentView) {
             case 'postDetail':
-                // 从微信卡片跳入微博正文：右滑直接回微信聊天
-                if (this.weiboView.entrySource?.appId === 'wechat') {
-                    this.returnToWechatFromCard();
-                    break;
-                }
-
-                this.weiboView.currentPostId = null;
-                this.weiboView.currentPostMode = null;
-                if (this.weiboView.currentHotSearchTitle) {
-                    this.weiboView.currentView = 'hotSearchDetail';
-                } else {
-                    this.weiboView.currentView = 'home';
-                }
-                this.weiboView.render();
+                this.weiboView.returnFromPostDetail?.(this.weiboView.currentPostMode);
                 break;
 
             case 'hotSearchDetail':

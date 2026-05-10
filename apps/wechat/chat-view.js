@@ -339,14 +339,43 @@ export class ChatView {
     }
 
     _getGlobalTtsVoice() {
+        return this._getGlobalTtsVoiceConfig().voice;
+    }
+
+    _getGlobalTtsVoiceConfig() {
         const storage = window.VirtualPhone?.storage;
         const provider = String(storage?.get?.('phone-tts-provider') || 'minimax_cn').trim() || 'minimax_cn';
         const scopedVoice = String(storage?.get?.(`phone-tts-${provider}-voice`) || '').trim();
-        if (scopedVoice) return scopedVoice;
+        if (scopedVoice) return { provider, voice: scopedVoice, source: 'global' };
         if (provider !== 'volcengine') {
-            return String(storage?.get?.('phone-tts-voice') || '').trim();
+            return {
+                provider,
+                voice: String(storage?.get?.('phone-tts-voice') || '').trim(),
+                source: 'global'
+            };
         }
+        return { provider, voice: '', source: 'global' };
+    }
+
+    _normalizeTtsGender(gender = '') {
+        const raw = String(gender || '').trim().toLowerCase();
+        if (raw === 'male' || raw === 'm' || raw === '男') return 'male';
+        if (raw === 'female' || raw === 'f' || raw === '女') return 'female';
         return '';
+    }
+
+    _getGenderFallbackTtsVoice(gender = '') {
+        const storage = window.VirtualPhone?.storage;
+        const safeGender = this._normalizeTtsGender(gender);
+        const globalConfig = this._getGlobalTtsVoiceConfig();
+        if (!safeGender) return globalConfig;
+
+        const provider = String(storage?.get?.(`phone-tts-fallback-${safeGender}-provider`) || globalConfig.provider || 'minimax_cn').trim() || 'minimax_cn';
+        const voice = String(storage?.get?.(`phone-tts-fallback-${safeGender}-voice`) || '').trim();
+        if (voice) {
+            return { provider, voice, source: `fallback_${safeGender}` };
+        }
+        return globalConfig;
     }
 
     _buildWechatTtsCacheKey({ messageId = '', provider = '', voice = '', text = '' } = {}) {
@@ -383,7 +412,7 @@ export class ChatView {
         }
     }
 
-    _resolveWechatBoundVoiceByName(name, { allowGlobalFallback = false } = {}) {
+    _resolveWechatBoundVoiceByName(name, { allowGlobalFallback = false, allowGenderFallback = false } = {}) {
         const wechatData = this.app?.wechatData;
         const resolved = wechatData?.resolveTtsVoiceByName?.(name, { includeChats: true }) || null;
         const voice = String(resolved?.voice || '').trim();
@@ -391,15 +420,33 @@ export class ChatView {
             return {
                 voice,
                 provider: String(resolved?.provider || '').trim(),
-                contact: resolved.contact || null
+                contact: resolved.contact || null,
+                source: 'bound'
+            };
+        }
+
+        if (allowGenderFallback) {
+            const gender = this._normalizeTtsGender(
+                wechatData?.getContactGender?.(resolved?.contact?.id || name)
+                || resolved?.contact?.gender
+                || ''
+            );
+            const fallback = this._getGenderFallbackTtsVoice(gender);
+            return {
+                voice: String(fallback.voice || '').trim(),
+                provider: String(fallback.provider || resolved?.provider || '').trim(),
+                contact: resolved?.contact || null,
+                source: fallback.source || 'global'
             };
         }
 
         if (allowGlobalFallback) {
+            const fallback = this._getGlobalTtsVoiceConfig();
             return {
-                voice: this._getGlobalTtsVoice(),
-                provider: String(window.VirtualPhone?.storage?.get('phone-tts-provider') || '').trim(),
-                contact: resolved?.contact || null
+                voice: fallback.voice,
+                provider: fallback.provider,
+                contact: resolved?.contact || null,
+                source: fallback.source
             };
         }
 
@@ -434,8 +481,8 @@ export class ChatView {
         const safeSender = String(senderName || '').trim() || '当前联系人';
         const title = scene === 'call' ? '静音警告' : '无法播放';
         const message = scene === 'call'
-            ? `[${safeSender}] 未绑定专属音色，无法发声`
-            : `请先在通讯录编辑[${safeSender}]，绑定专属音色`;
+            ? `[${safeSender}] 未绑定专属音色，且没有可用的全局兜底音色`
+            : `请先在通讯录编辑[${safeSender}]绑定音色，或在设置里填写全局兜底音色`;
         this.app?.phoneShell?.showNotification(title, message, '⚠️');
         return true;
     }
@@ -721,6 +768,37 @@ export class ChatView {
 
     _resetAiReplyTimeCursor() {
         this._aiReplyTimeCursor = null;
+        this._aiReplyTimestampCursor = null;
+    }
+
+    _formatWechatTimeFromTimestamp(timestamp) {
+        const dateObj = new Date(Number(timestamp || 0));
+        if (!Number.isFinite(dateObj.getTime())) return '';
+        return `${String(dateObj.getHours()).padStart(2, '0')}:${String(dateObj.getMinutes()).padStart(2, '0')}`;
+    }
+
+    _formatWechatDateFromTimestamp(timestamp) {
+        const dateObj = new Date(Number(timestamp || 0));
+        if (!Number.isFinite(dateObj.getTime())) return '';
+        return `${dateObj.getFullYear()}年${String(dateObj.getMonth() + 1).padStart(2, '0')}月${String(dateObj.getDate()).padStart(2, '0')}日`;
+    }
+
+    _getWechatWeekdayFromTimestamp(timestamp, fallback = '星期一') {
+        const dateObj = new Date(Number(timestamp || 0));
+        if (!Number.isFinite(dateObj.getTime())) return fallback || '星期一';
+        const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+        return weekdays[dateObj.getDay()] || fallback || '星期一';
+    }
+
+    _getWechatReplySecondsToAdd(content = '', { isFirstInReplyBatch = false } = {}) {
+        const text = String(content || '').replace(/\s+/g, '').trim();
+        if (isFirstInReplyBatch) {
+            return text.length <= 12 ? 6 + Math.floor(Math.random() * 10) : 12 + Math.floor(Math.random() * 18);
+        }
+        if (!text) return 3 + Math.floor(Math.random() * 4);
+        const readingSeconds = Math.ceil(text.length * 0.9);
+        const randomThinkSeconds = 3 + Math.floor(Math.random() * 8);
+        return Math.max(4, Math.min(55, readingSeconds + randomThinkSeconds));
     }
 
     _isShortWechatReplyForTimeline(content = '') {
@@ -783,6 +861,16 @@ export class ChatView {
         if (!cursor?.time || !cursor?.date) {
             cursor = timeManager.getCurrentStoryTime();
         }
+        const cursorTimestamp = Number(this._aiReplyTimestampCursor || cursor.timestamp || 0);
+        if (Number.isFinite(cursorTimestamp) && cursorTimestamp > 0) {
+            cursor = {
+                ...cursor,
+                timestamp: cursorTimestamp,
+                time: this._formatWechatTimeFromTimestamp(cursorTimestamp) || cursor.time,
+                date: this._formatWechatDateFromTimestamp(cursorTimestamp) || cursor.date,
+                weekday: this._getWechatWeekdayFromTimestamp(cursorTimestamp, cursor.weekday)
+            };
+        }
 
         // 线上微信聊天统一由插件推进时间，忽略 AI 输出的显式时间，避免模型乱算时间造成跳时序。
         const hasExplicitTime = false;
@@ -826,16 +914,31 @@ export class ChatView {
         if (typeof timeManager.addMinutesToStoryTime === 'function') {
             nextTime = timeManager.addMinutesToStoryTime(cursor, minutesToAdd);
         }
+        let nextTimestamp = Number(nextTime?.timestamp || cursor?.timestamp || 0);
+        if (Number.isFinite(nextTimestamp) && nextTimestamp > 0) {
+            nextTimestamp += this._getWechatReplySecondsToAdd(contentText, { isFirstInReplyBatch }) * 1000;
+            nextTime = {
+                ...nextTime,
+                timestamp: nextTimestamp,
+                time: this._formatWechatTimeFromTimestamp(nextTimestamp) || nextTime?.time || cursor?.time,
+                date: this._formatWechatDateFromTimestamp(nextTimestamp) || nextTime?.date || cursor?.date,
+                weekday: this._getWechatWeekdayFromTimestamp(nextTimestamp, nextTime?.weekday || cursor?.weekday)
+            };
+        }
 
         messageObj.time = nextTime?.time || cursor?.time || messageObj.time;
         messageObj.date = messageObj.date || nextTime?.date || cursor?.date;
         messageObj.weekday = messageObj.weekday || nextTime?.weekday || cursor?.weekday;
+        if (Number.isFinite(nextTimestamp) && nextTimestamp > 0) {
+            messageObj.timestamp = nextTimestamp;
+        }
 
         if (typeof timeManager.setTime === 'function' && messageObj.time && messageObj.date) {
             timeManager.setTime(messageObj.time, messageObj.date, messageObj.weekday || null);
         }
 
         this._aiReplyTimeCursor = timeManager.getCurrentStoryTime();
+        this._aiReplyTimestampCursor = Number(messageObj.timestamp || nextTime?.timestamp || 0) || null;
     }
 renderChatRoom(chat) {
         const messages = this.app.wechatData.getMessages(chat.id);
@@ -4037,13 +4140,13 @@ renderChatRoom(chat) {
                     const senderEl = msgNode.querySelector('.message-sender');
                     if (senderEl) senderName = senderEl.innerText;
 
-                    const { voice, provider } = this._resolveWechatBoundVoiceByName(senderName);
+                    const { voice, provider } = this._resolveWechatBoundVoiceByName(senderName, { allowGenderFallback: true });
                     if (voice) {
                         finalVoice = voice;
                         finalProvider = provider || finalProvider;
                         this._clearMissingBoundVoiceWarn(senderName, { scene: 'chat' });
                     } else {
-                        // ❌ 没有绑定音色，强制拦截并弹窗
+                        // 没有绑定音色且兜底音色也未配置时才拦截
                         this._notifyMissingBoundVoiceOnce(senderName, { scene: 'chat' });
                         return; // 中止播放
                     }
@@ -4486,12 +4589,24 @@ renderChatRoom(chat) {
 
             let aiRawText = this._extractWechatTagPayloadOrSelf(aiResponse);
             
-            // 🔥 新增：拦截线下联动标签
             let triggerOffline = false;
-            if (aiRawText.includes('[转线下]')) {
-                triggerOffline = true;
-                aiRawText = aiRawText.replace(/\[转线下\]/g, '').trim();
-            }
+            const hasOfflineTransferTag = (value = '') => /\[转线下\]/.test(String(value || ''));
+            const stripOfflineTransferTag = (value = '') => String(value || '').replace(/\[转线下\]/g, '').trim();
+            const messageHasOfflineTransferTag = (message) => hasOfflineTransferTag(message?.content) || hasOfflineTransferTag(message?.specialMessage?.content);
+            const stripOfflineTransferTagFromMessage = (message) => {
+                if (!message) return message;
+                const next = { ...message };
+                if (typeof next.content === 'string') {
+                    next.content = stripOfflineTransferTag(next.content);
+                }
+                if (next.specialMessage && typeof next.specialMessage.content === 'string') {
+                    next.specialMessage = {
+                        ...next.specialMessage,
+                        content: stripOfflineTransferTag(next.specialMessage.content)
+                    };
+                }
+                return next;
+            };
 
             // 兼容联系人分隔符：---张三--- / ——张三—— / －－张三－－ 等
             aiRawText = aiRawText.replace(
@@ -4515,6 +4630,40 @@ renderChatRoom(chat) {
                 const right = normalizeWechatSingleName(b);
                 return !!left && !!right && left === right;
             };
+            const getAllowedSingleChatCommonGroup = (name) => {
+                if (isGroupChat) return null;
+                const targetKey = normalizeWechatWindowName(name);
+                if (!targetKey) return null;
+                const allChats = this.app.wechatData.getChatList();
+                const currentSingleName = String(savedChatName || context.name2 || '').trim();
+                const currentSingleKey = normalizeWechatSingleName(currentSingleName);
+                return allChats.find((chat) => {
+                    if (chat?.type !== 'group' || normalizeWechatWindowName(chat.name) !== targetKey) return false;
+                    const members = Array.isArray(chat.members) && chat.members.length > 0
+                        ? chat.members
+                        : this._getGroupChatParticipants(chat);
+                    return members.some(member => normalizeWechatSingleName(member) === currentSingleKey);
+                }) || null;
+            };
+            const filterSingleChatCommonGroupReplies = (messages = []) => {
+                const expectedSender = String(savedChatName || context.name2 || '').trim();
+                if (!expectedSender) return [];
+                return (messages || [])
+                    .map((message) => {
+                        const rawSender = String(message?.sender || '').trim();
+                        const content = String(message?.content || message?.specialMessage?.content || '').trim();
+                        if (!content && !message?.specialMessage) return null;
+                        if (rawSender && !isSameWechatSingleName(rawSender, expectedSender)) {
+                            console.warn('⚠️ [微信单聊] 已丢弃共同群聊里的非当前好友发言:', {
+                                currentChat: expectedSender,
+                                sender: rawSender
+                            });
+                            return null;
+                        }
+                        return { ...message, sender: expectedSender, content };
+                    })
+                    .filter(Boolean);
+            };
             const normalizeInlineSingleReply = (message) => {
                 if (!message || isGroupChat) return message;
                 const expectedSender = String(savedChatName || context.name2 || '').trim();
@@ -4523,6 +4672,22 @@ renderChatRoom(chat) {
                 const next = { ...message, sender: expectedSender };
                 next.content = String(next.content || '').trim();
                 return next;
+            };
+            const filterInlineSingleReply = (message) => {
+                if (!message || isGroupChat) return message;
+                const expectedSender = String(savedChatName || context.name2 || '').trim();
+                const rawSender = String(message.sender || '').trim();
+                const content = String(message.content || message.specialMessage?.content || '').trim();
+                if (!content && !message.specialMessage) return null;
+                if (!expectedSender) return { ...message, content };
+                if (rawSender && !isSameWechatSingleName(rawSender, expectedSender)) {
+                    console.warn('⚠️ [微信单聊] 已丢弃非当前好友发言:', {
+                        currentChat: expectedSender,
+                        sender: rawSender
+                    });
+                    return null;
+                }
+                return { ...message, sender: expectedSender, content };
             };
             const currentGroupChat = targetChat || this.app.currentChat || { id: savedChatId, name: savedChatName, type: 'group' };
             const currentGroupParticipants = isGroupChat
@@ -4608,6 +4773,33 @@ renderChatRoom(chat) {
                         if (isCurrentChat) {
                             parsedMessages.push(...extractedMsgs);
                         } else {
+                            if (!isGroupChat) {
+                                const allowedCommonGroup = getAllowedSingleChatCommonGroup(targetName);
+                                if (!allowedCommonGroup) {
+                                    console.warn('⚠️ [微信单聊] 已丢弃非当前窗口输出:', {
+                                        currentChat: savedChatName,
+                                        targetName
+                                    });
+                                    return;
+                                }
+                                const groupMsgs = filterSingleChatCommonGroupReplies(extractedMsgs);
+                                if (groupMsgs.length === 0) {
+                                    console.warn('⚠️ [微信单聊] 共同群聊输出无有效当前好友发言，已跳过:', {
+                                        currentChat: savedChatName,
+                                        targetName
+                                    });
+                                    return;
+                                }
+                                if (!backgroundMessages[allowedCommonGroup.name]) backgroundMessages[allowedCommonGroup.name] = [];
+                                backgroundMessages[allowedCommonGroup.name].push(...groupMsgs);
+                                backgroundGroupHints[allowedCommonGroup.name] = true;
+                                console.log('✅ [微信单聊] 已转发当前好友消息到共同群聊:', {
+                                    currentChat: savedChatName,
+                                    groupName: allowedCommonGroup.name,
+                                    count: groupMsgs.length
+                                });
+                                return;
+                            }
                             if (!backgroundMessages[targetName]) backgroundMessages[targetName] = [];
                             backgroundMessages[targetName].push(...extractedMsgs);
                             if (blockDeclaredGroup) {
@@ -4704,14 +4896,25 @@ renderChatRoom(chat) {
             });
             if (!isGroupChat) {
                 parsedMessages = parsedMessages
-                    .map(normalizeInlineSingleReply)
-                    .filter(item => String(item?.content || item?.specialMessage?.content || '').trim() || item?.specialMessage);
+                    .map(filterInlineSingleReply)
+                    .filter(Boolean)
+                    .map(normalizeInlineSingleReply);
+                triggerOffline = parsedMessages.some(messageHasOfflineTransferTag);
             } else {
                 parsedMessages = this._filterGroupMessagesByParticipants(parsedMessages, currentGroupParticipants, savedChatName);
             }
+            parsedMessages = parsedMessages
+                .map(stripOfflineTransferTagFromMessage)
+                .filter(item => String(item?.content || item?.specialMessage?.content || '').trim() || item?.specialMessage);
+            Object.keys(backgroundMessages).forEach(chatName => {
+                backgroundMessages[chatName] = (backgroundMessages[chatName] || [])
+                    .map(stripOfflineTransferTagFromMessage)
+                    .filter(item => String(item?.content || item?.specialMessage?.content || '').trim() || item?.specialMessage);
+            });
 
             // 处理后台窗口消息 (静默存入，红点提示)
-            for (const [targetName, msgs] of Object.entries(backgroundMessages)) {
+            for (const [targetName, rawMsgs] of Object.entries(backgroundMessages)) {
+                let msgs = Array.isArray(rawMsgs) ? rawMsgs : [];
                 if (msgs.length === 0) continue;
 
                 const allChats = this.app.wechatData.getChatList();
@@ -5453,69 +5656,64 @@ renderChatRoom(chat) {
         // 🔥 放在提示词上面，让AI先看到历史记录再看规则
         // ========================================
         const allChats = this.app.wechatData.getChatList();
-        const isolateCurrentChatStrictly = true;
         let relatedContextStr = '';
+        let commonGroupNamesForSingleChat = [];
+        let commonGroupListForSingleChat = '';
 
-        if (!callMode && !isolateCurrentChatStrictly) {
-            if (isGroupChat) {
-                // 在群聊中：查找群成员的单聊记录
-                const singleChatLimit = parseInt(storage?.get('wechat-single-chat-limit')) || 200;
-                const relatedSingleChats = allChats.filter(c => c.type !== 'group' && groupMembersArray.includes(c.name));
+        if (!callMode && !isGroupChat) {
+            // 单聊只补充“共同群聊”作为参考；群聊绝不读取任何私聊记录。
+            const normalizeCommonGroupName = (value) => String(value || '')
+                .trim()
+                .replace(/\s+/g, '')
+                .replace(/[（(][^（）()]*[）)]/g, '')
+                .toLowerCase();
+            const groupChatLimit = parseInt(storage?.get('wechat-group-chat-limit')) || 200;
+            const currentChatName = targetChat?.name || charName;
+            const currentChatKey = normalizeCommonGroupName(currentChatName);
+            const relatedGroupChats = allChats.filter((chat) => {
+                if (chat?.type !== 'group') return false;
+                const members = Array.isArray(chat.members) && chat.members.length > 0
+                    ? chat.members
+                    : this._getGroupChatParticipants(chat);
+                return members.some(member => normalizeCommonGroupName(member) === currentChatKey);
+            });
+            const relatedGroupMeta = relatedGroupChats
+                .map((chat) => {
+                    const name = String(chat?.name || '').trim();
+                    const members = (Array.isArray(chat?.members) && chat.members.length > 0
+                        ? chat.members
+                        : this._getGroupChatParticipants(chat))
+                        .map(member => String(member || '').trim())
+                        .filter(Boolean);
+                    return { chat, name, members };
+                })
+                .filter(item => item.name);
+            commonGroupNamesForSingleChat = relatedGroupMeta.map(item => item.name);
+            commonGroupListForSingleChat = relatedGroupMeta
+                .map(item => `${item.name}${item.members.length > 0 ? `(${item.members.join('、')})` : ''}`)
+                .join('、');
 
-                if (relatedSingleChats.length > 0) {
-                    relatedContextStr += '【补充上下文：相关私聊记录】\n';
-                    relatedContextStr += '说明：以下是部分群成员与用户的最近私聊记录。\n⚠️ 严厉警告：私聊是绝对保密的！其他群成员绝对不知道私聊内容。请在群里发言时严格保持信息隔离，但你可以隐晦地暗示你们的私聊。\n\n';
+            if (relatedGroupChats.length > 0) {
+                relatedContextStr += '【补充上下文：共同群聊参考】\n';
 
-                    relatedSingleChats.forEach(c => {
-                        const msgs = this.app.wechatData.getMessages(c.id).slice(-singleChatLimit);
-                        if (msgs.length > 0) {
-                            relatedContextStr += `--- 用户与 ${c.name} 的私聊 ---\n`;
-                            let lastDate = null;
-                            msgs.forEach(m => {
-                                // 🔥 添加日期分隔
-                                if (m.date && m.date !== lastDate) {
-                                    relatedContextStr += `[${m.date}]\n`;
-                                    lastDate = m.date;
-                                }
-                                const speaker = m.from === 'me' ? userName : c.name;
-                                let text = this._formatMessageContentForPrompt(m);
-                                if (m.quote) text = `「引用 ${m.quote.sender}: ${m.quote.content}」 ${text}`;
-                                relatedContextStr += `[${m.time || ''}] ${speaker}: ${text}\n`;
-                            });
-                            relatedContextStr += '\n';
-                        }
-                    });
-                }
-            } else {
-                // 在单聊中：查找两人共同参与的群聊记录
-                const groupChatLimit = parseInt(storage?.get('wechat-group-chat-limit')) || 200;
-                const currentChatName = targetChat?.name || charName;
-                const relatedGroupChats = allChats.filter(c => c.type === 'group' && c.members && c.members.includes(currentChatName));
-
-                if (relatedGroupChats.length > 0) {
-                    relatedContextStr += '【补充上下文：共同群聊记录】\n';
-                    relatedContextStr += `说明：以下是用户与 ${currentChatName} 共同参与的群聊最近记录。你们可以基于群里刚刚发生的事情进行私聊拓展（例如吐槽群里的话题）。\n\n`;
-
-                    relatedGroupChats.forEach(c => {
-                        const msgs = this.app.wechatData.getMessages(c.id).slice(-groupChatLimit);
-                        if (msgs.length > 0) {
-                            relatedContextStr += `--- 群聊：${c.name} ---\n`;
-                            let lastDate = null;
-                            msgs.forEach(m => {
-                                // 🔥 添加日期分隔
-                                if (m.date && m.date !== lastDate) {
-                                    relatedContextStr += `[${m.date}]\n`;
-                                    lastDate = m.date;
-                                }
-                                const speaker = m.from === 'me' ? userName : (m.from === 'system' ? '系统' : (m.from || '群成员'));
-                                let text = this._formatMessageContentForPrompt(m);
-                                if (m.quote) text = `「引用 ${m.quote.sender}: ${m.quote.content}」 ${text}`;
-                                relatedContextStr += `[${m.time || ''}] ${speaker}: ${text}\n`;
-                            });
-                            relatedContextStr += '\n';
-                        }
-                    });
-                }
+                relatedGroupChats.forEach(c => {
+                    const msgs = this.app.wechatData.getMessages(c.id).slice(-groupChatLimit);
+                    if (msgs.length > 0) {
+                        relatedContextStr += `--- 共同群聊参考：${c.name} ---\n`;
+                        let lastDate = null;
+                        msgs.forEach(m => {
+                            if (m.date && m.date !== lastDate) {
+                                relatedContextStr += `[${m.date}]\n`;
+                                lastDate = m.date;
+                            }
+                            const speaker = m.from === 'me' ? userName : (m.from === 'system' ? '系统' : (m.from || '群成员'));
+                            let text = this._formatMessageContentForPrompt(m);
+                            if (m.quote) text = `「引用 ${m.quote.sender}: ${m.quote.content}」 ${text}`;
+                            relatedContextStr += `[${m.time || ''}] ${speaker}: ${text}\n`;
+                        });
+                        relatedContextStr += '\n';
+                    }
+                });
             }
         }
 
@@ -5592,6 +5790,8 @@ renderChatRoom(chat) {
                     const chatName = targetChat?.name || charName;
                     systemPrompt = systemPrompt
                         .replace(/\{\{chatName\}\}/g, chatName)
+                        .replace(/\{\{commonGroupNames\}\}/g, commonGroupNamesForSingleChat.length > 0 ? commonGroupNamesForSingleChat.join('、') : '无')
+                        .replace(/\{\{commonGroupList\}\}/g, commonGroupListForSingleChat || '无')
                         .replace(/\{\{customEmojiList\}\}/g, customEmojiList);
                 }
             } catch (e) {
@@ -5833,8 +6033,8 @@ renderChatRoom(chat) {
                 finalUserContent += `\n- 【用户最新输入】是“${userName}”刚刚发出的消息，只能作为被回复的内容；禁止把“${userName}”当成聊天对象、联系人、窗口名或回复发送者，禁止输出“${userName}:”、用户:、玩家:。`;
                 finalUserContent += '\n- 单聊输出区块必须是当前窗口名，且每条消息发送者必须是当前聊天对象；禁止让其他人或{{user}}在当前单聊里发言。';
                 finalUserContent += '\n- 微信消息内容必须是角色真实打进聊天框里的文字；禁止写动作、环境、神态、心理、写字过程、语气说明，禁止出现“顿了顿/指尖悬停/又补了一条/语气里”等叙事句。';
+                finalUserContent += '\n- 正文/酒馆上下文是当前现实剧情状态的依据；如果正文显示双方已经线下面对面、同处一地、正在现实互动，你必须承认这个状态，必要时用 [转线下] 结束当前单聊微信，而不是把现实剧情当作不存在。';
             }
-            finalUserContent += '\n- 正文/酒馆上下文是当前现实剧情状态的依据；如果正文显示双方已经线下面对面、同处一地、正在现实互动，你必须承认这个状态，必要时用 [转线下] 结束微信，而不是把现实剧情当作不存在。';
             finalUserContent += '\n- 只输出当前微信窗口的新增回复；不得重复“手机微信已有消息”中已经存在的微信消息，也不得把正文里刚发生的对白原样复读成微信消息。';
             finalUserContent += '\n- 可以基于正文最新事件、情绪、地点变化作出自然回应，但回复必须是新的微信内容。';
             finalUserContent += '\n- 消息时间必须承接当前窗口最后一条已存在消息的时间并向后推进。';
@@ -10020,9 +10220,10 @@ ${chatHistory.slice(-5).map(h => `${h.from === 'me' ? userName : contactName}: $
     }
 
     // 🔥 群聊设置页面（点击群聊头部标题进入）
-    showGroupSettings() {
+    showGroupSettings(options = {}) {
         const chat = this.app.currentChat;
         if (!chat || chat.type !== 'group') return;
+        const returnToChatList = options?.returnToChatList === true;
 
         // 🔥 群成员数量 +1，因为用户自己也在群里（但不加入白名单）
         const memberCount = (chat.members?.length || 0) + 1;
@@ -10162,6 +10363,10 @@ ${chatHistory.slice(-5).map(h => `${h.from === 'me' ? userName : contactName}: $
 
         // 返回按钮
         document.getElementById('back-from-group-settings')?.addEventListener('click', () => {
+            if (returnToChatList) {
+                this.app.currentChat = null;
+                this.app.currentView = 'chats';
+            }
             this.app.render();
         });
 
@@ -10230,13 +10435,13 @@ ${chatHistory.slice(-5).map(h => `${h.from === 'me' ? userName : contactName}: $
                 this.app.wechatData.saveData();
 
                 // 刷新页面
-                setTimeout(() => this.showGroupSettings(), 300);
+                setTimeout(() => this.showGroupSettings({ returnToChatList }), 300);
             });
         });
 
         // 🔥 添加成员按钮
         document.getElementById('add-member-btn')?.addEventListener('click', () => {
-            this.showAddMemberDialog(chat);
+            this.showAddMemberDialog(chat, { returnToChatList });
         });
 
         // 保存按钮
@@ -10265,12 +10470,17 @@ ${chatHistory.slice(-5).map(h => `${h.from === 'me' ? userName : contactName}: $
             // 保存数据
             this.app.wechatData.saveData();
 
+            if (returnToChatList) {
+                this.app.currentChat = null;
+                this.app.currentView = 'chats';
+            }
             this.app.render();
         });
     }
 
     // 🔥 添加群成员弹窗
-    showAddMemberDialog(chat) {
+    showAddMemberDialog(chat, options = {}) {
+        const returnToChatList = options?.returnToChatList === true;
         // 获取所有联系人（排除已在群里的）
         const contacts = this.app.wechatData.getContacts();
         const existingMembers = chat.members || [];
@@ -10357,7 +10567,7 @@ ${chatHistory.slice(-5).map(h => `${h.from === 'me' ? userName : contactName}: $
 
         // 返回按钮
         document.getElementById('back-from-add-member')?.addEventListener('click', () => {
-            this.showGroupSettings();
+            this.showGroupSettings({ returnToChatList });
         });
 
         const addMemberByName = (rawName) => {
@@ -10386,7 +10596,7 @@ ${chatHistory.slice(-5).map(h => `${h.from === 'me' ? userName : contactName}: $
             });
 
             this.app.wechatData.saveData();
-            setTimeout(() => this.showGroupSettings(), 220);
+            setTimeout(() => this.showGroupSettings({ returnToChatList }), 220);
         };
 
         document.getElementById('manual-member-add-btn')?.addEventListener('click', () => {
@@ -10480,13 +10690,13 @@ ${chatHistory.slice(-5).map(h => `${h.from === 'me' ? userName : contactName}: $
             // 通话中对方说话，优先使用气泡绑定的发送者，再回退到发送者标签
             const senderName = this._resolveCallBubbleSenderName(bubble);
             if (senderName) {
-                const { voice, provider } = this._resolveWechatBoundVoiceByName(senderName);
+                const { voice, provider } = this._resolveWechatBoundVoiceByName(senderName, { allowGenderFallback: true });
                 if (voice) {
                     finalVoice = voice;
                     finalProvider = provider || finalProvider;
                     this._clearMissingBoundVoiceWarn(senderName, { scene: 'call' });
                 } else {
-                    // ❌ 未绑定音色，拦截提示并跳过当前语音的生成
+                    // 未绑定音色且兜底音色也未配置时，跳过当前语音的生成
                     this._notifyMissingBoundVoiceOnce(senderName, { scene: 'call' });
                     return; 
                 }
