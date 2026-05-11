@@ -1303,7 +1303,7 @@ export class HoneyView {
                             </div>
                         </div>
 
-                        <div class="honey-nai-placeholder ${generatedImageUrl ? 'has-generated-image' : ''}" style="${liveVideoUrl ? 'background: #000;' : ''}">
+                        <div class="honey-nai-placeholder ${generatedImageUrl ? 'has-generated-image' : ''}" style="${liveVideoUrl ? 'background: #000;' : (generatedImageUrl ? '' : 'background: linear-gradient(160deg, rgba(54,26,68,0.96), rgba(28,15,36,0.96));')}">
                             ${generatedImageHtml}
                             ${liveVideoHtml}
                             ${liveGlassHtml}
@@ -1612,7 +1612,14 @@ export class HoneyView {
         const naiPlaceholder = root.querySelector('.honey-nai-placeholder');
         if (naiPlaceholder) {
             naiPlaceholder.classList.toggle('has-generated-image', !!generatedImageUrl);
-            naiPlaceholder.style.background = liveVideoUrl ? '#000' : '';
+            // 兜底：无图无视频时给一个可见背景，避免黑屏
+            if (liveVideoUrl) {
+                naiPlaceholder.style.background = '#000';
+            } else if (generatedImageUrl) {
+                naiPlaceholder.style.background = '';
+            } else {
+                naiPlaceholder.style.background = 'linear-gradient(160deg, rgba(54,26,68,0.96), rgba(28,15,36,0.96))';
+            }
 
             let generatedImg = naiPlaceholder.querySelector('.honey-nai-generated-image');
             if (generatedImageUrl) {
@@ -6837,13 +6844,17 @@ export class HoneyView {
             promptPreview?.negativePrompt || '(空)'
         ].join('\n'));
 
+        const existingImageUrl = String(
+            (this.currentSceneData?.naiImageUrl || this.currentSceneData?.generatedImageUrl || this.currentSceneData?.imageUrl || baseScene?.naiImageUrl || baseScene?.generatedImageUrl || baseScene?.imageUrl || '')
+        ).trim();
         this.currentSceneData = {
             ...(this.currentSceneData || baseScene),
             ...baseScene,
             naiPrompt: normalizedPrompt,
-            naiImageUrl: '',
-            generatedImageUrl: '',
-            imageUrl: '',
+            // 生成中保留当前图，避免先回落视频层导致短暂黑屏
+            naiImageUrl: existingImageUrl,
+            generatedImageUrl: existingImageUrl,
+            imageUrl: existingImageUrl,
             imageGenerationStatus: 'loading',
             imageGenerationProvider: provider,
             imageGenerationModel: '',
@@ -6920,12 +6931,16 @@ export class HoneyView {
             return result;
         } catch (err) {
             const message = err?.message || String(err || '生成失败');
+            const fallbackImageUrl = String(
+                (baseScene?.naiImageUrl || baseScene?.generatedImageUrl || baseScene?.imageUrl || this.currentSceneData?.naiImageUrl || this.currentSceneData?.generatedImageUrl || this.currentSceneData?.imageUrl || '')
+            ).trim();
             this.currentSceneData = {
                 ...(this.currentSceneData || baseScene),
                 naiPrompt: normalizedPrompt,
-                naiImageUrl: '',
-                generatedImageUrl: '',
-                imageUrl: '',
+                // 失败时尽量保留旧图，若无旧图则走视频兜底
+                naiImageUrl: fallbackImageUrl,
+                generatedImageUrl: fallbackImageUrl,
+                imageUrl: fallbackImageUrl,
                 imageGenerationStatus: 'failed',
                 imageGenerationProvider: provider,
                 imageGenerationPrompt: normalizedPrompt,
