@@ -468,6 +468,69 @@ from:林晓雨: 在呢
         order: 3
     },
 
+    momentsInteraction: {
+        enabled: true,
+        name: '💬 朋友圈互动回复',
+        description: '发圈后好友点赞/评论互动规则',
+        content: `【朋友圈互动回复任务】
+
+用户"{{userName}}"在朋友圈进行了互动，请生成合适的回复。
+
+朋友圈信息：
+- 发布者：{{momentAuthor}}
+- 内容：{{momentContent}}
+- 现有点赞：{{currentLikes}}
+- 现有评论：{{currentComments}}
+- 可用通讯录好友（仅可从这里选择回复者/点赞者）：{{contactNames}}
+{{imageNotes}}
+
+用户行为：
+- 类型：{{actionType}}
+{{userCommentLine}}
+{{postContentLine}}
+{{replyToLine}}
+
+请判断是否需要回复，以及由谁来回复：
+1. 如果用户评论了，朋友圈发布者（{{momentAuthor}}）很可能会回复
+2. 如果用户回复了某人，那个人可能会再回复
+3. 其他人也可能参与互动
+4. 如果是“发布朋友圈”，请优先让通讯录里最可能互动的好友进行点赞或评论
+5. 也可以选择不回复（概率较小）
+6. 禁止输出“无回复/不回复/无互动”这类空结果；至少给出1条有效互动
+
+输出格式（只返回JSON）：
+\`\`\`json
+{
+  "shouldReply": true,
+  "reactions": [
+    {
+      "type": "comment",
+      "name": "回复者名字",
+      "text": "回复内容",
+      "replyTo": "{{userName}}"
+    }
+  ]
+}
+\`\`\`
+
+或者不回复：
+\`\`\`json
+{
+  "shouldReply": false,
+  "reactions": []
+}
+\`\`\`
+
+注意：
+- reactions 中的 name 必须来自“可用通讯录好友”名单；
+- type 只能是 "comment" 或 "like"；
+- 若 type=comment，text 不能为空；
+- 若 type=like，可不带 text。
+
+请生成回复：`,
+        order: 4
+    },
+
     walletEval: {
         enabled: true,
         name: '💰 微信资产评估',

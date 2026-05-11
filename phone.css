@@ -4380,9 +4380,8 @@ input:checked + .toggle-slider:before {
 }
 
 /* 2. 拯救所有表单控件 (对抗主题对裸标签 input, textarea, select 的 !important 劫持) */
-#phone-panel-content input:not([type="checkbox"]):not([type="range"]):not([type="color"]),
-#phone-panel-content textarea,
-#phone-panel-content select {
+#phone-panel-content input:not([type="checkbox"]):not([type="range"]):not([type="color"]):not(#honey-chat-input):not(#video-chat-input):not(#voice-chat-input):not(#phone-call-input),
+#phone-panel-content textarea {
     background: #ffffff !important;
     background-image: none !important;
     box-shadow: none !important;
@@ -4391,6 +4390,23 @@ input:checked + .toggle-slider:before {
     color: var(--phone-global-text) !important;
     padding: 8px !important;
     text-shadow: none !important;
+}
+
+/* select 单独处理：避免和固定高度(如 30px)控件冲突导致文字被截断 */
+#phone-panel-content select {
+    background: #ffffff !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    border: 1px solid #e0e0e0 !important;
+    border-radius: 8px !important;
+    color: var(--phone-global-text) !important;
+    padding: 0 8px !important;
+    line-height: 1.35 !important;
+    text-shadow: none !important;
+}
+
+#phone-panel-content select option {
+    line-height: 1.35 !important;
 }
 
 /* 3. 拯救滑块和复选框 (对抗主题对 input[type="range"] 和 checkbox 的魔改) */
@@ -4453,4 +4469,50 @@ input:checked + .toggle-slider:before {
     box-shadow: none !important;
     border: none !important;
     color: inherit !important;
+}
+
+/* 6. 输入框白底污染豁免：仅针对蜜语直播与通话输入 */
+#phone-panel-content #honey-chat-input {
+    background: rgba(14, 12, 20, 0.96) !important;
+    border: 1px solid rgba(255, 157, 202, 0.26) !important;
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+    caret-color: #ffd7e7 !important;
+    box-shadow: inset 0 0 0 1000px rgba(14, 12, 20, 0.96) !important;
+}
+#phone-panel-content #honey-chat-input::placeholder {
+    color: rgba(255, 222, 236, 0.56) !important;
+    -webkit-text-fill-color: rgba(255, 222, 236, 0.56) !important;
+}
+#phone-panel-content #video-chat-input,
+#phone-panel-content #voice-chat-input {
+    background: rgba(255, 255, 255, 0.12) !important;
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+    caret-color: #ffffff !important;
+    border: 1px solid rgba(255, 255, 255, 0.22) !important;
+    box-shadow: inset 0 0 0 1000px rgba(255, 255, 255, 0.12) !important;
+}
+#phone-panel-content #video-chat-input::placeholder,
+#phone-panel-content #voice-chat-input::placeholder {
+    color: rgba(255, 255, 255, 0.62) !important;
+    -webkit-text-fill-color: rgba(255, 255, 255, 0.62) !important;
+}
+#phone-panel-content #phone-call-input,
+#phone-panel-content .phone-call-input {
+    background: rgba(255, 255, 255, 0.12) !important;
+    background-color: rgba(255, 255, 255, 0.12) !important;
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+    caret-color: #ffffff !important;
+    border: 1px solid rgba(255, 255, 255, 0.22) !important;
+    box-shadow: inset 0 0 0 1000px rgba(255, 255, 255, 0.12) !important;
+    outline: none !important;
+    appearance: none !important;
+    -webkit-appearance: none !important;
+}
+#phone-panel-content #phone-call-input::placeholder,
+#phone-panel-content .phone-call-input::placeholder {
+    color: rgba(255, 255, 255, 0.62) !important;
+    -webkit-text-fill-color: rgba(255, 255, 255, 0.62) !important;
 }

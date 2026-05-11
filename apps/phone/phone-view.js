@@ -1546,6 +1546,46 @@ export class PhoneCallView {
         return '';
     }
 
+    _getGlobalTtsVoiceConfig() {
+        const storage = window.VirtualPhone?.storage || this.app?.storage;
+        const provider = String(storage?.get?.('phone-tts-provider') || 'minimax_cn').trim() || 'minimax_cn';
+        const scopedVoice = String(storage?.get?.(`phone-tts-${provider}-voice`) || '').trim();
+        if (scopedVoice) return { provider, voice: scopedVoice, source: 'global' };
+        if (provider !== 'volcengine') {
+            return {
+                provider,
+                voice: String(storage?.get?.('phone-tts-voice') || '').trim(),
+                source: 'global'
+            };
+        }
+        return { provider, voice: '', source: 'global' };
+    }
+
+    _normalizeTtsGender(gender = '') {
+        const raw = String(gender || '').trim().toLowerCase();
+        if (raw === 'male' || raw === 'm' || raw === '男') return 'male';
+        if (raw === 'female' || raw === 'f' || raw === '女') return 'female';
+        return '';
+    }
+
+    _getPhoneCallGenderFallbackTtsVoice(gender = '') {
+        const storage = window.VirtualPhone?.storage || this.app?.storage;
+        const safeGender = this._normalizeTtsGender(gender);
+        const globalConfig = this._getGlobalTtsVoiceConfig();
+        if (!safeGender) return globalConfig;
+
+        const provider = String(
+            storage?.get?.(`phone-tts-fallback-${safeGender}-provider`)
+            || globalConfig.provider
+            || 'minimax_cn'
+        ).trim() || 'minimax_cn';
+        const voice = String(storage?.get?.(`phone-tts-fallback-${safeGender}-voice`) || '').trim();
+        if (voice) {
+            return { provider, voice, source: `fallback_${safeGender}` };
+        }
+        return globalConfig;
+    }
+
     _buildPhoneCallTtsCacheKey({ bubbleId = '', caller = '', provider = '', voice = '', text = '' } = {}) {
         return [
             String(bubbleId || '').trim(),
@@ -1764,9 +1804,7 @@ export class PhoneCallView {
     }
 
     _resolveCallerTtsVoice(callerName, { allowGlobalFallback = true } = {}) {
-        const storage = window.VirtualPhone?.storage || this.app?.storage;
-        const globalVoice = this._getGlobalTtsVoice();
-        const globalProvider = String(storage?.get?.('phone-tts-provider') || 'minimax_cn').trim() || 'minimax_cn';
+        const globalConfig = this._getGlobalTtsVoiceConfig();
         try {
             const wechatData = this._getPhoneWechatData();
             if (wechatData?.resolveTtsVoiceByName) {
@@ -1775,16 +1813,36 @@ export class PhoneCallView {
                 if (boundVoice) {
                     return {
                         voice: boundVoice,
-                        provider: String(resolved?.provider || globalProvider || '').trim()
+                        provider: String(resolved?.provider || globalConfig.provider || '').trim()
                     };
                 }
+
+                const resolvedContact = resolved?.contact || null;
+                const looseContact = wechatData?.findContactByNameLoose?.(callerName, { includeChats: true }) || null;
+                const genderCandidates = [
+                    resolvedContact?.gender,
+                    looseContact?.gender,
+                    wechatData?.getContactGender?.(resolvedContact?.id || ''),
+                    wechatData?.getContactGender?.(resolvedContact?.name || ''),
+                    wechatData?.getContactGender?.(looseContact?.id || ''),
+                    wechatData?.getContactGender?.(looseContact?.name || ''),
+                    wechatData?.getContactGender?.(callerName || '')
+                ];
+                const resolvedGender = this._normalizeTtsGender(
+                    genderCandidates.find(value => this._normalizeTtsGender(value)) || ''
+                );
+                const fallback = this._getPhoneCallGenderFallbackTtsVoice(resolvedGender);
+                return {
+                    voice: String(fallback?.voice || '').trim(),
+                    provider: String(fallback?.provider || globalConfig.provider || '').trim()
+                };
             }
         } catch (e) {
             // ignore
         }
         return {
-            voice: allowGlobalFallback ? globalVoice : '',
-            provider: globalProvider
+            voice: allowGlobalFallback ? String(globalConfig.voice || '').trim() : '',
+            provider: String(globalConfig.provider || '').trim()
         };
     }
 

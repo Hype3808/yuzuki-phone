@@ -2214,6 +2214,32 @@ export class WechatApp {
     display: flex;
     padding: 12px 15px;
     border-bottom: 0.5px solid #e5e5e5;
+    position: relative;
+}
+
+.moment-delete-btn {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    color: #ff4d4f;
+    font-size: 12px;
+    line-height: 1;
+    box-shadow: none;
+    z-index: 6;
+    cursor: pointer;
+    padding: 0;
+}
+
+.moment-item.show-delete .moment-delete-btn {
+    display: inline-flex;
 }
 
 /* 头像列 */
@@ -2341,9 +2367,10 @@ export class WechatApp {
     border: none;
     cursor: pointer;
     font-family: inherit;
-    background: rgba(0,0,0,0.58);
-    color: #fff;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+    background: rgba(255,255,255,0.9);
+    color: #2f2f2f;
+    border: 1px solid rgba(0,0,0,0.08);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.12);
     backdrop-filter: blur(3px);
     -webkit-backdrop-filter: blur(3px);
 }
@@ -4921,6 +4948,21 @@ export class WechatApp {
                                 color: #333;
                                 cursor: pointer;
                             ">编辑提示词</button>
+
+                            <div style="margin-top: 8px; padding: 10px; background: #f9f9f9; border-radius: 8px;">
+                                <div style="font-size: 12px; color: #666; margin-bottom: 6px;">
+                                    ${prompts.momentsInteraction?.description || '发圈后好友点赞/评论互动规则'}
+                                </div>
+                                <button class="edit-prompt-btn" data-feature="momentsInteraction" style="
+                                    padding: 5px 10px;
+                                    background: #fff;
+                                    border: 1px solid #e0e0e0;
+                                    border-radius: 4px;
+                                    font-size: 11px;
+                                    color: #333;
+                                    cursor: pointer;
+                                ">编辑互动提示词</button>
+                            </div>
                         </div>
                     </div>
 

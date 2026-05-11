@@ -20,6 +20,10 @@ export class MomentsView {
         this.newPostText = '';
         this.currentCommentMomentId = null;
         this.currentReplyTo = null;
+        this.pendingMomentImages = [];
+        this._postMomentDraftActive = false;
+        this._postMomentDraftCommitted = false;
+        this._postMomentDraftObserver = null;
     }
 
     // 在wechat-app的renderDiscover中调用
@@ -54,13 +58,20 @@ export class MomentsView {
         const timeStr = this.formatTime(moment.timestamp || moment.time);
         // 🔥 优先实时从联系人/聊天获取头像，确保头像同步更新
         const contactAvatar = this.getContactAvatar(moment.name) || moment.avatar || '👤';
+        const userName = String(this.app.wechatData.getUserInfo()?.name || '').trim();
+        const isOwnMoment = String(moment?.name || '').trim() === userName;
 
         // 🔥 有背景图时，给每条朋友圈添加毛玻璃效果，让背景透出来
         // 使用 rgba 白色背景作为降级方案，确保移动端兼容
         const itemStyle = hasBgImage ? 'background: rgba(255,255,255,0.75); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); margin: 8px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);' : '';
 
         return `
-            <div class="moment-item" data-moment-id="${moment.id}" style="${itemStyle}">
+            <div class="moment-item" data-moment-id="${moment.id}" data-own-moment="${isOwnMoment ? '1' : '0'}" style="${itemStyle}">
+                ${isOwnMoment ? `
+                    <button class="moment-delete-btn" data-moment-id="${moment.id}" title="删除朋友圈">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                ` : ''}
                 <!-- 头像 -->
                 <div class="moment-avatar-col">
                     ${this.app.renderAvatar(contactAvatar, '👤', moment.name)}
@@ -214,6 +225,8 @@ export class MomentsView {
             });
         });
 
+        this.bindMomentDeleteEvents();
+
         document.querySelectorAll('.moment-image-prompt-generate').forEach(btn => {
             btn.addEventListener('click', async (e) => {
                 e.stopPropagation();
@@ -288,6 +301,92 @@ export class MomentsView {
                 this.currentCommentMomentId = null;
                 this.currentReplyTo = null;
             }
+            if (!e.target.closest('.moment-delete-btn')) {
+                document.querySelectorAll('.moment-item.show-delete').forEach(item => item.classList.remove('show-delete'));
+            }
+        });
+    }
+
+    bindMomentDeleteEvents() {
+        const longPressMs = 480;
+        const clearOtherDeleteStates = () => {
+            document.querySelectorAll('.moment-item.show-delete').forEach(item => item.classList.remove('show-delete'));
+        };
+
+        document.querySelectorAll('.moment-item[data-own-moment="1"]').forEach(item => {
+            let pressTimer = null;
+            let moved = false;
+            let startX = 0;
+            let startY = 0;
+
+            const clearTimer = () => {
+                if (pressTimer) {
+                    clearTimeout(pressTimer);
+                    pressTimer = null;
+                }
+            };
+
+            const showDelete = () => {
+                clearOtherDeleteStates();
+                item.classList.add('show-delete');
+            };
+
+            item.addEventListener('touchstart', (e) => {
+                if (e.target?.closest?.('.moment-action-btn, .moment-delete-btn, .inline-comment-box, .action-popup, .comment-row, button, input, textarea')) return;
+                const touch = e.touches?.[0];
+                if (!touch) return;
+                moved = false;
+                startX = touch.clientX;
+                startY = touch.clientY;
+                clearTimer();
+                pressTimer = setTimeout(() => {
+                    if (!moved) showDelete();
+                }, longPressMs);
+            }, { passive: true });
+
+            item.addEventListener('touchmove', (e) => {
+                const touch = e.touches?.[0];
+                if (!touch) return;
+                if (Math.abs(touch.clientX - startX) > 10 || Math.abs(touch.clientY - startY) > 10) {
+                    moved = true;
+                    clearTimer();
+                }
+            }, { passive: true });
+
+            item.addEventListener('touchend', clearTimer, { passive: true });
+            item.addEventListener('touchcancel', clearTimer, { passive: true });
+            item.addEventListener('mousedown', (e) => {
+                if (e.button !== 0) return;
+                if (e.target?.closest?.('.moment-action-btn, .moment-delete-btn, .inline-comment-box, .action-popup, .comment-row, button, input, textarea')) return;
+                clearTimer();
+                pressTimer = setTimeout(showDelete, longPressMs);
+            });
+            item.addEventListener('mouseup', clearTimer);
+            item.addEventListener('mouseleave', clearTimer);
+            item.addEventListener('mousemove', clearTimer);
+            item.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                showDelete();
+            });
+        });
+
+        document.querySelectorAll('.moment-delete-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                const momentId = String(btn.dataset.momentId || '').trim();
+                if (!momentId) return;
+                const ok = confirm('确定删除这条朋友圈吗？删除后不可恢复。');
+                if (!ok) return;
+                const targetMoment = this.app.wechatData.getMoment(momentId);
+                const managedImageUrls = this._collectMomentManagedImageUrls(targetMoment);
+                const deleted = this.app.wechatData.deleteMoment(momentId);
+                if (deleted) {
+                    this._cleanupManagedMomentImages(managedImageUrls);
+                    this.app.phoneShell.showNotification('已删除', '朋友圈已删除', '✅');
+                    this.app.render();
+                }
+            });
         });
     }
 
@@ -469,6 +568,56 @@ export class MomentsView {
         return message.slice(0, 80);
     }
 
+    _blobToDataUrl(blob) {
+        return new Promise((resolve, reject) => {
+            try {
+                const reader = new FileReader();
+                reader.onload = () => resolve(String(reader.result || ''));
+                reader.onerror = () => reject(new Error('read_blob_failed'));
+                reader.readAsDataURL(blob);
+            } catch (err) {
+                reject(err);
+            }
+        });
+    }
+
+    async _resolveMomentImageForAi(imageValue, cacheMap = null) {
+        const raw = String(imageValue || '').trim();
+        if (!raw) return '';
+        if (raw.startsWith('data:image')) return raw;
+        if (cacheMap && cacheMap.has(raw)) return cacheMap.get(raw);
+
+        const normalizedUrl = (() => {
+            try {
+                if (/^\/backgrounds\//i.test(raw)) return raw;
+                if (/^https?:\/\//i.test(raw)) return raw;
+                return new URL(raw, window.location.origin).href;
+            } catch (e) {
+                return raw;
+            }
+        })();
+
+        let dataUrl = '';
+        try {
+            const resp = await fetch(normalizedUrl, { credentials: 'include' });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const blob = await resp.blob();
+            if (!String(blob?.type || '').startsWith('image/')) {
+                throw new Error(`not_image_blob:${blob?.type || 'unknown'}`);
+            }
+            dataUrl = await this._blobToDataUrl(blob);
+        } catch (err) {
+            console.warn('[Moments] 图片发送给AI失败，已降级为文字图片标记:', raw, err?.message || err);
+            dataUrl = '';
+        }
+
+        if (cacheMap) {
+            cacheMap.set(raw, dataUrl);
+            cacheMap.set(normalizedUrl, dataUrl);
+        }
+        return dataUrl;
+    }
+
     _isDirectMomentImageUrl(value) {
         const text = String(value || '').trim();
         return /^(data:image\/|data:application\/octet-stream;base64,|https?:\/\/|\/backgrounds\/)/i.test(text);
@@ -497,6 +646,76 @@ export class MomentsView {
             isDirectImage: !!directUrl,
             promptText: promptText.trim()
         };
+    }
+
+    _collectMomentManagedImageUrls(moment) {
+        if (!moment || !Array.isArray(moment.images)) return [];
+        const urls = moment.images
+            .map((item) => this._parseMomentImageItem(item))
+            .filter((parsed) => parsed?.isDirectImage && parsed?.realUrl)
+            .map((parsed) => String(parsed.realUrl || '').trim())
+            .filter((url) => url.startsWith('/backgrounds/'));
+        return [...new Set(urls)];
+    }
+
+    _cleanupManagedMomentImages(urls = [], options = {}) {
+        const uniqueUrls = [...new Set((Array.isArray(urls) ? urls : [])
+            .map((url) => String(url || '').trim())
+            .filter((url) => url.startsWith('/backgrounds/')))];
+        if (uniqueUrls.length === 0) return;
+        const imageManager = window.VirtualPhone?.imageManager;
+        if (!imageManager?.deleteManagedBackgroundByPath) return;
+        uniqueUrls.forEach((url) => {
+            imageManager.deleteManagedBackgroundByPath(url, {
+                quiet: true,
+                skipIfReferenced: true,
+                ...(options || {})
+            }).catch(() => {});
+        });
+    }
+
+    _mountPostDraftObserver() {
+        this._unmountPostDraftObserver();
+        if (typeof MutationObserver === 'undefined' || typeof document === 'undefined') return;
+        this._postMomentDraftObserver = new MutationObserver(() => {
+            if (!this._postMomentDraftActive) return;
+            // 发圈输入框已离开DOM，说明用户切离了发圈页
+            if (!document.getElementById('moment-text-input')) {
+                this._leavePostMomentDraft({ published: this._postMomentDraftCommitted });
+            }
+        });
+        this._postMomentDraftObserver.observe(document.body, { childList: true, subtree: true });
+    }
+
+    _unmountPostDraftObserver() {
+        if (this._postMomentDraftObserver) {
+            this._postMomentDraftObserver.disconnect();
+            this._postMomentDraftObserver = null;
+        }
+    }
+
+    _leavePostMomentDraft({ published = false } = {}) {
+        if (!this._postMomentDraftActive && (!this.pendingMomentImages || this.pendingMomentImages.length === 0)) {
+            this._postMomentDraftCommitted = false;
+            this._unmountPostDraftObserver();
+            return;
+        }
+        if (!published && Array.isArray(this.pendingMomentImages) && this.pendingMomentImages.length > 0) {
+            this._cleanupManagedMomentImages(this.pendingMomentImages);
+        }
+        this.pendingMomentImages = [];
+        this._postMomentDraftActive = false;
+        this._postMomentDraftCommitted = false;
+        this._unmountPostDraftObserver();
+    }
+
+    _startPostMomentDraft() {
+        // 若有上一轮未发布草稿残留，先清掉，避免孤儿图片
+        this._leavePostMomentDraft({ published: false });
+        this._postMomentDraftActive = true;
+        this._postMomentDraftCommitted = false;
+        this.pendingMomentImages = [];
+        this._mountPostDraftObserver();
     }
 
     _getMomentById(momentId) {
@@ -890,91 +1109,168 @@ export class MomentsView {
         if (!moment) return;
 
         const userInfo = this.app.wechatData.getUserInfo();
+        const aiImageDataCache = new Map();
+        const aiImageNotes = [];
+        const momentImages = Array.isArray(moment.images) ? moment.images : [];
+        for (let i = 0; i < momentImages.length; i++) {
+            const parsed = this._parseMomentImageItem(momentImages[i]);
+            const imageLabel = parsed.promptText || `图片${i + 1}`;
+            if (parsed.isDirectImage && parsed.realUrl) {
+                const resolvedImageData = await this._resolveMomentImageForAi(parsed.realUrl, aiImageDataCache);
+                if (resolvedImageData && resolvedImageData.startsWith('data:image')) {
+                    const imgId = `__ST_PHONE_IMAGE_${Date.now()}_${Math.random().toString(36).substr(2, 5)}__`;
+                    if (!window.VirtualPhone._pendingImages) {
+                        window.VirtualPhone._pendingImages = {};
+                    }
+                    window.VirtualPhone._pendingImages[imgId] = resolvedImageData;
+                    aiImageNotes.push(`- 图片${i + 1}：${imageLabel} ${imgId}`);
+                } else {
+                    aiImageNotes.push(`- 图片${i + 1}：${imageLabel || '[图片]'}`);
+                }
+                continue;
+            }
+            if (imageLabel) {
+                aiImageNotes.push(`- 图片${i + 1}：${imageLabel}`);
+            }
+        }
+        const contactNames = (this.app.wechatData.getContacts() || [])
+            .map(c => (c?.name || '').trim())
+            .filter(Boolean);
+        const allowedContactSet = new Set(contactNames);
 
-        // 构建提示词
-        const prompt = `【朋友圈互动回复任务】
+        const promptManager = window.VirtualPhone?.promptManager;
+        const interactionTemplate = promptManager?.getPromptForFeature?.('wechat', 'momentsInteraction') || '';
+        const actionTypeText = actionType === 'like' ? '点赞' : actionType === 'comment' ? '评论' : '发布朋友圈';
+        const promptVars = {
+            '{{userName}}': userInfo.name || '用户',
+            '{{momentAuthor}}': moment.name || '未知',
+            '{{momentContent}}': moment.text || '[图片]',
+            '{{currentLikes}}': moment.likeList?.join('、') || '无',
+            '{{currentComments}}': moment.commentList?.map(c => `${c.name}${c.replyTo ? '回复' + c.replyTo : ''}：${c.text}`).join('\n') || '无',
+            '{{contactNames}}': contactNames.join('、') || '无',
+            '{{imageNotes}}': aiImageNotes.length > 0 ? `\n- 图片内容参考（含多模态图片数据）：\n${aiImageNotes.join('\n')}` : '',
+            '{{actionType}}': actionTypeText,
+            '{{userCommentLine}}': actionType === 'comment' ? `- 评论内容：${userComment}` : '',
+            '{{postContentLine}}': actionType === 'post' ? `- 发布内容：${userComment || moment.text || '[图片]'}${moment.images?.length ? `（含${moment.images.length}张图片）` : ''}` : '',
+            '{{replyToLine}}': replyTo ? `- 回复对象：${replyTo}` : ''
+        };
 
+        const buildPromptFromTemplate = (template) => {
+            let next = String(template || '');
+            Object.entries(promptVars).forEach(([key, value]) => {
+                next = next.split(key).join(String(value || ''));
+            });
+            return next;
+        };
+
+        const fallbackPrompt = `【朋友圈互动回复任务】
 用户"${userInfo.name}"在朋友圈进行了互动，请生成合适的回复。
-
 朋友圈信息：
 - 发布者：${moment.name}
 - 内容：${moment.text || '[图片]'}
 - 现有点赞：${moment.likeList?.join('、') || '无'}
 - 现有评论：${moment.commentList?.map(c => `${c.name}${c.replyTo ? '回复' + c.replyTo : ''}：${c.text}`).join('\n') || '无'}
-
+- 可用通讯录好友（仅可从这里选择回复者/点赞者）：${contactNames.join('、') || '无'}
+${aiImageNotes.length > 0 ? `\n- 图片内容参考（含多模态图片数据）：\n${aiImageNotes.join('\n')}` : ''}
 用户行为：
-- 类型：${actionType === 'like' ? '点赞' : '评论'}
+- 类型：${actionTypeText}
 ${actionType === 'comment' ? `- 评论内容：${userComment}` : ''}
+${actionType === 'post' ? `- 发布内容：${userComment || moment.text || '[图片]'}${moment.images?.length ? `（含${moment.images.length}张图片）` : ''}` : ''}
 ${replyTo ? `- 回复对象：${replyTo}` : ''}
-
-请判断是否需要回复，以及由谁来回复：
-1. 如果用户评论了，朋友圈发布者（${moment.name}）很可能会回复
-2. 如果用户回复了某人，那个人可能会再回复
-3. 其他人也可能参与互动
-4. 也可以选择不回复（概率较小）
-
-输出格式（只返回JSON）：
-\`\`\`json
-{
-  "shouldReply": true,
-  "reactions": [
-    {
-      "type": "comment",
-      "name": "回复者名字",
-      "text": "回复内容",
-      "replyTo": "${userInfo.name}"
-    }
-  ]
-}
-\`\`\`
-
-或者不回复：
-\`\`\`json
-{
-  "shouldReply": false,
-  "reactions": []
-}
-\`\`\`
-
-请生成回复：`;
+请只返回JSON，包含 shouldReply 与 reactions（type 仅 comment/like，name 必须来自通讯录好友）。`;
+        const prompt = interactionTemplate ? buildPromptFromTemplate(interactionTemplate) : fallbackPrompt;
 
         try {
-            this.app.phoneShell.showNotification('朋友圈', '对方正在输入...', '💬');
+            this.app.phoneShell.showNotification('朋友圈', '好友围观中...', '👀');
 
             const result = await this.callAI(prompt);
+            const reactions = this._normalizeMomentReactions(result, allowedContactSet, userInfo.name);
 
-            if (result && result.shouldReply && result.reactions?.length > 0) {
+            if (reactions.length > 0) {
+                let appliedCount = 0;
+                let commentAppliedCount = 0;
+                let likeAppliedCount = 0;
                 // 延迟添加回复，模拟真实感
-                for (let i = 0; i < result.reactions.length; i++) {
-                    const reaction = result.reactions[i];
+                for (let i = 0; i < reactions.length; i++) {
+                    const reaction = reactions[i];
+                    const reactionName = reaction.name;
 
                     await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
 
+                    // 每轮都重新获取最新 moment，避免 await 期间对象已被 loadData/render 替换
+                    const liveMoment = this.app.wechatData.getMoment(momentId);
+                    if (!liveMoment) {
+                        console.warn('⚠️ [朋友圈] 目标动态已不存在，停止写入互动:', momentId);
+                        break;
+                    }
+
                     if (reaction.type === 'comment' && reaction.text) {
-                        if (!moment.commentList) moment.commentList = [];
-                        moment.commentList.push({
-                            name: reaction.name || moment.name,
+                        if (!liveMoment.commentList) liveMoment.commentList = [];
+                        liveMoment.commentList.push({
+                            name: reactionName,
                             text: reaction.text,
                             replyTo: reaction.replyTo || null
                         });
-                        moment.comments = moment.commentList.length;
-                    } else if (reaction.type === 'like' && reaction.name) {
-                        if (!moment.likeList) moment.likeList = [];
-                        if (!moment.likeList.includes(reaction.name)) {
-                            moment.likeList.push(reaction.name);
-                            moment.likes = moment.likeList.length;
+                        liveMoment.comments = liveMoment.commentList.length;
+                        appliedCount++;
+                        commentAppliedCount++;
+                    } else if (reaction.type === 'like') {
+                        if (!liveMoment.likeList) liveMoment.likeList = [];
+                        if (!liveMoment.likeList.includes(reactionName)) {
+                            liveMoment.likeList.push(reactionName);
+                            liveMoment.likes = liveMoment.likeList.length;
+                            appliedCount++;
+                            likeAppliedCount++;
                         }
                     }
                 }
 
-                this.app.wechatData.saveData();
-                this.app.render();
-                this.app.phoneShell.showNotification('朋友圈', '收到新回复', '💬');
+                if (appliedCount > 0) {
+                    this.app.wechatData.saveData();
+                    this.app.render();
+                    const notifyText = commentAppliedCount > 0
+                        ? (likeAppliedCount > 0 ? '收到新评论和点赞' : '收到新评论')
+                        : '收到新点赞';
+                    this.app.phoneShell.showNotification('朋友圈', notifyText, '💬');
+                } else {
+                    console.warn('⚠️ [朋友圈] AI返回了互动，但全部被过滤或去重，未落库');
+                }
             }
         } catch (error) {
             console.error('❌ AI回复失败:', error);
             // 静默失败，不打扰用户
         }
+    }
+
+    _normalizeMomentReactions(result, allowedContactSet, defaultReplyTo) {
+        const rows = Array.isArray(result?.reactions) ? result.reactions : [];
+        const output = [];
+        rows.forEach((item) => {
+            const typeRaw = String(item?.type || '').trim().toLowerCase();
+            const type = typeRaw === '点赞' ? 'like' : (typeRaw === '评论' ? 'comment' : typeRaw);
+            if (type !== 'comment' && type !== 'like') return;
+
+            const name = String(item?.name || '').trim();
+            if (!name || !allowedContactSet.has(name)) return;
+
+            if (type === 'comment') {
+                const text = String(item?.text || item?.content || '').trim();
+                if (!text) return;
+                output.push({
+                    type: 'comment',
+                    name,
+                    text,
+                    replyTo: String(item?.replyTo || defaultReplyTo || '').trim() || null
+                });
+                return;
+            }
+
+            output.push({
+                type: 'like',
+                name
+            });
+        });
+        return output;
     }
 
     // 从AI加载朋友圈
@@ -1195,6 +1491,71 @@ ${momentsPrompt}
         }
     }
 
+    async _buildWechatMomentsContextMessages(context) {
+        const messages = [];
+        if (!context) return messages;
+
+        const userName = context?.name1 || '用户';
+        const charName = context?.name2 || '角色';
+
+        if (context.characterId !== undefined && context.characters?.[context.characterId]) {
+            const char = context.characters[context.characterId];
+            let charInfo = `【角色信息】\n角色名: ${char.name || charName}\n`;
+            if (char.description) charInfo += `描述: ${char.description}\n`;
+            if (char.personality) charInfo += `性格: ${char.personality}\n`;
+            if (char.scenario) charInfo += `场景/背景: ${char.scenario}\n`;
+            if (char.data?.system_prompt) charInfo += `\n${char.data.system_prompt}\n`;
+            messages.push({
+                role: 'system',
+                content: charInfo.trim(),
+                name: 'SYSTEM (角色卡)',
+                isPhoneMessage: true
+            });
+        }
+
+        const worldInfoMessage = await window.VirtualPhone?.worldbookManager?.buildWorldbookMessage?.('wechat');
+        if (worldInfoMessage) messages.push(worldInfoMessage);
+
+        const personaTextarea = document.getElementById('persona_description');
+        if (personaTextarea && personaTextarea.value && personaTextarea.value.trim()) {
+            messages.push({
+                role: 'system',
+                content: `【用户信息】\n${personaTextarea.value.trim()}`,
+                name: 'SYSTEM (用户Persona)',
+                isPhoneMessage: true
+            });
+        }
+
+        const storage = window.VirtualPhone?.storage;
+        const contextLimit = storage ? (parseInt(storage.get('phone-context-limit')) || 10) : 10;
+        if (Array.isArray(context.chat) && context.chat.length > 0) {
+            const startIndex = Math.max(0, context.chat.length - contextLimit);
+            const chatSlice = context.chat.slice(startIndex);
+            const chatLines = [];
+
+            chatSlice.forEach((msg) => {
+                if (msg?.isGaigaiPrompt || msg?.isGaigaiData || msg?.isPhoneMessage) return;
+                let content = msg.mes || msg.content || '';
+                content = applyPhoneTagFilter(content, { storage: this.app?.storage || window.VirtualPhone?.storage });
+                content = String(content).replace(/<[^>]*>/g, '').replace(/\*.*?\*/g, '').trim();
+                if (!content) return;
+                const speaker = msg.is_user ? userName : charName;
+                chatLines.push(`${speaker}: ${content}`);
+            });
+
+            if (chatLines.length > 0) {
+                messages.push({
+                    role: 'system',
+                    content: `【剧情上下文】\n${chatLines.join('\n')}`,
+                    name: 'SYSTEM (剧情上下文)',
+                    isPhoneMessage: true
+                });
+            }
+        }
+
+        return messages;
+    }
+
     // 调用AI（静默调用，不显示在酒馆聊天界面）
     async callAI(prompt) {
         const context = (typeof SillyTavern !== 'undefined' && SillyTavern.getContext)
@@ -1219,8 +1580,11 @@ ${momentsPrompt}
                 callAiOptions.max_tokens = resolvedMaxTokens;
             }
 
+            const contextMessages = await this._buildWechatMomentsContextMessages(context);
+
             const result = await apiManager.callAI([
                 { role: 'system', content: '你是一个朋友圈内容生成助手。严格返回JSON格式，不要附加解释。', isPhoneMessage: true },
+                ...contextMessages,
                 { role: 'user', content: prompt, isPhoneMessage: true }
             ], callAiOptions);
             if (!result.success) throw new Error(result.error || 'AI调用失败');
@@ -1331,6 +1695,7 @@ ${momentsPrompt}
 
     // 显示发朋友圈页面
     showPostMomentPage() {
+        this._startPostMomentDraft();
         const userInfo = this.app.wechatData.getUserInfo();
 
         const html = `
@@ -1412,9 +1777,6 @@ ${momentsPrompt}
 
         this.app.phoneShell.setContent(html);
 
-        // 存储上传的图片
-        this.pendingMomentImages = [];
-
         // 绑定事件
         this.bindPostMomentEvents();
     }
@@ -1423,6 +1785,7 @@ ${momentsPrompt}
     bindPostMomentEvents() {
         // 返回按钮
         document.getElementById('back-from-post')?.addEventListener('click', () => {
+            this._leavePostMomentDraft({ published: false });
             this.app.currentView = 'discover';
             this.app.render();
         });
@@ -1520,7 +1883,12 @@ ${momentsPrompt}
         previewContainer.querySelectorAll('.remove-moment-image').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const index = parseInt(e.target.dataset.index);
+                const removed = this.pendingMomentImages[index];
                 this.pendingMomentImages.splice(index, 1);
+                // 草稿里删图时立即清理托管图片；若草稿内还有同图则不清理
+                if (removed && !this.pendingMomentImages.includes(removed)) {
+                    this._cleanupManagedMomentImages([removed]);
+                }
                 this.updateImagePreview();
             });
         });
@@ -1530,7 +1898,9 @@ ${momentsPrompt}
     publishMoment() {
         const textInput = document.getElementById('moment-text-input');
         const text = textInput?.value?.trim() || '';
-        const images = this.pendingMomentImages || [];
+        const images = Array.isArray(this.pendingMomentImages)
+            ? this.pendingMomentImages.filter(item => typeof item === 'string' && item.trim())
+            : [];
 
         // 验证内容
         if (!text && images.length === 0) {
@@ -1559,14 +1929,23 @@ ${momentsPrompt}
         // 添加到数据
         this.app.wechatData.addMoment(moment);
 
+        // 标记草稿已发布，避免离开页面时被误清理
+        this._postMomentDraftCommitted = true;
+
         // 清空待发送数据
         this.pendingMomentImages = [];
 
         // 显示成功提示
         this.app.phoneShell.showNotification('发布成功', '你的朋友圈已发布', '✅');
 
+        // 发布后触发一次AI互动（通讯录好友点赞/评论）
+        this.triggerAIReaction(moment.id, 'post', text).catch(error => {
+            console.error('❌ [朋友圈] 发布后触发AI互动失败:', error);
+        });
+
         // 返回朋友圈列表
         setTimeout(() => {
+            this._leavePostMomentDraft({ published: true });
             this.app.currentView = 'discover';
             this.app.render();
         }, 500);

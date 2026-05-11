@@ -2051,6 +2051,16 @@ getWeekday(date) {
         this.data.moments.unshift(moment);
         this.saveData();
     }
+
+    deleteMoment(momentId) {
+        const safeId = String(momentId || '').trim();
+        if (!safeId || !Array.isArray(this.data.moments)) return false;
+        const index = this.data.moments.findIndex(m => String(m?.id || '').trim() === safeId);
+        if (index < 0) return false;
+        this.data.moments.splice(index, 1);
+        this.saveData();
+        return true;
+    }
     
  // ✅ 智能加载联系人（调用AI）
 async loadContactsFromCharacter() {

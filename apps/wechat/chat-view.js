@@ -1025,16 +1025,29 @@ export class ChatView {
         }
 
         if (allowGenderFallback) {
+            const resolvedContact = resolved?.contact || null;
+            const looseContact = wechatData?.findContactByNameLoose?.(name, { includeChats: true }) || null;
+            const currentChat = this.app?.currentChat || null;
+            const genderCandidates = [
+                resolvedContact?.gender,
+                looseContact?.gender,
+                wechatData?.getContactGender?.(resolvedContact?.id || ''),
+                wechatData?.getContactGender?.(resolvedContact?.name || ''),
+                wechatData?.getContactGender?.(looseContact?.id || ''),
+                wechatData?.getContactGender?.(looseContact?.name || ''),
+                wechatData?.getContactGender?.(name || ''),
+                wechatData?.getContactGender?.(currentChat?.contactId || ''),
+                wechatData?.getContactGender?.(currentChat?.name || '')
+            ];
             const gender = this._normalizeTtsGender(
-                wechatData?.getContactGender?.(resolved?.contact?.id || name)
-                || resolved?.contact?.gender
+                genderCandidates.find(value => this._normalizeTtsGender(value))
                 || ''
             );
             const fallback = this._getGenderFallbackTtsVoice(gender);
             return {
                 voice: String(fallback.voice || '').trim(),
                 provider: String(fallback.provider || resolved?.provider || '').trim(),
-                contact: resolved?.contact || null,
+                contact: resolvedContact || looseContact || null,
                 source: fallback.source || 'global'
             };
         }
@@ -8653,10 +8666,10 @@ renderChatRoom(chat) {
                             flex: 1;
                             min-width: 0;
                             padding: 8px 18px 8px 12px;
-                            border: 1px solid rgba(255,255,255,0.4);
+                            border: 1px solid rgba(255,255,255,0.22);
                             border-radius: 18px;
-                            background: rgba(255,255,255,0.8);
-                            color: #333;
+                            background: rgba(255,255,255,0.12);
+                            color: #fff;
                             font-size: 13px;
                             outline: none;
                             -webkit-user-select: text;
@@ -8693,6 +8706,20 @@ renderChatRoom(chat) {
             .call-avatar-fix div {
                 border-radius: 50% !important;
             }
+            #video-chat-input {
+                background: rgba(255,255,255,0.12) !important;
+                color: #ffffff !important;
+                -webkit-text-fill-color: #ffffff !important;
+                caret-color: #ffffff !important;
+                border: 1px solid rgba(255,255,255,0.22) !important;
+                box-shadow: inset 0 0 0 1000px rgba(255,255,255,0.12) !important;
+                filter: none !important;
+                opacity: 1 !important;
+            }
+            #video-chat-input::placeholder {
+                color: rgba(255,255,255,0.62) !important;
+                -webkit-text-fill-color: rgba(255,255,255,0.62) !important;
+            }
         </style>
     `;
 
@@ -8723,6 +8750,19 @@ renderChatRoom(chat) {
         };
 
         const getVideoInput = () => document.getElementById('video-chat-input');
+        const hardenVideoInputStyle = () => {
+            const input = getVideoInput();
+            if (!input?.style?.setProperty) return;
+            input.style.setProperty('background', 'rgba(255,255,255,0.12)', 'important');
+            input.style.setProperty('color', '#ffffff', 'important');
+            input.style.setProperty('-webkit-text-fill-color', '#ffffff', 'important');
+            input.style.setProperty('caret-color', '#ffffff', 'important');
+            input.style.setProperty('border', '1px solid rgba(255,255,255,0.22)', 'important');
+            input.style.setProperty('box-shadow', 'inset 0 0 0 1000px rgba(255,255,255,0.12)', 'important');
+            input.style.setProperty('filter', 'none', 'important');
+            input.style.setProperty('opacity', '1', 'important');
+        };
+        hardenVideoInputStyle();
         const getVideoMessages = () => document.getElementById('video-chat-messages');
 
         let videoBatchTimer = null;
@@ -9918,10 +9958,10 @@ ${chatHistory.slice(-5).map(h => `${h.from === 'me' ? userName : contactName}: $
                             flex: 1;
                             min-width: 0;
                             padding: 8px 18px 8px 12px;
-                            border: 1px solid rgba(0,0,0,0.1);
+                            border: 1px solid rgba(255,255,255,0.22);
                             border-radius: 18px;
-                            background: rgba(255,255,255,0.8);
-                            color: #333;
+                            background: rgba(255,255,255,0.12);
+                            color: #fff;
                             font-size: 13px;
                             outline: none;
                             -webkit-user-select: text;
@@ -9979,6 +10019,20 @@ ${chatHistory.slice(-5).map(h => `${h.from === 'me' ? userName : contactName}: $
             .call-avatar-fix div {
                 border-radius: 50% !important;
             }
+            #voice-chat-input {
+                background: rgba(255,255,255,0.12) !important;
+                color: #ffffff !important;
+                -webkit-text-fill-color: #ffffff !important;
+                caret-color: #ffffff !important;
+                border: 1px solid rgba(255,255,255,0.22) !important;
+                box-shadow: inset 0 0 0 1000px rgba(255,255,255,0.12) !important;
+                filter: none !important;
+                opacity: 1 !important;
+            }
+            #voice-chat-input::placeholder {
+                color: rgba(255,255,255,0.62) !important;
+                -webkit-text-fill-color: rgba(255,255,255,0.62) !important;
+            }
         </style>
     `;
 
@@ -10009,6 +10063,26 @@ ${chatHistory.slice(-5).map(h => `${h.from === 'me' ? userName : contactName}: $
         };
 
         const getVoiceInput = () => document.getElementById('voice-chat-input');
+        const hardenVoiceInputStyle = () => {
+            const input = getVoiceInput();
+            if (!input?.style?.setProperty) return;
+            input.style.setProperty('background', 'rgba(255,255,255,0.12)', 'important');
+            input.style.setProperty('background-color', 'rgba(255,255,255,0.12)', 'important');
+            input.style.setProperty('color', '#ffffff', 'important');
+            input.style.setProperty('-webkit-text-fill-color', '#ffffff', 'important');
+            input.style.setProperty('caret-color', '#ffffff', 'important');
+            input.style.setProperty('border', '1px solid rgba(255,255,255,0.22)', 'important');
+            input.style.setProperty('box-shadow', 'inset 0 0 0 1000px rgba(255,255,255,0.12)', 'important');
+            input.style.setProperty('outline', 'none', 'important');
+            input.style.setProperty('appearance', 'none', 'important');
+            input.style.setProperty('-webkit-appearance', 'none', 'important');
+            input.style.setProperty('filter', 'none', 'important');
+            input.style.setProperty('opacity', '1', 'important');
+        };
+        hardenVoiceInputStyle();
+        // 某些主题会在下一个渲染帧二次覆盖 input 样式，这里再补一帧和延时兜底
+        requestAnimationFrame(() => hardenVoiceInputStyle());
+        setTimeout(() => hardenVoiceInputStyle(), 80);
         const getVoiceMessages = () => document.getElementById('voice-chat-messages');
 
         let voiceBatchTimer = null;

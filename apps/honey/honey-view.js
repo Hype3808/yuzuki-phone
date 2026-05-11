@@ -6753,6 +6753,26 @@ export class HoneyView {
     async _generateSceneImageFromPrompt({ scene = null, prompt = '', auto = false, sourceRoot = null } = {}) {
         const normalizedPrompt = String(prompt || '').trim();
         const baseScene = scene || this.currentSceneData || {};
+        const lockedTopicTitle = String(baseScene?._topicTitle || baseScene?.title || this._getActiveTopicTitle()).trim();
+        const lockedTopicKey = String(baseScene?._topicKey || this._resolveTopicKey(baseScene, lockedTopicTitle)).trim();
+        const isLockedTopicStillActive = () => {
+            const activeKey = String(this._getActiveTopicKey() || '').trim();
+            const activeTitle = String(this._getActiveTopicTitle() || '').trim();
+            return (lockedTopicKey && activeKey === lockedTopicKey)
+                || (!lockedTopicKey && !!lockedTopicTitle && activeTitle === lockedTopicTitle);
+        };
+        const readLockedScene = () => {
+            const liveScene = this.currentSceneData;
+            if (liveScene && typeof liveScene === 'object') {
+                const liveKey = String(liveScene?._topicKey || '').trim();
+                const liveTitle = String(liveScene?._topicTitle || liveScene?.title || '').trim();
+                if ((lockedTopicKey && liveKey === lockedTopicKey) || (!!lockedTopicTitle && liveTitle === lockedTopicTitle)) {
+                    return liveScene;
+                }
+            }
+            const cached = this.app?.honeyData?.getTopicScene?.(lockedTopicKey || lockedTopicTitle, lockedTopicTitle);
+            return (cached && typeof cached === 'object') ? cached : baseScene;
+        };
         if (!normalizedPrompt) {
             if (!auto) this.app?.phoneShell?.showNotification?.('蜜语', '当前直播没有可用的 NAI 提示词', '⚠️');
             return null;
@@ -6797,7 +6817,7 @@ export class HoneyView {
                 seed: requestSeed
             })
             : null;
-        const sceneHostName = String(baseScene?.host || this.currentSceneData?.host || '').trim();
+        const sceneHostName = String(baseScene?.host || readLockedScene()?.host || '').trim();
         const hostNaiReference = provider === 'novelai'
             ? this.app?.honeyData?.getHostNaiReference?.(sceneHostName)
             : null;
@@ -6844,12 +6864,15 @@ export class HoneyView {
             promptPreview?.negativePrompt || '(空)'
         ].join('\n'));
 
+        const existingScene = readLockedScene();
         const existingImageUrl = String(
-            (this.currentSceneData?.naiImageUrl || this.currentSceneData?.generatedImageUrl || this.currentSceneData?.imageUrl || baseScene?.naiImageUrl || baseScene?.generatedImageUrl || baseScene?.imageUrl || '')
+            (existingScene?.naiImageUrl || existingScene?.generatedImageUrl || existingScene?.imageUrl || baseScene?.naiImageUrl || baseScene?.generatedImageUrl || baseScene?.imageUrl || '')
         ).trim();
-        this.currentSceneData = {
-            ...(this.currentSceneData || baseScene),
+        const loadingScene = {
+            ...existingScene,
             ...baseScene,
+            _topicTitle: lockedTopicTitle,
+            _topicKey: lockedTopicKey,
             naiPrompt: normalizedPrompt,
             // 生成中保留当前图，避免先回落视频层导致短暂黑屏
             naiImageUrl: existingImageUrl,
@@ -6867,10 +6890,18 @@ export class HoneyView {
             imageGenerationScale: '',
             imageGenerationError: ''
         };
-        this._persistCurrentScene();
-        if (this.currentPage === 'live' && sourceRoot) {
-            this._refreshLivePageDom({ sourceRoot, scene: this.currentSceneData });
-        } else {
+        if (isLockedTopicStillActive()) {
+            this.currentSceneData = loadingScene;
+        }
+        this._persistCurrentScene(loadingScene, {
+            topicKey: lockedTopicKey,
+            topicTitle: lockedTopicTitle,
+            syncLastScene: isLockedTopicStillActive(),
+            syncSelected: isLockedTopicStillActive()
+        });
+        if (this.currentPage === 'live' && sourceRoot && isLockedTopicStillActive()) {
+            this._refreshLivePageDom({ sourceRoot, scene: loadingScene });
+        } else if (isLockedTopicStillActive()) {
             this.render();
         }
 
@@ -6887,7 +6918,7 @@ export class HoneyView {
                 novelAIReferences
             });
             const rawImageUrl = String(result.imageUrl || result.imageData || '').trim();
-            const previousManagedImageUrl = String(baseScene?.naiImageUrl || baseScene?.generatedImageUrl || baseScene?.imageUrl || '').trim();
+            const previousManagedImageUrl = String(existingScene?.naiImageUrl || existingScene?.generatedImageUrl || existingScene?.imageUrl || baseScene?.naiImageUrl || baseScene?.generatedImageUrl || baseScene?.imageUrl || '').trim();
             const persistedImageUrl = rawImageUrl.startsWith('data:image/')
                 ? await this._uploadHoneyGeneratedImageDataUrl(rawImageUrl, {
                     hostName: sceneHostName,
@@ -6902,8 +6933,11 @@ export class HoneyView {
                 && this._isManagedBackgroundUrl(previousManagedImageUrl)) {
                 window.VirtualPhone?.imageManager?.deleteManagedBackgroundByPath?.(previousManagedImageUrl, { quiet: true });
             }
-            this.currentSceneData = {
-                ...(this.currentSceneData || baseScene),
+            const successScene = {
+                ...readLockedScene(),
+                ...baseScene,
+                _topicTitle: lockedTopicTitle,
+                _topicKey: lockedTopicKey,
                 naiImageUrl: persistedImageUrl,
                 generatedImageUrl: persistedImageUrl,
                 imageUrl: persistedImageUrl,
@@ -6921,21 +6955,33 @@ export class HoneyView {
                 imageGenerationScale: Number(result.scale || 0) || '',
                 imageGenerationError: ''
             };
-            this._persistCurrentScene();
-            if (this.currentPage === 'live' && sourceRoot) {
-                this._refreshLivePageDom({ sourceRoot, scene: this.currentSceneData });
-            } else {
+            if (isLockedTopicStillActive()) {
+                this.currentSceneData = successScene;
+            }
+            this._persistCurrentScene(successScene, {
+                topicKey: lockedTopicKey,
+                topicTitle: lockedTopicTitle,
+                syncLastScene: isLockedTopicStillActive(),
+                syncSelected: isLockedTopicStillActive()
+            });
+            if (this.currentPage === 'live' && sourceRoot && isLockedTopicStillActive()) {
+                this._refreshLivePageDom({ sourceRoot, scene: successScene });
+            } else if (isLockedTopicStillActive()) {
                 this.render();
             }
             this.app?.phoneShell?.showNotification?.('蜜语', auto ? '新剧情图片已自动生成' : '直播图片已生成', '🖼️');
             return result;
         } catch (err) {
             const message = err?.message || String(err || '生成失败');
+            const fallbackScene = readLockedScene();
             const fallbackImageUrl = String(
-                (baseScene?.naiImageUrl || baseScene?.generatedImageUrl || baseScene?.imageUrl || this.currentSceneData?.naiImageUrl || this.currentSceneData?.generatedImageUrl || this.currentSceneData?.imageUrl || '')
+                (fallbackScene?.naiImageUrl || fallbackScene?.generatedImageUrl || fallbackScene?.imageUrl || baseScene?.naiImageUrl || baseScene?.generatedImageUrl || baseScene?.imageUrl || '')
             ).trim();
-            this.currentSceneData = {
-                ...(this.currentSceneData || baseScene),
+            const failedScene = {
+                ...fallbackScene,
+                ...baseScene,
+                _topicTitle: lockedTopicTitle,
+                _topicKey: lockedTopicKey,
                 naiPrompt: normalizedPrompt,
                 // 失败时尽量保留旧图，若无旧图则走视频兜底
                 naiImageUrl: fallbackImageUrl,
@@ -6946,10 +6992,18 @@ export class HoneyView {
                 imageGenerationPrompt: normalizedPrompt,
                 imageGenerationError: message
             };
-            this._persistCurrentScene();
-            if (this.currentPage === 'live' && sourceRoot) {
-                this._refreshLivePageDom({ sourceRoot, scene: this.currentSceneData });
-            } else {
+            if (isLockedTopicStillActive()) {
+                this.currentSceneData = failedScene;
+            }
+            this._persistCurrentScene(failedScene, {
+                topicKey: lockedTopicKey,
+                topicTitle: lockedTopicTitle,
+                syncLastScene: isLockedTopicStillActive(),
+                syncSelected: isLockedTopicStillActive()
+            });
+            if (this.currentPage === 'live' && sourceRoot && isLockedTopicStillActive()) {
+                this._refreshLivePageDom({ sourceRoot, scene: failedScene });
+            } else if (isLockedTopicStillActive()) {
                 this.render();
             }
             this.app?.phoneShell?.showNotification?.(auto ? '自动生图失败' : '生图失败', message, '❌');
@@ -7162,19 +7216,37 @@ export class HoneyView {
         `;
     }
 
-    _persistCurrentScene() {
-        if (!this.currentSceneData) return;
-        const topicTitle = this._getActiveTopicTitle();
-        const topicKey = this._getActiveTopicKey();
+    _persistCurrentScene(sceneOverride = null, options = {}) {
+        const sourceScene = (sceneOverride && typeof sceneOverride === 'object')
+            ? sceneOverride
+            : this.currentSceneData;
+        if (!sourceScene) return;
+        const topicTitle = String(
+            options?.topicTitle
+            || sourceScene?._topicTitle
+            || sourceScene?.title
+            || this._getActiveTopicTitle()
+        ).trim();
+        const topicKey = String(
+            options?.topicKey
+            || sourceScene?._topicKey
+            || this._resolveTopicKey(sourceScene, topicTitle)
+        ).trim();
         const scene = {
-            ...this.currentSceneData,
+            ...sourceScene,
             _topicTitle: topicTitle,
             _topicKey: topicKey
         };
+        const syncLastScene = options?.syncLastScene !== false;
+        const syncSelected = options?.syncSelected !== false;
         this.app?.honeyData?.saveTopicScene?.(topicKey || topicTitle, scene, topicTitle);
-        this.app?.honeyData?.saveLastSceneData?.(scene);
-        this.app?.honeyData?.saveSelectedTopicTitle?.(topicTitle);
-        this.app?.honeyData?.saveSelectedTopicKey?.(topicKey);
+        if (syncLastScene) {
+            this.app?.honeyData?.saveLastSceneData?.(scene);
+        }
+        if (syncSelected) {
+            this.app?.honeyData?.saveSelectedTopicTitle?.(topicTitle);
+            this.app?.honeyData?.saveSelectedTopicKey?.(topicKey);
+        }
 
         if (Array.isArray(this.recommendTopics) && this.recommendTopics.length > 0) {
             const idx = this.recommendTopics.findIndex(t => {
