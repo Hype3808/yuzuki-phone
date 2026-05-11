@@ -212,9 +212,7 @@ export class WorldbookManager {
 
         const chatId = safeString(ctx?.chatMetadata?.file_name || ctx?.chatId);
         if (chatId) return false;
-
-        const hasActiveChatDom = !!document.querySelector('#chat .mes, #chat .mes_block, .mes_block');
-        if (hasActiveChatDom) return false;
+        if (charName) return false;
         return true;
     }
 
