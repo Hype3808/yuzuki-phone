@@ -2013,12 +2013,26 @@ export class WeiboView {
     bindHomeEvents() {
         // 返回按钮 (静态元素)
         const homeBackBtn = document.getElementById('weibo-home-back');
-        if (homeBackBtn) homeBackBtn.onclick = () => {
+        if (homeBackBtn) homeBackBtn.onclick = (e) => {
+            if (e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
             if (this.entrySource?.appId === 'wechat' && typeof this.app.returnToWechatFromCard === 'function') {
                 this.app.returnToWechatFromCard();
                 return;
             }
+
             window.dispatchEvent(new CustomEvent('phone:goHome'));
+
+            const phoneScreen = document.querySelector('.phone-screen');
+            if (phoneScreen) {
+                phoneScreen.style.pointerEvents = 'none';
+                setTimeout(() => {
+                    phoneScreen.style.pointerEvents = '';
+                }, 400);
+            }
         };
 
         // 设置按钮 (静态元素)

@@ -4358,3 +4358,99 @@ input:checked + .toggle-slider:before {
     66%  { content: '...'; }
     100% { content: '.'; }
 }
+
+/* ========================================
+   终极叹息之墙：对抗重度主题的全局核打击
+======================================== */
+
+/* 1. 拯救手机面板外壳 (对抗主题对 .drawer-content 的强行贴图和去圆角) */
+#phone-panel-holder.drawer,
+#phone-panel.drawer-content {
+    background: transparent !important;
+    background-image: none !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+#phone-panel-content .phone-body-panel {
+    background-image: none !important;
+    border-radius: 40px !important; /* 强制保住手机圆角 */
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* 2. 拯救所有表单控件 (对抗主题对裸标签 input, textarea, select 的 !important 劫持) */
+#phone-panel-content input:not([type="checkbox"]):not([type="range"]):not([type="color"]),
+#phone-panel-content textarea,
+#phone-panel-content select {
+    background: #ffffff !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    border: 1px solid #e0e0e0 !important;
+    border-radius: 8px !important;
+    color: var(--phone-global-text) !important;
+    padding: 8px !important;
+    text-shadow: none !important;
+}
+
+/* 3. 拯救滑块和复选框 (对抗主题对 input[type="range"] 和 checkbox 的魔改) */
+#phone-panel-content input[type="range"]::-webkit-slider-thumb {
+    background: #07c160 !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    border-radius: 50% !important;
+    width: 18px !important;
+    height: 18px !important;
+}
+
+#phone-panel-content input[type='checkbox']::after,
+#phone-panel-content input[type='checkbox']::before {
+    display: none !important; /* 清除主题塞进来的奇奇怪怪的背景图 */
+}
+
+/* 4. 拯救返回图标和省略号 (对抗主题强删 fa-chevron-left::before) */
+#phone-panel-content .fa-solid,
+#phone-panel-content .fa-regular {
+    background-image: none !important;
+    width: auto !important;
+    height: auto !important;
+    opacity: 1 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+/* 强行把被主题删掉的 FontAwesome 图标代码补回来 */
+#phone-panel-content .fa-chevron-left::before { content: "\f053" !important; display: inline-block !important; }
+#phone-panel-content .fa-chevron-right::before { content: "\f054" !important; display: inline-block !important; }
+#phone-panel-content .fa-arrow-right::before { content: "\f061" !important; display: inline-block !important; }
+#phone-panel-content .fa-chevron-down::before { content: "\f078" !important; display: inline-block !important; }
+#phone-panel-content .fa-pencil-alt::before,
+#phone-panel-content .fa-pencil::before { content: "\f303" !important; display: inline-block !important; }
+#phone-panel-content .fa-ellipsis-h::before,
+#phone-panel-content .fa-ellipsis::before { content: "\f141" !important; display: inline-block !important; }
+
+/* 5. 拯救文本排版 (对抗主题对 hr, code, pre, q, blockquote 的魔改) */
+#phone-panel-content hr {
+    all: revert !important;
+    border: none !important;
+    border-top: 1px solid #eee !important;
+    background: none !important;
+    height: 1px !important;
+    opacity: 1 !important;
+    margin: 10px 0 !important;
+}
+
+#phone-panel-content hr::after,
+#phone-panel-content hr::before {
+    display: none !important; /* 斩断主题给 hr 加的魔法图 */
+}
+
+#phone-panel-content code,
+#phone-panel-content pre,
+#phone-panel-content q,
+#phone-panel-content blockquote {
+    background: transparent !important;
+    box-shadow: none !important;
+    border: none !important;
+    color: inherit !important;
+}
