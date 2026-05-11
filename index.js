@@ -16,7 +16,7 @@
 
 const ST_PHONE_BASE_URL = new URL('./', import.meta.url).href;
 const ST_PHONE_GLOBAL_CSS_URL = new URL('./phone.css', import.meta.url).href;
-const ST_PHONE_VERSION = '1.0.10';
+const ST_PHONE_VERSION = '1.1.0';
 const ST_PHONE_UPDATE_MANIFEST_URLS = [
     'https://raw.githubusercontent.com/gaigai315/yuzuki-phone/main/manifest.json',
     'https://raw.githubusercontent.com/gaigai315/yuzuki-phone/master/manifest.json'
@@ -36,7 +36,8 @@ const ST_PHONE_CURRENT_UPDATE = {
         '优化语音播放，未绑定音色时可使用男/女全局兜底音色。',
         '优化世界书选择列表，已勾选项会置顶显示。',
         '修复蜜语直播弹幕、评论清洗、右滑交互和图片重复下载等问题。',
-        '修复微信群聊误触发转线下的问题，转线下仅限当前单聊有效回复。'
+        '修复微信群聊误触发转线下的问题，转线下仅限当前单聊有效回复。',
+        '修复部分酒馆主题下小手机打开加载不全、首页错位的问题。'
     ]
 };
 
