@@ -7069,7 +7069,9 @@ if (window.GGP_Loaded) {
                             const wechatOfflineChats = [];
                             const storage = window.VirtualPhone.storage;
                             const isPhoneEnabled = isPhoneFeatureEnabled();
-                            const wechatOnlineRaw = storage ? storage.get('wechat_online_mode') : false;
+                            const wechatOnlineRaw = storage
+                                ? (storage.get('phone_lobby_wechat_online_mode') ?? storage.get('wechat_online_mode'))
+                                : false;
                             const isWechatOnlineEnabled = (
                                 wechatOnlineRaw === true ||
                                 wechatOnlineRaw === 'true' ||

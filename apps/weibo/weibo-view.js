@@ -1957,7 +1957,10 @@ export class WeiboView {
             
             // 必须开启在线模式才触发
             const storage = window.VirtualPhone?.storage;
-            if (!storage || !storage.get('wechat_online_mode')) {
+            const onlineEnabled = storage
+                ? (storage.get('phone_lobby_wechat_online_mode') ?? storage.get('wechat_online_mode'))
+                : false;
+            if (!storage || !onlineEnabled) {
                 return; 
             }
 
@@ -3324,7 +3327,7 @@ export class WeiboView {
                 const disabledText = source.entries?.length ? '' : '（读取失败或为空）';
                 return `
                     <label style="display: flex; align-items: flex-start; gap: 8px; padding: 8px 0; border-top: 1px solid #f2f2f2;">
-                        <input type="checkbox" class="weibo-worldbook-choice" value="${this._escapeAttr(source.id)}" ${checked} style="margin-top: 2px;">
+                        <input type="checkbox" class="weibo-worldbook-choice" value="${this._escapeAttr(source.id)}" ${checked} style="-webkit-appearance: checkbox !important; appearance: auto !important; opacity: 1 !important; width: 16px; height: 16px; min-width: 16px; min-height: 16px; margin-top: 2px; accent-color: #30c46b;">
                         <span style="min-width: 0;">
                             <span style="display: block; font-size: 13px; color: var(--phone-global-text, #333);">${this._escapeHtml(source.name)}${this._escapeHtml(disabledText)}</span>
                             <span style="display: block; font-size: 11px; color: #999; margin-top: 2px;">${this._escapeHtml(source.sourceLabel || '世界书')} · ${Number(source.entries?.length || 0)} 条</span>

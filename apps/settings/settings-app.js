@@ -25,6 +25,8 @@ const SETTINGS_FOLD_ARROW_HTML = '<span class="settings-fold-arrow" aria-hidden=
 const PHONE_SHELL_SCALE_MIN = 80;
 const PHONE_SHELL_SCALE_MAX = 120;
 const PHONE_SHELL_SCALE_DEFAULT = 100;
+const LOBBY_LINK_CHARACTER_IDS_KEY = 'phone-lobby-link-character-ids';
+const LOBBY_LINK_GROUP_IDS_KEY = 'phone-lobby-link-group-ids';
 
 function normalizePhoneShellScalePercent(value) {
     const raw = Number.parseFloat(value);
@@ -50,7 +52,7 @@ export class SettingsApp {
         this.storage = storage;
         this.settings = settings;
         this.imageManager = new ImageUploadManager(storage);
-        this.currentTab = 'general'; // 可选值: 'general', 'memory', 'llm', 'tts', 'image'
+        this.currentTab = 'general'; // 可选值: 'general', 'memory', 'llm', 'tts', 'image', 'lobby'
 
         // 🔥 监听滑动返回事件 (防止实例重建导致重复绑定)
         if (!window._settingsSwipeBackBound) {
@@ -61,6 +63,351 @@ export class SettingsApp {
                 }
             });
         }
+    }
+
+    _safeGetContext() {
+        try {
+            return (typeof SillyTavern !== 'undefined' && typeof SillyTavern.getContext === 'function')
+                ? SillyTavern.getContext()
+                : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    _isLobbyMode(context = null) {
+        const ctx = context || this._safeGetContext();
+        const charName = String(ctx?.name2 || '').trim();
+        if (/^SillyTavern System$/i.test(charName)) return true;
+        const chatId = String(ctx?.chatMetadata?.file_name || ctx?.chatId || '').trim();
+        if (chatId) return false;
+
+        const hasActiveChatDom = !!document.querySelector('#chat .mes, #chat .mes_block, .mes_block');
+        if (hasActiveChatDom) return false;
+
+        return true;
+    }
+
+    _parseIdList(raw) {
+        if (!raw) return { hasStored: false, list: [] };
+        try {
+            const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            if (!Array.isArray(parsed)) return { hasStored: true, list: [] };
+            return {
+                hasStored: true,
+                list: parsed.map(item => String(item || '').trim()).filter(Boolean)
+            };
+        } catch (e) {
+            return { hasStored: true, list: [] };
+        }
+    }
+
+    _normalizeLobbyId(prefix, value, fallbackIndex = 0) {
+        const raw = String(value || '').trim();
+        if (raw) return `${prefix}:${raw}`;
+        return `${prefix}:idx_${fallbackIndex}`;
+    }
+
+    _collectLobbyEntries(candidates = []) {
+        const result = [];
+        const push = (value) => {
+            if (value === null || value === undefined) return;
+            if (Array.isArray(value)) {
+                value.forEach(item => push(item));
+                return;
+            }
+            result.push(value);
+        };
+
+        candidates.forEach((candidate) => {
+            if (!candidate) return;
+            if (Array.isArray(candidate)) {
+                push(candidate);
+                return;
+            }
+            if (typeof candidate !== 'object') return;
+
+            ['groups', 'groupList', 'list', 'items', 'data', 'character_groups', 'characterGroups', 'charGroups', 'characters'].forEach((key) => {
+                if (candidate[key] !== undefined) push(candidate[key]);
+            });
+
+            Object.values(candidate).forEach((value) => {
+                if (Array.isArray(value)) push(value);
+            });
+        });
+
+        return result;
+    }
+
+    _extractPersonaUsers(context = null) {
+        const ctx = context || this._safeGetContext();
+        const users = [];
+        const seen = new Set();
+        const isLikelyValidPersonaName = (value) => {
+            const text = String(value || '').trim();
+            if (!text) return false;
+            const lower = text.toLowerCase();
+            if (text === '无') return false;
+            if (lower === 'user avatar' || lower === 'avatar' || lower === 'default') return false;
+            if (/\.png$|\.jpe?g$|\.webp$|\.gif$/i.test(text)) return false;
+            if (/^\d{10,}[-_a-z0-9.]*$/i.test(text)) return false;
+            if (text.length > 40) return false;
+            if (/当前聊天|当前角色|绑定|映射|设定描述|persona|avatar/i.test(text)) return false;
+            return true;
+        };
+        const append = (nameRaw, idRaw = '') => {
+            const name = String(nameRaw || '').trim();
+            if (!isLikelyValidPersonaName(name)) return;
+            const key = String(idRaw || name).trim().toLowerCase();
+            if (!key || seen.has(key)) return;
+            seen.add(key);
+            users.push({ id: key, name });
+        };
+
+        const candidates = [
+            window?.power_user?.personas,
+            ctx?.power_user?.personas
+        ];
+
+        candidates.forEach((personaStore) => {
+            if (!personaStore) return;
+            if (Array.isArray(personaStore)) {
+                personaStore.forEach((item, index) => {
+                    if (typeof item === 'string') {
+                        append(item, `arr_${index}_${item}`);
+                        return;
+                    }
+                    append(item?.name || item?.personaName || item?.user || item?.displayName, item?.avatar || item?.id || index);
+                });
+                return;
+            }
+            if (typeof personaStore === 'object') {
+                Object.entries(personaStore).forEach(([avatar, value]) => {
+                    if (typeof value === 'string') {
+                        append(value, avatar);
+                        return;
+                    }
+                    append(value?.name || value?.personaName || value?.displayName || value?.user, avatar);
+                });
+            }
+        });
+
+        const avatarContainers = document.querySelectorAll('#user_avatar_block .avatar-container, #user_avatar_block .avatar-container.interactable');
+        avatarContainers.forEach((node, index) => {
+            const text = String(
+                node.querySelector?.('.ch_name')?.textContent
+                || node.querySelector?.('.avatar_name')?.textContent
+                || node.querySelector?.('.name')?.textContent
+                || node.querySelector?.('.avatar_label')?.textContent
+                || ''
+            ).trim();
+            const avatarId = String(node.getAttribute?.('data-avatar-id') || '').trim();
+            append(text, avatarId || `dom_${index}_${text}`);
+        });
+
+        return users;
+    }
+
+    _extractLobbyCharacters(context = null) {
+        const ctx = context || this._safeGetContext();
+        const source = this._collectLobbyEntries([
+            window?.characters,
+            ctx?.characters,
+            window?.character_list,
+            ctx?.character_list
+        ]);
+        if (!Array.isArray(source) || source.length === 0) return [];
+
+        const list = [];
+        const seen = new Set();
+        source.forEach((char, index) => {
+            if (!char) return;
+            const name = String(char.name || char.data?.name || '').trim();
+            if (!name) return;
+            const id = this._normalizeLobbyId(
+                'char',
+                char.avatar || char.id || char.character_id || char.data?.name || name,
+                index
+            );
+            if (seen.has(id)) return;
+            seen.add(id);
+            const personality = String(char.personality || '').trim();
+            const description = String(char.description || '').trim();
+            list.push({
+                id,
+                name,
+                avatar: String(char.avatar || '').trim(),
+                personality,
+                description: description ? description.substring(0, 150) : ''
+            });
+        });
+        return list;
+    }
+
+    _extractLobbyGroups(context = null) {
+        const ctx = context || this._safeGetContext();
+        const source = this._collectLobbyEntries([
+            window?.groups,
+            window?.character_groups,
+            window?.charGroups,
+            window?.characterGroups,
+            ctx?.groups,
+            ctx?.character_groups,
+            ctx?.characterGroups,
+            window?.groupCandidates,
+            ctx?.groupCandidates
+        ]);
+
+        const list = [];
+        const seen = new Set();
+        if (Array.isArray(source) && source.length > 0) {
+            source.forEach((group, index) => {
+                const isString = typeof group === 'string';
+                const name = String(isString ? group : (group?.name || group?.title || group?.id || '')).trim();
+                if (!name) return;
+                const rawMembers = Array.isArray(group?.members)
+                    ? group.members
+                    : (Array.isArray(group?.characters) ? group.characters : []);
+                const memberList = rawMembers
+                    .map(member => String(member?.name || member?.avatar || member || '').trim())
+                    .filter(Boolean);
+                const id = this._normalizeLobbyId('group', group?.id || group?.name || name, index);
+                if (seen.has(id)) return;
+                seen.add(id);
+                list.push({
+                    id,
+                    name,
+                    memberCount: memberList.length,
+                    memberPreview: memberList.slice(0, 5).join('、')
+                });
+            });
+        }
+
+        const personaUsers = this._extractPersonaUsers(ctx);
+        personaUsers.forEach((user, index) => {
+            const id = this._normalizeLobbyId('group_persona', user.id || user.name, index);
+            if (seen.has(id)) return;
+            seen.add(id);
+            list.push({
+                id,
+                name: user.name,
+                memberCount: 1,
+                memberPreview: user.name
+            });
+        });
+
+        return list;
+    }
+
+    renderLobbyLinkSection(context = null) {
+        const ctx = context || this._safeGetContext();
+        const characters = this._extractLobbyCharacters(ctx);
+        const groups = this._extractLobbyGroups(ctx);
+        const storedCharacterIds = this._parseIdList(this.storage.get(LOBBY_LINK_CHARACTER_IDS_KEY));
+        const storedGroupIds = this._parseIdList(this.storage.get(LOBBY_LINK_GROUP_IDS_KEY));
+
+        const selectedCharacterSet = new Set(
+            storedCharacterIds.hasStored ? storedCharacterIds.list : characters.map(item => item.id)
+        );
+        const selectedGroupSet = new Set(
+            storedGroupIds.hasStored ? storedGroupIds.list : groups.map(item => item.id)
+        );
+
+        const selectedCharacterCount = characters.filter(item => selectedCharacterSet.has(item.id)).length;
+        const selectedGroupCount = groups.filter(item => selectedGroupSet.has(item.id)).length;
+
+        const renderGroupRows = groups.length > 0
+            ? groups.map(group => `
+                <label class="phone-lobby-item-row" style="display:flex; align-items:flex-start; gap:8px; padding:8px 4px; border-bottom:1px solid #f1f1f1;">
+                    <input type="checkbox" class="phone-lobby-group-check" data-group-id="${this._escapeHtml(group.id)}" ${selectedGroupSet.has(group.id) ? 'checked' : ''}>
+                    <div style="min-width:0;">
+                        <div style="font-size:13px; color:#111; font-weight:600; line-height:1.35;">${this._escapeHtml(group.name)}</div>
+                    </div>
+                </label>
+            `).join('')
+            : '<div style="font-size:12px; color:#888; padding:10px 4px;">未读取到用户组（当前环境可能未提供分组数据）。</div>';
+
+        const renderCharacterRows = characters.length > 0
+            ? characters.map(character => {
+                return `
+                    <label class="phone-lobby-item-row" style="display:flex; align-items:flex-start; gap:8px; padding:8px 4px; border-bottom:1px solid #f1f1f1;">
+                        <input type="checkbox" class="phone-lobby-character-check" data-character-id="${this._escapeHtml(character.id)}" ${selectedCharacterSet.has(character.id) ? 'checked' : ''}>
+                        <div style="min-width:0;">
+                            <div style="font-size:13px; color:#111; font-weight:600; line-height:1.35;">${this._escapeHtml(character.name)}</div>
+                        </div>
+                    </label>
+                `;
+            }).join('')
+            : '<div style="font-size:12px; color:#888; padding:10px 4px;">未读取到角色卡列表。</div>';
+
+        return `
+            <div class="setting-section">
+                <div class="setting-section-title">🏛️ 大厅现实联动</div>
+                <div class="setting-info">
+                    当前模式：大厅（仅主界面生效）<br>
+                    说明：仅按下方勾选名单联动微信，不改写会话内用户设定/人设。
+                </div>
+                <div class="setting-item" style="display:flex; align-items:center; justify-content:space-between;">
+                    <div>
+                        <div class="setting-label">用户组白名单</div>
+                        <div class="setting-desc">已勾选 <span id="phone-lobby-groups-count">${selectedGroupCount}</span> / <span id="phone-lobby-groups-total">${groups.length}</span></div>
+                    </div>
+                    <div style="display:flex; gap:6px;">
+                        <button class="setting-btn" id="phone-lobby-groups-select-all" style="height:30px; padding:0 10px; border:1px solid #d8d8d8; background:#fff; color:#333;">全选</button>
+                        <button class="setting-btn" id="phone-lobby-groups-clear" style="height:30px; padding:0 10px; border:1px solid #f1c7c3; background:#fff; color:#d93025;">清空</button>
+                    </div>
+                </div>
+                <div class="setting-item" style="padding-top:0;">
+                    <div class="phone-lobby-groups-list">${renderGroupRows}</div>
+                </div>
+                <div class="setting-item" style="display:flex; align-items:center; justify-content:space-between;">
+                    <div>
+                        <div class="setting-label">角色卡白名单</div>
+                        <div class="setting-desc">已勾选 <span id="phone-lobby-characters-count">${selectedCharacterCount}</span> / <span id="phone-lobby-characters-total">${characters.length}</span></div>
+                    </div>
+                    <div style="display:flex; gap:6px;">
+                        <button class="setting-btn" id="phone-lobby-characters-select-all" style="height:30px; padding:0 10px; border:1px solid #d8d8d8; background:#fff; color:#333;">全选</button>
+                        <button class="setting-btn" id="phone-lobby-characters-clear" style="height:30px; padding:0 10px; border:1px solid #f1c7c3; background:#fff; color:#d93025;">清空</button>
+                    </div>
+                </div>
+                <div class="setting-item" style="padding-top:0;">
+                    <div class="phone-lobby-characters-list">${renderCharacterRows}</div>
+                </div>
+                <div class="setting-item setting-button">
+                    <button class="setting-btn" id="phone-lobby-refresh" style="width:100%; height:34px; border:1px solid #d8d8d8; background:#f8f8f8; color:#333;">
+                        重新读取大厅列表
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
+    async _saveLobbySelectionFromDom() {
+        const characterIds = Array.from(document.querySelectorAll('.phone-lobby-character-check:checked'))
+            .map(input => String(input.getAttribute('data-character-id') || '').trim())
+            .filter(Boolean);
+        const groupIds = Array.from(document.querySelectorAll('.phone-lobby-group-check:checked'))
+            .map(input => String(input.getAttribute('data-group-id') || '').trim())
+            .filter(Boolean);
+        await this.storage.set(LOBBY_LINK_CHARACTER_IDS_KEY, JSON.stringify(characterIds));
+        await this.storage.set(LOBBY_LINK_GROUP_IDS_KEY, JSON.stringify(groupIds));
+    }
+
+    _refreshLobbySelectionCountInDom() {
+        const selectedGroupCount = document.querySelectorAll('.phone-lobby-group-check:checked').length;
+        const selectedCharacterCount = document.querySelectorAll('.phone-lobby-character-check:checked').length;
+        const groupCountEl = document.getElementById('phone-lobby-groups-count');
+        const characterCountEl = document.getElementById('phone-lobby-characters-count');
+        if (groupCountEl) groupCountEl.textContent = String(selectedGroupCount);
+        if (characterCountEl) characterCountEl.textContent = String(selectedCharacterCount);
+    }
+
+    async _setAllLobbyCheckboxes(selector, checked) {
+        document.querySelectorAll(selector).forEach(input => {
+            input.checked = !!checked;
+        });
+        this._refreshLobbySelectionCountInDom();
+        await this._saveLobbySelectionFromDom();
     }
 
     _getTtsProviderDefaults(provider) {
@@ -116,7 +463,27 @@ export class SettingsApp {
 
     render() {
         const context = this.storage.getContext();
-        const charName = context?.name2 || context?.characterId || '未知';
+        const isLobbyMode = this._isLobbyMode(context);
+        if (!isLobbyMode && this.currentTab === 'lobby') {
+            this.currentTab = 'general';
+        }
+        const charName = (() => {
+            const name2 = String(context?.name2 || '').trim();
+            if (name2) return name2;
+
+            const characterId = Number.parseInt(context?.characterId, 10);
+            if (Number.isInteger(characterId) && Array.isArray(context?.characters) && context.characters[characterId]?.name) {
+                const byIdName = String(context.characters[characterId].name || '').trim();
+                if (byIdName) return byIdName;
+            }
+
+            const characterIdRaw = String(context?.characterId || '').trim();
+            if (characterIdRaw) return characterIdRaw;
+
+            if (isLobbyMode) return 'SillyTavern System（大厅）';
+            return '未识别角色';
+        })();
+        const charBlockLabel = isLobbyMode ? '当前环境' : '角色名称';
         const currentTtsProvider = this._getCurrentMainTtsProvider();
         const currentTtsDefaults = this._getTtsProviderDefaults(currentTtsProvider);
         const currentTtsUrl = this._getTtsProviderValue(currentTtsProvider, 'url', 'phone-tts-url') || currentTtsDefaults.url || '';
@@ -171,6 +538,51 @@ export class SettingsApp {
         const html = `
             <div class="settings-app">
                 <style>
+                    .settings-app {
+                        box-sizing: border-box !important;
+                        width: 100% !important;
+                        height: 100% !important;
+                        min-width: 0 !important;
+                        min-height: 0 !important;
+                        display: flex !important;
+                        flex-direction: column !important;
+                        overflow: hidden !important;
+                    }
+                    .settings-app .app-body {
+                        min-width: 0 !important;
+                        min-height: 0 !important;
+                        flex: 1 1 auto !important;
+                        overflow-x: hidden !important;
+                    }
+                    .settings-app,
+                    .settings-app *,
+                    .settings-app *::before,
+                    .settings-app *::after {
+                        writing-mode: horizontal-tb !important;
+                        text-orientation: mixed !important;
+                    }
+                    .settings-app .phone-settings-tab-content,
+                    .settings-app .setting-item,
+                    .settings-app .setting-label,
+                    .settings-app .setting-desc,
+                    .settings-app .setting-value,
+                    .settings-app button,
+                    .settings-app input,
+                    .settings-app select,
+                    .settings-app textarea,
+                    .settings-app label,
+                    .settings-app span,
+                    .settings-app div {
+                        max-width: 100% !important;
+                        word-break: break-word !important;
+                        overflow-wrap: anywhere !important;
+                    }
+                    .settings-app input[type="checkbox"] {
+                        -webkit-appearance: checkbox !important;
+                        appearance: auto !important;
+                        opacity: 1 !important;
+                        accent-color: #30c46b !important;
+                    }
                     .settings-app details > summary::-webkit-details-marker { display: none; }
                     .settings-app details > summary::marker { content: ''; }
                     .settings-fold-arrow {
@@ -211,6 +623,35 @@ export class SettingsApp {
                     }
                     .settings-app .phone-settings-tab-content.is-hidden {
                         display: none !important;
+                    }
+                    #tab-lobby {
+                        box-sizing: border-box;
+                        width: 100%;
+                        max-width: 760px;
+                        margin: 0 auto;
+                    }
+                    .phone-lobby-groups-list,
+                    .phone-lobby-characters-list {
+                        max-height: 240px;
+                        overflow-y: auto;
+                        touch-action: pan-y;
+                        overscroll-behavior: contain;
+                        border: 1px solid rgba(18, 24, 38, 0.08);
+                        border-radius: 10px;
+                        padding: 0 8px;
+                        background: #fff;
+                    }
+                    .settings-app .phone-lobby-item-row input[type="checkbox"] {
+                        -webkit-appearance: checkbox !important;
+                        appearance: auto !important;
+                        opacity: 1 !important;
+                        width: 16px !important;
+                        height: 16px !important;
+                        min-width: 16px !important;
+                        min-height: 16px !important;
+                        margin-top: 2px !important;
+                        accent-color: #30c46b !important;
+                        cursor: pointer;
                     }
                     #tab-general > details[data-settings-fold-key] {
                         margin: 10px 0 !important;
@@ -443,12 +884,15 @@ export class SettingsApp {
                 </div>
 
                 <div class="settings-tabs" style="position: sticky; top: 78px; z-index: 99; background: rgba(247,247,247,0.96); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 0.5px solid #d8d8d8; min-height: 48px; padding: 7px 10px 8px; box-sizing: border-box; flex-shrink: 0;">
-                    <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; position: relative; height: 33px; padding: 3px; border-radius: 13px; background: rgba(0,0,0,0.045); box-sizing: border-box;">
+                    <div style="display: grid; grid-template-columns: repeat(${isLobbyMode ? 6 : 5}, minmax(0, 1fr)); gap: 6px; position: relative; height: 33px; padding: 3px; border-radius: 13px; background: rgba(0,0,0,0.045); box-sizing: border-box;">
                         <button class="settings-tab-btn ${this.currentTab === 'general' ? 'active' : ''}" data-tab="general" style="min-width: 0; border: none; background: ${this.currentTab === 'general' ? '#fff' : 'transparent'}; height: 27px; padding: 0; line-height: 27px; font-size: 12px; font-weight: ${this.currentTab === 'general' ? '700' : '500'}; color: ${this.currentTab === 'general' ? '#111' : '#666'}; border-radius: 10px; box-shadow: ${this.currentTab === 'general' ? '0 1px 4px rgba(0,0,0,0.12)' : 'none'}; transition: all .18s ease; white-space: nowrap;">常规</button>
                         <button class="settings-tab-btn ${this.currentTab === 'memory' ? 'active' : ''}" data-tab="memory" style="min-width: 0; border: none; background: ${this.currentTab === 'memory' ? '#fff' : 'transparent'}; height: 27px; padding: 0; line-height: 27px; font-size: 12px; font-weight: ${this.currentTab === 'memory' ? '700' : '500'}; color: ${this.currentTab === 'memory' ? '#111' : '#666'}; border-radius: 10px; box-shadow: ${this.currentTab === 'memory' ? '0 1px 4px rgba(0,0,0,0.12)' : 'none'}; transition: all .18s ease; white-space: nowrap;">联动</button>
                         <button class="settings-tab-btn ${this.currentTab === 'llm' ? 'active' : ''}" data-tab="llm" style="min-width: 0; border: none; background: ${this.currentTab === 'llm' ? '#fff' : 'transparent'}; height: 27px; padding: 0; line-height: 27px; font-size: 12px; font-weight: ${this.currentTab === 'llm' ? '700' : '500'}; color: ${this.currentTab === 'llm' ? '#111' : '#666'}; border-radius: 10px; box-shadow: ${this.currentTab === 'llm' ? '0 1px 4px rgba(0,0,0,0.12)' : 'none'}; transition: all .18s ease; white-space: nowrap;">API</button>
                         <button class="settings-tab-btn ${this.currentTab === 'tts' ? 'active' : ''}" data-tab="tts" style="min-width: 0; border: none; background: ${this.currentTab === 'tts' ? '#fff' : 'transparent'}; height: 27px; padding: 0; line-height: 27px; font-size: 12px; font-weight: ${this.currentTab === 'tts' ? '700' : '500'}; color: ${this.currentTab === 'tts' ? '#111' : '#666'}; border-radius: 10px; box-shadow: ${this.currentTab === 'tts' ? '0 1px 4px rgba(0,0,0,0.12)' : 'none'}; transition: all .18s ease; white-space: nowrap;">TTS</button>
                         <button class="settings-tab-btn ${this.currentTab === 'image' ? 'active' : ''}" data-tab="image" style="min-width: 0; border: none; background: ${this.currentTab === 'image' ? '#fff' : 'transparent'}; height: 27px; padding: 0; line-height: 27px; font-size: 12px; font-weight: ${this.currentTab === 'image' ? '700' : '500'}; color: ${this.currentTab === 'image' ? '#111' : '#666'}; border-radius: 10px; box-shadow: ${this.currentTab === 'image' ? '0 1px 4px rgba(0,0,0,0.12)' : 'none'}; transition: all .18s ease; white-space: nowrap;">生图</button>
+                        ${isLobbyMode
+                            ? `<button class="settings-tab-btn ${this.currentTab === 'lobby' ? 'active' : ''}" data-tab="lobby" style="min-width: 0; border: none; background: ${this.currentTab === 'lobby' ? '#fff' : 'transparent'}; height: 27px; padding: 0; line-height: 27px; font-size: 12px; font-weight: ${this.currentTab === 'lobby' ? '700' : '500'}; color: ${this.currentTab === 'lobby' ? '#111' : '#666'}; border-radius: 10px; box-shadow: ${this.currentTab === 'lobby' ? '0 1px 4px rgba(0,0,0,0.12)' : 'none'}; transition: all .18s ease; white-space: nowrap;">大厅</button>`
+                            : ''}
                     </div>
                 </div>
 
@@ -458,7 +902,7 @@ export class SettingsApp {
                         <div class="setting-section">
                             <div class="setting-section-title">📱 当前角色</div>
                             <div class="setting-item">
-                                <div class="setting-label">角色名称</div>
+                                <div class="setting-label">${charBlockLabel}</div>
                                 <div class="setting-value">${charName}</div>
                             </div>
                         </div>
@@ -476,7 +920,7 @@ export class SettingsApp {
                                     <div class="setting-desc">启用后可通过手机与AI互动（按会话独立设置）</div>
                                 </div>
                                 <label class="toggle-switch">
-                                    <input type="checkbox" id="setting-online-mode" ${this.storage.get('wechat_online_mode') ? 'checked' : ''}>
+                                    <input type="checkbox" id="setting-online-mode" ${this.storage.get(isLobbyMode ? 'phone_lobby_wechat_online_mode' : 'wechat_online_mode') ? 'checked' : ''}>
                                     <span class="toggle-slider"></span>
                                 </label>
                             </div>
@@ -1219,6 +1663,11 @@ export class SettingsApp {
                 <div class="phone-settings-tab-content ${this.currentTab === 'image' ? 'is-active' : 'is-hidden'}" id="tab-image">
                         ${this.renderImageGenerationSection()}
                     </div>
+                    ${isLobbyMode
+                        ? `<div class="phone-settings-tab-content ${this.currentTab === 'lobby' ? 'is-active' : 'is-hidden'}" id="tab-lobby">
+                            ${this.renderLobbyLinkSection(context)}
+                        </div>`
+                        : ''}
                 </div>
             </div>
         `;
@@ -2018,6 +2467,38 @@ export class SettingsApp {
     }
 
     bindEvents() {
+        const bindLobbyEvents = () => {
+            const lobbyRoot = document.getElementById('tab-lobby');
+            if (!lobbyRoot) return;
+
+            const bindChecks = async () => {
+                this._refreshLobbySelectionCountInDom();
+                await this._saveLobbySelectionFromDom();
+            };
+
+            lobbyRoot.querySelectorAll('.phone-lobby-character-check, .phone-lobby-group-check').forEach(input => {
+                input.addEventListener('change', () => {
+                    bindChecks();
+                });
+            });
+
+            document.getElementById('phone-lobby-groups-select-all')?.addEventListener('click', async () => {
+                await this._setAllLobbyCheckboxes('.phone-lobby-group-check', true);
+            });
+            document.getElementById('phone-lobby-groups-clear')?.addEventListener('click', async () => {
+                await this._setAllLobbyCheckboxes('.phone-lobby-group-check', false);
+            });
+            document.getElementById('phone-lobby-characters-select-all')?.addEventListener('click', async () => {
+                await this._setAllLobbyCheckboxes('.phone-lobby-character-check', true);
+            });
+            document.getElementById('phone-lobby-characters-clear')?.addEventListener('click', async () => {
+                await this._setAllLobbyCheckboxes('.phone-lobby-character-check', false);
+            });
+            document.getElementById('phone-lobby-refresh')?.addEventListener('click', () => {
+                this.render();
+            });
+        };
+
         // Tab 切换
         document.querySelectorAll('.settings-tab-btn').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -2027,6 +2508,7 @@ export class SettingsApp {
                 this.render();
             });
         });
+        bindLobbyEvents();
 
         document.querySelectorAll('[data-settings-fold-key]').forEach((foldEl) => {
             foldEl.addEventListener('toggle', async () => {
@@ -2249,9 +2731,12 @@ export class SettingsApp {
             }
         });
         
-        // 在线模式切换（per-chat）
+        // 在线模式切换（会话模式用会话键；大厅模式用全局键）
         document.getElementById('setting-online-mode')?.addEventListener('change', (e) => {
-            this.storage.set('wechat_online_mode', e.target.checked);
+            const onlineModeKey = this._isLobbyMode(this.storage.getContext())
+                ? 'phone_lobby_wechat_online_mode'
+                : 'wechat_online_mode';
+            this.storage.set(onlineModeKey, e.target.checked);
         });
 
         // 快捷回复按钮开关

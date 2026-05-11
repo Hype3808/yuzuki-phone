@@ -13,6 +13,9 @@ import { ImageCropper } from '../settings/image-cropper.js';
 import { captureWechatChatSnapshot } from './chat-snapshot.js';
 import { applyPhoneTagFilter } from '../../config/tag-filter.js';
 
+const LOBBY_LINK_CHARACTER_IDS_KEY = 'phone-lobby-link-character-ids';
+const LOBBY_LINK_GROUP_IDS_KEY = 'phone-lobby-link-group-ids';
+
 // 聊天界面视图
 export class ChatView {
     constructor(wechatApp) {
@@ -48,13 +51,610 @@ export class ChatView {
         this.messageSelectionMode = false;
         this.selectedMessageIds = new Set();
         this.messageSelectionChatId = null;
+        this._lobbyPersonaProfileCache = new Map();
+        this._lobbyPersonaCacheTTL = 10 * 60 * 1000;
+        this._lobbyPersonaEmptyCacheTTL = 45 * 1000;
+        this._lobbyPersonaCacheMax = 128;
+    }
+
+    _safeGetContext() {
+        try {
+            return (typeof SillyTavern !== 'undefined' && SillyTavern.getContext)
+                ? SillyTavern.getContext()
+                : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    _isLobbyMode(context = null) {
+        const ctx = context || this._safeGetContext();
+        const charName = String(ctx?.name2 || '').trim();
+        if (/^SillyTavern System$/i.test(charName)) return true;
+        const chatId = String(ctx?.chatMetadata?.file_name || ctx?.chatId || '').trim();
+        if (chatId) return false;
+        const hasActiveChatDom = !!document.querySelector('#chat .mes, #chat .mes_block, .mes_block');
+        if (hasActiveChatDom) return false;
+        return true;
+    }
+
+    _parseIdList(raw) {
+        if (!raw) return { hasStored: false, list: [] };
+        try {
+            const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            if (!Array.isArray(parsed)) return { hasStored: true, list: [] };
+            return {
+                hasStored: true,
+                list: parsed.map(item => String(item || '').trim()).filter(Boolean)
+            };
+        } catch (e) {
+            return { hasStored: true, list: [] };
+        }
+    }
+
+    _normalizeLobbyId(prefix, value, fallbackIndex = 0) {
+        const raw = String(value || '').trim();
+        if (raw) return `${prefix}:${raw}`;
+        return `${prefix}:idx_${fallbackIndex}`;
+    }
+
+    _collectLobbyEntries(candidates = []) {
+        const result = [];
+        const push = (value) => {
+            if (value === null || value === undefined) return;
+            if (Array.isArray(value)) {
+                value.forEach(item => push(item));
+                return;
+            }
+            result.push(value);
+        };
+
+        candidates.forEach((candidate) => {
+            if (!candidate) return;
+            if (Array.isArray(candidate)) {
+                push(candidate);
+                return;
+            }
+            if (typeof candidate !== 'object') return;
+
+            ['groups', 'groupList', 'list', 'items', 'data', 'character_groups', 'characterGroups', 'charGroups', 'characters'].forEach((key) => {
+                if (candidate[key] !== undefined) push(candidate[key]);
+            });
+
+            Object.values(candidate).forEach((value) => {
+                if (Array.isArray(value)) push(value);
+            });
+        });
+
+        return result;
+    }
+
+    _normalizeLookupName(value = '') {
+        return String(value || '')
+            .trim()
+            .replace(/\s+/g, '')
+            .replace(/[（(][^（）()]*[）)]/g, '')
+            .toLowerCase();
+    }
+
+    _extractPersonaUsers(context = null) {
+        const ctx = context || this._safeGetContext();
+        const users = [];
+        const seen = new Set();
+        const isLikelyValidPersonaName = (value) => {
+            const text = String(value || '').trim();
+            if (!text) return false;
+            const lower = text.toLowerCase();
+            if (text === '无') return false;
+            if (lower === 'user avatar' || lower === 'avatar' || lower === 'default') return false;
+            if (/\.png$|\.jpe?g$|\.webp$|\.gif$/i.test(text)) return false;
+            if (/^\d{10,}[-_a-z0-9.]*$/i.test(text)) return false;
+            if (text.length > 40) return false;
+            if (/当前聊天|当前角色|绑定|映射|设定描述|persona|avatar/i.test(text)) return false;
+            return true;
+        };
+        const append = (nameRaw, idRaw = '') => {
+            const name = String(nameRaw || '').trim();
+            if (!isLikelyValidPersonaName(name)) return;
+            const key = String(idRaw || name).trim().toLowerCase();
+            if (!key || seen.has(key)) return;
+            seen.add(key);
+            users.push({ id: key, name });
+        };
+
+        const candidates = [
+            window?.power_user?.personas,
+            ctx?.power_user?.personas
+        ];
+
+        candidates.forEach((personaStore) => {
+            if (!personaStore) return;
+            if (Array.isArray(personaStore)) {
+                personaStore.forEach((item, index) => {
+                    if (typeof item === 'string') {
+                        append(item, `arr_${index}_${item}`);
+                        return;
+                    }
+                    append(item?.name || item?.personaName || item?.user || item?.displayName, item?.avatar || item?.id || index);
+                });
+                return;
+            }
+            if (typeof personaStore === 'object') {
+                Object.entries(personaStore).forEach(([avatar, value]) => {
+                    if (typeof value === 'string') {
+                        append(value, avatar);
+                        return;
+                    }
+                    append(value?.name || value?.personaName || value?.displayName || value?.user, avatar);
+                });
+            }
+        });
+
+        const avatarContainers = document.querySelectorAll('#user_avatar_block .avatar-container, #user_avatar_block .avatar-container.interactable');
+        avatarContainers.forEach((node, index) => {
+            const text = String(
+                node.querySelector?.('.ch_name')?.textContent
+                || node.querySelector?.('.avatar_name')?.textContent
+                || node.querySelector?.('.name')?.textContent
+                || node.querySelector?.('.avatar_label')?.textContent
+                || ''
+            ).trim();
+            const avatarId = String(node.getAttribute?.('data-avatar-id') || '').trim();
+            append(text, avatarId || `dom_${index}_${text}`);
+        });
+
+        return users;
+    }
+
+    _extractLobbyCharacters(context = null) {
+        const ctx = context || this._safeGetContext();
+        const source = this._collectLobbyEntries([
+            window?.characters,
+            ctx?.characters,
+            window?.character_list,
+            ctx?.character_list
+        ]);
+        if (!Array.isArray(source) || source.length === 0) return [];
+        const list = [];
+        const seen = new Set();
+        source.forEach((char, index) => {
+            if (!char) return;
+            const name = String(char.name || char.data?.name || '').trim();
+            if (!name) return;
+            const id = this._normalizeLobbyId(
+                'char',
+                char.avatar || char.id || char.character_id || char.data?.name || name,
+                index
+            );
+            if (seen.has(id)) return;
+            seen.add(id);
+            const data = (char && typeof char.data === 'object') ? char.data : {};
+            list.push({
+                id,
+                name,
+                personality: String(char.personality || data.personality || '').trim(),
+                description: String(char.description || data.description || data.context || '').trim(),
+                scenario: String(char.scenario || data.scenario || '').trim(),
+                systemPrompt: String(char.system_prompt || data.system_prompt || '').trim()
+            });
+        });
+        return list;
+    }
+
+    _extractLobbyGroups(context = null) {
+        const ctx = context || this._safeGetContext();
+        const source = this._collectLobbyEntries([
+            window?.groups,
+            window?.character_groups,
+            window?.charGroups,
+            window?.characterGroups,
+            ctx?.groups,
+            ctx?.character_groups,
+            ctx?.characterGroups,
+            window?.groupCandidates,
+            ctx?.groupCandidates
+        ]);
+        const list = [];
+        const seen = new Set();
+        if (Array.isArray(source) && source.length > 0) {
+            source.forEach((group, index) => {
+                const isString = typeof group === 'string';
+                const name = String(isString ? group : (group?.name || group?.title || group?.id || '')).trim();
+                if (!name) return;
+                const rawMembers = Array.isArray(group?.members)
+                    ? group.members
+                    : (Array.isArray(group?.characters) ? group.characters : []);
+                const members = rawMembers
+                    .map(member => String(member?.name || member?.avatar || member || '').trim())
+                    .filter(Boolean);
+                const id = this._normalizeLobbyId('group', group?.id || group?.name || name, index);
+                if (seen.has(id)) return;
+                seen.add(id);
+                list.push({ id, name, members });
+            });
+        }
+
+        const personaUsers = this._extractPersonaUsers(ctx);
+        personaUsers.forEach((user, index) => {
+            const id = this._normalizeLobbyId('group_persona', user.id || user.name, index);
+            if (seen.has(id)) return;
+            seen.add(id);
+            list.push({ id, name: user.name, members: [user.name] });
+        });
+        return list;
+    }
+
+    _buildLobbySelection(context = null) {
+        const ctx = context || this._safeGetContext();
+        const isLobby = this._isLobbyMode(ctx);
+        if (!isLobby) return { isLobby: false, characters: [], groups: [] };
+
+        const storage = window.VirtualPhone?.storage;
+        const allCharacters = this._extractLobbyCharacters(ctx);
+        const allGroups = this._extractLobbyGroups(ctx);
+        const characterIds = this._parseIdList(storage?.get(LOBBY_LINK_CHARACTER_IDS_KEY));
+        const groupIds = this._parseIdList(storage?.get(LOBBY_LINK_GROUP_IDS_KEY));
+        const characterSet = new Set(
+            characterIds.hasStored ? characterIds.list : allCharacters.map(item => item.id)
+        );
+        const groupSet = new Set(
+            groupIds.hasStored ? groupIds.list : allGroups.map(item => item.id)
+        );
+        const selectedGroups = allGroups.filter(item => groupSet.has(item.id));
+        const byId = new Map(allCharacters.map(item => [String(item.id), item]));
+        const byName = new Map(allCharacters.map(item => [this._normalizeLookupName(item.name), item]));
+        const selectedCharacterMap = new Map();
+        allCharacters.forEach((item) => {
+            if (characterSet.has(item.id)) selectedCharacterMap.set(item.id, item);
+        });
+        selectedGroups.forEach((group) => {
+            const members = Array.isArray(group.members) ? group.members : [];
+            members.forEach((member) => {
+                const raw = String(member || '').trim();
+                if (!raw) return;
+                const memberIdKey = raw.startsWith('char:') ? raw : `char:${raw}`;
+                const matchedById = byId.get(memberIdKey);
+                if (matchedById) {
+                    selectedCharacterMap.set(matchedById.id, matchedById);
+                    return;
+                }
+                const matchedByName = byName.get(this._normalizeLookupName(raw));
+                if (matchedByName) {
+                    selectedCharacterMap.set(matchedByName.id, matchedByName);
+                }
+            });
+        });
+        return {
+            isLobby: true,
+            characters: Array.from(selectedCharacterMap.values()),
+            groups: selectedGroups
+        };
+    }
+
+    _resolveLobbySelectedUsers(lobbySelection = null) {
+        const selection = lobbySelection || this._buildLobbySelection(this._safeGetContext());
+        if (!selection?.isLobby) return [];
+        return (selection.groups || [])
+            .filter(item => String(item?.id || '').startsWith('group_persona:'))
+            .map(item => {
+                const members = Array.isArray(item?.members) ? item.members : [];
+                return String(members[0] || item?.name || '').trim();
+            })
+            .filter(Boolean);
+    }
+
+    _setLobbyPersonaCache(name = '', description = '') {
+        const key = this._normalizeLookupName(name);
+        if (!key || !this._lobbyPersonaProfileCache) return;
+        this._lobbyPersonaProfileCache.set(key, {
+            description: String(description || '').trim(),
+            ts: Date.now()
+        });
+        if (this._lobbyPersonaProfileCache.size > this._lobbyPersonaCacheMax) {
+            const oldestKey = this._lobbyPersonaProfileCache.keys().next().value;
+            if (oldestKey) this._lobbyPersonaProfileCache.delete(oldestKey);
+        }
+    }
+
+    _getLobbyPersonaCache(name = '') {
+        const key = this._normalizeLookupName(name);
+        if (!key || !this._lobbyPersonaProfileCache) return { hit: false, description: '' };
+        const entry = this._lobbyPersonaProfileCache.get(key);
+        if (!entry) return { hit: false, description: '' };
+        const description = String(entry.description || '').trim();
+        const ttl = description ? this._lobbyPersonaCacheTTL : this._lobbyPersonaEmptyCacheTTL;
+        if ((Date.now() - Number(entry.ts || 0)) > ttl) {
+            this._lobbyPersonaProfileCache.delete(key);
+            return { hit: false, description: '' };
+        }
+        return { hit: true, description };
+    }
+
+    _extractPersonaProfiles(context = null) {
+        const ctx = context || this._safeGetContext();
+        const profiles = [];
+        const seen = new Set();
+        const normalizeKey = (value = '') => this._normalizeLookupName(String(value || ''));
+        const pushProfile = (nameRaw, idRaw = '', descriptionRaw = '') => {
+            const name = String(nameRaw || '').trim();
+            if (!name) return;
+            const key = normalizeKey(name);
+            if (!key) return;
+            const description = String(descriptionRaw || '').trim();
+            if (seen.has(key)) {
+                if (!description) return;
+                const existed = profiles.find(item => item.key === key);
+                if (existed && !existed.description) existed.description = description;
+                return;
+            }
+            seen.add(key);
+            profiles.push({
+                key,
+                id: String(idRaw || name).trim().toLowerCase(),
+                name,
+                description
+            });
+        };
+
+        const avatarNameMap = new Map();
+        document.querySelectorAll('#user_avatar_block .avatar-container, #user_avatar_block .avatar-container.interactable').forEach((node, index) => {
+            const name = String(
+                node.querySelector?.('.ch_name')?.textContent
+                || node.querySelector?.('.avatar_name')?.textContent
+                || node.querySelector?.('.name')?.textContent
+                || node.querySelector?.('.avatar_label')?.textContent
+                || ''
+            ).trim();
+            if (!name) return;
+            const avatarId = String(node.getAttribute?.('data-avatar-id') || '').trim() || `dom_${index}_${name}`;
+            avatarNameMap.set(avatarId, name);
+            pushProfile(name, avatarId, '');
+        });
+
+        const candidates = [window?.power_user?.personas, ctx?.power_user?.personas];
+        candidates.forEach((personaStore) => {
+            if (!personaStore) return;
+            if (Array.isArray(personaStore)) {
+                personaStore.forEach((item, index) => {
+                    if (typeof item === 'string') return;
+                    const avatarId = String(item?.avatar || item?.id || '').trim();
+                    const name = String(item?.name || item?.personaName || item?.user || item?.displayName || avatarNameMap.get(avatarId) || '').trim();
+                    const description = String(
+                        item?.description
+                        || item?.desc
+                        || item?.persona
+                        || item?.content
+                        || item?.text
+                        || item?.prompt
+                        || item?.bio
+                        || item?.details
+                        || ''
+                    ).trim();
+                    pushProfile(name, avatarId || index, description);
+                });
+                return;
+            }
+            if (typeof personaStore === 'object') {
+                Object.entries(personaStore).forEach(([avatarId, value]) => {
+                    const safeAvatarId = String(avatarId || '').trim();
+                    if (typeof value === 'string') {
+                        const mappedName = String(avatarNameMap.get(safeAvatarId) || '').trim();
+                        if (mappedName) {
+                            pushProfile(mappedName, safeAvatarId, value);
+                        }
+                        return;
+                    }
+                    const name = String(
+                        value?.name
+                        || value?.personaName
+                        || value?.displayName
+                        || value?.user
+                        || avatarNameMap.get(safeAvatarId)
+                        || ''
+                    ).trim();
+                    const description = String(
+                        value?.description
+                        || value?.desc
+                        || value?.persona
+                        || value?.content
+                        || value?.text
+                        || value?.prompt
+                        || value?.bio
+                        || value?.details
+                        || ''
+                    ).trim();
+                    pushProfile(name, safeAvatarId, description);
+                });
+            }
+        });
+
+        const selectedName = String(
+            document.querySelector('#user_avatar_block .avatar-container.selected .ch_name')?.textContent
+            || document.querySelector('#user_avatar_block .avatar-container.selected .avatar_name')?.textContent
+            || document.querySelector('#user_avatar_block .avatar-container.selected .name')?.textContent
+            || ''
+        ).trim();
+        const selectedDescription = String(document.getElementById('persona_description')?.value || '').trim();
+        if (selectedName) pushProfile(selectedName, selectedName, selectedDescription);
+
+        return profiles;
+    }
+
+    async _collectPersonaProfilesByUserSelection(selectedUsers = []) {
+        const names = Array.isArray(selectedUsers)
+            ? selectedUsers.map(item => String(item || '').trim()).filter(Boolean)
+            : [];
+        if (names.length === 0) return [];
+
+        const containers = Array.from(document.querySelectorAll('#user_avatar_block .avatar-container, #user_avatar_block .avatar-container.interactable'));
+        if (containers.length === 0) return names.map(name => ({ name, description: '' }));
+
+        const normalizeKey = (value = '') => this._normalizeLookupName(String(value || ''));
+        const getNameFromNode = (node) => String(
+            node?.querySelector?.('.ch_name')?.textContent
+            || node?.querySelector?.('.avatar_name')?.textContent
+            || node?.querySelector?.('.name')?.textContent
+            || node?.querySelector?.('.avatar_label')?.textContent
+            || ''
+        ).trim();
+        const byName = new Map();
+        containers.forEach((node) => {
+            const name = getNameFromNode(node);
+            const key = normalizeKey(name);
+            if (!key || byName.has(key)) return;
+            byName.set(key, node);
+        });
+
+        const sleep = (ms = 120) => new Promise(resolve => setTimeout(resolve, ms));
+        const readPersonaDescription = () => String(document.getElementById('persona_description')?.value || '').trim();
+        const dispatchSelect = (node) => {
+            if (!node) return;
+            const target = node.querySelector?.('.avatar, .avatar_img, .avatar-image, img, .ch_name, .avatar_name, .name') || node;
+            const mouseTypes = ['mousedown', 'mouseup', 'click'];
+            const pointerTypes = ['pointerdown', 'pointerup'];
+
+            pointerTypes.forEach((type) => {
+                try {
+                    if (typeof window.PointerEvent === 'function') {
+                        target.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true }));
+                    }
+                } catch (_) {}
+            });
+
+            mouseTypes.forEach((type) => {
+                try {
+                    target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window }));
+                } catch (_) {}
+            });
+
+            try { node.click?.(); } catch (_) {}
+            try { target.click?.(); } catch (_) {}
+        };
+        const waitNodeSelected = async (node, timeoutMs = 900) => {
+            const start = Date.now();
+            while (Date.now() - start < timeoutMs) {
+                if (node?.classList?.contains('selected')) return true;
+                await sleep(60);
+            }
+            return !!node?.classList?.contains('selected');
+        };
+        const waitPersonaUpdate = async (beforeText = '', { expectChange = true, timeoutMs = 1400 } = {}) => {
+            const base = String(beforeText || '').trim();
+            if (!expectChange && base) return base;
+            const start = Date.now();
+            while (Date.now() - start < timeoutMs) {
+                const current = readPersonaDescription();
+                if (current && (!expectChange || current !== base)) return current;
+                await sleep(60);
+            }
+            return readPersonaDescription();
+        };
+        const selectedBefore = document.querySelector('#user_avatar_block .avatar-container.selected');
+        const results = [];
+
+        for (const userName of names) {
+            const key = normalizeKey(userName);
+            const targetNode = byName.get(key);
+            if (!targetNode) {
+                results.push({ name: userName, description: '' });
+                continue;
+            }
+
+            let description = '';
+            for (let attempt = 0; attempt < 3; attempt++) {
+                const wasSelected = targetNode.classList.contains('selected');
+                const beforeText = readPersonaDescription();
+                if (!wasSelected || !beforeText) {
+                    dispatchSelect(targetNode);
+                    await waitNodeSelected(targetNode, 900);
+                }
+                description = await waitPersonaUpdate(beforeText, {
+                    expectChange: !wasSelected,
+                    timeoutMs: wasSelected ? 700 : 1500
+                });
+                if (description) break;
+                await sleep(140);
+            }
+
+            results.push({ name: userName, description });
+        }
+
+        if (selectedBefore && document.body.contains(selectedBefore) && !selectedBefore.classList.contains('selected')) {
+            dispatchSelect(selectedBefore);
+            await waitNodeSelected(selectedBefore, 900);
+            await sleep(100);
+        }
+
+        return results;
+    }
+
+    async _resolveLobbySelectedUserProfiles(lobbySelection = null, context = null) {
+        const selectedUsers = this._resolveLobbySelectedUsers(lobbySelection);
+        if (selectedUsers.length === 0) return [];
+        const profileMap = new Map(
+            this._extractPersonaProfiles(context).map(item => [this._normalizeLookupName(item.name), item])
+        );
+        const mergedProfiles = selectedUsers.map((name) => {
+            const matched = profileMap.get(this._normalizeLookupName(name));
+            return {
+                name: String(name || '').trim(),
+                description: String(matched?.description || '').trim()
+            };
+        }).filter(item => item.name);
+
+        mergedProfiles.forEach((item) => {
+            if (item.description) this._setLobbyPersonaCache(item.name, item.description);
+        });
+
+        const missingNames = [];
+        mergedProfiles.forEach((item) => {
+            if (item.description) return;
+            const cached = this._getLobbyPersonaCache(item.name);
+            if (cached.hit) {
+                item.description = cached.description;
+                return;
+            }
+            missingNames.push(item.name);
+        });
+
+        if (missingNames.length > 0) {
+            const dynamicProfiles = await this._collectPersonaProfilesByUserSelection(missingNames);
+            const dynamicMap = new Map(dynamicProfiles.map(item => [this._normalizeLookupName(item.name), String(item.description || '').trim()]));
+            mergedProfiles.forEach((item) => {
+                if (item.description) return;
+                item.description = dynamicMap.get(this._normalizeLookupName(item.name)) || '';
+            });
+        }
+
+        mergedProfiles.forEach((item) => {
+            this._setLobbyPersonaCache(item.name, item.description || '');
+        });
+
+        return mergedProfiles;
+    }
+
+    _formatLobbyCharacterDetail(item = {}) {
+        const name = String(item?.name || '').trim() || '未命名角色';
+        const lines = [`- ${name}`];
+        const description = String(item?.description || '').trim();
+        const personality = String(item?.personality || '').trim();
+        const scenario = String(item?.scenario || '').trim();
+        const systemPrompt = String(item?.systemPrompt || '').trim();
+
+        if (description) lines.push(`  描述：${description}`);
+        if (personality) lines.push(`  性格：${personality}`);
+        if (scenario) lines.push(`  场景：${scenario}`);
+        if (systemPrompt) lines.push(`  系统提示词：${systemPrompt}`);
+        if (lines.length === 1) lines.push('  （暂无可用详情）');
+        return lines.join('\n');
     }
 
     // 🔥 判断当前会话是否开启在线模式（per-chat）
     isOnlineMode() {
         const storage = window.VirtualPhone?.storage;
         if (!storage) return false;
-        const val = storage.get('wechat_online_mode');
+        const key = this.app?.wechatData?.getOnlineModeStorageKey?.(this._safeGetContext?.()) || 'wechat_online_mode';
+        const val = storage.get(key);
         if (val === true || val === 'true' || val === 1) return true;
         if (val === false || val === 'false' || val === 0 || val === null || val === undefined) return false;
         return !!val;
@@ -5439,6 +6039,10 @@ renderChatRoom(chat) {
 
     async buildMessagesArray(prompt, context, callMode = null, targetChatId = null) {
         const messages = [];
+        const lobbySelection = this._buildLobbySelection(context);
+        const lobbyUsers = this._resolveLobbySelectedUsers(lobbySelection);
+        const lobbyUserProfiles = await this._resolveLobbySelectedUserProfiles(lobbySelection, context);
+        const primaryLobbyUser = lobbyUsers.length > 0 ? lobbyUsers[0] : '';
 
         // 🔥🔥🔥 快照绑定：优先使用传入的 targetChatId，防止倒计时期间切换窗口导致串味
         const targetChat = targetChatId
@@ -5448,7 +6052,7 @@ renderChatRoom(chat) {
         // ========================================
         // 1️⃣ 获取角色名和用户名（参考记忆插件）
         // ========================================
-        const userName = context.name1 || '用户';
+        const userName = (lobbySelection.isLobby && primaryLobbyUser) ? primaryLobbyUser : (context.name1 || '用户');
         const wechatUserName = String(this.app?.wechatData?.getUserInfo?.()?.name || '').trim();
         if (wechatUserName && wechatUserName !== userName) {
             messages.push({
@@ -5518,9 +6122,33 @@ renderChatRoom(chat) {
                 isPhoneMessage: true
             });
 
-
             const worldInfoMessage = await window.VirtualPhone?.worldbookManager?.buildWorldbookMessage?.('wechat');
             if (worldInfoMessage) messages.push(worldInfoMessage);
+        }
+
+        if (lobbySelection.isLobby && lobbySelection.characters.length > 0) {
+            const lobbyCharacterSummary = lobbySelection.characters.map(item => this._formatLobbyCharacterDetail(item)).join('\n');
+            messages.push({
+                role: 'system',
+                content: `【大厅联动白名单】当前是酒馆大厅模式，线上微信聊天只可参考以下角色卡：\n${lobbyCharacterSummary}`,
+                name: 'SYSTEM (大厅角色白名单)',
+                isPhoneMessage: true
+            });
+        }
+
+        if (lobbySelection.isLobby && lobbySelection.groups.length > 0) {
+            const lobbyGroupSummary = lobbySelection.groups.map(item => {
+                const memberText = Array.isArray(item.members) && item.members.length > 0
+                    ? `（成员：${item.members.join('、')}）`
+                    : '';
+                return `${item.name}${memberText}`;
+            }).join('；');
+            messages.push({
+                role: 'system',
+                content: `【大厅联动用户组】当前是酒馆大厅模式，线上微信聊天优先使用以下用户组关系：${lobbyGroupSummary}`,
+                name: 'SYSTEM (大厅用户组白名单)',
+                isPhoneMessage: true
+            });
         }
 
         // ========================================
@@ -5528,11 +6156,31 @@ renderChatRoom(chat) {
         // ========================================
         // 从 DOM 读取用户 Persona
         const personaTextarea = document.getElementById('persona_description');
-        if (personaTextarea && personaTextarea.value && personaTextarea.value.trim()) {
+        if (!lobbySelection.isLobby && personaTextarea && personaTextarea.value && personaTextarea.value.trim()) {
             messages.push({
                 role: 'system',
                 content: `【用户信息】\n${personaTextarea.value.trim()}`,
                 name: 'SYSTEM (用户Persona)',
+                isPhoneMessage: true
+            });
+        }
+
+        if (lobbySelection.isLobby) {
+            if (lobbyUserProfiles.length > 0) {
+                const profileText = lobbyUserProfiles.map(item => `【${item.name}】\n${item.description || '暂无该用户人设'}`).join('\n\n');
+                messages.push({
+                    role: 'system',
+                    content: `【大厅用户人设】\n${profileText}`,
+                    name: 'SYSTEM (大厅用户人设)',
+                    isPhoneMessage: true
+                });
+            }
+            messages.push({
+                role: 'system',
+                content: lobbyUsers.length > 0
+                    ? `【大厅用户规则】当前大厅已勾选用户：${lobbyUsers.join('、')}。以“${primaryLobbyUser}”作为主用户视角，其余勾选用户可作为同场互动消息来源。`
+                    : '【大厅用户规则】当前大厅未勾选具体用户，按默认用户视角处理。',
+                name: 'SYSTEM (大厅用户规则)',
                 isPhoneMessage: true
             });
         }
@@ -5616,6 +6264,19 @@ renderChatRoom(chat) {
         const contextLimit = storage ? (parseInt(storage.get('phone-context-limit')) || 10) : 10;
 
         if (context.chat && Array.isArray(context.chat) && context.chat.length > 0) {
+            const isLobbySystemNoise = (msg, rawContent = '') => {
+                if (!lobbySelection.isLobby) return false;
+                if (msg?.is_user) return false;
+                const plainText = String(rawContent || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+                if (!plainText) return true;
+                if (plainText === '[Start a new chat]') return true;
+                if (plainText.includes('API 连接') && plainText.includes('角色管理') && plainText.includes('扩展程序')) return true;
+                if (/如果您已连接到一个\s*API/.test(plainText)) return true;
+                if (/将角色设为欢迎页面的助手/.test(plainText)) return true;
+                if (/menu_button|drawer-opener|sys-settings-button|rightNavHolder|extensions-settings-button/i.test(String(rawContent || ''))) return true;
+                return false;
+            };
+
             // 使用 slice 读取最近 N 条消息（参考记忆插件）
             const startIndex = Math.max(0, context.chat.length - contextLimit);
             const endIndex = context.chat.length;
@@ -5635,6 +6296,7 @@ renderChatRoom(chat) {
                 // 清理 base64 图片（防止请求体过大）
                 content = content.replace(/<img[^>]*src=["']data:image[^"']*["'][^>]*>/gi, '[图片]');
                 content = content.replace(/!\[[^\]]*\]\(data:image[^)]*\)/gi, '[图片]');
+                if (isLobbySystemNoise(msg, content)) return;
 
                 content = content.trim();
 
@@ -10224,9 +10886,11 @@ ${chatHistory.slice(-5).map(h => `${h.from === 'me' ? userName : contactName}: $
         const chat = this.app.currentChat;
         if (!chat || chat.type !== 'group') return;
         const returnToChatList = options?.returnToChatList === true;
+        const liveChat = this.app.wechatData.getChat(chat.id) || chat;
+        let isGroupMutating = false;
 
         // 🔥 群成员数量 +1，因为用户自己也在群里（但不加入白名单）
-        const memberCount = (chat.members?.length || 0) + 1;
+        const memberCount = (liveChat.members?.length || 0) + 1;
         const userInfo = this.app.wechatData.getUserInfo();
 
         const html = `
@@ -10266,7 +10930,7 @@ ${chatHistory.slice(-5).map(h => `${h.from === 'me' ? userName : contactName}: $
                 <!-- 群名称 -->
                 <div style="background: #fff; padding: 15px 20px; margin-bottom: 10px;">
                     <div style="color: #999; font-size: 13px; margin-bottom: 8px;">群名称</div>
-                    <input type="text" id="group-name-input" value="${chat.name}"
+                    <input type="text" id="group-name-input" value="${liveChat.name}"
                            placeholder="设置群名称" style="
                         width: 100%;
                         padding: 10px;
@@ -10281,11 +10945,13 @@ ${chatHistory.slice(-5).map(h => `${h.from === 'me' ? userName : contactName}: $
                 <div style="background: #fff; padding: 15px 20px; margin-bottom: 10px;">
                     <div style="color: #999; font-size: 13px; margin-bottom: 12px;">群成员(${memberCount}人)</div>
                     <div id="group-members-grid" style="display: flex; flex-wrap: wrap; gap: 10px;">
-                        ${(chat.members || []).map(member => {
+                        ${(liveChat.members || []).map(member => {
             const contact = this.app.wechatData.getContactByName(member);
             const avatar = contact?.avatar || '👤';
+            const memberToken = this._encodeDataToken(member);
+            const memberLabel = this._escapeHtml(member);
             return `
-                                <div class="group-member-item" data-member="${member}" style="text-align: center; width: 50px; position: relative;">
+                                <div class="group-member-item" data-member="${memberToken}" style="text-align: center; width: 50px; position: relative;">
                                     <div style="
                                         width: 44px;
                                         height: 44px;
@@ -10298,8 +10964,8 @@ ${chatHistory.slice(-5).map(h => `${h.from === 'me' ? userName : contactName}: $
                                         overflow: hidden;
                                         margin: 0 auto 4px;
                                     ">${this.app.renderAvatar(avatar, '👤', member)}</div>
-                                    <div style="font-size: 10px; color: #666; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${member}</div>
-                                    <button class="remove-member-btn" data-member="${member}" style="
+                                    <div style="font-size: 10px; color: #666; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${memberLabel}</div>
+                                    <button class="remove-member-btn" data-member="${memberToken}" style="
                                         position: absolute;
                                         top: -4px;
                                         right: 0;
@@ -10359,7 +11025,7 @@ ${chatHistory.slice(-5).map(h => `${h.from === 'me' ? userName : contactName}: $
 
         // 🔥 临时存储
         let newAvatar = null;
-        const originalName = chat.name;
+        const originalName = liveChat.name;
 
         // 返回按钮
         document.getElementById('back-from-group-settings')?.addEventListener('click', () => {
@@ -10409,30 +11075,32 @@ ${chatHistory.slice(-5).map(h => `${h.from === 'me' ? userName : contactName}: $
         document.querySelectorAll('.remove-member-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                const memberName = btn.dataset.member;
+                if (isGroupMutating) return;
+                const memberName = this._decodeDataToken(btn.dataset.member);
+                if (!memberName) return;
+                isGroupMutating = true;
 
-                if (!chat.members || chat.members.length <= 2) {
+                if (!liveChat.members || liveChat.members.length <= 2) {
                     this.app.phoneShell.showNotification('提示', '群聊至少需要2人', '⚠️');
+                    isGroupMutating = false;
                     return;
                 }
 
                 // 从成员列表移除
-                chat.members = chat.members.filter(m => m !== memberName);
+                liveChat.members = liveChat.members.filter(m => m !== memberName);
 
                 // 🔥 同步更新 wechatData 中的聊天数据
-                const dataChat = this.app.wechatData.getChat(chat.id);
+                const dataChat = this.app.wechatData.getChat(liveChat.id);
                 if (dataChat) {
-                    dataChat.members = chat.members;
+                    dataChat.members = liveChat.members;
                 }
 
                 // 添加系统消息
-                this.app.wechatData.addMessage(chat.id, {
+                this.app.wechatData.addMessage(liveChat.id, {
                     type: 'system',
                     from: 'system',
                     content: `"${memberName}" 被移出了群聊`
                 });
-
-                this.app.wechatData.saveData();
 
                 // 刷新页面
                 setTimeout(() => this.showGroupSettings({ returnToChatList }), 300);
@@ -10441,7 +11109,7 @@ ${chatHistory.slice(-5).map(h => `${h.from === 'me' ? userName : contactName}: $
 
         // 🔥 添加成员按钮
         document.getElementById('add-member-btn')?.addEventListener('click', () => {
-            this.showAddMemberDialog(chat, { returnToChatList });
+            this.showAddMemberDialog(liveChat, { returnToChatList });
         });
 
         // 保存按钮
@@ -10450,8 +11118,8 @@ ${chatHistory.slice(-5).map(h => `${h.from === 'me' ? userName : contactName}: $
 
             // 🔥 如果群名改变，添加系统消息
             if (newName && newName !== originalName) {
-                chat.name = newName;
-                this.app.wechatData.addMessage(chat.id, {
+                liveChat.name = newName;
+                this.app.wechatData.addMessage(liveChat.id, {
                     type: 'system',
                     from: 'system',
                     content: `群名已改为"${newName}"`
@@ -10459,8 +11127,8 @@ ${chatHistory.slice(-5).map(h => `${h.from === 'me' ? userName : contactName}: $
             }
 
             if (newAvatar) {
-                const oldAvatar = String(chat.avatar || '').trim();
-                chat.avatar = newAvatar;
+                const oldAvatar = String(liveChat.avatar || '').trim();
+                liveChat.avatar = newAvatar;
                 if (oldAvatar && oldAvatar !== newAvatar) {
                     const cleanupTask = window.VirtualPhone?.imageManager?.deleteManagedBackgroundByPath?.(oldAvatar, { quiet: true, skipIfReferenced: true });
                     cleanupTask?.catch?.(() => { });
@@ -10481,6 +11149,7 @@ ${chatHistory.slice(-5).map(h => `${h.from === 'me' ? userName : contactName}: $
     // 🔥 添加群成员弹窗
     showAddMemberDialog(chat, options = {}) {
         const returnToChatList = options?.returnToChatList === true;
+        let isAddingMember = false;
         // 获取所有联系人（排除已在群里的）
         const contacts = this.app.wechatData.getContacts();
         const existingMembers = chat.members || [];
@@ -10528,7 +11197,7 @@ ${chatHistory.slice(-5).map(h => `${h.from === 'me' ? userName : contactName}: $
                 ${availableContacts.length > 0 ? `
                     <div style="background: #fff; padding: 10px 0;">
                         ${availableContacts.map(contact => `
-                            <div class="add-member-item" data-name="${contact.name}" style="
+                            <div class="add-member-item" data-name="${this._encodeDataToken(contact.name)}" style="
                                 display: flex;
                                 align-items: center;
                                 padding: 10px 15px;
@@ -10571,12 +11240,15 @@ ${chatHistory.slice(-5).map(h => `${h.from === 'me' ? userName : contactName}: $
         });
 
         const addMemberByName = (rawName) => {
+            if (isAddingMember) return;
             const memberName = String(rawName || '').trim();
             if (!memberName) return;
+            isAddingMember = true;
 
             const exists = (chat.members || []).some(m => String(m || '').trim() === memberName);
             if (exists) {
                 this.app.phoneShell.showNotification('提示', '该成员已在群里', '⚠️');
+                isAddingMember = false;
                 return;
             }
 
@@ -10594,8 +11266,6 @@ ${chatHistory.slice(-5).map(h => `${h.from === 'me' ? userName : contactName}: $
                 from: 'system',
                 content: `"${memberName}" 加入了群聊`
             });
-
-            this.app.wechatData.saveData();
             setTimeout(() => this.showGroupSettings({ returnToChatList }), 220);
         };
 
@@ -10614,9 +11284,21 @@ ${chatHistory.slice(-5).map(h => `${h.from === 'me' ? userName : contactName}: $
         // 点击添加成员
         document.querySelectorAll('.add-member-item').forEach(item => {
             item.addEventListener('click', () => {
-                addMemberByName(item.dataset.name);
+                addMemberByName(this._decodeDataToken(item.dataset.name));
             });
         });
+    }
+
+    _encodeDataToken(value) {
+        return encodeURIComponent(String(value || ''));
+    }
+
+    _decodeDataToken(value) {
+        try {
+            return decodeURIComponent(String(value || ''));
+        } catch (_) {
+            return String(value || '');
+        }
     }
 
     _escapeHtml(text) {

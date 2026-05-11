@@ -1228,11 +1228,23 @@ export class ContactsView {
                                 cursor: pointer;
                                 transition: background 0.2s;
                             ">
-                                <input type="checkbox" class="contact-checkbox" data-contact-name="${contact.name}" data-contact-avatar="${this.escapeAttr(contact.avatar)}" style="
-                                    width: 20px;
-                                    height: 20px;
-                                    margin-right: 12px;
-                                    cursor: pointer;
+                                <input type="checkbox" class="contact-checkbox wechat-force-checkbox" data-contact-name="${contact.name}" data-contact-avatar="${this.escapeAttr(contact.avatar)}" style="
+                                    -webkit-appearance: checkbox !important;
+                                    appearance: auto !important;
+                                    opacity: 1 !important;
+                                    visibility: visible !important;
+                                    display: inline-block !important;
+                                    position: relative !important;
+                                    pointer-events: auto !important;
+                                    accent-color: #30c46b !important;
+                                    width: 20px !important;
+                                    height: 20px !important;
+                                    min-width: 20px !important;
+                                    min-height: 20px !important;
+                                    margin-right: 12px !important;
+                                    cursor: pointer !important;
+                                    box-sizing: border-box !important;
+                                    filter: none !important;
                                 ">
                                 <div style="
                                     width: 44px;
@@ -1271,6 +1283,18 @@ export class ContactsView {
         };
 
         currentView.querySelectorAll('.contact-checkbox').forEach(checkbox => {
+            checkbox.style.setProperty('-webkit-appearance', 'checkbox', 'important');
+            checkbox.style.setProperty('appearance', 'auto', 'important');
+            checkbox.style.setProperty('opacity', '1', 'important');
+            checkbox.style.setProperty('visibility', 'visible', 'important');
+            checkbox.style.setProperty('display', 'inline-block', 'important');
+            checkbox.style.setProperty('position', 'relative', 'important');
+            checkbox.style.setProperty('pointer-events', 'auto', 'important');
+            checkbox.style.setProperty('accent-color', '#30c46b', 'important');
+            checkbox.style.setProperty('width', '20px', 'important');
+            checkbox.style.setProperty('height', '20px', 'important');
+            checkbox.style.setProperty('min-width', '20px', 'important');
+            checkbox.style.setProperty('min-height', '20px', 'important');
             checkbox.onchange = (e) => {
                 const name = e.target.dataset.contactName;
                 const avatarEncoded = e.target.dataset.contactAvatar;

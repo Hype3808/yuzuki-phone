@@ -226,6 +226,7 @@ export class PhoneShell {
                 '.chat-messages', '#voice-chat-messages', '#video-chat-messages',
                 '.wechat-content', '.app-body', '.settings-app', '.moments-list',
                 '#tab-memory', '.settings-app #tab-memory',
+                '#tab-lobby', '.settings-app #tab-lobby', '.phone-lobby-groups-list', '.phone-lobby-characters-list',
                 '.contact-list', '.chat-list', '.diary-toc-list', '.diary-page-body',
                 '.diary-settings-body', '.diary-edit-body',
                 '.music-settings-body',

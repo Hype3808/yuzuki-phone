@@ -205,8 +205,24 @@ export class WorldbookManager {
         return null;
     }
 
+    _isLobbyMode(context = null) {
+        const ctx = context || this._getContext();
+        const charName = safeString(ctx?.name2);
+        if (/^SillyTavern System$/i.test(charName)) return true;
+
+        const chatId = safeString(ctx?.chatMetadata?.file_name || ctx?.chatId);
+        if (chatId) return false;
+
+        const hasActiveChatDom = !!document.querySelector('#chat .mes, #chat .mes_block, .mes_block');
+        if (hasActiveChatDom) return false;
+        return true;
+    }
+
     _getCharacterScopeKey() {
         const context = this._getContext();
+        if (this._isLobbyMode(context)) {
+            return 'lobby';
+        }
         const characterId = context?.characterId;
         const characterName = safeString(context?.characters?.[characterId]?.name || context?.name2 || '');
         const idText = characterId !== undefined && characterId !== null ? safeString(characterId) : '';

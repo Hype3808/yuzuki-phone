@@ -1666,6 +1666,7 @@ export class HoneyView {
                 glassEl.remove();
             }
             this._bindGeneratedImageViewer(root);
+            this._bindGeneratedImageFallback(root);
 
             const statusEl = naiPlaceholder.querySelector('.honey-nai-status');
             if (imageStatus === 'failed' && data.imageGenerationError) {
@@ -2683,6 +2684,41 @@ export class HoneyView {
         });
     }
 
+    _bindGeneratedImageFallback(root = null) {
+        const scope = root || document.querySelector('.phone-view-current .honey-page-live') || document.querySelector('.honey-page-live');
+        if (!scope) return;
+        scope.querySelectorAll('.honey-nai-generated-image').forEach(img => {
+            if (img.dataset.honeyImageFallbackBound === '1') return;
+            img.dataset.honeyImageFallbackBound = '1';
+            img.addEventListener('error', () => {
+                const brokenSrc = String(img.getAttribute('src') || '').trim();
+                if (!brokenSrc) return;
+
+                const scene = this.currentSceneData && typeof this.currentSceneData === 'object'
+                    ? this.currentSceneData
+                    : {};
+                const currentCandidates = [
+                    String(scene.naiImageUrl || '').trim(),
+                    String(scene.generatedImageUrl || '').trim(),
+                    String(scene.imageUrl || '').trim()
+                ];
+                const shouldClearScene = currentCandidates.includes(brokenSrc);
+                if (!shouldClearScene) return;
+
+                this.currentSceneData = {
+                    ...scene,
+                    naiImageUrl: '',
+                    generatedImageUrl: '',
+                    imageUrl: '',
+                    imageGenerationStatus: 'failed',
+                    imageGenerationError: '直播图片文件不存在，已自动回退'
+                };
+                this._persistCurrentScene();
+                this._refreshLivePageDom({ sourceRoot: scope, scene: this.currentSceneData });
+            }, { once: true });
+        });
+    }
+
     bindLiveEvents() {
         const root = document.querySelector('.phone-view-current .honey-page-live') || document.querySelector('.honey-page-live');
         if (!root) return;
@@ -2690,6 +2726,7 @@ export class HoneyView {
         this._bindLivePullRefresh(root, isUserLive);
         this._syncLiveRefreshIndicatorByState(root);
         this._bindGeneratedImageViewer(root);
+        this._bindGeneratedImageFallback(root);
         if (root.dataset.honeyLiveBound === '1') return;
         root.dataset.honeyLiveBound = '1';
         this._bindLiveKeyboardViewport(root);
@@ -3857,7 +3894,7 @@ export class HoneyView {
                 const disabledText = source.entries?.length ? '' : '（读取失败或为空）';
                 return `
                     <label class="phone-honey-worldbook-item">
-                        <input type="checkbox" class="phone-honey-worldbook-choice" value="${this._escapeHtml(source.id)}" ${checked} style="margin-top: 2px;">
+                        <input type="checkbox" class="phone-honey-worldbook-choice" value="${this._escapeHtml(source.id)}" ${checked} style="-webkit-appearance: checkbox !important; appearance: auto !important; opacity: 1 !important; width: 16px; height: 16px; min-width: 16px; min-height: 16px; margin-top: 2px; accent-color: #30c46b;">
                         <span class="phone-honey-worldbook-text">
                             <span class="phone-honey-worldbook-name">${this._escapeHtml(source.name)}${this._escapeHtml(disabledText)}</span>
                             <span class="phone-honey-worldbook-meta">${this._escapeHtml(source.sourceLabel || '世界书')} · ${Number(source.entries?.length || 0)} 条</span>

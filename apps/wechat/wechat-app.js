@@ -4631,7 +4631,7 @@ export class WechatApp {
 <div style="background: #e3f2fd; border-radius: 12px; padding: 15px; margin: 15px;">
     <div style="font-size: 14px; color: #1976d2;">
         <i class="fa-solid fa-info-circle"></i> 
-        在线模式状态：${window.VirtualPhone?.storage?.get('wechat_online_mode') ? '✅ 已开启' : '❌ 未开启'}
+        在线模式状态：${window.VirtualPhone?.storage?.get(this.wechatData.getOnlineModeStorageKey?.() || 'wechat_online_mode') ? '✅ 已开启' : '❌ 未开启'}
         <div style="font-size: 12px; margin-top: 5px; color: #666;">
             如需修改，请前往手机"设置"APP（每个会话独立设置）
         </div>
@@ -5229,7 +5229,7 @@ export class WechatApp {
                 const disabledText = source.entries?.length ? '' : '（读取失败或为空）';
                 return `
                     <label style="display: flex; align-items: flex-start; gap: 8px; padding: 8px 0; border-top: 1px solid #f2f2f2;">
-                        <input type="checkbox" class="wechat-worldbook-choice" value="${escapeText(source.id)}" ${checked} style="margin-top: 2px;">
+                        <input type="checkbox" class="wechat-worldbook-choice" value="${escapeText(source.id)}" ${checked} style="-webkit-appearance: checkbox !important; appearance: auto !important; opacity: 1 !important; width: 16px; height: 16px; min-width: 16px; min-height: 16px; margin-top: 2px; accent-color: #30c46b;">
                         <span style="min-width: 0;">
                             <span style="display: block; font-size: 13px; color: #333;">${escapeText(source.name)}${escapeText(disabledText)}</span>
                             <span style="display: block; font-size: 11px; color: #999; margin-top: 2px;">${escapeText(source.sourceLabel || '世界书')} · ${Number(source.entries?.length || 0)} 条</span>
@@ -5536,6 +5536,15 @@ export class WechatApp {
         });
 
         document.getElementById('confirm-load')?.addEventListener('click', async () => {
+            const confirmBtn = document.getElementById('confirm-load');
+            if (confirmBtn?.dataset?.loading === '1') return;
+            if (confirmBtn) {
+                confirmBtn.dataset.loading = '1';
+                confirmBtn.disabled = true;
+                confirmBtn.textContent = '生成中...';
+                confirmBtn.style.opacity = '0.7';
+                confirmBtn.style.cursor = 'not-allowed';
+            }
             this.phoneShell.showNotification('AI分析中', '正在生成联系人...', '⏳');
 
             try {
@@ -5559,16 +5568,28 @@ export class WechatApp {
                     setTimeout(() => {
                         this.currentView = 'contacts';
                         this.render();
-                    }, 2000);
+                    }, 800);
                 } else {
                     this.phoneShell.showNotification('❌ 生成失败', result.message, '❌');
-                    setTimeout(() => this.render(), 2000);
+                    if (confirmBtn) {
+                        confirmBtn.dataset.loading = '0';
+                        confirmBtn.disabled = false;
+                        confirmBtn.textContent = '重试生成';
+                        confirmBtn.style.opacity = '1';
+                        confirmBtn.style.cursor = 'pointer';
+                    }
                 }
 
             } catch (error) {
                 console.error('❌ 加载联系人失败:', error);
                 this.phoneShell.showNotification('❌ 错误', error.message, '❌');
-                setTimeout(() => this.render(), 3000);
+                if (confirmBtn) {
+                    confirmBtn.dataset.loading = '0';
+                    confirmBtn.disabled = false;
+                    confirmBtn.textContent = '重试生成';
+                    confirmBtn.style.opacity = '1';
+                    confirmBtn.style.cursor = 'pointer';
+                }
             }
         });
     }
