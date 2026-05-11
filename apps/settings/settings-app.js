@@ -2161,6 +2161,8 @@ export class SettingsApp {
         const isMemoryPermissionOpen = this.storage.get('phone-settings-memory-permission-open') === true;
         const userMessageListenerRaw = this.storage.get('phone-user-message-listener-enabled');
         const isUserMessageListenerEnabled = userMessageListenerRaw !== false && userMessageListenerRaw !== 'false';
+        const wechatOfflineUserCleanRaw = this.storage.get('phone-wechat-offline-clean-user-reply-enabled');
+        const isWechatOfflineUserCleanEnabled = wechatOfflineUserCleanRaw !== false && wechatOfflineUserCleanRaw !== 'false';
         const appDefs = [
             { id: 'wechat', name: '微信', desc: '聊天与社交场景' },
             { id: 'weibo', name: '微博', desc: '动态与评论场景' },
@@ -2188,6 +2190,17 @@ export class SettingsApp {
                         </div>
                         <label class="toggle-switch">
                             <input type="checkbox" id="phone-user-message-listener-enabled" ${isUserMessageListenerEnabled ? 'checked' : ''}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item setting-toggle" style="margin-top: 10px;">
+                        <div>
+                            <div class="setting-label">微信线下用户发言清洗</div>
+                            <div class="setting-desc">开启后，线下转线上解析会清洗 AI 伪造的用户发言（如“用户: ...”）；关闭后保留并写入“我”的消息，适配 RP 扮演用户场景。</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="phone-wechat-offline-clean-user-reply-enabled" ${isWechatOfflineUserCleanEnabled ? 'checked' : ''}>
                             <span class="toggle-slider"></span>
                         </label>
                     </div>
@@ -2231,6 +2244,9 @@ export class SettingsApp {
     bindMemoryPermissionEvents() {
         document.getElementById('phone-user-message-listener-enabled')?.addEventListener('change', async (e) => {
             await this.storage.set('phone-user-message-listener-enabled', !!e.target.checked);
+        });
+        document.getElementById('phone-wechat-offline-clean-user-reply-enabled')?.addEventListener('change', async (e) => {
+            await this.storage.set('phone-wechat-offline-clean-user-reply-enabled', !!e.target.checked);
         });
 
         document.querySelectorAll('.phone-memory-perm').forEach(input => {

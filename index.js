@@ -29,7 +29,11 @@ const ST_PHONE_CURRENT_UPDATE = {
     version: ST_PHONE_VERSION,
     date: '2026-05-11',
     items: [
-        '早期版本迭代较频繁，更新后建议在设置中执行一次【一键恢复默认提示词】，以同步最新全局提示词。'
+        '设置 app 联动开关新增「清洗 user 正则」选项；抢话版 RP 可关闭该清洗功能。',
+        '优化朋友圈用户发布内容交互。',
+        '修复蜜语生图功能。',
+        '修复通话 app 的解析问题。',
+        '修复部分渲染 CSS 问题。'
     ]
 };
 
@@ -137,6 +141,11 @@ if (window.GGP_Loaded) {
 
     function isPhoneUserMessageListenerEnabled() {
         const raw = storage?.get?.('phone-user-message-listener-enabled');
+        return raw !== false && raw !== 'false';
+    }
+
+    function isWechatOfflineUserReplyCleanEnabled() {
+        const raw = storage?.get?.('phone-wechat-offline-clean-user-reply-enabled');
         return raw !== false && raw !== 'false';
     }
 
@@ -4280,6 +4289,13 @@ if (window.GGP_Loaded) {
         return getCurrentWechatRecipientAliases().includes(key);
     }
 
+    function isWechatSenderCurrentUser(sender) {
+        const key = normalizeWechatRecipientKey(sender);
+        if (!key) return false;
+        if (['me', '我', '用户', '玩家', 'user', '{{user}}'].includes(key)) return true;
+        return getCurrentWechatRecipientAliases().includes(key);
+    }
+
     function getWechatRuntimeSnapshot() {
         const chats = [];
         const contacts = [];
@@ -4962,6 +4978,7 @@ if (window.GGP_Loaded) {
             const allowedGroupSpeakerNames = effectiveIsGroupChat
                 ? Array.from(new Set((chatMemberNames.length > 0 ? chatMemberNames : parsedMemberNames)))
                 : [];
+            const cleanUserReplyEnabled = isWechatOfflineUserReplyCleanEnabled();
 
             data.messages.forEach((msg, index) => {
                 if (hasIncomingCall) {
@@ -5024,6 +5041,8 @@ if (window.GGP_Loaded) {
                 // 🔥🔥🔥 群聊消息：使用消息中的 sender 字段
                 let messageSender = data.contact;  // 默认使用联系人/群名
                 let senderAvatar = data.avatar || '👤';
+                const rawMsgSender = String(msg?.sender || '').trim();
+                const msgSenderIsCurrentUser = !!rawMsgSender && isWechatSenderCurrentUser(rawMsgSender);
 
                 if (effectiveIsGroupChat && msg.sender) {
                     // 群聊消息，使用每条消息的发送者
@@ -5048,11 +5067,31 @@ if (window.GGP_Loaded) {
                     }
                 }
 
+                // 线下转线上用户发言清洗开关：
+                // 开启时丢弃 AI 伪造的用户发言；关闭时允许用户发言写入“我”。
+                if (msgSenderIsCurrentUser) {
+                    if (cleanUserReplyEnabled) {
+                        console.warn('⚠️ [微信] 线下转线上已清洗用户发言:', {
+                            contact: data.contact,
+                            sender: rawMsgSender,
+                            content: msg.content
+                        });
+                        return;
+                    }
+                    messageSender = 'me';
+                    const userInfo = wechatData.getUserInfo?.() || {};
+                    senderAvatar = userInfo.avatar || '';
+                }
+
                 // 清理发送者前缀
                 if (cleanContent.startsWith(messageSender + ':')) {
                     cleanContent = cleanContent.substring(messageSender.length + 1).trim();
                 } else if (cleanContent.startsWith(messageSender + '：')) {
                     cleanContent = cleanContent.substring(messageSender.length + 1).trim();
+                } else if (rawMsgSender && cleanContent.startsWith(rawMsgSender + ':')) {
+                    cleanContent = cleanContent.substring(rawMsgSender.length + 1).trim();
+                } else if (rawMsgSender && cleanContent.startsWith(rawMsgSender + '：')) {
+                    cleanContent = cleanContent.substring(rawMsgSender.length + 1).trim();
                 } else if (cleanContent.startsWith(data.contact + ':')) {
                     cleanContent = cleanContent.substring(data.contact.length + 1).trim();
                 } else if (cleanContent.startsWith(data.contact + '：')) {
@@ -6511,6 +6550,10 @@ if (window.GGP_Loaded) {
             // 监听打开APP
             window.addEventListener('phone:openApp', (e) => {
                 const { appId } = e.detail;
+                const homeGuardUntil = Number.parseInt(String(window.VirtualPhone?._homeReturnGuardUntil || '0'), 10) || 0;
+                if (Date.now() < homeGuardUntil) {
+                    return;
+                }
                 currentApp = appId;
                 if (appId !== 'games') {
                     window.VirtualPhone?.gamesApp?.removePhoneChromeTheme?.();

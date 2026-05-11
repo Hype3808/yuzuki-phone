@@ -2690,6 +2690,7 @@ export class HoneyData {
             'gifts',
             'userChats',
             'promptTurns',
+            'naiTagHistory',
             'leaderboard',
             'collabRequests',
             'friendRequests',
@@ -2731,7 +2732,8 @@ export class HoneyData {
             'imageGenerationSampler',
             'imageGenerationSchedule',
             'imageGenerationScale',
-            'imageGenerationError'
+            'imageGenerationError',
+            'imageGenerationStartedAt'
         ].forEach((key) => {
             const currentValue = current[key];
             const topicValue = topic[key];

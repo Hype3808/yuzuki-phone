@@ -4352,6 +4352,41 @@ input:checked + .toggle-slider:before {
     opacity: 0.8;
 }
 
+/* 通话中消息气泡长按/右键删除按钮 */
+.phone-call-msg-delete-btn {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    width: 22px;
+    height: 22px;
+    border: none;
+    border-radius: 999px;
+    background: rgba(255, 59, 48, 0.92);
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(255, 59, 48, 0.35);
+    z-index: 3;
+    padding: 0;
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+}
+
+.phone-call-msg-delete-btn i {
+    font-size: 10px;
+    line-height: 1;
+    color: #fff !important;
+}
+
+.phone-call-msg-delete-btn:active {
+    opacity: 0.82;
+    transform: scale(0.95);
+}
+
 @keyframes phone-typing-dots {
     0%   { content: '.'; }
     33%  { content: '..'; }

@@ -4949,16 +4949,16 @@ export class WechatApp {
                                 cursor: pointer;
                             ">编辑提示词</button>
 
-                            <div style="margin-top: 8px; padding: 10px; background: #f9f9f9; border-radius: 8px;">
-                                <div style="font-size: 12px; color: #666; margin-bottom: 6px;">
+                            <div style="margin-top: 10px;">
+                                <div style="font-size: 12px; color: #666; margin-bottom: 8px;">
                                     ${prompts.momentsInteraction?.description || '发圈后好友点赞/评论互动规则'}
                                 </div>
                                 <button class="edit-prompt-btn" data-feature="momentsInteraction" style="
-                                    padding: 5px 10px;
-                                    background: #fff;
-                                    border: 1px solid #e0e0e0;
+                                    padding: 6px 12px;
+                                    background: #f0f0f0;
+                                    border: none;
                                     border-radius: 4px;
-                                    font-size: 11px;
+                                    font-size: 12px;
                                     color: #333;
                                     cursor: pointer;
                                 ">编辑互动提示词</button>

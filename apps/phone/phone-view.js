@@ -948,16 +948,15 @@ export class PhoneCallView {
                 const bubbleIds = [];
                 for (const line of aiLines) {
                     const bubbleId = `phone-ai-msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+                    const msgId = this._buildCallMessageId('ai');
                     messagesDiv.insertAdjacentHTML('beforeend',
-                        `<div class="phone-call-message-ai" id="${bubbleId}" data-phone-call-tts-text="${this._escapeAttr(line)}">${this._escapeHtml(line)}</div>`
+                        `<div class="phone-call-message-ai" id="${bubbleId}" data-msg-id="${this._escapeAttr(msgId)}" data-phone-call-tts-text="${this._escapeAttr(line)}">${this._escapeHtml(line)}</div>`
                     );
+                    this.chatMessages.push({ _id: msgId, from: callerName, text: line });
                     bubbleIds.push(bubbleId);
                 }
                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
 
-                // 合并为完整文本存入聊天记录
-                const fullReply = aiLines.join('\n');
-                this.chatMessages.push({ from: callerName, text: fullReply });
                 updateRegenBtn();
 
                 // 自动TTS：逐条播放
@@ -975,10 +974,10 @@ export class PhoneCallView {
                 console.error('❌ 通话消息发送失败:', error);
                 document.getElementById('phone-call-typing')?.remove();
                 messagesDiv.insertAdjacentHTML('beforeend',
-                    `<div class="phone-call-message-ai" style="opacity:0.5;">...</div>`
+                    `<div class="phone-call-message-ai" data-msg-id="${this._escapeAttr(this._buildCallMessageId('ai'))}" style="opacity:0.5;">...</div>`
                 );
                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
-                this.chatMessages.push({ from: callerName, text: '...' });
+                this.chatMessages.push({ _id: this._buildCallMessageId('ai'), from: callerName, text: '...' });
                 updateRegenBtn();
             }
         };
@@ -1029,11 +1028,12 @@ export class PhoneCallView {
             if (text) {
                 // 显示用户气泡
                 messagesDiv.insertAdjacentHTML('beforeend',
-                    `<div class="phone-call-message-user">${this._escapeHtml(text)}</div>`
+                    `<div class="phone-call-message-user" data-msg-id="${this._escapeAttr(this._buildCallMessageId('user'))}">${this._escapeHtml(text)}</div>`
                 );
                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
 
-                this.chatMessages.push({ from: 'me', text });
+                const userMsgId = String(messagesDiv.lastElementChild?.dataset?.msgId || '').trim() || this._buildCallMessageId('user');
+                this.chatMessages.push({ _id: userMsgId, from: 'me', text });
                 callPendingUserLines.push(text);
                 input.value = '';
 
@@ -1069,6 +1069,7 @@ export class PhoneCallView {
         const regenerate = async () => {
             const messagesDiv = document.getElementById('phone-call-messages');
             if (!messagesDiv) return;
+            this._removeCallMessageDeleteButtons(messagesDiv);
 
             // 停止正在播放的音频
             this.stopTTS();
@@ -1161,6 +1162,7 @@ export class PhoneCallView {
         });
         const activeMessagesDiv = document.getElementById('phone-call-messages');
         this._bindCallTtsBubbleClickEvents(activeMessagesDiv);
+        this._bindCallMessageDeleteEvents(activeMessagesDiv, { onChanged: updateRegenBtn });
         document.getElementById('phone-call-regen')?.addEventListener('click', regenerate);
         setCallStatus('green');
 
@@ -1501,7 +1503,8 @@ export class PhoneCallView {
             if (!result.success) throw new Error(result.error || '通话AI返回为空');
 
             // 清理回复
-            return this._cleanAIResponse(result.summary || '', callerName);
+            const rawReply = String(result.summary || result.content || result.text || '').trim();
+            return this._cleanAIResponse(rawReply, callerName);
 
         } catch (error) {
             console.error('❌ 通话AI请求失败:', error);
@@ -1625,6 +1628,12 @@ export class PhoneCallView {
         if (!messagesDiv || messagesDiv._phoneCallTtsBound) return;
         messagesDiv._phoneCallTtsBound = true;
         messagesDiv.addEventListener('click', async (e) => {
+            const suppressUntil = Number.parseInt(String(messagesDiv.dataset.phoneCallSuppressClickUntil || '0'), 10) || 0;
+            if (Date.now() < suppressUntil) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
             const bubble = e.target.closest('.phone-call-message-ai');
             if (!bubble) return;
 
@@ -1902,6 +1911,146 @@ export class PhoneCallView {
         return window.VirtualPhone?.promptManager || null;
     }
 
+    _buildCallMessageId(prefix = 'msg') {
+        return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    }
+
+    _removeCallMessageDeleteButtons(scope = null) {
+        const root = scope && typeof scope.querySelectorAll === 'function'
+            ? scope
+            : (document.querySelector('.phone-view-current .phone-call-active') || document);
+        root.querySelectorAll?.('.phone-call-msg-delete-btn').forEach(btn => btn.remove());
+    }
+
+    _bindCallMessageDeleteEvents(messagesDiv, { onChanged } = {}) {
+        if (!messagesDiv || messagesDiv._phoneCallDeleteBound) return;
+        messagesDiv._phoneCallDeleteBound = true;
+
+        let pressTimer = null;
+        let longPressFired = false;
+        let startX = 0;
+        let startY = 0;
+
+        const clearPress = () => {
+            if (pressTimer) {
+                clearTimeout(pressTimer);
+                pressTimer = null;
+            }
+        };
+
+        const openDeleteBtnForBubble = (bubble) => {
+            if (!bubble || !bubble.isConnected) return;
+            this._removeCallMessageDeleteButtons(messagesDiv);
+
+            const msgId = String(bubble.dataset.msgId || '').trim();
+            if (!msgId) return;
+
+            const deleteBtn = document.createElement('button');
+            deleteBtn.type = 'button';
+            deleteBtn.className = 'phone-call-msg-delete-btn';
+            deleteBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
+            deleteBtn.setAttribute('aria-label', '删除此条');
+
+            let deleting = false;
+            const executeDelete = (ev) => {
+                ev?.preventDefault?.();
+                ev?.stopPropagation?.();
+                if (deleting) return;
+                deleting = true;
+                this.chatMessages = this.chatMessages.filter(msg => String(msg?._id || '').trim() !== msgId);
+                bubble.remove();
+                deleteBtn.remove();
+                onChanged?.();
+            };
+
+            deleteBtn.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+            deleteBtn.addEventListener('touchend', executeDelete, { passive: false });
+            deleteBtn.addEventListener('click', executeDelete);
+
+            bubble.style.position = 'relative';
+            bubble.appendChild(deleteBtn);
+        };
+
+        const startPress = (bubble, x, y) => {
+            startX = x;
+            startY = y;
+            longPressFired = false;
+            clearPress();
+            pressTimer = setTimeout(() => {
+                pressTimer = null;
+                longPressFired = true;
+                messagesDiv.dataset.phoneCallSuppressClickUntil = String(Date.now() + 500);
+                openDeleteBtnForBubble(bubble);
+            }, 520);
+        };
+
+        const movePress = (x, y) => {
+            if (!pressTimer) return;
+            const dx = Math.abs(x - startX);
+            const dy = Math.abs(y - startY);
+            if (dx > 18 || dy > 18) {
+                clearPress();
+            }
+        };
+
+        const endPress = () => {
+            clearPress();
+            if (longPressFired) {
+                messagesDiv.dataset.phoneCallSuppressClickUntil = String(Date.now() + 500);
+                longPressFired = false;
+            }
+        };
+
+        messagesDiv.addEventListener('touchstart', (e) => {
+            const bubble = e.target?.closest?.('.phone-call-message-ai, .phone-call-message-user');
+            if (!bubble || !messagesDiv.contains(bubble)) return;
+            if (!e.touches || e.touches.length === 0) return;
+            const t = e.touches[0];
+            startPress(bubble, t.clientX, t.clientY);
+        }, { passive: true });
+
+        messagesDiv.addEventListener('touchmove', (e) => {
+            if (!e.touches || e.touches.length === 0) return;
+            const t = e.touches[0];
+            movePress(t.clientX, t.clientY);
+        }, { passive: true });
+
+        messagesDiv.addEventListener('touchend', endPress);
+        messagesDiv.addEventListener('touchcancel', () => {
+            clearPress();
+            longPressFired = false;
+        });
+
+        messagesDiv.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return;
+            const bubble = e.target?.closest?.('.phone-call-message-ai, .phone-call-message-user');
+            if (!bubble || !messagesDiv.contains(bubble)) return;
+            startPress(bubble, e.clientX, e.clientY);
+        });
+
+        messagesDiv.addEventListener('mousemove', (e) => movePress(e.clientX, e.clientY));
+        messagesDiv.addEventListener('mouseup', endPress);
+        messagesDiv.addEventListener('mouseleave', () => {
+            clearPress();
+            longPressFired = false;
+        });
+
+        messagesDiv.addEventListener('contextmenu', (e) => {
+            const bubble = e.target?.closest?.('.phone-call-message-ai, .phone-call-message-user');
+            if (!bubble || !messagesDiv.contains(bubble)) return;
+            e.preventDefault();
+            e.stopPropagation();
+            messagesDiv.dataset.phoneCallSuppressClickUntil = String(Date.now() + 500);
+            openDeleteBtnForBubble(bubble);
+        });
+
+        messagesDiv.addEventListener('click', (e) => {
+            if (!e.target?.closest?.('.phone-call-msg-delete-btn') && !e.target?.closest?.('.phone-call-message-ai, .phone-call-message-user')) {
+                this._removeCallMessageDeleteButtons(messagesDiv);
+            }
+        });
+    }
+
     _cleanAIResponse(response, callerName) {
         if (!response) return ['...'];
 
@@ -1926,10 +2075,19 @@ export class PhoneCallView {
         cleaned = cleaned.replace(new RegExp(`^${callerName}[：:]\\s*`, 'gmi'), '');
         cleaned = cleaned.replace(/\|\|\|/g, '');
 
-        // 按换行拆分为多条消息，过滤空行
+        // 按换行拆分为多条消息，过滤空行 + 去重
         const lines = cleaned.split(/\n/).map(l => l.trim()).filter(l => l.length > 0);
+        const deduped = [];
+        const seen = new Set();
+        lines.forEach((line) => {
+            const key = String(line || '').replace(/\s+/g, ' ').trim();
+            if (!key) return;
+            if (seen.has(key)) return;
+            seen.add(key);
+            deduped.push(line);
+        });
 
-        return lines.length > 0 ? lines : ['...'];
+        return deduped.length > 0 ? deduped : ['...'];
     }
 
     _escapeHtml(text) {

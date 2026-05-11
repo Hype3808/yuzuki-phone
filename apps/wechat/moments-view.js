@@ -1184,7 +1184,10 @@ ${replyTo ? `- 回复对象：${replyTo}` : ''}
             this.app.phoneShell.showNotification('朋友圈', '好友围观中...', '👀');
 
             const result = await this.callAI(prompt);
-            const reactions = this._normalizeMomentReactions(result, allowedContactSet, userInfo.name);
+            const reactions = this._normalizeMomentReactions(result, allowedContactSet, userInfo.name, {
+                momentAuthor: moment.name || '',
+                userName: userInfo.name || ''
+            });
 
             if (reactions.length > 0) {
                 let appliedCount = 0;
@@ -1242,16 +1245,91 @@ ${replyTo ? `- 回复对象：${replyTo}` : ''}
         }
     }
 
-    _normalizeMomentReactions(result, allowedContactSet, defaultReplyTo) {
-        const rows = Array.isArray(result?.reactions) ? result.reactions : [];
+    _normalizeMomentReactions(result, allowedContactSet, defaultReplyTo, options = {}) {
+        const normalizeName = (value) => String(value || '')
+            .trim()
+            .replace(/^@+/, '')
+            .replace(/[，,。；;：:\s]+$/g, '')
+            .trim();
+        const momentAuthor = String(options?.momentAuthor || '').trim();
+        const userName = String(options?.userName || '').trim();
+        const authorAliases = new Set(['发布者', '作者', '博主', '楼主']);
+        const canonicalName = (value) => {
+            const raw = normalizeName(value);
+            if (!raw) return '';
+            if (authorAliases.has(raw)) {
+                // 发布者就是用户本人时，禁止自动代替用户发言
+                if (momentAuthor && userName && momentAuthor === userName) return '';
+                if (momentAuthor) return momentAuthor;
+            }
+            if (raw === '我' || raw === '自己' || raw === '{{user}}') {
+                return '';
+            }
+            if (allowedContactSet.has(raw)) return raw;
+            const key = raw.replace(/\s+/g, '').toLowerCase();
+            const matched = [...allowedContactSet].find((name) => String(name || '').replace(/\s+/g, '').toLowerCase() === key);
+            return matched || '';
+        };
+        const ensureReplyTo = (replyTo) => {
+            const cleaned = normalizeName(replyTo || '');
+            if (!cleaned) return String(defaultReplyTo || '').trim() || null;
+            if (authorAliases.has(cleaned)) return momentAuthor || String(defaultReplyTo || '').trim() || null;
+            return cleaned;
+        };
+
+        const parseXmlLike = (rawText) => {
+            const text = String(rawText || '').trim();
+            if (!text) return [];
+            const blockMatch = text.match(/<朋友圈互动>([\s\S]*?)<\/朋友圈互动>/i);
+            const payload = (blockMatch ? blockMatch[1] : text).trim();
+            if (!payload) return [];
+
+            const rows = payload.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+            const parsed = [];
+            rows.forEach((line) => {
+                const likeMatch = /^\[点赞\]\s*(.+)$/i.exec(line);
+                if (likeMatch) {
+                    likeMatch[1]
+                        .split(/[，,]/)
+                        .map(item => canonicalName(item))
+                        .filter(Boolean)
+                        .forEach((name) => parsed.push({ type: 'like', name }));
+                    return;
+                }
+
+                const replyMatch = /^(.+?)\s*回复\s*(.+?)\s*[：:]\s*(.+)$/.exec(line);
+                if (replyMatch) {
+                    const name = canonicalName(replyMatch[1]);
+                    const replyTo = ensureReplyTo(replyMatch[2]);
+                    const textValue = String(replyMatch[3] || '').trim();
+                    if (!name || !textValue) return;
+                    parsed.push({ type: 'comment', name, text: textValue, replyTo });
+                    return;
+                }
+
+                const commentMatch = /^(.+?)[：:]\s*(.+)$/.exec(line);
+                if (commentMatch) {
+                    const name = canonicalName(commentMatch[1]);
+                    const textValue = String(commentMatch[2] || '').trim();
+                    if (!name || !textValue) return;
+                    parsed.push({ type: 'comment', name, text: textValue, replyTo: ensureReplyTo('') });
+                }
+            });
+
+            return parsed;
+        };
+
+        const rows = Array.isArray(result?.reactions)
+            ? result.reactions
+            : (Array.isArray(result?.data?.reactions) ? result.data.reactions : []);
         const output = [];
-        rows.forEach((item) => {
+        const pushReaction = (item) => {
             const typeRaw = String(item?.type || '').trim().toLowerCase();
             const type = typeRaw === '点赞' ? 'like' : (typeRaw === '评论' ? 'comment' : typeRaw);
             if (type !== 'comment' && type !== 'like') return;
 
-            const name = String(item?.name || '').trim();
-            if (!name || !allowedContactSet.has(name)) return;
+            const name = canonicalName(item?.name || '');
+            if (!name) return;
 
             if (type === 'comment') {
                 const text = String(item?.text || item?.content || '').trim();
@@ -1260,7 +1338,7 @@ ${replyTo ? `- 回复对象：${replyTo}` : ''}
                     type: 'comment',
                     name,
                     text,
-                    replyTo: String(item?.replyTo || defaultReplyTo || '').trim() || null
+                    replyTo: ensureReplyTo(item?.replyTo)
                 });
                 return;
             }
@@ -1269,8 +1347,74 @@ ${replyTo ? `- 回复对象：${replyTo}` : ''}
                 type: 'like',
                 name
             });
-        });
+        };
+
+        if (rows.length > 0) {
+            rows.forEach(pushReaction);
+        } else {
+            const xmlSource = String(result?.raw || result?.text || result?.content || result?.summary || '').trim();
+            parseXmlLike(xmlSource).forEach(pushReaction);
+        }
+
+        if (output.length === 0) {
+            const fallbackText = String(result?.content || '').trim();
+            parseXmlLike(fallbackText).forEach(pushReaction);
+        }
+
         return output;
+    }
+
+    _normalizeAiMomentsPayload(result) {
+        if (!result || typeof result !== 'object') return [];
+
+        let rows = [];
+        if (Array.isArray(result?.moments)) {
+            rows = result.moments;
+        } else if (Array.isArray(result?.data?.moments)) {
+            rows = result.data.moments;
+        } else if (Array.isArray(result?.posts)) {
+            rows = result.posts;
+        } else if (Array.isArray(result?.data?.posts)) {
+            rows = result.data.posts;
+        }
+
+        if (!Array.isArray(rows) || rows.length === 0) return [];
+
+        const normalized = rows.map((item) => {
+            const name = String(item?.name || item?.author || '').trim();
+            if (!name) return null;
+
+            const text = String(item?.text || item?.content || '').trim();
+            const images = Array.isArray(item?.images) ? item.images : [];
+            const time = String(item?.time || '').trim() || '刚刚';
+
+            const likeList = Array.isArray(item?.likeList)
+                ? item.likeList
+                : (Array.isArray(item?.likes) ? item.likes : []);
+
+            const commentListRaw = Array.isArray(item?.commentList)
+                ? item.commentList
+                : (Array.isArray(item?.comments) ? item.comments : []);
+            const commentList = commentListRaw
+                .map((c) => ({
+                    name: String(c?.name || c?.user || '').trim(),
+                    text: String(c?.text || c?.content || '').trim(),
+                    replyTo: String(c?.replyTo || c?.reply_to || '').trim() || null
+                }))
+                .filter((c) => c.name && c.text);
+
+            return {
+                name,
+                avatar: String(item?.avatar || '').trim() || '👤',
+                text,
+                images,
+                time,
+                likeList: likeList.map(v => String(v || '').trim()).filter(Boolean),
+                commentList
+            };
+        }).filter(Boolean);
+
+        return normalized;
     }
 
     // 从AI加载朋友圈
@@ -1449,12 +1593,13 @@ ${momentsPrompt}
             // 调用AI
             const result = await this.callAI(prompt);
 
-            if (result && result.moments) {
+            const normalizedMoments = this._normalizeAiMomentsPayload(result);
+            if (normalizedMoments.length > 0) {
                 // 清空旧的朋友圈
                 this.app.wechatData.data.moments = [];
 
                 // 添加新的朋友圈
-                result.moments.forEach(m => {
+                normalizedMoments.forEach(m => {
                     // 🔥 优先使用联系人的真实头像，如果没有才用AI返回的
                     const contactAvatar = this.getContactAvatar(m.name);
                     const finalAvatar = (contactAvatar && contactAvatar !== '👤') ? contactAvatar : (m.avatar || '👤');
@@ -1531,7 +1676,6 @@ ${momentsPrompt}
         if (Array.isArray(context.chat) && context.chat.length > 0) {
             const startIndex = Math.max(0, context.chat.length - contextLimit);
             const chatSlice = context.chat.slice(startIndex);
-            const chatLines = [];
 
             chatSlice.forEach((msg) => {
                 if (msg?.isGaigaiPrompt || msg?.isGaigaiData || msg?.isPhoneMessage) return;
@@ -1540,17 +1684,12 @@ ${momentsPrompt}
                 content = String(content).replace(/<[^>]*>/g, '').replace(/\*.*?\*/g, '').trim();
                 if (!content) return;
                 const speaker = msg.is_user ? userName : charName;
-                chatLines.push(`${speaker}: ${content}`);
-            });
-
-            if (chatLines.length > 0) {
                 messages.push({
-                    role: 'system',
-                    content: `【剧情上下文】\n${chatLines.join('\n')}`,
-                    name: 'SYSTEM (剧情上下文)',
+                    role: msg.is_user ? 'user' : 'assistant',
+                    content: `${speaker}: ${content}`,
                     isPhoneMessage: true
                 });
-            }
+            });
         }
 
         return messages;
@@ -1618,10 +1757,22 @@ ${momentsPrompt}
 
             if (jsonStr) {
                 const result = JSON.parse(jsonStr);
+                if (result && typeof result === 'object') {
+                    result.raw = response;
+                }
                 return result;
             }
 
-            console.error('❌ [朋友圈] 无法解析JSON，响应内容:', response.substring(0, 500));
+            // 兼容 XML/纯文本格式（例如 <朋友圈互动> ... </朋友圈互动>）
+            if (response && response.trim()) {
+                return {
+                    raw: response,
+                    text: response,
+                    content: response
+                };
+            }
+
+            console.error('❌ [朋友圈] 无法解析结果，响应内容:', response.substring(0, 500));
             throw new Error('AI返回格式错误');
         } catch (e) {
             console.error('❌ [朋友圈] AI调用失败:', e);

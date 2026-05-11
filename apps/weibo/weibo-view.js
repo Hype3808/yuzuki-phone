@@ -2027,6 +2027,13 @@ export class WeiboView {
                 return;
             }
 
+            // 主动离开微博，避免后台刷新逻辑误触发重渲染
+            this.entrySource = null;
+            this.currentView = 'home';
+            this.currentHotSearchTitle = null;
+            this.currentPostId = null;
+            this.currentPostMode = null;
+
             window.dispatchEvent(new CustomEvent('phone:goHome'));
 
             const phoneScreen = document.querySelector('.phone-screen');

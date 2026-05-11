@@ -666,6 +666,10 @@ export class PhoneShell {
     goHome() {
         this.currentApp = null;
         this.viewHistory = [];  // 🔥 清空视觉历史栈
+        if (window.VirtualPhone) {
+            // 返回桌面后短时间屏蔽一次图标点击导致的误 reopen
+            window.VirtualPhone._homeReturnGuardUntil = Date.now() + 500;
+        }
         window.dispatchEvent(new CustomEvent('phone:goHome'));
     }
     
