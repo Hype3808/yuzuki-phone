@@ -3523,6 +3523,22 @@ renderChatRoom(chat) {
         return { text: replaced, tokenMap };
     }
 
+    _extractLeadingQuote(line = '') {
+        let rest = String(line || '').trim();
+        if (!rest) return { quote: null, rest: '' };
+
+        let quote = null;
+        let guard = 0;
+        while (guard < 5) {
+            guard += 1;
+            const match = rest.match(/^「引用\s+([^:：]+)[:：]\s*([^」]+)」\s*(.*)$/);
+            if (!match) break;
+            quote = { sender: String(match[1] || '').trim(), content: String(match[2] || '').trim() };
+            rest = String(match[3] || '').trim();
+        }
+        return { quote, rest };
+    }
+
     _parseIncomingCallMarker(content) {
         const source = String(content || '');
         if (!source) return null;
@@ -5316,6 +5332,16 @@ renderChatRoom(chat) {
                         const lines = blockContent.split('\n').map(l => l.trim()).filter(l => l);
                         const extractedMsgs = [];
                         let pendingSender = '';
+                        let deferredQuote = null; // { sender: string, quote: {sender, content} }
+                        const consumeDeferredQuote = (sender, quote) => {
+                            if (quote || !deferredQuote) return quote;
+                            const senderName = String(sender || '').trim();
+                            const targetSender = String(deferredQuote.sender || '').trim();
+                            const matched = !targetSender || senderName === targetSender;
+                            const nextQuote = matched ? deferredQuote.quote : null;
+                            deferredQuote = null; // 仅作用于下一条有效消息
+                            return nextQuote || quote;
+                        };
 
                         lines.forEach(line => {
                             const senderOnlyMatch = /^([^:：]+)[：:]\s*$/.exec(line);
@@ -5335,21 +5361,29 @@ renderChatRoom(chat) {
                                 return;
                             }
 
-                            let quote = null;
-
-                            // 🔥 格式1: 「引用 发送者: 内容」回复 （引用在行首）
-                            const quoteMatch = line.match(/^「引用\s+([^:：]+)[:：]\s*([^」]+)」\s*(.*)$/);
-                            if (quoteMatch) {
-                                quote = { sender: quoteMatch[1].trim(), content: quoteMatch[2].trim() };
-                                line = quoteMatch[3].trim();
+                            const quoteResult = this._extractLeadingQuote(line);
+                            let quote = quoteResult.quote;
+                            line = quoteResult.rest;
+                            if (quote && !line) {
+                                deferredQuote = { sender: '', quote };
+                                pendingSender = '';
+                                return;
                             }
 
                             // 🔥 格式2: 发送者: 「引用 xxx: 内容」回复 （引用在消息内容中）
-                            const innerQuoteMatch = line.match(/^([^:：]+)[:：]\s*「引用\s+([^:：]+)[:：]\s*([^」]+)」\s*(.*)$/);
+                            const innerQuoteMatch = line.match(/^([^:：]+)[:：]\s*(.+)$/);
                             if (innerQuoteMatch) {
-                                quote = { sender: innerQuoteMatch[2].trim(), content: innerQuoteMatch[3].trim() };
                                 const sender = innerQuoteMatch[1].trim();
-                                const content = innerQuoteMatch[4].trim();
+                                const contentWithMaybeQuote = innerQuoteMatch[2].trim();
+                                const innerQuoteResult = this._extractLeadingQuote(contentWithMaybeQuote);
+                                if (innerQuoteResult.quote) quote = innerQuoteResult.quote;
+                                const content = innerQuoteResult.rest;
+                                if (quote && !content) {
+                                    deferredQuote = { sender, quote };
+                                    pendingSender = '';
+                                    return;
+                                }
+                                quote = consumeDeferredQuote(sender, quote);
                                 extractedMsgs.push({ sender, content, quote });
                                 return; // 已处理，跳过后续匹配
                             }
@@ -5358,10 +5392,14 @@ renderChatRoom(chat) {
                             const simpleMsgMatch = /^([^:：]+)[：:]\s*(.+)$/.exec(line);
 
                             if (groupMsgMatch) {
+                                quote = consumeDeferredQuote(groupMsgMatch[2].trim(), quote);
                                 extractedMsgs.push({ time: groupMsgMatch[1], sender: groupMsgMatch[2].trim(), content: groupMsgMatch[3].trim(), quote });
                             } else if (simpleMsgMatch && simpleMsgMatch[1].length < 20) {
+                                quote = consumeDeferredQuote(simpleMsgMatch[1].trim(), quote);
                                 extractedMsgs.push({ sender: simpleMsgMatch[1].trim(), content: simpleMsgMatch[2].trim(), quote });
                             } else if (line) {
+                                const fallbackSender = isTargetCurrentChat ? (context.name2 || targetName) : targetName;
+                                quote = consumeDeferredQuote(fallbackSender, quote);
                                 extractedMsgs.push({ sender: isTargetCurrentChat ? (context.name2 || targetName) : targetName, content: line, quote });
                             }
                             pendingSender = '';
@@ -5429,6 +5467,16 @@ renderChatRoom(chat) {
 
                     const isGroupChat = this.app.currentChat?.type === 'group';
                     let pendingSender = '';
+                    let deferredQuote = null; // { sender: string, quote: {sender, content} }
+                    const consumeDeferredQuote = (sender, quote) => {
+                        if (quote || !deferredQuote) return quote;
+                        const senderName = String(sender || '').trim();
+                        const targetSender = String(deferredQuote.sender || '').trim();
+                        const matched = !targetSender || senderName === targetSender;
+                        const nextQuote = matched ? deferredQuote.quote : null;
+                        deferredQuote = null; // 仅作用于下一条有效消息
+                        return nextQuote || quote;
+                    };
 
                     lines.forEach(line => {
                         const senderOnlyMatch = /^([^:：]+)[：:]\s*$/.exec(line);
@@ -5448,21 +5496,29 @@ renderChatRoom(chat) {
                             return;
                         }
 
-                        let quote = null;
-
-                        // 🔥 格式1: 「引用 发送者: 内容」回复 （引用在行首）
-                        const quoteMatch = line.match(/^「引用\s+([^:：]+)[:：]\s*([^」]+)」\s*(.*)$/);
-                        if (quoteMatch) {
-                            quote = { sender: quoteMatch[1].trim(), content: quoteMatch[2].trim() };
-                            line = quoteMatch[3].trim();
+                        const quoteResult = this._extractLeadingQuote(line);
+                        let quote = quoteResult.quote;
+                        line = quoteResult.rest;
+                        if (quote && !line) {
+                            deferredQuote = { sender: '', quote };
+                            pendingSender = '';
+                            return;
                         }
 
                         // 🔥 格式2: 发送者: 「引用 xxx: 内容」回复 （引用在消息内容中）
-                        const innerQuoteMatch = line.match(/^([^:：]+)[:：]\s*「引用\s+([^:：]+)[:：]\s*([^」]+)」\s*(.*)$/);
+                        const innerQuoteMatch = line.match(/^([^:：]+)[:：]\s*(.+)$/);
                         if (innerQuoteMatch) {
-                            quote = { sender: innerQuoteMatch[2].trim(), content: innerQuoteMatch[3].trim() };
                             const sender = innerQuoteMatch[1].trim();
-                            const content = innerQuoteMatch[4].trim();
+                            const contentWithMaybeQuote = innerQuoteMatch[2].trim();
+                            const innerQuoteResult = this._extractLeadingQuote(contentWithMaybeQuote);
+                            if (innerQuoteResult.quote) quote = innerQuoteResult.quote;
+                            const content = innerQuoteResult.rest;
+                            if (quote && !content) {
+                                deferredQuote = { sender, quote };
+                                pendingSender = '';
+                                return;
+                            }
+                            quote = consumeDeferredQuote(sender, quote);
                             parsedMessages.push({ sender, content, quote });
                             return; // 已处理，跳过后续匹配
                         }
@@ -5471,10 +5527,14 @@ renderChatRoom(chat) {
                         const simpleMsgMatch = /^([^:：]+)[：:]\s*(.+)$/.exec(line);
 
                         if (isGroupChat && groupMsgMatch) {
+                            quote = consumeDeferredQuote(groupMsgMatch[2].trim(), quote);
                             parsedMessages.push({ time: groupMsgMatch[1], sender: groupMsgMatch[2].trim(), content: groupMsgMatch[3].trim(), quote });
                         } else if (simpleMsgMatch && simpleMsgMatch[1].length < 20) {
+                            quote = consumeDeferredQuote(simpleMsgMatch[1].trim(), quote);
                             parsedMessages.push({ sender: simpleMsgMatch[1].trim(), content: simpleMsgMatch[2].trim(), quote });
                         } else if (line) {
+                            const fallbackSender = context.name2 || savedChatName;
+                            quote = consumeDeferredQuote(fallbackSender, quote);
                             parsedMessages.push({ sender: context.name2 || savedChatName, content: line, quote });
                         }
                         pendingSender = '';
@@ -7073,8 +7133,7 @@ renderChatRoom(chat) {
                 this.app.wechatData.saveData();
             }
 
-            this.app.phoneShell.showNotification('保存成功', '设置已更新', '✅');
-            setTimeout(() => this.app.render(), 1000);
+            setTimeout(() => this.app.render(), 200);
         });
 
         // 🔥 清空聊天记录按钮

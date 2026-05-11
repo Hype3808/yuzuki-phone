@@ -4596,8 +4596,7 @@ export class WechatApp {
             await this.storage?.set('phone_global_chat_css', customCss);
             this._applyCustomChatStyle(customCss);
 
-            this.phoneShell.showNotification('保存成功', '个人资料与当前应用样式已更新', '✅');
-            setTimeout(() => this.render(), 800);
+            setTimeout(() => this.render(), 200);
         });
     }
 
