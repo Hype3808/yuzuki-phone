@@ -22,6 +22,27 @@ import {
 
 const DEFAULT_DOUBAO_CLONE_WORKER_URL = '';
 const SETTINGS_FOLD_ARROW_HTML = '<span class="settings-fold-arrow" aria-hidden="true"><i class="fa-solid fa-chevron-right"></i></span>';
+const PHONE_SHELL_SCALE_MIN = 80;
+const PHONE_SHELL_SCALE_MAX = 120;
+const PHONE_SHELL_SCALE_DEFAULT = 100;
+
+function normalizePhoneShellScalePercent(value) {
+    const raw = Number.parseFloat(value);
+    if (!Number.isFinite(raw)) return PHONE_SHELL_SCALE_DEFAULT;
+    return Math.max(PHONE_SHELL_SCALE_MIN, Math.min(PHONE_SHELL_SCALE_MAX, Math.round(raw)));
+}
+
+function applyPhoneShellScale(value) {
+    if (typeof window.VirtualPhone?.applyPhoneShellScale === 'function') {
+        return window.VirtualPhone.applyPhoneShellScale(value);
+    }
+    const percent = normalizePhoneShellScalePercent(value);
+    const widthScale = percent / 100;
+    const heightScale = widthScale * 0.95;
+    document.documentElement.style.setProperty('--phone-shell-width-scale', widthScale.toFixed(4));
+    document.documentElement.style.setProperty('--phone-shell-height-scale', heightScale.toFixed(4));
+    return percent;
+}
 
 export class SettingsApp {
     constructor(phoneShell, storage, settings) {
@@ -146,6 +167,7 @@ export class SettingsApp {
         const wallpaper = this.imageManager.getWallpaper();
         const globalTextColor = this.storage.get('phone-global-text') || '#000000';
         const phoneFrameColor = this.storage.get('phone-frame-color') || '#1a1a1a';
+        const phoneShellScale = normalizePhoneShellScalePercent(this.storage.get('phone-shell-scale') || PHONE_SHELL_SCALE_DEFAULT);
         const html = `
             <div class="settings-app">
                 <style>
@@ -296,6 +318,25 @@ export class SettingsApp {
                         border-radius: 10px !important;
                         font-size: 12px !important;
                         font-weight: 650 !important;
+                    }
+                    #tab-general .phone-shell-scale-control {
+                        margin-top: 10px;
+                        display: flex;
+                        align-items: center;
+                        gap: 10px;
+                    }
+                    #tab-general .phone-shell-scale-control input[type="range"] {
+                        flex: 1 1 auto;
+                        min-width: 0;
+                        accent-color: #111827;
+                        touch-action: pan-y;
+                    }
+                    #tab-general .phone-shell-scale-value {
+                        min-width: 42px;
+                        color: #111827;
+                        font-size: 12px;
+                        font-weight: 700;
+                        text-align: right;
                     }
                     #tab-general .app-icon-grid,
                     #tab-general .dock-config-grid {
@@ -632,6 +673,22 @@ export class SettingsApp {
                                         <option value="icons" ${homeLayout === 'icons' ? 'selected' : ''}>图标布局</option>
                                         <option value="cards" ${homeLayout === 'cards' ? 'selected' : ''}>卡片布局</option>
                                     </select>
+                                </div>
+                            </div>
+
+                            <div class="setting-item">
+                                <div class="setting-label">小手机整体大小</div>
+                                <div class="setting-desc">调整整个小手机外壳和内容区域尺寸，电脑端和移动端都会生效</div>
+                                <div class="phone-shell-scale-control">
+                                    <input type="range"
+                                           class="phone-gesture-control"
+                                           id="phone-shell-scale-slider"
+                                           min="${PHONE_SHELL_SCALE_MIN}"
+                                           max="${PHONE_SHELL_SCALE_MAX}"
+                                           step="1"
+                                           value="${phoneShellScale}">
+                                    <span id="phone-shell-scale-value" class="phone-shell-scale-value">${phoneShellScale}%</span>
+                                    <button type="button" id="phone-shell-scale-reset" class="setting-btn" style="padding: 4px 10px; min-height: 30px; background: #f8fafc; border: 1px solid rgba(18,24,38,0.12); color: #374151; border-radius: 9px;">默认</button>
                                 </div>
                             </div>
 
@@ -2058,6 +2115,36 @@ export class SettingsApp {
             const value = String(e.target.value || 'icons') === 'cards' ? 'cards' : 'icons';
             await this.storage.set('phone-home-layout', value);
             window.VirtualPhone?.home?.render?.({ forceDomRefresh: true });
+        });
+
+        const phoneShellScaleSlider = document.getElementById('phone-shell-scale-slider');
+        const phoneShellScaleValue = document.getElementById('phone-shell-scale-value');
+        const syncPhoneShellScaleDisplay = (value) => {
+            const percent = normalizePhoneShellScalePercent(value);
+            if (phoneShellScaleSlider) phoneShellScaleSlider.value = String(percent);
+            if (phoneShellScaleValue) phoneShellScaleValue.textContent = `${percent}%`;
+            applyPhoneShellScale(percent);
+            return percent;
+        };
+
+        phoneShellScaleSlider?.addEventListener('input', (e) => {
+            syncPhoneShellScaleDisplay(e.target.value);
+        });
+
+        ['pointerdown', 'touchstart', 'touchmove'].forEach((eventName) => {
+            phoneShellScaleSlider?.addEventListener(eventName, (e) => {
+                e.stopPropagation();
+            }, { passive: true });
+        });
+
+        phoneShellScaleSlider?.addEventListener('change', async (e) => {
+            const percent = syncPhoneShellScaleDisplay(e.target.value);
+            await this.storage.set('phone-shell-scale', percent);
+        });
+
+        document.getElementById('phone-shell-scale-reset')?.addEventListener('click', async () => {
+            const percent = syncPhoneShellScaleDisplay(PHONE_SHELL_SCALE_DEFAULT);
+            await this.storage.set('phone-shell-scale', percent);
         });
 
         document.getElementById('phone-frame-color-picker')?.addEventListener('input', (e) => {

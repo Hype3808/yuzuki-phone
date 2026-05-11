@@ -30,9 +30,11 @@ const ST_PHONE_CURRENT_UPDATE = {
     date: '2026-05-11',
     items: [
         '早期版本迭代较频繁，更新后建议在设置中执行一次【一键恢复默认提示词】，以同步最新全局提示词。',
+        '新增小手机整体大小调节，电脑端和移动端都会生效。',
         '更新联系人性别识别，智能加载联系人会自动标记男/女，并用于默认头像。',
         '更新微信通讯录，支持查看和折叠群聊列表。',
         '优化语音播放，未绑定音色时可使用男/女全局兜底音色。',
+        '优化世界书选择列表，已勾选项会置顶显示。',
         '修复蜜语直播弹幕、评论清洗、右滑交互和图片重复下载等问题。',
         '修复微信群聊误触发转线下的问题，转线下仅限当前单聊有效回复。'
     ]
@@ -6259,15 +6261,32 @@ if (window.GGP_Loaded) {
         }
     }
 
+    function normalizePhoneShellScalePercent(value) {
+        const raw = Number.parseFloat(value);
+        if (!Number.isFinite(raw)) return 100;
+        return Math.max(80, Math.min(120, Math.round(raw)));
+    }
+
+    function applyPhoneShellScale(value) {
+        const percent = normalizePhoneShellScalePercent(value);
+        const widthScale = percent / 100;
+        const heightScale = widthScale * 0.95;
+        document.documentElement.style.setProperty('--phone-shell-width-scale', widthScale.toFixed(4));
+        document.documentElement.style.setProperty('--phone-shell-height-scale', heightScale.toFixed(4));
+        return percent;
+    }
+
     // 🎨 初始化颜色设置（新版：统一全局文字颜色）
     function initColors() {
         // 只读取全局文字颜色（默认黑色）
         const globalTextColor = storage.get('phone-global-text') || '#000000';
         const phoneFrameColor = storage.get('phone-frame-color') || '#1a1a1a';
+        const phoneShellScale = storage.get('phone-shell-scale') || 100;
 
         // 设置CSS变量
         document.documentElement.style.setProperty('--phone-global-text', globalTextColor);
         document.documentElement.style.setProperty('--phone-frame-color', phoneFrameColor);
+        applyPhoneShellScale(phoneShellScale);
 
     }
 
@@ -6341,6 +6360,7 @@ if (window.GGP_Loaded) {
                 ttsManager: ttsManager,
                 imageGenerationManager: imageGenerationManager,
                 worldbookManager: worldbookManager,
+                applyPhoneShellScale: applyPhoneShellScale,
                 home: null,
                 wechatApp: null,
                 mofoApp: null,

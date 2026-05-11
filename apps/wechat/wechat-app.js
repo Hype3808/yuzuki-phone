@@ -5217,7 +5217,14 @@ export class WechatApp {
                 return;
             }
 
-            container.innerHTML = sources.map(source => {
+            const isSelectedSource = (source) => selection.initialized && manager.matchesSelection?.(source, selection.ids);
+            const displaySources = [...sources].sort((a, b) => {
+                const aSelected = isSelectedSource(a) ? 1 : 0;
+                const bSelected = isSelectedSource(b) ? 1 : 0;
+                return bSelected - aSelected;
+            });
+
+            container.innerHTML = displaySources.map(source => {
                 const checked = (selection.initialized && manager.matchesSelection?.(source, selection.ids)) ? 'checked' : '';
                 const disabledText = source.entries?.length ? '' : '（读取失败或为空）';
                 return `
@@ -5235,6 +5242,7 @@ export class WechatApp {
                 input.addEventListener('change', async () => {
                     const ids = Array.from(container.querySelectorAll('.wechat-worldbook-choice:checked')).map(item => item.value);
                     await manager.setSelection('wechat', ids);
+                    this.renderWechatWorldbookList();
                 });
             });
         } catch (error) {

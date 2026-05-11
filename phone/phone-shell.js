@@ -195,10 +195,15 @@ export class PhoneShell {
             }
             return !!el.isContentEditable;
         };
+        const resolveGestureControlHost = (node) => {
+            if (!node || typeof node.closest !== 'function') return null;
+            return node.closest('input[type="range"], [role="slider"], .phone-gesture-control');
+        };
 
         // 🔥 核心修复 1：移除屏幕宽度限制，全面接管虚拟手机的触摸滑动！
         phoneBody.addEventListener('touchmove', (e) => {
             const target = e.target;
+            if (resolveGestureControlHost(target)) return;
 
             // 动态判断当前手势是否是明显的水平滑动
             let isHorizontalSwipe = false;
@@ -274,7 +279,7 @@ export class PhoneShell {
             const touchEditableHost = resolveEditableHost(e.target);
             const activeEditableHost = resolveEditableHost(document.activeElement);
             const hasFocusedTextInput = !!(activeEditableHost && isTextEditableElement(activeEditableHost) && phoneBody.contains(activeEditableHost));
-            if (isTextEditableElement(touchEditableHost) || hasFocusedTextInput) {
+            if (isTextEditableElement(touchEditableHost) || hasFocusedTextInput || resolveGestureControlHost(e.target)) {
                 this.touchStartX = undefined;
                 return;
             }
@@ -429,7 +434,7 @@ export class PhoneShell {
             }
 
             const pointerEditableHost = resolveEditableHost(e.target);
-            if (isTextEditableElement(pointerEditableHost)) {
+            if (isTextEditableElement(pointerEditableHost) || resolveGestureControlHost(e.target)) {
                 isPointerDown = false;
                 return;
             }
