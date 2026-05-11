@@ -580,6 +580,20 @@ export class SettingsApp {
                         opacity: 1 !important;
                         accent-color: #30c46b !important;
                     }
+                    .settings-app .phone-memory-perm {
+                        -webkit-appearance: checkbox !important;
+                        appearance: auto !important;
+                        opacity: 1 !important;
+                        width: 16px !important;
+                        height: 16px !important;
+                        min-width: 16px !important;
+                        min-height: 16px !important;
+                        margin: 0 !important;
+                        accent-color: #30c46b !important;
+                        cursor: pointer !important;
+                        filter: none !important;
+                        transform: none !important;
+                    }
                     .settings-app details > summary::-webkit-details-marker { display: none; }
                     .settings-app details > summary::marker { content: ''; }
                     .settings-fold-arrow {
@@ -2220,6 +2234,24 @@ export class SettingsApp {
         });
 
         document.querySelectorAll('.phone-memory-perm').forEach(input => {
+            const forceStyle = {
+                appearance: 'auto',
+                '-webkit-appearance': 'checkbox',
+                opacity: '1',
+                width: '16px',
+                height: '16px',
+                minWidth: '16px',
+                minHeight: '16px',
+                margin: '0',
+                accentColor: '#30c46b',
+                cursor: 'pointer',
+                filter: 'none',
+                transform: 'none'
+            };
+            Object.entries(forceStyle).forEach(([key, value]) => {
+                const cssKey = key.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
+                input.style.setProperty(cssKey, value, 'important');
+            });
             input.addEventListener('change', async (e) => {
                 const appId = String(e.target.dataset.appId || '').trim();
                 const permKey = String(e.target.dataset.permKey || '').trim();
