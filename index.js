@@ -3712,7 +3712,7 @@ if (window.GGP_Loaded) {
     }
 
     // 切换抽屉
-    function toggleDrawer(icon, panel) {
+    async function toggleDrawer(icon, panel) {
         const isOpen = panel.classList.contains('phone-panel-open');
 
         if (isOpen) {
@@ -3723,6 +3723,9 @@ if (window.GGP_Loaded) {
             // 🔥 关闭时添加强力隐藏样式
             panel.style.cssText = 'display:none !important; visibility:hidden !important; opacity:0 !important; pointer-events:none !important; position:absolute !important; width:0 !important; height:0 !important; overflow:hidden !important;';
         } else {
+            await ensureGlobalPhoneCSS();
+            initColors();
+
             // 打开
             openPhonePanelWithOutsideClose(panel, icon);
 
@@ -3788,6 +3791,9 @@ if (window.GGP_Loaded) {
     async function createPhoneInPanel() {
         const container = document.getElementById('phone-panel-content');
         if (!container) return;
+
+        await ensureGlobalPhoneCSS();
+        initColors();
 
         // 🔥 显示加载提示
         container.innerHTML = '<div style="color:#999;text-align:center;padding:50px;">加载中...</div>';
@@ -6396,14 +6402,14 @@ if (window.GGP_Loaded) {
             }
 
             // 🔥 第二阶段：轮询等待酒馆加载界面消失后再注入 DOM，解决 WebKit 渲染残留 Bug
-            function injectWhenReady() {
+            async function injectWhenReady() {
                 const stLoader = document.getElementById('loader') || document.getElementById('loading_screen');
                 // 如果加载遮罩还在显示中，延迟 500ms 继续检查
                 if (stLoader && window.getComputedStyle(stLoader).display !== 'none') {
                     setTimeout(injectWhenReady, 500);
                 } else {
                     // 加载界面完全消失后，再安全地执行 DOM 注入
-                    ensureGlobalPhoneCSS();
+                    await ensureGlobalPhoneCSS();
                     initColors();
                     bindPhonePanelViewportGuards();
                     createTopPanel();
