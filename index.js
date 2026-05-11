@@ -3727,15 +3727,20 @@ if (window.GGP_Loaded) {
             await ensureGlobalPhoneCSS();
             initColors();
 
-            // 打开
-            openPhonePanelWithOutsideClose(panel, icon);
-
             // 只在第一次打开时创建手机界面
             const content = document.getElementById('phone-panel-content');
-            if (content && !content.querySelector('.phone-in-panel')) {
-                // 🔥 先加载 UI 模块，再创建手机
-                createPhoneInPanel();
+            const isFirstLoad = content && !content.querySelector('.phone-in-panel');
+
+            if (isFirstLoad) {
+                // 先解除彻底隐藏，让加载过渡稳定占位；完整手机 DOM 准备好后再执行弹出动画。
+                panel.classList.remove('phone-panel-hidden');
+                panel.style.cssText = '';
+                content.innerHTML = '<div style="color:var(--phone-global-text); text-align:center; padding:50px; font-size: 15px; font-weight: bold;"><i class="fa-solid fa-spinner fa-spin"></i> 手机系统启动中...</div>';
+                await createPhoneInPanel();
             }
+
+            // 手机 DOM 已准备好后再正式弹出，避免首次加载时白块和错位。
+            openPhonePanelWithOutsideClose(panel, icon);
 
             // 🔥 展开手机时，如果刚好停留在微信某聊天界面，立刻刷新消除红点
             if (currentApp === 'wechat' && window.VirtualPhone?.wechatApp) {
@@ -3795,9 +3800,6 @@ if (window.GGP_Loaded) {
 
         await ensureGlobalPhoneCSS();
         initColors();
-
-        // 🔥 显示加载提示
-        container.innerHTML = '<div style="color:#999;text-align:center;padding:50px;">加载中...</div>';
 
         // 🔥 按需加载 UI 模块 + TimeManager + PromptManager（并行加载）
         await Promise.all([
