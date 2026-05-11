@@ -3539,6 +3539,29 @@ renderChatRoom(chat) {
         return { quote, rest };
     }
 
+    _isStandaloneWechatTimeLine(line = '') {
+        const text = String(line || '').trim();
+        if (!text) return false;
+        return /^(?:\[\s*)?\d{1,2}\s*[:：]\s*\d{2}(?:\s*[:：]\s*\d{2})?(?:\s*[APap][Mm])?\s*(?:\])?$/.test(text)
+            || /^【\s*\d{1,2}\s*[:：]\s*\d{2}(?:\s*[:：]\s*\d{2})?(?:\s*[APap][Mm])?\s*】$/.test(text);
+    }
+
+    _parseTimedWechatSenderLine(line = '') {
+        const text = String(line || '').trim();
+        if (!text) return null;
+        // 支持：
+        // [15:48] 张三: 内容
+        // 【15:48】 张三: 内容
+        // [15:48:01] 张三: 内容
+        const match = text.match(/^(?:\[\s*([^\]\r\n]+?)\s*\]|【\s*([^】\r\n]+?)\s*】)\s*([^\s:：，。,\.!?！？\[\]【】()（）]{1,20})[：:]\s*(.+)$/);
+        if (!match) return null;
+        return {
+            time: String(match[1] || match[2] || '').trim(),
+            sender: String(match[3] || '').trim(),
+            content: String(match[4] || '').trim()
+        };
+    }
+
     _parseIncomingCallMarker(content) {
         const source = String(content || '');
         if (!source) return null;
@@ -5344,6 +5367,10 @@ renderChatRoom(chat) {
                         };
 
                         lines.forEach(line => {
+                            if (this._isStandaloneWechatTimeLine(line)) {
+                                pendingSender = '';
+                                return;
+                            }
                             const senderOnlyMatch = /^([^:：]+)[：:]\s*$/.exec(line);
                             if (senderOnlyMatch) {
                                 pendingSender = senderOnlyMatch[1].trim();
@@ -5388,12 +5415,12 @@ renderChatRoom(chat) {
                                 return; // 已处理，跳过后续匹配
                             }
 
-                            const groupMsgMatch = /^\[([0-9A-Za-z:：]+)\]\s*([^\s:：，。,\.!?！？\[\]【】()（）]{1,20})[：:]\s*(.+)$/.exec(line);
+                            const timedLine = this._parseTimedWechatSenderLine(line);
                             const simpleMsgMatch = /^([^:：]+)[：:]\s*(.+)$/.exec(line);
 
-                            if (groupMsgMatch) {
-                                quote = consumeDeferredQuote(groupMsgMatch[2].trim(), quote);
-                                extractedMsgs.push({ time: groupMsgMatch[1], sender: groupMsgMatch[2].trim(), content: groupMsgMatch[3].trim(), quote });
+                            if (timedLine) {
+                                quote = consumeDeferredQuote(timedLine.sender, quote);
+                                extractedMsgs.push({ time: timedLine.time, sender: timedLine.sender, content: timedLine.content, quote });
                             } else if (simpleMsgMatch && simpleMsgMatch[1].length < 20) {
                                 quote = consumeDeferredQuote(simpleMsgMatch[1].trim(), quote);
                                 extractedMsgs.push({ sender: simpleMsgMatch[1].trim(), content: simpleMsgMatch[2].trim(), quote });
@@ -5479,6 +5506,10 @@ renderChatRoom(chat) {
                     };
 
                     lines.forEach(line => {
+                        if (this._isStandaloneWechatTimeLine(line)) {
+                            pendingSender = '';
+                            return;
+                        }
                         const senderOnlyMatch = /^([^:：]+)[：:]\s*$/.exec(line);
                         if (senderOnlyMatch) {
                             pendingSender = senderOnlyMatch[1].trim();
@@ -5523,12 +5554,12 @@ renderChatRoom(chat) {
                             return; // 已处理，跳过后续匹配
                         }
 
-                        const groupMsgMatch = /^\[([0-9A-Za-z:：]+)\]\s*([^\s:：，。,\.!?！？\[\]【】()（）]{1,20})[：:]\s*(.+)$/.exec(line);
+                        const timedLine = this._parseTimedWechatSenderLine(line);
                         const simpleMsgMatch = /^([^:：]+)[：:]\s*(.+)$/.exec(line);
 
-                        if (isGroupChat && groupMsgMatch) {
-                            quote = consumeDeferredQuote(groupMsgMatch[2].trim(), quote);
-                            parsedMessages.push({ time: groupMsgMatch[1], sender: groupMsgMatch[2].trim(), content: groupMsgMatch[3].trim(), quote });
+                        if (isGroupChat && timedLine) {
+                            quote = consumeDeferredQuote(timedLine.sender, quote);
+                            parsedMessages.push({ time: timedLine.time, sender: timedLine.sender, content: timedLine.content, quote });
                         } else if (simpleMsgMatch && simpleMsgMatch[1].length < 20) {
                             quote = consumeDeferredQuote(simpleMsgMatch[1].trim(), quote);
                             parsedMessages.push({ sender: simpleMsgMatch[1].trim(), content: simpleMsgMatch[2].trim(), quote });
