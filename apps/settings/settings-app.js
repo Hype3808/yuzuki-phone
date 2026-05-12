@@ -529,6 +529,7 @@ export class SettingsApp {
         const homeLayout = homeLayoutRaw === 'cards' ? 'cards' : 'icons';
         // 加载壁纸和颜色设置
         const wallpaper = this.imageManager.getWallpaper();
+        const cardTimeImage = this.storage.get('phone-card-time-image') || null;
         const globalTextColor = this.storage.get('phone-global-text') || '#000000';
         const phoneFrameColor = this.storage.get('phone-frame-color') || '#1a1a1a';
         const phoneShellScale = normalizePhoneShellScalePercent(this.storage.get('phone-shell-scale') || PHONE_SHELL_SCALE_DEFAULT);
@@ -992,7 +993,18 @@ export class SettingsApp {
                                        style="width: 55px; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; text-align: center; font-size: 14px; background: #fafafa;">
                             </div>
 
-                            <div class="settings-subsection-title">📴 微信记录注入酒馆正文</div>
+                            <div class="settings-subsection-title">📴 手机线下注入</div>
+
+                            <div class="setting-item setting-toggle">
+                                <div>
+                                    <div class="setting-label">微信线下提示词注入</div>
+                                    <div class="setting-desc">关闭后，只是不再把微信线下规则提示词注入酒馆正文；聊天记录注入仍按下方开关控制</div>
+                                </div>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="offline-wechat-prompt-enabled" ${(this.storage.get('offline-wechat-prompt-enabled') !== false && this.storage.get('offline-wechat-prompt-enabled') !== 'false') ? 'checked' : ''}>
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
 
                             <div class="setting-item setting-toggle">
                                 <div>
@@ -1175,6 +1187,23 @@ export class SettingsApp {
                                 </div>
                                 <div id="wallpaper-preview" style="margin-top: 10px; max-height: 100px; overflow: hidden; border-radius: 8px; ${wallpaper ? '' : 'display: none;'}">
                                     <img src="${wallpaper || ''}" style="width: 100%; height: auto; display: ${wallpaper ? 'block' : 'none'};">
+                                </div>
+                            </div>
+
+                            <div class="setting-item">
+                                <div class="setting-label">卡片布局时间图片</div>
+                                <div class="setting-desc">用于卡片布局顶部时间区域；未设置时显示透明毛玻璃</div>
+                                <div style="margin-top: 10px; display: flex; gap: 8px;">
+                                    <label for="upload-card-time-image" class="setting-btn" style="padding: 6px 12px; font-size: 12px; background: rgba(255,255,255,0.6); backdrop-filter: blur(10px); border: 1px solid rgba(0,0,0,0.1); cursor: pointer; color: #333; border-radius: 6px;">
+                                        <i class="fa-solid fa-upload"></i> 选择图片
+                                    </label>
+                                    <input type="file" id="upload-card-time-image" accept="image/png, image/jpeg, image/gif, image/webp, image/*" style="display: none;">
+                                    <button id="delete-card-time-image" class="setting-btn" style="padding: 6px 12px; font-size: 12px; background: rgba(255,255,255,0.6); backdrop-filter: blur(10px); border: 1px solid rgba(0,0,0,0.1); color: #999; border-radius: 6px;">
+                                        <i class="fa-solid fa-trash"></i> 删除
+                                    </button>
+                                </div>
+                                <div id="card-time-image-preview" style="margin-top: 10px; max-height: 100px; overflow: hidden; border-radius: 8px; ${cardTimeImage ? '' : 'display: none;'}">
+                                    <img src="${cardTimeImage || ''}" style="width: 100%; height: auto; display: ${cardTimeImage ? 'block' : 'none'};">
                                 </div>
                             </div>
 
@@ -2638,9 +2667,66 @@ export class SettingsApp {
             alert('✅ 壁纸已删除！');
         });
 
+        document.getElementById('upload-card-time-image')?.addEventListener('change', async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            e.target.value = '';
+
+            try {
+                const cropper = new ImageCropper({
+                    title: '裁剪时间卡片图片',
+                    outputWidth: 800,
+                    outputHeight: 320,
+                    quality: 0.85,
+                    maxFileSize: 5 * 1024 * 1024
+                });
+
+                const croppedImage = await cropper.open(file);
+                const oldImage = this.storage.get('phone-card-time-image') || null;
+                await this.imageManager.deleteManagedBackgroundByPath(oldImage, { quiet: true });
+                const serverUrl = await this.imageManager._uploadToServer(croppedImage, 'card_time', { allowBase64Fallback: false });
+                await this.storage.set('phone-card-time-image', serverUrl);
+
+                const preview = document.getElementById('card-time-image-preview');
+                const img = preview?.querySelector('img');
+                if (preview && img) {
+                    preview.style.display = 'block';
+                    img.style.display = 'block';
+                    img.src = serverUrl;
+                }
+
+                window.VirtualPhone?.home?.render?.({ forceDomRefresh: true });
+                alert('✅ 时间卡片图片上传成功！');
+            } catch (err) {
+                if (err.message !== '用户取消') {
+                    alert('❌ 上传失败：' + err.message);
+                }
+            }
+        });
+
+        document.getElementById('delete-card-time-image')?.addEventListener('click', async () => {
+            if (!confirm('确定删除时间卡片图片吗？')) return;
+
+            const oldImage = this.storage.get('phone-card-time-image') || null;
+            await this.imageManager.deleteManagedBackgroundByPath(oldImage, { quiet: true });
+            await this.storage.remove('phone-card-time-image');
+
+            const preview = document.getElementById('card-time-image-preview');
+            const img = preview?.querySelector('img');
+            if (preview && img) {
+                preview.style.display = 'none';
+                img.style.display = 'none';
+                img.src = '';
+            }
+
+            window.VirtualPhone?.home?.render?.({ forceDomRefresh: true });
+            alert('✅ 时间卡片图片已删除！');
+        });
+
         document.getElementById('phone-home-layout')?.addEventListener('change', async (e) => {
             const value = String(e.target.value || 'icons') === 'cards' ? 'cards' : 'icons';
             await this.storage.set('phone-home-layout', value);
+            this.phoneShell?.syncHomeLayoutChromeClass?.();
             window.VirtualPhone?.home?.render?.({ forceDomRefresh: true });
         });
 
@@ -2870,6 +2956,10 @@ export class SettingsApp {
         // 🔥 线下单聊发送条数设置
         document.getElementById('offline-single-chat-enabled')?.addEventListener('change', async (e) => {
             await this.storage.set('offline-single-chat-enabled', !!e.target.checked);
+        });
+
+        document.getElementById('offline-wechat-prompt-enabled')?.addEventListener('change', async (e) => {
+            await this.storage.set('offline-wechat-prompt-enabled', !!e.target.checked);
         });
 
         document.getElementById('offline-single-chat-limit')?.addEventListener('change', async (e) => {

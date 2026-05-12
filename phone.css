@@ -604,6 +604,18 @@
     color: #000 !important;  /* 🔥 固定黑色 */
 }
 
+#phone-panel-content .phone-in-panel.phone-card-home-layout .phone-punch-hole {
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    width: 72px !important;
+    height: 18px !important;
+    border-radius: 10px !important;
+}
+
+#phone-panel-content .phone-in-panel.phone-card-home-layout .statusbar-left {
+    margin-left: 8px !important;
+}
+
 /* 🔥 右侧图标组 */
 .statusbar-right {
     display: flex;
@@ -874,7 +886,7 @@
    🕐 时间显示优化
    ======================================== */
 
-.home-screen {
+#phone-panel-content .phone-screen .home-screen {
     width: 100%;
     height: 100%;
     position: relative;
@@ -987,89 +999,272 @@
     line-height: 1 !important;
 }
 
-.home-dashboard {
+#phone-panel-content .phone-screen .home-dashboard {
     position: relative;
     z-index: 1;
     min-height: 100%;
     box-sizing: border-box;
-    padding: 11.2% 6.2% 18%;
-    display: flex;
-    flex-direction: column;
-    gap: min(10px, 1.65vh);
+    padding: clamp(48px, 12.5%, 68px) 6% clamp(76px, 18%, 108px);
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-rows: clamp(64px, 10vh, 78px);
+    grid-auto-rows: clamp(48px, 9.2vh, 66px);
+    gap: clamp(7px, 2.1vw, 10px);
+    overflow-y: auto;
+    scrollbar-width: none;
+    touch-action: pan-y;
+    overscroll-behavior: contain;
 }
 
-.home-time-card,
-.home-widget-card,
-.home-quick-card,
-.home-diary-card,
-.home-feature-card,
-.home-settings-card {
+#phone-panel-content .phone-screen .home-time-card,
+#phone-panel-content .phone-screen .home-widget-card,
+#phone-panel-content .phone-screen .home-social-stack,
+#phone-panel-content .phone-screen .home-app-cluster,
+#phone-panel-content .phone-screen .home-diary-card,
+#phone-panel-content .phone-screen .home-settings-card {
     position: relative;
     box-sizing: border-box;
-    border-radius: 18px !important;
-    border: none;
-    background: rgba(255, 255, 255, 0.48);
-    backdrop-filter: blur(28px) saturate(170%);
-    -webkit-backdrop-filter: blur(28px) saturate(170%);
+    border-radius: clamp(18px, 6vw, 24px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.58);
+    background: rgba(255, 255, 255, 0.45);
+    backdrop-filter: blur(26px) saturate(180%);
+    -webkit-backdrop-filter: blur(26px) saturate(180%);
     box-shadow:
-        0 10px 28px rgba(30, 43, 62, 0.12),
-        inset 0 1px 0 rgba(255, 255, 255, 0.38),
-        inset 0 -1px 0 rgba(255, 255, 255, 0.12);
+        0 8px 24px rgba(24, 36, 54, 0.10),
+        inset 0 1px 0 rgba(255, 255, 255, 0.72);
     color: #263241;
+    overflow: hidden;
 }
 
-.home-time-card {
-    height: min(58px, 9.2vh);
-    min-height: 0;
+#phone-panel-content .phone-screen .home-time-card {
+    grid-column: 1 / -1;
+    grid-row: span 1;
+    height: auto;
+    min-height: clamp(64px, 10vh, 78px);
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    padding: clamp(8px, 2.2vw, 12px) clamp(12px, 3.4vw, 18px);
+    border: 1px solid rgba(255, 255, 255, 0.42);
+    background: rgba(255, 255, 255, 0.18);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    backdrop-filter: blur(24px) saturate(170%);
+    -webkit-backdrop-filter: blur(24px) saturate(170%);
+    box-shadow:
+        0 8px 24px rgba(24, 36, 54, 0.06),
+        inset 0 1px 0 rgba(255, 255, 255, 0.34);
+    text-shadow: none;
+    overflow: hidden;
+}
+
+#phone-panel-content .phone-screen .home-time-card.has-image::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, rgba(255,255,255,0.56) 0%, rgba(255,255,255,0.26) 44%, rgba(255,255,255,0.04) 100%);
+    pointer-events: none;
+}
+
+#phone-panel-content .phone-screen .home-time-info {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1;
+    min-width: 0;
+    flex: 0 0 auto;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 6px 10px 4px;
-    overflow: hidden;
+    text-align: center;
 }
 
-.home-top-grid,
-.home-feature-grid {
+#phone-panel-content .phone-screen .home-time-art {
+    display: none;
+}
+
+#phone-panel-content .phone-screen .home-time-card:not(.has-image) .home-time-art {
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+#phone-panel-content .phone-screen .home-top-grid,
+#phone-panel-content .phone-screen .home-feature-grid {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: min(10px, 3vw);
 }
 
-.home-widget-card,
-.home-quick-card {
-    min-height: min(106px, 16.8vh);
-}
-
-.home-widget-card {
+#phone-panel-content .phone-screen .home-widget-card {
+    grid-column: 3 / span 2;
+    grid-row: 2 / span 2;
+    min-height: 0;
     display: flex;
     flex-direction: column;
-    justify-content: center;
     align-items: center;
-    padding: min(13px, 3.2vw);
-    overflow: hidden;
-    background: rgba(255, 255, 255, 0.44);
-    gap: 14px;
+    justify-content: space-between;
+    padding: clamp(6px, 2vw, 10px);
+    background: linear-gradient(135deg, rgba(255,255,255,0.62), rgba(241,247,255,0.42));
+    gap: clamp(5px, 1.6vh, 10px);
 }
 
-.home-card-main {
+#phone-panel-content .phone-screen .home-app-cluster {
+    grid-column: 1 / span 2;
+    grid-row: 2 / span 4;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(3, minmax(0, 1fr));
+    align-items: center;
+    justify-items: center;
+    gap: clamp(5px, 1.45vh, 9px) clamp(7px, 2.2vw, 10px);
+    padding: clamp(8px, 2.4vw, 12px) clamp(7px, 2.2vw, 10px);
+    min-height: 0;
+    background: rgba(255, 255, 255, 0.28);
+    box-shadow:
+        0 8px 24px rgba(24, 36, 54, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.52);
+    transform: none;
+    width: 86%;
+    height: 92%;
+    align-self: center;
+    justify-self: center;
+}
+
+#phone-panel-content .phone-screen .home-social-stack {
+    grid-column: 3 / span 2;
+    grid-row: 2 / span 4;
+    display: grid;
+    grid-template-columns: repeat(2, max-content);
+    align-items: end;
+    justify-content: center;
+    justify-items: center;
+    gap: 8px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+    overflow: visible;
+    height: 92%;
+    align-self: center;
+    transform: translateY(clamp(50px, 8vh, 66px));
+}
+
+#phone-panel-content .phone-screen .home-social-pill {
+    min-width: 0;
+    width: 46px !important;
+    max-width: 46px !important;
+    flex: 0 0 46px !important;
+    height: clamp(118px, 18vh, 136px) !important;
+    min-height: 0;
+    max-height: none;
+    align-self: center;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px;
+    padding: 10px 4px;
+    border-radius: 999px !important;
+    border: 1px solid rgba(255, 255, 255, 0.58);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.34) 48%, rgba(255, 255, 255, 0.58) 100%) !important;
+    backdrop-filter: blur(24px) saturate(170%);
+    -webkit-backdrop-filter: blur(24px) saturate(170%);
+    box-shadow:
+        0 8px 24px rgba(24, 36, 54, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.54);
+    overflow: visible !important;
+}
+
+#phone-panel-content .phone-screen .home-social-pill > * {
+    transform: none;
+}
+
+#phone-panel-content .phone-screen .home-social-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 50% !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 16px;
+    line-height: 1;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    box-shadow: 0 5px 14px rgba(24, 36, 54, 0.14);
+}
+
+#phone-panel-content .phone-screen .home-social-icon.custom-icon {
+    background-color: transparent !important;
+    box-shadow: none;
+}
+
+#phone-panel-content .phone-screen .home-social-name {
+    max-width: 1.2em;
+    overflow: hidden;
+    text-overflow: clip;
+    white-space: normal;
+    writing-mode: vertical-rl;
+    text-orientation: upright;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--phone-global-text);
+    font-size: clamp(10px, 2.8vw, 11px);
+    font-weight: 400;
+    line-height: 1;
+    letter-spacing: 3px;
+    text-align: center;
+}
+
+#phone-panel-content .phone-screen .home-music-card {
+    grid-column: 3 / span 2;
+    grid-row: 2 / span 2;
+    border: 0;
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+    padding: 0;
+    align-self: center;
+    justify-self: center;
+    width: 84% !important;
+    max-height: 100%;
+    gap: 3px;
+}
+
+#phone-panel-content .phone-screen .home-card-main {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 10px;
 }
 
-.home-card-title {
-    color: #263241;
-    font-size: min(13.5px, 3.45vw, 1.72vh);
+#phone-panel-content .phone-screen .home-card-title {
+    color: var(--phone-global-text);
+    font-size: clamp(11.5px, 3.25vw, 13.5px);
+    font-weight: 400;
     line-height: 1.2;
+    text-align: center;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-.home-widget-icon,
-.home-mini-icon,
-.home-diary-icon,
-.home-feature-icon,
-.home-settings-icon {
+#phone-panel-content .phone-screen .home-widget-icon,
+#phone-panel-content .phone-screen .home-mini-icon,
+#phone-panel-content .phone-screen .home-diary-icon,
+#phone-panel-content .phone-screen .home-feature-icon,
+#phone-panel-content .phone-screen .home-settings-icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1084,38 +1279,165 @@
     background-repeat: no-repeat;
 }
 
-.home-widget-icon {
+#phone-panel-content .phone-screen .home-vinyl-player {
+    position: relative;
+    width: clamp(58px, 62%, 82px);
+    height: auto;
+    aspect-ratio: 1;
+    margin-top: 1px;
+    flex: 0 0 auto;
+    min-height: 0;
+    max-height: 82px;
+    margin-bottom: 0;
+}
+
+#phone-panel-content .phone-screen .home-vinyl-record {
+    width: 100%;
+    height: 100%;
+    aspect-ratio: 1;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: radial-gradient(circle, transparent 0 24%, #111318 25% 100%);
+    box-shadow: 0 8px 16px rgba(15, 23, 42, 0.24), inset 0 0 0 2px #272b32;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: yzp-home-vinyl-spin 6s linear infinite;
+}
+
+#phone-panel-content .phone-screen .home-vinyl-grooves {
+    position: absolute;
+    inset: 3px;
+    border-radius: 50%;
+    background: repeating-radial-gradient(#111318 0%, #111318 4%, #20242b 5%, #111318 6%);
+    -webkit-mask-image:
+        radial-gradient(circle, transparent 0 23%, #000 24% 100%),
+        conic-gradient(rgba(255,255,255,0.18) 0deg, rgba(255,255,255,0.48) 45deg, rgba(255,255,255,0.18) 90deg, rgba(255,255,255,0.18) 180deg, rgba(255,255,255,0.48) 225deg, rgba(255,255,255,0.18) 270deg);
+    -webkit-mask-composite: source-in;
+    mask-image:
+        radial-gradient(circle, transparent 0 23%, #000 24% 100%),
+        conic-gradient(rgba(255,255,255,0.18) 0deg, rgba(255,255,255,0.48) 45deg, rgba(255,255,255,0.18) 90deg, rgba(255,255,255,0.18) 180deg, rgba(255,255,255,0.48) 225deg, rgba(255,255,255,0.18) 270deg);
+    mask-composite: intersect;
+}
+
+#phone-panel-content .phone-screen .home-vinyl-cover {
+    width: 40%;
+    height: 40%;
+    border-radius: 50% !important;
+    z-index: 2;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(255, 255, 255, 0.82);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    color: var(--phone-global-text);
+    box-shadow: 0 0 0 2px #0a0a0a, 0 2px 6px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,255,255,0.6);
+    font-size: clamp(14px, 4vw, 20px);
+    line-height: 1;
+}
+
+#phone-panel-content .phone-screen .home-vinyl-cover.custom-icon {
+    background-color: transparent !important;
+    box-shadow: none !important;
+    background-size: contain !important;
+}
+
+#phone-panel-content .phone-screen .home-vinyl-cover.custom-icon::before,
+#phone-panel-content .phone-screen .home-vinyl-cover.custom-icon::after {
+    display: none !important;
+}
+
+#phone-panel-content .phone-screen .home-tonearm {
+    position: absolute;
+    top: -7%;
+    right: -11%;
+    width: clamp(24px, 8vw, 32px);
+    height: clamp(40px, 11vw, 52px);
+    z-index: 5;
+    transform-origin: top right;
+    transform: rotate(31deg);
+    pointer-events: none;
+}
+
+#phone-panel-content .phone-screen .home-tonearm-pivot {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #fff, #aaa, #444);
+    box-shadow: 0 4px 6px rgba(0,0,0,0.32);
+    z-index: 6;
+}
+
+#phone-panel-content .phone-screen .home-tonearm-curve {
+    position: absolute;
+    top: 7px;
+    right: 7px;
+    width: 20px;
+    height: 43px;
+    border-top: 2.5px solid #dedede;
+    border-left: 2.5px solid #b4b4b4;
+    border-top-left-radius: 15px;
+    box-shadow: -1px 1px 2px rgba(0,0,0,0.25);
+    z-index: 5;
+}
+
+#phone-panel-content .phone-screen .home-tonearm-head {
+    position: absolute;
+    bottom: -12px;
+    left: -6px;
+    width: 7px;
+    height: 16px;
+    background: linear-gradient(135deg, #4b4b4b, #111);
+    border-radius: 2px;
+    transform: rotate(-15deg);
+    box-shadow: 2px 4px 6px rgba(0,0,0,0.3);
+}
+
+@keyframes yzp-home-vinyl-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+#phone-panel-content .phone-screen .home-widget-icon {
     width: min(34px, 9.6vw, 4.3vh);
     height: min(34px, 9.6vw, 4.3vh);
 }
 
-.home-widget-icon.custom-icon,
-.home-mini-icon.custom-icon,
-.home-diary-icon.custom-icon,
-.home-feature-icon.custom-icon,
-.home-settings-icon.custom-icon {
+#phone-panel-content .phone-screen .home-widget-icon.custom-icon,
+#phone-panel-content .phone-screen .home-mini-icon.custom-icon,
+#phone-panel-content .phone-screen .home-diary-icon.custom-icon,
+#phone-panel-content .phone-screen .home-feature-icon.custom-icon,
+#phone-panel-content .phone-screen .home-settings-icon.custom-icon {
     color: transparent;
     background-color: transparent;
     box-shadow: none;
 }
 
-.home-music-controls {
+#phone-panel-content .phone-screen .home-music-controls {
     display: flex;
     justify-content: center;
-    gap: 8px;
+    gap: clamp(5px, 1.8vw, 8px);
     color: color-mix(in srgb, var(--app-color, #4096ff) 82%, #1f2a3a);
-    font-size: min(13px, 3.5vw, 1.62vh);
+    font-size: clamp(10px, 3vw, 12px);
     line-height: 1;
+    margin-top: -1px;
 }
 
-.home-quick-card {
+#phone-panel-content .phone-screen .home-quick-card {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: min(9px, 2.8vw);
     padding: min(12px, 3vw);
 }
 
-.home-mini-app {
+#phone-panel-content .phone-screen .home-mini-app {
     min-width: 0;
     display: flex;
     flex-direction: column;
@@ -1125,53 +1447,132 @@
     cursor: pointer;
 }
 
-.home-mini-icon {
+#phone-panel-content .phone-screen .home-free-icon {
+    min-width: 0;
+    width: auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: clamp(3px, 0.9vh, 5px);
+    padding: 0;
+    background: transparent !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+    align-self: center;
+    justify-self: center;
+}
+
+#phone-panel-content .phone-screen .home-app-squircle {
+    width: clamp(30px, 9.6vw, 38px);
+    height: clamp(30px, 9.6vw, 38px);
+    border-radius: 22% !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    color: #fff;
+    font-size: clamp(15px, 4.8vw, 19px);
+    line-height: 1;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    box-shadow: 0 5px 14px rgba(24, 36, 54, 0.18);
+    filter: drop-shadow(0 2px 6px rgba(24, 36, 54, 0.12));
+}
+
+#phone-panel-content .phone-screen .home-app-squircle.custom-icon {
+    background-color: transparent !important;
+    box-shadow: none;
+}
+
+#phone-panel-content .phone-screen .home-mini-icon {
     width: min(30px, 8.6vw, 3.75vh);
     height: min(30px, 8.6vw, 3.75vh);
     font-size: min(16px, 4.6vw, 2vh);
 }
 
-.home-mini-name {
+#phone-panel-content .phone-screen .home-mini-name {
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: #3f4856;
-    font-size: min(9.5px, 2.65vw, 1.18vh);
+    color: var(--phone-global-text);
+    font-size: clamp(8.5px, 2.4vw, 9.5px);
+    font-weight: 400;
     line-height: 1.1;
+    text-shadow: none;
 }
 
-.home-diary-card {
-    min-height: min(62px, 9.7vh);
+#phone-panel-content .phone-screen .home-diary-card {
+    grid-column: 1 / span 2;
+    grid-row: auto / span 2;
+    grid-row: span 2;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: clamp(5px, 1.2vh, 8px);
+    padding: clamp(10px, 3vw, 13px);
+    background: linear-gradient(180deg, rgba(255,252,240,0.88), rgba(255,250,230,0.82));
+    border-top-right-radius: 0 !important;
+}
+
+#phone-panel-content .phone-screen .home-diary-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    border-width: 0 22px 22px 0;
+    border-style: solid;
+    border-color: transparent rgba(255,255,255,0.62) transparent transparent;
+    box-shadow: -2px 2px 4px rgba(0,0,0,0.05);
+}
+
+#phone-panel-content .phone-screen .home-diary-header {
     display: flex;
     align-items: center;
-    gap: min(12px, 3.4vw);
-    padding: min(13px, 3.4vw);
+    gap: 6px;
+    min-height: clamp(30px, 8vw, 38px);
 }
 
-.home-diary-icon {
-    width: min(42px, 11.5vw, 5.25vh);
-    height: min(42px, 11.5vw, 5.25vh);
-    font-size: min(21px, 5.8vw, 2.65vh);
-}
-
-.home-diary-copy {
+#phone-panel-content .phone-screen .home-diary-header .home-card-title {
+    text-align: left;
+    flex: 1 1 auto;
     min-width: 0;
-    flex: 1;
 }
 
-.home-card-desc {
-    margin-top: 3px;
-    color: #6b7481;
-    font-size: min(10.8px, 3vw, 1.34vh);
-    line-height: 1.35;
+#phone-panel-content .phone-screen .home-diary-icon {
+    width: clamp(28px, 8vw, 36px);
+    height: clamp(28px, 8vw, 36px);
+    font-size: clamp(17px, 5vw, 22px);
+    background-color: transparent;
+    box-shadow: none;
+}
+
+#phone-panel-content .phone-screen .home-diary-copy {
+    min-width: 0;
+    flex: 0 0 auto;
+    border-left: 0;
+    padding-left: 0;
+    margin-top: 0;
+    position: relative;
+}
+
+#phone-panel-content .phone-screen .home-card-desc {
+    margin-top: 0;
+    color: #856f55;
+    font-size: clamp(9.5px, 2.65vw, 10.5px);
+    line-height: 1.42;
+    border-left: 2px solid rgba(122, 98, 69, 0.28);
+    padding-left: 8px;
     display: -webkit-box;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 4;
     -webkit-box-orient: vertical;
     overflow: hidden;
 }
 
-.home-feature-card {
+#phone-panel-content .phone-screen .home-feature-card {
     min-height: min(76px, 11.8vh);
     padding: min(12px, 3.2vw);
     display: flex;
@@ -1182,61 +1583,82 @@
     cursor: pointer;
 }
 
-.home-feature-icon {
+#phone-panel-content .phone-screen .home-feature-icon {
     width: min(34px, 9.6vw, 4.25vh);
     height: min(34px, 9.6vw, 4.25vh);
     font-size: min(19px, 5.4vw, 2.35vh);
 }
 
-.home-settings-card {
-    min-height: min(50px, 7.8vh);
-    padding: min(11px, 3vw) min(14px, 3.8vw);
+#phone-panel-content .phone-screen .home-settings-card {
+    grid-column: 3 / span 2;
+    grid-row: auto / span 1;
+    min-height: 0;
+    height: clamp(40px, 6.7vh, 48px);
+    padding: 0 clamp(24px, 6.8vw, 32px) 0 clamp(9px, 2.7vw, 12px);
     display: flex;
     align-items: center;
     justify-content: space-between;
     cursor: pointer;
+    align-self: center;
+    background: rgba(255, 255, 255, 0.58);
+    transform: translateY(clamp(10px, 2.1vh, 16px));
 }
 
-.home-settings-left {
+#phone-panel-content .phone-screen .home-settings-left {
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: min(10px, 2.8vw);
+    gap: min(7px, 2vw);
+    flex: 1 1 auto;
 }
 
-.home-settings-icon {
-    width: min(32px, 8.8vw, 4vh);
-    height: min(32px, 8.8vw, 4vh);
-    font-size: min(17px, 4.7vw, 2.12vh);
+#phone-panel-content .phone-screen .home-settings-icon {
+    width: clamp(24px, 7.2vw, 30px);
+    height: clamp(24px, 7.2vw, 30px);
+    font-size: clamp(15px, 4.4vw, 18px);
+    background-color: transparent;
+    box-shadow: none;
 }
 
-.home-settings-title {
+#phone-panel-content .phone-screen .home-settings-title {
     color: #222936;
-    font-size: min(16px, 4.45vw, 2vh);
+    font-size: clamp(12px, 3.6vw, 14px);
+    font-weight: 400;
+    line-height: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#phone-panel-content .phone-screen .home-settings-chevron {
+    width: clamp(10px, 3vw, 14px);
+    height: auto;
+    border-radius: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(70, 79, 91, 0.68);
+    background: transparent;
+    font-size: clamp(15px, 4.4vw, 18px);
+    font-weight: 400;
     line-height: 1;
 }
 
-.home-settings-chevron {
-    color: rgba(95, 105, 118, 0.62);
-    font-size: min(24px, 6.4vw, 3vh);
-    font-weight: 300;
-    line-height: 1;
-}
-
-.home-dashboard .app-icon {
+#phone-panel-content .phone-screen .home-dashboard .app-icon {
     width: auto;
     transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
 }
 
-.home-dashboard .app-icon:hover {
+#phone-panel-content .phone-screen .home-dashboard .app-icon:hover {
     transform: translateY(-2px);
 }
 
-.home-dashboard .app-icon:active {
+#phone-panel-content .phone-screen .home-dashboard .app-icon:active {
     transform: scale(0.98);
 }
 
-.home-time {
+#phone-panel-content .phone-screen .home-time {
     position: relative;
     z-index: 1;
     text-align: center;
@@ -1245,33 +1667,37 @@
     color: var(--phone-global-text);
 }
 
-.time-large {
+#phone-panel-content .phone-screen .home-screen .time-large {
     /* 🔥 使用相对尺寸自适应 */
-    font-size: min(31px, 8.5vw, 3.85vh);
-    font-weight: 300;
+    font-size: clamp(30px, 9.5vw, 42px);
+    font-weight: 200;
     letter-spacing: 0;
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
     margin-bottom: 1px;
     line-height: 1;
-    color: #2b3a4f;
+    color: var(--phone-global-text);
 }
 
-.date {
+#phone-panel-content .phone-screen .home-screen .date {
     /* 🔥 使用相对尺寸自适应 */
-    font-size: min(10.5px, 2.9vw, 1.3vh);
-    font-weight: 400;
-    color: #7a8490;
+    font-size: clamp(10px, 2.9vw, 12px);
+    font-weight: 500;
+    color: var(--phone-global-text);
     opacity: 1;
-    margin-top: 1px;
+    margin-top: 4px;
     line-height: 1;
 }
 
-.home-layout-icons .home-time .time-large {
+#phone-panel-content .phone-screen .home-layout-cards .home-time-card {
+    text-shadow: none;
+}
+
+#phone-panel-content .phone-screen .home-layout-icons .home-time .time-large {
     margin-bottom: 7px;
     line-height: 1.08;
 }
 
-.home-layout-icons .home-time .date {
+#phone-panel-content .phone-screen .home-layout-icons .home-time .date {
     margin-top: 0;
     line-height: 1.25;
 }
@@ -1280,7 +1706,7 @@
    📱 APP图标美化
    ======================================== */
 
-.app-grid {
+#phone-panel-content .phone-screen .app-grid {
     position: relative;
     z-index: 1;
     display: grid;
@@ -1290,7 +1716,7 @@
     justify-items: center;
 }
 
-.app-icon {
+#phone-panel-content .phone-screen .app-icon {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1300,15 +1726,15 @@
     width: 100%;
 }
 
-.app-icon:hover {
+#phone-panel-content .phone-screen .app-icon:hover {
     transform: translateY(-6px) scale(1.05);
 }
 
-.app-icon:active {
+#phone-panel-content .phone-screen .app-icon:active {
     transform: translateY(-3px) scale(0.96);
 }
 
-.app-icon-bg {
+#phone-panel-content .phone-screen .app-icon-bg {
     /* 🔥 使用相对尺寸自适应 */
     width: min(42px, 12vw, 5.5vh);
     height: min(42px, 12vw, 5.5vh);
@@ -1332,7 +1758,7 @@
 }
 
 /* 🎨 优化：图标高光 */
-.app-icon-bg::before {
+#phone-panel-content .phone-screen .app-icon-bg::before {
     content: '';
     position: absolute;
     top: 0;
@@ -1343,7 +1769,7 @@
 }
 
 /* 🎨 新增：悬浮光效 */
-.app-icon-bg::after {
+#phone-panel-content .phone-screen .app-icon-bg::after {
     content: '';
     position: absolute;
     inset: -100%;
@@ -1357,7 +1783,7 @@
     transition: transform 0.6s;
 }
 
-.app-icon:hover .app-icon-bg {
+#phone-panel-content .phone-screen .app-icon:hover .app-icon-bg {
     transform: scale(1.1);
     box-shadow: 
         0 10px 30px rgba(0, 0, 0, 0.4),
@@ -1365,12 +1791,12 @@
         inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 
-.app-icon:hover .app-icon-bg::after {
+#phone-panel-content .phone-screen .app-icon:hover .app-icon-bg::after {
     transform: translateX(100%);
 }
 
 /* 🎨 自定义图标样式 - 移除默认背景效果，支持PNG透明 */
-.app-icon-bg.custom-icon {
+#phone-panel-content .phone-screen .app-icon-bg.custom-icon {
     background-color: transparent !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
@@ -1378,12 +1804,12 @@
     border: none !important;
 }
 
-.app-icon-bg.custom-icon::before,
-.app-icon-bg.custom-icon::after {
+#phone-panel-content .phone-screen .app-icon-bg.custom-icon::before,
+#phone-panel-content .phone-screen .app-icon-bg.custom-icon::after {
     display: none !important;
 }
 
-.app-icon-emoji {
+#phone-panel-content .phone-screen .app-icon-emoji {
     /* 🔥 使用相对尺寸自适应 */
     font-size: min(24px, 6.5vw, 3vh);
     position: relative;
@@ -1391,7 +1817,7 @@
     filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
 }
 
-.app-name {
+#phone-panel-content .phone-screen .app-name {
     margin-top: 4px;
     /* 🔥 使用相对尺寸自适应 */
     font-size: min(9.5px, 2.8vw, 1.3vh);
@@ -1405,23 +1831,23 @@
 }
 
 /* 卡片式首页需要继续复用 .app-icon 的点击逻辑，这里只覆盖布局表现 */
-.home-dashboard .home-widget-card {
+#phone-panel-content .phone-screen .home-dashboard .home-widget-card {
     display: flex !important;
     flex-direction: column !important;
     align-items: center !important;
-    justify-content: center !important;
+    justify-content: space-between !important;
     width: auto !important;
 }
 
-.home-dashboard .home-diary-card {
+#phone-panel-content .phone-screen .home-dashboard .home-diary-card {
     display: flex !important;
-    flex-direction: row !important;
-    align-items: center !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
     justify-content: flex-start !important;
     width: auto !important;
 }
 
-.home-dashboard .home-feature-card {
+#phone-panel-content .phone-screen .home-dashboard .home-feature-card {
     display: flex !important;
     flex-direction: column !important;
     align-items: center !important;
@@ -1429,7 +1855,7 @@
     width: auto !important;
 }
 
-.home-dashboard .home-settings-card {
+#phone-panel-content .phone-screen .home-dashboard .home-settings-card {
     display: flex !important;
     flex-direction: row !important;
     align-items: center !important;
@@ -1437,7 +1863,25 @@
     width: auto !important;
 }
 
-.home-dashboard .home-mini-app {
+#phone-panel-content .phone-screen .home-screen .home-dashboard .home-settings-card {
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    text-align: left !important;
+}
+
+#phone-panel-content .phone-screen .home-screen .home-dashboard .home-settings-left {
+    flex: 1 1 auto !important;
+    justify-content: flex-start !important;
+    text-align: left !important;
+}
+
+#phone-panel-content .phone-screen .home-screen .home-dashboard .home-settings-chevron {
+    flex: 0 0 auto !important;
+    margin-left: auto !important;
+}
+
+#phone-panel-content .phone-screen .home-dashboard .home-mini-app {
     display: flex !important;
     flex-direction: column !important;
     align-items: center !important;
@@ -1445,165 +1889,160 @@
     width: auto !important;
 }
 
-.home-dashboard .home-time-card,
-.home-dashboard .home-widget-card,
-.home-dashboard .home-quick-card,
-.home-dashboard .home-diary-card,
-.home-dashboard .home-feature-card,
-.home-dashboard .home-settings-card {
-    border-radius: 18px !important;
+#phone-panel-content .phone-screen .home-dashboard .home-time-card,
+#phone-panel-content .phone-screen .home-dashboard .home-widget-card,
+#phone-panel-content .phone-screen .home-dashboard .home-diary-card,
+#phone-panel-content .phone-screen .home-dashboard .home-settings-card {
+    border-radius: clamp(18px, 6vw, 24px) !important;
 }
 
-.home-dashboard .home-widget-icon,
-.home-dashboard .home-mini-icon,
-.home-dashboard .home-diary-icon,
-.home-dashboard .home-feature-icon,
-.home-dashboard .home-settings-icon {
+#phone-panel-content .phone-screen .home-dashboard .home-widget-icon,
+#phone-panel-content .phone-screen .home-dashboard .home-mini-icon,
+#phone-panel-content .phone-screen .home-dashboard .home-diary-icon,
+#phone-panel-content .phone-screen .home-dashboard .home-feature-icon,
+#phone-panel-content .phone-screen .home-dashboard .home-settings-icon {
     border-radius: 12px !important;
 }
 
 @media (max-width: 520px), (max-height: 760px) {
-    .home-dashboard {
-        padding: 11.4% 5.5% 18%;
-        gap: 9px;
+    #phone-panel-content .phone-screen .home-dashboard {
+        padding: clamp(46px, 12.2%, 64px) 5.5% clamp(74px, 18%, 104px);
+        grid-template-rows: clamp(62px, 9.8vh, 76px);
+        grid-auto-rows: clamp(46px, 8.9vh, 64px);
+        gap: clamp(6px, 2vw, 9px);
     }
 
-    .home-time-card {
-        height: 58px;
-        min-height: 0;
-        padding: 6px 10px 4px;
+    #phone-panel-content .phone-screen .home-time-card {
+        height: auto;
+        min-height: clamp(62px, 9.8vh, 76px);
+        padding: clamp(7px, 2vw, 10px) clamp(10px, 3vw, 15px);
     }
 
-    .time-large {
-        font-size: 30px;
+    #phone-panel-content .phone-screen .home-screen .time-large {
+        font-size: clamp(30px, 9.5vw, 42px);
     }
 
-    .date {
-        font-size: 10.5px;
-        margin-top: 1px;
+    #phone-panel-content .phone-screen .home-screen .date {
+        font-size: clamp(10.5px, 3vw, 12px);
+        margin-top: 4px;
     }
 
-    .home-top-grid,
-    .home-feature-grid {
+    #phone-panel-content .phone-screen .home-top-grid,
+    #phone-panel-content .phone-screen .home-feature-grid {
         gap: 10px;
     }
 
-    .home-widget-card,
-    .home-quick-card {
-        min-height: 108px;
+    #phone-panel-content .phone-screen .home-widget-card {
+        padding: clamp(6px, 2vw, 10px);
     }
 
-    .home-widget-card {
-        padding: 13px;
-    }
-
-    .home-widget-icon {
+    #phone-panel-content .phone-screen .home-widget-icon {
         width: 34px;
         height: 34px;
         font-size: 18px;
     }
 
-    .home-card-main {
+    #phone-panel-content .phone-screen .home-card-main {
         gap: 12px;
     }
 
-    .home-card-title {
-        font-size: 14px;
+    #phone-panel-content .phone-screen .home-card-title {
+        font-size: clamp(12px, 3.5vw, 14px);
     }
 
-    .home-music-controls {
-        font-size: 13px;
+    #phone-panel-content .phone-screen .home-music-controls {
+        font-size: clamp(10.5px, 3.2vw, 13px);
     }
 
-    .home-quick-card {
+    #phone-panel-content .phone-screen .home-quick-card {
         padding: 12px 10px;
         gap: 8px;
     }
 
-    .home-mini-icon {
+    #phone-panel-content .phone-screen .home-mini-icon {
         width: 31px;
         height: 31px;
         font-size: 17px;
     }
 
-    .home-mini-name {
-        font-size: 10px;
+    #phone-panel-content .phone-screen .home-mini-name {
+        font-size: clamp(9.5px, 2.8vw, 11px);
     }
 
-    .home-diary-card {
-        min-height: 64px;
-        padding: 13px;
+    #phone-panel-content .phone-screen .home-diary-card {
+        min-height: 0;
+        padding: clamp(9px, 2.8vw, 13px);
     }
 
-    .home-diary-icon {
-        width: 42px;
-        height: 42px;
-        font-size: 21px;
+    #phone-panel-content .phone-screen .home-diary-icon {
+        width: clamp(28px, 8vw, 36px);
+        height: clamp(28px, 8vw, 36px);
+        font-size: clamp(17px, 5vw, 22px);
     }
 
-    .home-card-desc {
-        font-size: 11px;
-        line-height: 1.35;
+    #phone-panel-content .phone-screen .home-card-desc {
+        font-size: clamp(9.5px, 2.65vw, 10.5px);
+        line-height: 1.42;
     }
 
-    .home-feature-card {
+    #phone-panel-content .phone-screen .home-feature-card {
         min-height: 78px;
         gap: 8px;
     }
 
-    .home-feature-icon {
+    #phone-panel-content .phone-screen .home-feature-icon {
         width: 35px;
         height: 35px;
         font-size: 19px;
     }
 
-    .home-settings-card {
-        min-height: 50px;
-        padding: 10px 14px;
+    #phone-panel-content .phone-screen .home-settings-card {
+        min-height: 0;
+        height: clamp(40px, 6.7vh, 48px);
+        padding: 0 clamp(24px, 6.8vw, 32px) 0 clamp(10px, 3.4vw, 14px);
     }
 
-    .home-settings-icon {
-        width: 33px;
-        height: 33px;
-        font-size: 18px;
+    #phone-panel-content .phone-screen .home-settings-icon {
+        width: clamp(24px, 7.2vw, 30px);
+        height: clamp(24px, 7.2vw, 30px);
+        font-size: clamp(15px, 4.4vw, 18px);
     }
 
-    .home-settings-title {
-        font-size: 16px;
+    #phone-panel-content .phone-screen .home-settings-title {
+        font-size: clamp(12px, 3.6vw, 14px);
     }
 }
 
 @media (max-width: 900px), (pointer: coarse) {
-    .home-dashboard {
-        padding-top: 13.2%;
+    #phone-panel-content .phone-screen .home-dashboard {
+        padding-top: clamp(46px, 12.2%, 66px);
     }
 
-    .home-time-card {
-        height: 56px;
-        min-height: 0;
-        padding: 6px 10px 4px;
+    #phone-panel-content .phone-screen .home-time-card {
+        height: auto;
+        min-height: clamp(62px, 9.8vh, 76px);
+        padding: clamp(7px, 2vw, 10px) clamp(10px, 3vw, 15px);
     }
 
-    .time-large {
-        font-size: 29px;
+    #phone-panel-content .phone-screen .home-screen .time-large {
+        font-size: clamp(30px, 9.5vw, 42px);
         line-height: 1;
-        margin-bottom: 1px;
     }
 
-    .date {
-        font-size: 10px;
+    #phone-panel-content .phone-screen .home-screen .date {
+        font-size: clamp(10.5px, 3vw, 12px);
         line-height: 1;
-        margin-top: 1px;
+        margin-top: 4px;
     }
 
-    .home-settings-icon {
-        width: 33px;
-        height: 33px;
-        font-size: 18px;
+    #phone-panel-content .phone-screen .home-settings-icon {
+        width: clamp(24px, 7.2vw, 30px);
+        height: clamp(24px, 7.2vw, 30px);
+        font-size: clamp(15px, 4.4vw, 18px);
     }
 
-    .home-settings-title {
-        font-size: 16px;
+    #phone-panel-content .phone-screen .home-settings-title {
+        font-size: clamp(12px, 3.6vw, 14px);
     }
 }
 
@@ -1611,7 +2050,7 @@
    🔴 APP角标（精简版）
    ======================================== */
 
-.app-badge {
+#phone-panel-content .phone-screen .app-badge {
     position: absolute;
     top: -2px;
     right: -2px;
@@ -1630,7 +2069,7 @@
    🎯 Dock栏玻璃效果
    ======================================== */
 
-.dock {
+#phone-panel-content .phone-screen .dock {
     position: absolute;
     bottom: 8%;  /* 🔥 使用相对定位 */
     left: 50%;
@@ -1653,7 +2092,7 @@
     z-index: 2;
 }
 
-.dock-app {
+#phone-panel-content .phone-screen .dock-app {
     /* 🔥 使用相对尺寸自适应 */
     width: min(36px, 10vw, 4.6vh);
     height: min(36px, 10vw, 4.6vh);
@@ -1675,7 +2114,7 @@
 }
 
 /* 🎨 新增：Dock图标光效 */
-.dock-app::before {
+#phone-panel-content .phone-screen .dock-app::before {
     content: '';
     position: absolute;
     inset: 0;
@@ -1689,30 +2128,30 @@
     transition: opacity 0.3s;
 }
 
-.dock-app:hover {
+#phone-panel-content .phone-screen .dock-app:hover {
     transform: translateY(-10px) scale(1.12);
     box-shadow: 
         0 12px 35px rgba(0, 0, 0, 0.45),
         inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 
-.dock-app:hover::before {
+#phone-panel-content .phone-screen .dock-app:hover::before {
     opacity: 1;
 }
 
-.dock-app:active {
+#phone-panel-content .phone-screen .dock-app:active {
     transform: translateY(-6px) scale(1.06);
 }
 
 /* 🎨 Dock自定义图标 - 移除背景效果，支持PNG透明 */
-.dock-app.custom-icon {
+#phone-panel-content .phone-screen .dock-app.custom-icon {
     background-color: transparent !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
     box-shadow: none !important;
 }
 
-.dock-app.custom-icon::before {
+#phone-panel-content .phone-screen .dock-app.custom-icon::before {
     display: none !important;
 }
 
@@ -2325,8 +2764,8 @@ input:checked + .toggle-slider:before {
    ======================================== */
 
 .phone-screen input[type="checkbox"]:not(.st-phone-toggle-input) {
-    -webkit-appearance: none !important;
-    appearance: none !important;
+    -webkit-appearance: checkbox !important;
+    appearance: auto !important;
     position: relative !important;
     display: inline-block !important;
     width: 16px !important;
@@ -2337,13 +2776,13 @@ input:checked + .toggle-slider:before {
     max-height: 16px !important;
     margin: 0 !important;
     padding: 0 !important;
-    border: 1.5px solid rgba(60, 60, 67, 0.5) !important;
-    border-radius: 2px !important;
-    background: #ffffff !important;
-    background-color: #ffffff !important;
-    background-image: none !important;
+    border: initial !important;
+    border-radius: initial !important;
+    background: initial !important;
+    background-color: initial !important;
+    background-image: initial !important;
     color: var(--phone-global-text, #111111) !important;
-    accent-color: initial !important;
+    accent-color: #30c46b !important;
     opacity: 1 !important;
     box-shadow: none !important;
     filter: none !important;
@@ -2353,29 +2792,17 @@ input:checked + .toggle-slider:before {
 }
 
 .phone-screen input[type="checkbox"]:not(.st-phone-toggle-input):checked {
-    border-color: currentColor !important;
-    background: #ffffff !important;
-    background-color: #ffffff !important;
-    background-image: none !important;
+    -webkit-appearance: checkbox !important;
+    appearance: auto !important;
+    accent-color: #30c46b !important;
 }
 
 .phone-screen input[type="checkbox"]:not(.st-phone-toggle-input)::after {
-    content: "" !important;
-    position: absolute !important;
-    left: 4px !important;
-    top: 1px !important;
-    width: 5px !important;
-    height: 9px !important;
-    border: solid currentColor !important;
-    border-width: 0 2px 2px 0 !important;
-    transform: rotate(45deg) scale(0) !important;
-    transform-origin: center !important;
-    opacity: 0 !important;
+    content: none !important;
 }
 
 .phone-screen input[type="checkbox"]:not(.st-phone-toggle-input):checked::after {
-    opacity: 1 !important;
-    transform: rotate(45deg) scale(1) !important;
+    content: none !important;
 }
 
 .phone-screen .wechat-worldbook-choice,
@@ -2870,12 +3297,12 @@ input:checked + .toggle-slider:before {
    🎯 优化滚动条
    ======================================== */
 
-.home-screen::-webkit-scrollbar,
+#phone-panel-content .phone-screen .home-screen::-webkit-scrollbar,
 .settings-app::-webkit-scrollbar {
     width: 0;
 }
 
-.home-screen,
+#phone-panel-content .phone-screen .home-screen,
 .settings-app {
     scroll-behavior: smooth;
 }
@@ -2944,21 +3371,21 @@ input:checked + .toggle-slider:before {
     }
 
     /* 🔥 移动端图标放大 */
-    .app-icon-bg {
+    #phone-panel-content .phone-screen .app-icon-bg {
         width: min(52px, 14vw, 6.5vh) !important;
         height: min(52px, 14vw, 6.5vh) !important;
     }
 
-    .app-icon-emoji {
+    #phone-panel-content .phone-screen .app-icon-emoji {
         font-size: min(28px, 7.5vw, 3.5vh) !important;
     }
 
-    .app-name {
+    #phone-panel-content .phone-screen .app-name {
         font-size: min(11px, 3.2vw, 1.5vh) !important;
     }
 
     /* 🔥 Dock栏图标放大 */
-    .dock-app {
+    #phone-panel-content .phone-screen .dock-app {
         width: min(52px, 14vw, 6.5vh) !important;
         height: min(52px, 14vw, 6.5vh) !important;
         font-size: min(28px, 7.5vw, 3.5vh) !important;
@@ -2993,7 +3420,7 @@ input:checked + .toggle-slider:before {
     .wechat-chat-name, .wechat-chat-last, .wechat-chat-time,
     .wechat-contact-name, .wechat-contact-signature,
     .message-text, .message-time, .chat-time,
-    .app-name, .home-time, .date
+    .app-name, .home-layout-icons .yzp-home-time, .home-layout-icons .yzp-home-date
 ) {
     color: var(--phone-global-text) !important;
     text-shadow: none !important;
@@ -3979,6 +4406,17 @@ input:checked + .toggle-slider:before {
     cursor: zoom-in;
 }
 
+.message-image-prompt-box,
+.message-image-prompt-front-panel,
+.message-image-prompt-back-panel,
+.message-image-prompt-generate,
+.message-image-prompt-regenerate,
+.message-image-prompt-show-back,
+.message-image-prompt-restore {
+    pointer-events: auto !important;
+    touch-action: manipulation !important;
+}
+
 /* 微博转发弹窗手势豁免：联系人列表与弹窗内容区域允许稳定纵向手势 */
 .phone-view-current .weibo-forward-overlay,
 .weibo-forward-overlay,
@@ -4454,8 +4892,14 @@ input:checked + .toggle-slider:before {
     height: 18px !important;
 }
 
-#phone-panel-content input[type='checkbox']::after,
-#phone-panel-content input[type='checkbox']::before {
+#phone-panel-content .toggle-switch input[type='checkbox']::after,
+#phone-panel-content .toggle-switch input[type='checkbox']::before,
+#phone-panel-content .st-phone-toggle-switch input[type='checkbox']::after,
+#phone-panel-content .st-phone-toggle-switch input[type='checkbox']::before,
+#phone-panel-content .honey-toggle-switch input[type='checkbox']::after,
+#phone-panel-content .honey-toggle-switch input[type='checkbox']::before,
+#phone-panel-content .phone-call-toggle input[type='checkbox']::after,
+#phone-panel-content .phone-call-toggle input[type='checkbox']::before {
     display: none !important; /* 清除主题塞进来的奇奇怪怪的背景图 */
 }
 

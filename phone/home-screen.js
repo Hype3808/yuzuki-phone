@@ -56,12 +56,12 @@ export class HomeScreen {
             : '';
 
         const html = `
-            <div class="home-screen home-layout-${this.getHomeLayout()}"${renderKeyAttr}>
+            <div class="home-screen yzp-home-screen home-layout-${this.getHomeLayout()} yzp-home-layout-${this.getHomeLayout()}"${renderKeyAttr}>
                 <div class="wallpaper" style="${wallpaperStyle}"></div>
 
                 ${this.getHomeLayout() === 'cards' ? this.renderCardLayout() : this.renderIconLayout()}
 
-                <div class="dock">
+                <div class="dock yzp-home-dock">
                     ${this.renderDock()}
                 </div>
             </div>
@@ -78,39 +78,42 @@ export class HomeScreen {
 
     renderIconLayout() {
         return `
-            <div class="home-time">
-                <div class="time-large">${this.getCurrentTime()}</div>
-                <div class="date">${this.getCurrentDate()}</div>
+            <div class="home-time yzp-home-time">
+                <div class="time-large yzp-home-time-large">${this.getCurrentTime()}</div>
+                <div class="date yzp-home-date">${this.getCurrentDate()}</div>
             </div>
-            <div class="app-grid">
+            <div class="app-grid yzp-home-app-grid">
                 ${this.apps.map(app => this.renderAppIcon(app)).join('')}
             </div>
         `;
     }
 
     renderCardLayout() {
+        const timeCardImage = this.getCardTimeImage();
+        const timeCardImageStyle = timeCardImage
+            ? ` style="background-image:url('${timeCardImage}');"`
+            : '';
         return `
-            <div class="home-dashboard">
-                <section class="home-time-card">
-                    <div class="time-large">${this.getCurrentTime()}</div>
-                    <div class="date">${this.getCurrentDate()}</div>
+            <div class="home-dashboard yzp-home-dashboard">
+                <section class="home-time-card yzp-home-time-card yzp-home-floating-time${timeCardImage ? ' has-image' : ''}"${timeCardImageStyle}>
+                    <div class="home-time-info yzp-home-time-info">
+                        <div class="time-large yzp-home-time-large">${this.getCurrentTime()}</div>
+                        <div class="date yzp-home-date">${this.getCurrentDate()}</div>
+                    </div>
+                    <div class="home-time-art yzp-home-time-art"></div>
                 </section>
 
-                <div class="home-top-grid">
-                    ${this.renderMusicCard()}
-                    ${this.renderQuickAppsCard()}
-                </div>
-
-                ${this.renderDiaryCard()}
-
-                <div class="home-feature-grid">
-                    ${this.renderFeatureCard('mofo')}
-                    ${this.renderFeatureCard('games')}
-                </div>
-
-                ${this.renderSettingsCard()}
+                ${this.renderMusicCard()}
+                ${this.renderSocialPills()}
+                <section class="home-app-cluster yzp-home-app-cluster">
+                    ${this.renderClusterApps()}
+                </section>
             </div>
         `;
+    }
+
+    getCardTimeImage() {
+        return window.VirtualPhone?.storage?.get?.('phone-card-time-image') || null;
     }
 
     getAppById(appId) {
@@ -147,19 +150,28 @@ export class HomeScreen {
     }
 
     renderAppBadge(app) {
-        return app?.badge > 0 ? `<span class="app-badge">${app.badge}</span>` : '';
+        return app?.badge > 0 ? `<span class="app-badge yzp-home-app-badge">${app.badge}</span>` : '';
     }
 
     renderMusicCard() {
         const app = this.getAppById('music');
         if (!app) return '';
         return `
-            <section class="app-icon home-widget-card home-music-card" data-app="${app.id}" style="--app-color:${app.color};">
-                <div class="home-card-main">
-                    ${this.renderAppGlyph(app, 'home-widget-icon')}
-                    <div class="home-card-title">${this._escapeHtml(app.name)}</div>
+            <section class="app-icon yzp-home-app-action home-widget-card yzp-home-widget-card home-music-card yzp-home-music-card" data-app="${app.id}" style="--app-color:${app.color};">
+                <div class="home-vinyl-player yzp-home-vinyl-player" aria-hidden="true">
+                    <div class="home-vinyl-record yzp-home-vinyl-record">
+                        <div class="home-vinyl-grooves yzp-home-vinyl-grooves"></div>
+                        ${this.renderAppGlyph(app, 'home-vinyl-cover yzp-home-vinyl-cover')}
+                    </div>
+                    <div class="home-tonearm yzp-home-tonearm">
+                        <div class="home-tonearm-pivot yzp-home-tonearm-pivot"></div>
+                        <div class="home-tonearm-curve yzp-home-tonearm-curve">
+                            <div class="home-tonearm-head yzp-home-tonearm-head"></div>
+                        </div>
+                    </div>
                 </div>
-                <div class="home-music-controls" aria-hidden="true">
+                <div class="home-card-title yzp-home-card-title">${this._escapeHtml(app.name)}</div>
+                <div class="home-music-controls yzp-home-music-controls" aria-hidden="true">
                     <span>⏮</span>
                     <span>⏸</span>
                     <span>⏭</span>
@@ -172,56 +184,157 @@ export class HomeScreen {
     renderQuickAppsCard() {
         const quickIds = ['wechat', 'weibo', 'honey', 'phone'];
         const quickApps = quickIds.map(id => this.getAppById(id)).filter(Boolean);
+        return quickApps.map(app => this.renderFreeAppIcon(app)).join('');
+    }
+
+    renderSocialPills() {
+        const socialApps = ['wechat', 'weibo'].map(id => this.getAppById(id)).filter(Boolean);
+        if (socialApps.length === 0) return '';
         return `
-            <section class="home-quick-card">
-                ${quickApps.map(app => `
-                    <div class="app-icon home-mini-app" data-app="${app.id}" style="--app-color:${app.color};">
-                        ${this.renderAppGlyph(app, 'home-mini-icon')}
-                        ${this.renderAppBadge(app)}
-                        <div class="home-mini-name">${this._escapeHtml(app.name)}</div>
-                    </div>
-                `).join('')}
+            <section class="home-social-stack yzp-home-social-stack">
+                ${socialApps.map(app => this.renderSocialPill(app)).join('')}
             </section>
+        `;
+    }
+
+    renderSocialPill(app) {
+        if (!app) return '';
+        const customIcon = this._getCustomIcon(app.id);
+        const iconStyle = customIcon
+            ? `background-image:url('${customIcon}');`
+            : `background:${app.color};`;
+        const iconContent = customIcon ? '' : this._escapeHtml(app.icon);
+        const customClass = customIcon ? 'custom-icon' : '';
+        return `
+            <div class="app-icon yzp-home-app-action home-social-pill yzp-home-social-pill" data-app="${app.id}" style="--app-color:${app.color};">
+                <div class="home-social-icon yzp-home-social-icon ${customClass}" style="${iconStyle}">
+                    ${iconContent}
+                </div>
+                ${this.renderAppBadge(app)}
+                <div class="home-social-name yzp-home-social-name">${this._escapeHtml(app.name)}</div>
+            </div>
+        `;
+    }
+
+    renderClusterApps() {
+        const clusterIds = ['honey', 'games', 'phone', 'diary', 'mofo', 'settings'];
+        return clusterIds
+            .map(id => this.getAppById(id))
+            .filter(Boolean)
+            .map(app => this.renderFreeAppIcon(app))
+            .join('');
+    }
+
+    renderFreeAppIcon(app) {
+        if (!app) return '';
+        const customIcon = this._getCustomIcon(app.id);
+        const iconStyle = customIcon
+            ? `background-image:url('${customIcon}');`
+            : `background:${app.color};`;
+        const iconContent = customIcon ? '' : this._escapeHtml(app.icon);
+        const customClass = customIcon ? 'custom-icon' : '';
+        return `
+            <div class="app-icon yzp-home-app-action home-free-icon yzp-home-free-icon" data-app="${app.id}" style="--app-color:${app.color};">
+                <div class="home-app-squircle yzp-home-app-squircle ${customClass}" style="${iconStyle}">
+                    ${iconContent}
+                </div>
+                ${this.renderAppBadge(app)}
+                <div class="home-mini-name yzp-home-mini-name">${this._escapeHtml(app.name)}</div>
+            </div>
         `;
     }
 
     renderDiaryCard() {
         const app = this.getAppById('diary');
         if (!app) return '';
+        const diaryPreview = this.getLatestDiaryPreview();
         return `
-            <section class="app-icon home-diary-card" data-app="${app.id}" style="--app-color:${app.color};">
-                ${this.renderAppGlyph(app, 'home-diary-icon')}
-                <div class="home-diary-copy">
-                    <div class="home-card-title">${this._escapeHtml(app.name)}</div>
-                    <div class="home-card-desc">记录今天的片段、心情和那些没说出口的话。</div>
+            <section class="app-icon yzp-home-app-action home-diary-card yzp-home-diary-card" data-app="${app.id}" style="--app-color:${app.color};">
+                <div class="home-diary-header yzp-home-diary-header">
+                    ${this.renderAppGlyph(app, 'home-diary-icon yzp-home-diary-icon')}
+                    <div class="home-card-title yzp-home-card-title">${this._escapeHtml(diaryPreview.title || app.name)}</div>
+                </div>
+                <div class="home-diary-copy yzp-home-diary-copy">
+                    <div class="home-card-desc yzp-home-card-desc">${this._escapeHtml(diaryPreview.preview)}</div>
                 </div>
                 ${this.renderAppBadge(app)}
             </section>
         `;
     }
 
+    getLatestDiaryPreview() {
+        const fallback = {
+            title: '日记',
+            preview: '记录今天的片段、心情和那些没说出口的话。'
+        };
+
+        try {
+            const saved = window.VirtualPhone?.storage?.get?.('diary_entries', null);
+            const entries = typeof saved === 'string' ? JSON.parse(saved) : saved;
+            if (!Array.isArray(entries) || entries.length === 0) return fallback;
+
+            const visibleEntries = entries.filter(entry => entry && entry.offlineHidden !== true && String(entry.content || '').trim());
+            if (visibleEntries.length === 0) return fallback;
+
+            const latest = [...visibleEntries].sort((a, b) => {
+                const aTime = Number(a.createdAt) || this._dateToTimestamp(a.date || a.content) || 0;
+                const bTime = Number(b.createdAt) || this._dateToTimestamp(b.date || b.content) || 0;
+                return bTime - aTime;
+            })[0];
+
+            const rawContent = String(latest.content || '').replace(/\r\n/g, '\n').trim();
+            const title = String(latest.title || this._extractDiaryTitle(rawContent) || '日记').trim();
+            const preview = this._buildDiaryPreview(rawContent, title) || fallback.preview;
+
+            return { title, preview };
+        } catch (e) {
+            console.warn('读取首页日记预览失败:', e);
+            return fallback;
+        }
+    }
+
+    _extractDiaryTitle(content) {
+        const titleMatch = String(content || '').match(/【([^】]+)】/);
+        if (titleMatch && !/\d{1,6}年/.test(titleMatch[1])) return titleMatch[1];
+        const firstLine = String(content || '').split('\n').map(line => line.trim()).find(Boolean);
+        return firstLine && firstLine.length <= 24 ? firstLine.replace(/^#+\s*/, '') : '';
+    }
+
+    _buildDiaryPreview(content, title) {
+        const normalizedTitle = String(title || '').trim();
+        return String(content || '')
+            .replace(/【[^】]*】/g, '')
+            .split('\n')
+            .map(line => line.trim())
+            .filter(line => line && line !== normalizedTitle && !/^[-—]{2,}/.test(line))
+            .join(' ')
+            .replace(/\s+/g, ' ')
+            .slice(0, 72);
+    }
+
+    _dateToTimestamp(value) {
+        const text = String(value || '');
+        const match = text.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
+        if (!match) return 0;
+        return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])).getTime() || 0;
+    }
+
     renderFeatureCard(appId) {
         const app = this.getAppById(appId);
         if (!app) return '';
-        return `
-            <section class="app-icon home-feature-card" data-app="${app.id}" style="--app-color:${app.color};">
-                ${this.renderAppGlyph(app, 'home-feature-icon')}
-                ${this.renderAppBadge(app)}
-                <div class="home-card-title">${this._escapeHtml(app.name)}</div>
-            </section>
-        `;
+        return this.renderFreeAppIcon(app);
     }
 
     renderSettingsCard() {
         const app = this.getAppById('settings');
         if (!app) return '';
         return `
-            <section class="app-icon home-settings-card" data-app="${app.id}" style="--app-color:${app.color};">
-                <div class="home-settings-left">
-                    ${this.renderAppGlyph(app, 'home-settings-icon')}
-                    <div class="home-settings-title">${this._escapeHtml(app.name)}</div>
+            <section class="app-icon yzp-home-app-action home-settings-card yzp-home-settings-card" data-app="${app.id}" style="--app-color:${app.color};">
+                <div class="home-settings-left yzp-home-settings-left">
+                    ${this.renderAppGlyph(app, 'home-settings-icon yzp-home-settings-icon')}
+                    <div class="home-settings-title yzp-home-settings-title">${this._escapeHtml(app.name)}</div>
                 </div>
-                <div class="home-settings-chevron">›</div>
+                <div class="home-settings-chevron yzp-home-settings-chevron">›</div>
                 ${this.renderAppBadge(app)}
             </section>
         `;
@@ -263,7 +376,7 @@ export class HomeScreen {
             const iconContent = customIcon ? '' : app.icon;
 
             return `
-                <div class="dock-app ${customClass}" data-app="${app.id}" style="${iconStyle}">
+                <div class="dock-app yzp-home-dock-app ${customClass}" data-app="${app.id}" style="${iconStyle}">
                     ${iconContent}
                 </div>
             `;
@@ -288,24 +401,24 @@ export class HomeScreen {
             ? `background-image: url('${customIcon}'); background-size: contain; background-position: center; background-repeat: no-repeat;`
             : '';
 
-        const iconContent = customIcon ? '' : `<span class="app-icon-emoji">${app.icon}</span>`;
+        const iconContent = customIcon ? '' : `<span class="app-icon-emoji yzp-home-app-icon-emoji">${app.icon}</span>`;
 
         // 自定义图标添加特殊class，用于移除默认背景效果
         const customClass = customIcon ? 'custom-icon' : '';
 
         return `
-            <div class="app-icon" data-app="${app.id}" style="--app-color: ${app.color}">
-                <div class="app-icon-bg ${customClass}" style="${iconStyle}">
+            <div class="app-icon yzp-home-app-icon yzp-home-app-action" data-app="${app.id}" style="--app-color: ${app.color}">
+                <div class="app-icon-bg yzp-home-app-icon-bg ${customClass}" style="${iconStyle}">
                     ${iconContent}
                 </div>
                 ${badge}
-                <div class="app-name">${app.name}</div>
+                <div class="app-name yzp-home-app-name">${app.name}</div>
             </div>
         `;
     }
     
     bindEvents() {
-        const icons = this.phoneShell.screen.querySelectorAll('.app-icon, .dock-app');
+        const icons = this.phoneShell.screen.querySelectorAll('.yzp-home-app-action, .yzp-home-dock-app, .app-icon, .dock-app');
         icons.forEach(icon => {
             icon.onclick = (e) => {
                 e.stopPropagation();
@@ -336,7 +449,7 @@ export class HomeScreen {
             detail: { appId } 
         }));
     }
-    
+
     getCurrentTime() {
         const timeManager = window.VirtualPhone?.timeManager;
         

@@ -1759,7 +1759,7 @@ export class WechatData {
 
         // 🔥 同步更新聊天列表的预览
         chat = this.getChat(chatId);
-        if (chat) {
+        if (chat && message.hiddenFromPreview !== true && message.isTimeMarker !== true && message.type !== 'time_marker') {
             chat.lastMessage = this.getMessagePreview(message);
             chat.time = message.time;
             chat.timestamp = message.timestamp || Date.now();
@@ -1811,6 +1811,10 @@ export class WechatData {
  * 🔥 获取消息预览文本（用于聊天列表显示）
  */
 getMessagePreview(message) {
+    if (message?.hiddenFromPreview === true || message?.isTimeMarker === true || message?.type === 'time_marker') {
+        return '';
+    }
+
     const stripSpeechPrefix = (text) => String(text || '')
         .replace(/^\s*(?:\[\s*(?:语音|视频|语音通话|视频通话|通话)\s*\]|【\s*(?:语音|视频|语音通话|视频通话|通话)\s*】)\s*/i, '')
         .replace(/^\s*(?:语音|视频)(?:通话)?\s*[：:]\s*/i, '')

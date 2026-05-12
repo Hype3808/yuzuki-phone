@@ -79,6 +79,7 @@ export class PhoneShell {
 
         panelContainer.appendChild(this.container);
         this.screen = this.container.querySelector('.phone-screen');
+        this.syncHomeLayoutChromeClass();
 
         this.bindPanelEvents();
         this.bindSwipeGesture();
@@ -223,6 +224,7 @@ export class PhoneShell {
 
             // 垂直滑动时的可滚动区域白名单
             const scrollableAreas =[
+                '.home-dashboard',
                 '.chat-messages', '#voice-chat-messages', '#video-chat-messages',
                 '.wechat-content', '.app-body', '.settings-app', '.moments-list',
                 '#tab-memory', '.settings-app #tab-memory',
@@ -827,6 +829,7 @@ export class PhoneShell {
 
     setContent(html, viewId = null) {
         if (!this.screen) return;
+        this.syncHomeLayoutChromeClass();
 
         // 1. 自动推断 viewId
         if (!viewId) {
@@ -914,6 +917,12 @@ export class PhoneShell {
                 v.remove(); // 连同背景图缓存一起彻底销毁
             }
         });
+    }
+
+    syncHomeLayoutChromeClass() {
+        if (!this.container) return;
+        const layout = String(window.VirtualPhone?.storage?.get?.('phone-home-layout') || 'icons');
+        this.container.classList.toggle('phone-card-home-layout', layout === 'cards');
     }
 
     // 🔥 绑定 Home 指示器点击事件

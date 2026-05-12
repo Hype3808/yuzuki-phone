@@ -1395,6 +1395,65 @@ export class ChatView {
         return `${dateObj.getFullYear()}年${String(dateObj.getMonth() + 1).padStart(2, '0')}月${String(dateObj.getDate()).padStart(2, '0')}日`;
     }
 
+    _parseManualTimeAdvanceCommand(text = '') {
+        const raw = String(text || '').trim();
+        const match = raw.match(/^\[\s*时间推进\s*[：:]\s*([^\]]+?)\s*\]$/);
+        if (!match) return null;
+
+        const payload = String(match[1] || '').trim();
+        const parsed = window.VirtualPhone?.timeManager?.parseStatusbar?.(payload);
+        if (!parsed?.time || !parsed?.date) return null;
+
+        const timestamp = typeof window.VirtualPhone?.timeManager?.parseTimeToTimestamp === 'function'
+            ? window.VirtualPhone.timeManager.parseTimeToTimestamp(parsed)
+            : (Number(parsed.timestamp) || Date.now());
+
+        return {
+            time: parsed.time,
+            date: parsed.date,
+            weekday: parsed.weekday || window.VirtualPhone?.timeManager?.calculateWeekday?.(parsed.date) || '星期一',
+            timestamp: Number.isFinite(Number(timestamp)) ? Number(timestamp) : Date.now()
+        };
+    }
+
+    _handleManualTimeAdvance(input, text, targetChatId) {
+        const parsedTime = this._parseManualTimeAdvanceCommand(text);
+        if (!parsedTime || !targetChatId) return false;
+
+        const timeManager = window.VirtualPhone?.timeManager;
+        if (typeof timeManager?.setTime === 'function') {
+            timeManager.setTime(parsedTime.time, parsedTime.date, parsedTime.weekday, { force: true });
+        }
+
+        this.app.wechatData.addMessage(targetChatId, {
+            from: 'system',
+            type: 'time_marker',
+            content: '',
+            time: parsedTime.time,
+            date: parsedTime.date,
+            weekday: parsedTime.weekday,
+            timestamp: parsedTime.timestamp,
+            isTimeMarker: true,
+            hiddenFromPrompt: true,
+            hiddenFromPreview: true
+        });
+
+        input.value = '';
+        this.inputText = '';
+        this.activeQuote = null;
+
+        const quoteBar = document.querySelector('.active-quote-bar');
+        if (quoteBar) quoteBar.remove();
+
+        const messages = this.app.wechatData.getMessages(targetChatId);
+        const userInfo = this.app.wechatData.getUserInfo();
+        this.smartUpdateMessages(messages, userInfo);
+
+        this.app.phoneShell?.updateStatusBarTime?.();
+        window.VirtualPhone?.home?.render?.({ forceDomRefresh: true });
+        return true;
+    }
+
     _getWechatWeekdayFromTimestamp(timestamp, fallback = '星期一') {
         const dateObj = new Date(Number(timestamp || 0));
         if (!Number.isFinite(dateObj.getTime())) return fallback || '星期一';
@@ -1658,6 +1717,10 @@ renderChatRoom(chat) {
                         lastRenderedTimestamp = msgTimestamp;
                         if (msgDate) lastRenderedDate = msgDate;
                     }
+                }
+
+                if (msg?.isTimeMarker === true || msg?.type === 'time_marker') {
+                    return;
                 }
 
                 html += this.renderMessage(msg, userInfo);
@@ -1965,6 +2028,10 @@ renderChatRoom(chat) {
 
     // 渲染单条消息（全新红包样式）
     renderMessage(msg, userInfo) {
+        if (msg?.isTimeMarker === true || msg?.type === 'time_marker') {
+            return '';
+        }
+
         const { isMe, senderName, senderAvatar } = this._resolveMessageAvatarIdentity(msg, userInfo);
         const isRedPacketOpened = msg.status === 'opened';
         const messageId = String(msg?.id || '').trim();
@@ -2505,6 +2572,7 @@ renderChatRoom(chat) {
             imageManager.storage = storage;
         }
         const novelAIReferences = await this._buildWechatPersonalImageReferences(message);
+        const generationPrompt = this._buildWechatImagePromptWithContactTags(message, promptText);
         const generationId = `wechat_img_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
         this.app.wechatData.updateMessageById(chatId, safeMessageId, {
@@ -2523,7 +2591,7 @@ renderChatRoom(chat) {
         try {
             const result = await imageManager.generate({
                 app: 'wechat',
-                prompt: promptText,
+                prompt: generationPrompt,
                 novelAIReferences
             });
             const imageUrl = String(result?.imageUrl || result?.imageData || '').trim();
@@ -2612,6 +2680,19 @@ renderChatRoom(chat) {
         return contacts.find(contact => this.app.wechatData._isSameLookupName?.(contact.name, senderName))
             || contacts.find(contact => String(contact?.name || '').trim() === senderName)
             || null;
+    }
+
+    _buildWechatImagePromptWithContactTags(message = {}, promptText = '') {
+        const basePrompt = String(promptText || '').trim();
+        const contact = this._resolveWechatPersonalReferenceContact(message);
+        const contactTags = String(contact?.naiPromptTags || contact?.imageTags || '')
+            .split(',')
+            .map(tag => tag.trim())
+            .filter(Boolean)
+            .join(', ');
+        if (!contactTags) return basePrompt;
+        if (!basePrompt) return contactTags;
+        return `${contactTags}, ${basePrompt}`;
     }
 
     async _buildWechatPersonalImageReferences(message = {}) {
@@ -2784,6 +2865,8 @@ renderChatRoom(chat) {
 
     _formatMessageContentForPrompt(msg) {
         if (!msg || typeof msg !== 'object') return '';
+        if (msg.hiddenFromPrompt === true || msg.isTimeMarker === true || msg.type === 'time_marker') return '';
+
         const normalizeImageName = (raw = '') => String(raw || '')
             .replace(/\s+/g, ' ')
             .trim()
@@ -4986,6 +5069,10 @@ renderChatRoom(chat) {
 
         const text = input.value.trim();
 
+        if (this._handleManualTimeAdvance(input, text, targetChatId)) {
+            return;
+        }
+
         // 🔥 组词保护：打开表情或 + 号面板时，空输入不触发“催更/重试/空提示”逻辑
         // 等用户关闭面板后，再按原有规则检查输入内容
         if (!text && (this.showEmoji || this.showMore)) {
@@ -6589,6 +6676,9 @@ renderChatRoom(chat) {
         let startIdx = wechatMessages.length;
         for (let i = wechatMessages.length - 1; i >= 0; i--) {
             const msg = wechatMessages[i];
+            if (msg?.hiddenFromPrompt === true || msg?.isTimeMarker === true || msg?.type === 'time_marker') {
+                continue;
+            }
             if (msg.type === 'call_record' && msg.transcript && msg.transcript.length > 0) {
                 totalLines += msg.transcript.length + 1; // transcript 行数 + 通话记录本身
             } else {
@@ -6623,6 +6713,9 @@ renderChatRoom(chat) {
             let lastDate = null;
 
             for (const msg of recentWechatMessages) {
+                if (msg?.hiddenFromPrompt === true || msg?.isTimeMarker === true || msg?.type === 'time_marker') {
+                    continue;
+                }
                 const isUser = msg.from === 'me';
                 let speaker = isUser ? userName : targetChat.name;
                 if (!isUser && isGroupChat && msg.from && msg.from !== 'system') {

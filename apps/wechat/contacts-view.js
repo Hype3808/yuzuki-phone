@@ -434,6 +434,7 @@ export class ContactsView {
         const referenceEnabled = !!referenceImage && contact.naiReferenceEnabled !== false && contact.naiReferenceEnabled !== 'false';
         const rawReferenceStrength = Number(contact.naiReferenceStrength ?? 0.7);
         const referenceStrength = Math.max(0, Math.min(1, Number.isFinite(rawReferenceStrength) ? rawReferenceStrength : 0.7));
+        const naiPromptTags = String(contact.naiPromptTags || contact.imageTags || '').trim();
         const referencePreviewStyle = referenceImage
             ? `background-image:url('${this._escapeAttr(`${referenceImage}${referenceImage.includes('?') ? '&' : '?'}t=${Date.now()}`)}'); background-size:cover; background-position:center;`
             : '';
@@ -547,6 +548,22 @@ export class ContactsView {
                             <label style="display: block; margin-top: 8px;">
                                 <div style="font-size: 11px; color: #666; margin-bottom: 3px;">参考强度：<span id="edit-contact-reference-strength-text">${referenceStrength.toFixed(2)}</span></div>
                                 <input type="range" id="edit-contact-reference-strength" min="0" max="1" step="0.05" value="${referenceStrength}" ${referenceImage ? '' : 'disabled'} style="width: 100%;">
+                            </label>
+                            <label style="display: block; margin-top: 10px;">
+                                <div style="font-size: 11px; color: #666; margin-bottom: 3px;">专属生图Tag</div>
+                                <textarea id="edit-contact-nai-prompt-tags" placeholder="例如：1girl, long black hair, blue eyes, school uniform" style="
+                                    width: 100%;
+                                    min-height: 54px;
+                                    padding: 8px 10px;
+                                    border: 1px solid #e5e5e5;
+                                    border-radius: 6px;
+                                    font-size: 12px;
+                                    line-height: 1.35;
+                                    resize: vertical;
+                                    box-sizing: border-box;
+                                    font-family: inherit;
+                                ">${this._escapeHtml(naiPromptTags)}</textarea>
+                                <div style="font-size: 10px; color: #999; line-height: 1.35; margin-top: 4px;">生成 [个人图片] 时会拼在 AI 图片描述前面，用于固定角色外观；没有参考图也会生效。</div>
                             </label>
                         </div>
 
@@ -803,6 +820,7 @@ export class ContactsView {
             const oldAvatar = String(contact.avatar || '').trim();
             const oldReferenceImage = String(contact.naiReferenceImage || contact.referenceImage || '').trim();
             const referenceStrengthValue = Math.max(0, Math.min(1, Number(document.getElementById('edit-contact-reference-strength')?.value) || 0.7));
+            const naiPromptTagsValue = String(document.getElementById('edit-contact-nai-prompt-tags')?.value || '').trim();
 
             this.app.wechatData.updateContact(contactId, {
                 name: name,
@@ -814,7 +832,8 @@ export class ContactsView {
                 naiReferenceImage: selectedReferenceImage,
                 naiReferenceEnabled: !!selectedReferenceImage && !!document.getElementById('edit-contact-reference-enabled')?.checked,
                 naiReferenceStrength: referenceStrengthValue,
-                naiReferenceInformationExtracted: 1
+                naiReferenceInformationExtracted: 1,
+                naiPromptTags: naiPromptTagsValue
             });
             this.app.wechatData.setContactGender?.(
                 contactId,

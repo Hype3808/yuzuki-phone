@@ -593,8 +593,9 @@ calculateWeekdayFromDate(year, month, day) {
  * @param {string} time - 时间，格式 "HH:MM"
  * @param {string} date - 日期，格式 "YYYY年MM月DD日"
  * @param {string} weekday - 星期，如 "星期一"（可选，不传则自动计算）
+ * @param {Object} options - 额外选项；force=true 时跳过手机最后消息时分纠偏
  */
-setTime(time, date, weekday = null) {
+setTime(time, date, weekday = null, options = {}) {
     try {
         // 🔥 清除缓存，确保下次获取时间时重新计算
         this.clearCache();
@@ -602,10 +603,11 @@ setTime(time, date, weekday = null) {
         let finalTime = time;
         const finalDate = date;
         const finalWeekday = weekday || this.calculateWeekday(date);
+        const force = options?.force === true;
 
         // 🔥 和手机聊天记录的最后时间比较，取更晚的
         const phoneLastTime = this.getPhoneLastMessageTime();
-        if (phoneLastTime && phoneLastTime.time) {
+        if (!force && phoneLastTime && phoneLastTime.time) {
             const [syncHour, syncMin] = time.split(':').map(Number);
             const [phoneHour, phoneMin] = phoneLastTime.time.split(':').map(Number);
 

@@ -2028,21 +2028,21 @@ export class WechatApp {
 .letter-index {
     position: absolute;
     right: 2px;
-    top: 164px;
-    bottom: 42px;
+    top: 126px;
+    bottom: 52px;
     transform: none;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
     gap: 0;
     z-index: 100;
-    padding: 4px 0;
-    overflow: hidden;
+    padding: 4px 0 8px;
+    overflow: visible;
     box-sizing: border-box;
 }
 
 .letter-item {
-    font-size: clamp(7px, 1.9vh, 10px);
+    font-size: 9px;
     color: #667eea;
     font-weight: 600;
     cursor: pointer;
@@ -2051,6 +2051,7 @@ export class WechatApp {
     line-height: 1;
     text-align: center;
     box-sizing: border-box;
+    min-height: 12px;
 }
 
 .letter-item:active {

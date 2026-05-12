@@ -29,11 +29,16 @@ const ST_PHONE_CURRENT_UPDATE = {
     version: ST_PHONE_VERSION,
     date: '2026-05-11',
     items: [
+        '早期版本迭代较频繁，更新后建议在设置中执行一次【一键恢复默认提示词】，以同步最新全局提示词。',
         '设置 app 联动开关新增「清洗 user 正则」选项；抢话版 RP 可关闭该清洗功能。',
+        '新增微信线下提示词注入开关，关闭后微信线下规则提示词不会注入酒馆正文。',
+        '新增并更新微信线下提示词两套默认预设：默认不抢话版与默认抢话版，可在微信线下模式提示词编辑器中切换。',
+        '新增微信联系人专属生图Tag；微信个人图片与同名蜜语主播生图会优先拼接该固定Tag。',
         '优化朋友圈用户发布内容交互。',
         '修复蜜语生图功能。',
         '修复通话 app 的解析问题。',
-        '修复部分渲染 CSS 问题。'
+        '修复部分渲染 CSS 问题。',
+        '优化重构手机桌面卡片式布局，时间状态卡片支持上传背景图。'
     ]
 };
 
@@ -7567,7 +7572,9 @@ if (window.GGP_Loaded) {
                                     }
 
                                     // 2️⃣ 添加微信线下模式提示词（如果启用且在线模式开启）
-                                    if (isWechatOnlineEnabled && promptManager?.getPromptForFeature) {
+                                    const wechatOfflinePromptRaw = storage.get('offline-wechat-prompt-enabled');
+                                    const includeWechatOfflinePrompt = wechatOfflinePromptRaw !== false && wechatOfflinePromptRaw !== 'false';
+                                    if (isWechatOnlineEnabled && includeWechatOfflinePrompt && promptManager?.getPromptForFeature) {
                                         try {
                                             let wechatPrompt = promptManager.getPromptForFeature('wechat', 'offline');
                                             if (wechatPrompt) {

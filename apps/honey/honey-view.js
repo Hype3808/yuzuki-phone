@@ -6890,6 +6890,34 @@ export class HoneyView {
         window.VirtualPhone?.imageManager?.deleteManagedBackgroundByPath?.(safeUrl, { quiet: true });
     }
 
+    _resolveHoneyHostWechatContact(hostName = '') {
+        const safeHostName = String(hostName || '').trim();
+        if (!safeHostName) return null;
+        try {
+            const wechatData = window.VirtualPhone?.wechatApp?.wechatData || window.VirtualPhone?.cachedWechatData;
+            const contacts = wechatData?.getContacts?.() || [];
+            if (!Array.isArray(contacts) || contacts.length === 0) return null;
+            return contacts.find(contact => wechatData._isSameLookupName?.(contact?.name, safeHostName))
+                || contacts.find(contact => String(contact?.name || '').trim() === safeHostName)
+                || null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    _buildHoneyImagePromptWithWechatContactTags(hostName = '', prompt = '') {
+        const basePrompt = String(prompt || '').trim();
+        const contact = this._resolveHoneyHostWechatContact(hostName);
+        const contactTags = String(contact?.naiPromptTags || contact?.imageTags || '')
+            .split(',')
+            .map(tag => tag.trim())
+            .filter(Boolean)
+            .join(', ');
+        if (!contactTags) return basePrompt;
+        if (!basePrompt) return contactTags;
+        return `${contactTags}, ${basePrompt}`;
+    }
+
     async _generateSceneImageFromPrompt({ scene = null, prompt = '', auto = false, sourceRoot = null } = {}) {
         const normalizedPrompt = String(prompt || '').trim();
         const baseScene = scene || this.currentSceneData || {};
@@ -6938,6 +6966,19 @@ export class HoneyView {
             })
             : null;
         const sceneHostName = String(baseScene?.host || this.currentSceneData?.host || '').trim();
+        const generationPrompt = this._buildHoneyImagePromptWithWechatContactTags(sceneHostName, normalizedPrompt);
+        const generationPromptPreview = generationPrompt !== normalizedPrompt && typeof imageManager.previewFinalPrompt === 'function'
+            ? imageManager.previewFinalPrompt({
+                app: 'honey',
+                prompt: generationPrompt,
+                provider,
+                width: safeHoneyWidth,
+                height: safeHoneyHeight,
+                steps: safeHoneySteps,
+                scale: safeHoneyScale,
+                seed: requestSeed
+            })
+            : promptPreview;
         const hostNaiReference = provider === 'novelai'
             ? this.app?.honeyData?.getHostNaiReference?.(sceneHostName)
             : null;
@@ -6970,18 +7011,23 @@ export class HoneyView {
             '',
             'AI 原始画面 tag:',
             normalizedPrompt || '(空)',
+            ...(generationPrompt !== normalizedPrompt ? [
+                '',
+                '微信好友专属生图Tag已拼接后的实际画面 tag:',
+                generationPrompt || '(空)'
+            ] : []),
             '',
             '固定前置提示词:',
-            promptPreview?.fixedPrompt || '(空)',
+            generationPromptPreview?.fixedPrompt || '(空)',
             '',
             '固定后置提示词:',
-            promptPreview?.fixedPromptEnd || '(空)',
+            generationPromptPreview?.fixedPromptEnd || '(空)',
             '',
             '最终正向提示词:',
-            promptPreview?.positivePrompt || normalizedPrompt || '(空)',
+            generationPromptPreview?.positivePrompt || generationPrompt || '(空)',
             '',
             '最终负面提示词:',
-            promptPreview?.negativePrompt || '(空)'
+            generationPromptPreview?.negativePrompt || '(空)'
         ].join('\n'));
 
         this.currentSceneData = {
@@ -7013,7 +7059,7 @@ export class HoneyView {
         try {
             const result = await imageManager.generate({
                 app: 'honey',
-                prompt: normalizedPrompt,
+                prompt: generationPrompt,
                 provider,
                 width: safeHoneyWidth,
                 height: safeHoneyHeight,

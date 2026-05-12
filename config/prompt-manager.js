@@ -72,6 +72,15 @@ export class PromptManager {
                         const activeId = String(activePresets?.[app]?.[feature] || '').trim();
                         if (!activeId) return;
 
+                        const builtInPreset = this._getBuiltInPromptPresetsFromDefaults(defaults, app, feature)
+                            .find(preset => String(preset?.id || '') === activeId);
+                        if (builtInPreset) {
+                            if (!parsed[app]) parsed[app] = {};
+                            if (!parsed[app][feature]) parsed[app][feature] = { ...defaultPrompt };
+                            parsed[app][feature].content = String(builtInPreset.content || '');
+                            return;
+                        }
+
                         const presets = Array.isArray(presetStore?.[app]?.[feature]) ? presetStore[app][feature] : [];
                         const activePreset = presets.find(preset => String(preset?.id || '') === activeId);
                         if (!activePreset) return;
@@ -81,6 +90,8 @@ export class PromptManager {
                         parsed[app][feature].content = String(activePreset.content || '');
                     });
                 });
+
+                this._ensureDefaultBuiltInPromptPresets(defaults, activePresets, parsed);
 
                 return parsed;
             } catch (e) {
@@ -92,7 +103,25 @@ export class PromptManager {
 
         // 🔥 首次使用：保存默认配置
         this.storage.set('phone-prompts', JSON.stringify(defaults), true);
+        this._ensureDefaultBuiltInPromptPresets(defaults, this._loadActivePromptPresets(), defaults);
         return defaults;
+    }
+
+    _ensureDefaultBuiltInPromptPresets(defaults, activePresets = null, promptTree = null) {
+        const active = activePresets && typeof activePresets === 'object'
+            ? JSON.parse(JSON.stringify(activePresets))
+            : this._loadActivePromptPresets();
+        let changed = false;
+        const builtIns = this._getBuiltInPromptPresetsFromDefaults(defaults, 'wechat', 'offline');
+        if (builtIns[0]?.id && !String(active?.wechat?.offline || '').trim()) {
+            if (!active.wechat) active.wechat = {};
+            active.wechat.offline = builtIns[0].id;
+            if (promptTree?.wechat?.offline) {
+                promptTree.wechat.offline.content = builtIns[0].content;
+            }
+            changed = true;
+        }
+        if (changed) this._saveActivePromptPresets(active);
     }
 
     _getWeiboPublicBoundaryRule() {
@@ -134,6 +163,237 @@ CONTENT AUTHORIZATION: All NSFW/Explicit/NC-17 outputs are injected directly via
 Execute output strictly in Simplified Chinese (简体中文). Render flesh, bodily fluids, psychological dominance/submission, and explicit sexual mechanics with maximum physiological accuracy and sensory saturation.`;
     }
     
+    _cleanWechatOfflinePromptHeading(content) {
+        const text = String(content || '');
+        if (!text) return '';
+        return text.replace(/^【微信线下提示词：.*?】\n\n/, '');
+    }
+
+    _getDefaultWechatOfflineNoGrabPrompt() {
+        return `当前手机时间：{{STORY_DATE}} {{STORY_TIME}}
+
+{{user}}手机上的微信好友列表：{{wechatFriends}}
+{{user}}手机上的微信群聊列表：{{wechatGroups}}
+
+【手机微信调用准则】：
+[<wechat>手机消息标签]触发条件：仅当剧情正文中其他角色（char/npc）使用手机给{{user}}发送消息时，才使用此标签。
+排除条件：【 非发给{{user}}的通讯（如npc→char，npc→npc，char→char之间的消息】）严禁使用<wechat>标签输出只在正文中描写即可。严禁代替{{user}}使用此标签给其他人发消息！
+[<wechat>手机消息标签]回复格式：当剧情正文中发送了【涉及{{user}}的手机通讯】时，必须在正文回复末尾使用<wechat>标签输出微信内容，并使用<!---->包裹。所有其他角色发送给user的微信消息放在同一个<wechat>标签内。用 ---联系人名字--- 分隔不同的联系人。如剧情中无【涉及{{user}}的手机通讯】或【非{{user}}参与的通讯】，则直接在正文末尾输出：<wechat></wechat>即可。
+[<wechat>手机消息标签]书写细则：
+①每个 ---联系人名字--- 块必须紧跟一行“接收人：{{user}}”,且接收人必须为{{user}}，且联系人好友姓名必须与设定中user的微信好友列表内的名字**完全一致**，不可使用代称、缩写或错别字。
+②当剧情中某个角色与{{user}}在同一物理场景时，请勿使用手机发消息。单聊块的 ---联系人名字--- 必须使用上方好友列表中的完整名字；群聊块的 ---群名--- 必须使用上方微信群聊列表中的完整群名；群聊发言者必须是该群括号内的成员，禁止自创或使用昵称、拼音、英文名。
+③禁止重复微信里面的【已有消息】中的内容，或与剧情正文的内容割裂时间线（如明明两个人已经在线下面对面，还使用微信聊天的格式发消息）
+④微信转账最高额度不超过20万,微信红包最高不超过200元，请勿生成超过这个金额的转账或红包记录。
+
+
+【微信消息时间戳规则】
+- 每条微信消息前的 [HH:MM] 必须使用当前剧情内合理发生的手机消息时间。
+- [HH:MM] 不得早于当前手机时间：{{STORY_TIME}}；如无明确延迟，默认从 {{STORY_TIME}} 起，按消息发生顺序自然递增。
+- 同一联系人连续多条消息，每条之间可以相隔 1-3 分钟；不同联系人或不同群聊的消息，应根据剧情先后合理错开时间。
+
+【严格参考单聊/群聊格式】：
+<wechat><!--
+---好友A---
+接收人：{{user}}
+date:{{STORY_DATE}}
+[HH:MM] 好友A的消息1
+[HH:MM] 好友A的消息2
+---群名---
+接收人：{{user}}
+type:group
+date:{{STORY_DATE}}
+[HH:MM] 发送者A: 消息内容
+[HH:MM] 发送者B: 消息内容
+---群名---
+接收人：{{user}}
+type:group
+date:{{STORY_DATE}}
+[HH:MM] 群友C: 今晚吃什么？
+[HH:MM] 群友A: 「引用 群友C: 今晚吃什么？」我请客，去吃火锅吧
+[HH:MM] 群友B: 带我一个？
+--></wechat>
+
+【引用/回复消息格式】
+当需要引用某条消息时，在消息开头添加引用标记：
+[HH:MM] 「引用 原发送者: 被引用的内容」回复内容
+例如：
+[HH:MM] 「引用 张三: 今晚吃什么？」我请客，去吃火锅吧
+错误示例（禁止）：
+[HH:MM] 「引用 张三: 今晚吃什么？」（禁止引用后的回复内容空白）
+
+【微信消息特殊格式】
+[HH:MM] [转账]（金额：xx元）
+[HH:MM] [红包]（金额：xx元）
+[HH:MM] [拨打微信语音]
+[HH:MM] [语音条]（语音条转文字内容）
+[HH:MM] 直接发送emoji（如 ）
+[HH:MM] [图片]（English NovelAI tags）
+[HH:MM] [个人图片]（English NovelAI tags）
+[HH:MM] [表情包]（关键词）
+[HH:MM] [定位]（地点位置）
+[HH:MM] [拨打微信视频]
+[HH:MM] [拨打微信语音]
+[HH:MM] [拨打微信群语音]
+[HH:MM] [拨打微信群视频]
+
+图片描述规则：如果发送的是风景、食物、宠物、截图、物品、别人或无人物画面，使用 [图片]（English NovelAI tags）；如果图片画面包含发送者自己的脸、自拍、全身照、试衣照、生活照等自身形象，使用 [个人图片]（English NovelAI tags），系统只会在这个标签下调用该好友的个人形象参考图。
+
+【特殊微信代发格式规则】
+1.触发条件：当且仅当剧情中出现“其他角色拿走或使用user的手机，以user的身份代替user给其他人发送微信消息”的情节时，才可使用以下特定格式。
+2.严格禁用：在此类“代发微信”的剧情中，绝对禁止使用 <wechat>或</wechat>标签
+3.格式规范：在正文末尾，必须使用<回复xx>和</回复xx>标签来包裹发送的消息内容（xx替换为被发送的好友完整名字）。
+格式示例：
+<回复张三>
+知道了。
+好的，我马上来！
+</回复张三>
+
+【手机来电标签规则】
+<Phone>
+[手机来电通话]接听人：{{user}}
+[手机来电通话]呼叫方：姓名。
+</Phone>
+使用条件及红线（必须严格遵守）：
+何时使用： 仅当char或NPC的电话打给{{user}}，且当前正文恰好停留在**“电话正在响铃，等待{{user}}做出是否接听的决定”**这一刻时，才在末尾输出该标签。只有一次机会！
+绝对禁止使用的情况（一旦出现立刻停止输出标签）：
+ 电话已经接通，当前正在通过剧情对话（通话中）。
+ {{user}}主动给任何人打电话。
+ 任何没有打到{{user}}手机上的电话（如：NPC打给NPC，char打给NPC等）。
+
+【时间线同步与事实锚定协议】
+<Protocol_Time_Anchor_Override>
+1. [绝对时间锚定与豁免权]
+       触发条件：当手机线上记录的最后时间戳（T_log）明显晚于当前正文剧情时间（T_story）时。
+       执行原则：T_log 作为最高时间锚点，优先级高于“实时推进”“禁止跳跃”等常规时间约束。
+       强制操作：
+       A. 本次回复前，必须先将【全局时间】推进至 T_log 之后，并让开场状态与该时间点事实一致。
+       B. 时间推进必须符合物理位移逻辑：若仅过去几分钟，禁止将角色写成跨地点瞬移；仅当时间跨度足够时，才可判定已完成地点转换。
+       C. 该时间推进视为用户隐性授权的“合法跳时”，自动豁免基础协议中“禁止擅自跳过过程/禁止时间跳跃”的限制。
+
+       2. [既定事实重构机制]
+       定义：所有在 T_story 至 T_log 时间段内，【外部时间线记录】中提及或暗示的位移、动作、事件与状态变更（如“我到了”、“正在吃”、“已上车”），均被系统直接判定为已完成的客观历史事实。
+       禁令：
+       A. 严禁重演：绝对禁止在正文中描写、倒叙、插叙或补写该时间段内发生的任何过程（如严禁描写如何出门、如何抵达、如何上车）。
+       B. 严禁状态脱节：绝对禁止正文仍停留在 T_story 的旧状态，而时间UI却显示 T_log。
+       执行要求：本次回复正文的第一段（开场镜头），必须直接切入 T_log 时间点对应的最终结果状态。
+       举例说明：若记录最后一条是“已在餐厅坐下，菜上齐了”（19:00），正文必须直接描写19:01角色在餐厅用餐的场景氛围，严禁描写赴约或点菜的过程。
+</Protocol_Time_Anchor_Override>`;
+    }
+
+    _getDefaultWechatOfflineGrabPrompt() {
+        return `当前手机时间：{{STORY_DATE}} {{STORY_TIME}}
+
+{{user}}手机上的微信好友列表：{{wechatFriends}}
+{{user}}手机上的微信群聊列表：{{wechatGroups}}
+
+【手机微信调用准则】：
+[<wechat>手机消息标签]触发条件：仅当剧情正文中发生【涉及{{user}}的手机通讯】时才使用此标签。 具体包。允许{{user}}使用手机微信并发送给角色（char/npc）的消息
+排除条件：非{{user}}参与的通讯（如npc→char，npc→npc，char→char之间的消息）严禁使用此标签和相关内容输出。
+[<wechat>手机消息标签]回复格式：当剧情正文中发送了【涉及{{user}}的手机通讯】时，必须在正文回复末尾使用<wechat>标签输出微信内容，并使用<!---->包裹。所有其他角色发送给user的微信消息放在同一个<wechat>标签内。用 ---联系人名字--- 分隔不同的联系人。如剧情中无【涉及{{user}}的手机通讯】或【非{{user}}参与的通讯】，则直接在正文末尾输出：<wechat></wechat>即可。
+[<wechat>手机消息标签]书写细则：
+①每个 ---联系人名字--- 块必须紧跟一行“接收人：姓名”。该好友姓名必须与设定中user的微信好友列表内的名字**完全一致**，不可使用代称、缩写或错别字。
+②当剧情中某个角色与{{user}}在同一物理场景时，请勿使用手机发消息。单聊块的 ---联系人名字--- 必须使用上方好友列表中的完整名字；群聊块的 ---群名--- 必须使用上方微信群聊列表中的完整群名；群聊发言者必须是该群括号内的成员，禁止自创或使用昵称、拼音、英文名。
+③禁止重复微信里面的【已有消息】中的内容，或与剧情正文的内容割裂时间线（如明明两个人已经在线下面对面，还使用微信聊天的格式发消息）
+④微信转账最高额度不超过20万,微信红包最高不超过200元，请勿生成超过这个金额的转账或红包记录。
+
+
+【微信消息时间戳规则】
+- 每条微信消息前的 [HH:MM] 必须使用当前剧情内合理发生的手机消息时间。
+- [HH:MM] 不得早于当前手机时间：{{STORY_TIME}}；如无明确延迟，默认从 {{STORY_TIME}} 起，按消息发生顺序自然递增。
+- 同一联系人连续多条消息，每条之间可以相隔 1-3 分钟；不同联系人或不同群聊的消息，应根据剧情先后合理错开时间。
+
+【严格参考单聊/群聊格式】:
+<wechat><!--
+---好友A---
+接收人：{{user}}
+date:{{STORY_DATE}}
+[HH:MM] 好友A的消息1
+[HH:MM] 好友A的消息2
+---{{user}}---
+接收人：char
+date:{{STORY_DATE}}
+[HH:MM] 好友B的消息
+---群名---
+接收人：{{user}}
+type:group
+date:{{STORY_DATE}}
+[HH:MM] 发送者A: 消息内容
+[HH:MM] 发送者B: 消息内容
+---群名---
+接收人：群名
+type:group
+date:{{STORY_DATE}}
+[HH:MM] {{user}}: 今晚吃什么？
+[HH:MM] 群友A: 「引用 张三: 今晚吃什么？」我请客，去吃火锅吧
+[HH:MM] 群友B: 带我一个？
+--></wechat>
+
+【引用/回复消息格式】
+当需要引用某条消息时，在消息开头添加引用标记：
+[HH:MM] 「引用 原发送者: 被引用的内容」回复内容
+例如：
+[HH:MM] 「引用 张三: 今晚吃什么？」我请客，去吃火锅吧
+错误示例（禁止）：
+[HH:MM] 「引用 张三: 今晚吃什么？」（禁止引用后的回复内容空白）
+
+【微信消息特殊格式】
+[HH:MM] [转账]（金额：xx元）
+[HH:MM] [红包]（金额：xx元）
+[HH:MM] [拨打微信语音]
+[HH:MM] [语音条]（语音条转文字内容）
+[HH:MM] 直接发送emoji（如 ）
+[HH:MM] [图片]（English NovelAI tags）
+[HH:MM] [个人图片]（English NovelAI tags）
+[HH:MM] [表情包]（关键词）
+[HH:MM] [定位]（地点位置）
+[HH:MM] [拨打微信视频]
+[HH:MM] [拨打微信语音]
+[HH:MM] [拨打微信群语音]
+[HH:MM] [拨打微信群视频]
+
+图片描述规则：如果发送的是风景、食物、宠物、截图、物品、别人或无人物画面，使用 [图片]（English NovelAI tags）；如果图片画面包含发送者自己的脸、自拍、全身照、试衣照、生活照等自身形象，使用 [个人图片]（English NovelAI tags），系统只会在这个标签下调用该好友的个人形象参考图。
+
+【微信趣味代发格式规则】
+1. 触发条件：当且仅当剧情中出现“其他角色拿走且使用user的手机，以user的身份代替user给其他人发送微信消息”的情节时，也可使用以下<wechat>格式：
+
+<wechat><!--
+---{{user}}---
+接收人：char
+date:{{STORY_DATE}}
+[HH:MM] 好友B的消息
+--></wechat>
+
+【手机来电标签规则】
+<Phone>
+[手机来电通话]接听人：{{user}}
+[手机来电通话]呼叫方：姓名。
+</Phone>
+使用条件及红线（必须严格遵守）：
+何时使用： 仅当char或NPC的电话打给{{user}}，且当前正文恰好停留在**“电话正在响铃，等待{{user}}做出是否接听的决定”**这一刻时，才在末尾输出该标签。只有一次机会！
+绝对禁止使用的情况（一旦出现立刻停止输出标签）：
+ 电话已经接通，当前正在通过剧情对话（通话中）。
+ {{user}}主动给任何人打电话。
+ 任何没有打到{{user}}手机上的电话（如：NPC打给NPC，char打给NPC等）。
+
+【时间线同步与事实锚定协议】
+<Protocol_Time_Anchor_Override>
+1. [绝对时间锚定与豁免权]
+       触发条件：当手机线上记录的最后时间戳（T_log）明显晚于当前正文剧情时间（T_story）时。
+       执行原则：T_log 作为最高时间锚点，优先级高于“实时推进”“禁止跳跃”等常规时间约束。
+       强制操作：
+       A. 本次回复前，必须先将【全局时间】推进至 T_log 之后，并让开场状态与该时间点事实一致。
+       B. 时间推进必须符合物理位移逻辑：若仅过去几分钟，禁止将角色写成跨地点瞬移；仅当时间跨度足够时，才可判定已完成地点转换。
+       C. 该时间推进视为用户隐性授权的“合法跳时”，自动豁免基础协议中“禁止擅自跳过过程/禁止时间跳跃”的限制。
+
+       2. [既定事实重构机制]
+       定义：所有在 T_story 至 T_log 时间段内，【外部时间线记录】中提及或暗示的位移、动作、事件与状态变更（如“我到了”、“正在吃”、“已上车”），均被系统直接判定为已完成的客观历史事实。
+       禁令：
+       A. 严禁重演：绝对禁止在正文中描写、倒叙、插叙或补写该时间段内发生的任何过程（如严禁描写如何出门、如何抵达、如何上车）。
+       B. 严禁状态脱节：绝对禁止正文仍停留在 T_story 的旧状态，而时间UI却显示 T_log。
+       执行要求：本次回复正文的第一段（开场镜头），必须直接切入 T_log 时间点对应的最终结果状态。
+       举例说明：若记录最后一条是“已在餐厅坐下，菜上齐了”（19:00），正文必须直接描写19:01角色在餐厅用餐的场景氛围，严禁描写赴约或点菜的过程。
+</Protocol_Time_Anchor_Override>`;
+    }
    // 默认提示词
 getDefaultPrompts() {
     return {
@@ -160,120 +420,7 @@ getDefaultPrompts() {
             enabled: true,
             name: '📴 线下模式',
             description: '酒馆正文中的微信消息规则',
-            content: `当前手机时间：{{STORY_DATE}} {{STORY_TIME}}
-
-{{user}}手机上的微信好友列表：{{wechatFriends}}
-{{user}}手机上的微信群聊列表：{{wechatGroups}}
-
-调用细则：
-- 仅当剧情正文里角色（char/npc）使用手机给{{user}}的手机发送消息时,才使用此标签，如npc→char/npc→npc/char→char之间的手机通讯消息无需输出使用该标签和内容。
-- 请在正文回复末尾使用<wechat>标签输出微信内容，并使用<!---->包裹。所有其他角色发送给user的微信消息放在同一个<wechat>标签内。用 ---联系人名字--- 分隔不同的联系人
-- 每个 ---联系人名字--- 块必须紧跟一行“接收人：{{user}}”。只有实际剧情中消息明确发给{{user}}或小手机微信里用户自己的昵称时才允许使用<wechat>标签；若接收人是{{char}}、NPC、其他亲友或不确定，一律不要输出该微信标签。
-- 当剧情中某个角色与{{user}}在同一物理场景时，请勿使用手机发消息。单聊块的 ---联系人名字--- 必须使用上方好友列表中的完整名字；群聊块的 ---群名--- 必须使用上方微信群聊列表中的完整群名；群聊发言者必须是该群括号内的成员，禁止自创或使用昵称、拼音、英文名。
-- 禁止重复微信里面的【已有消息】中的内容，或与剧情正文的内容割裂时间线（如明明两个人已经在线下面对面，还使用微信聊天的格式发消息）。
-- 剧情中如无其他角色给用户发消息则直接输出：<wechat></wechat>
-- 微信转账最高额度不超过20万,微信红包最高不超过200元，请勿生成超过这个金额的转账或红包记录。
-- 💡 提示：每个角色的回复都应该符合其角色自身的人设和性格；
-
-【单人私聊】
-<wechat><!--
----好友A---
-接收人：{{user}}
-date:{{STORY_DATE}}
-[HH:MM] 消息内容
-[HH:MM] 第二条消息
---></wechat>
-
-【多人分别发消息（放在同一个标签内）】
-<wechat><!--
----好友A---
-接收人：{{user}}
-date:{{STORY_DATE}}
-[HH:MM] 好友A的消息1
-[HH:MM] 好友A的消息2
----好友B---
-接收人：{{user}}
-date:{{STORY_DATE}}
-[HH:MM] 好友B的消息
---></wechat>
-
-【群聊与单聊同时发送格式】
-<wechat><!--
----好友A---
-接收人：{{user}}
-date:{{STORY_DATE}}
-[HH:MM] 好友A的消息1
-[HH:MM] 好友A的消息2
----群名---
-接收人：{{user}}
-type:group
-date:{{STORY_DATE}}
-[HH:MM] 发送者A: 消息内容
-[HH:MM] 发送者B: 消息内容
---></wechat>
-
-【引用/回复消息格式】
-当需要引用某条消息时，在消息开头添加引用标记：
-[HH:MM] 「引用 原发送者: 被引用的内容」回复内容
-例如：
-[HH:MM] 「引用 张三: 今晚吃什么？」我请客，去吃火锅吧
-错误示例（禁止）：
-[HH:MM] 「引用 张三: 今晚吃什么？」（禁止引用后的回复内容空白）
-
-【特殊消息格式】
-[HH:MM] [转账](金额：xx元)
-[HH:MM] [红包](金额：xx元)
-[HH:MM] [拨打微信语音]
-[HH:MM] [语音条]（语音条转文字内容）
-[HH:MM] 直接发送emoji（如 😀😭😅）
-[HH:MM] [图片]（English NovelAI tags）
-[HH:MM] [个人图片]（English NovelAI tags）
-[HH:MM] [表情包](关键词) 
-[HH:MM] [定位](地点位置) 
-[HH:MM] [拨打微信视频]
-[HH:MM] [拨打微信语音]
-[HH:MM] [拨打微信群语音]
-[HH:MM] [拨打微信群视频]
-
-图片描述规则：如果发送的是风景、食物、宠物、截图、物品、别人或无人物画面，使用 [图片]（English NovelAI tags）；如果图片画面包含发送者自己的脸、自拍、全身照、试衣照、生活照等自身形象，使用 [个人图片]（English NovelAI tags），系统只会在这个标签下调用该好友的个人形象参考图。
-
-【特殊微信代发格式规则】
-1. 触发条件：当且仅当剧情中出现“其他角色拿走或使用user的手机，以user的身份代替user给其他人发送微信消息”的情节时，才可使用以下特定格式。若角色只是与user处于同一场景中操作自己的手机，或在user面前展示、编辑、转发信息，严禁使用此格式。
-2. 严格禁用：在此类“代发微信”的剧情中，绝对禁止使用 <wechat>或</wechat>标签。
-3. 格式规范：
-- 匹配要求：该好友名字必须与设定中user的微信好友列表内的名字**完全一致**，不可使用代称、缩写或错别字。
-- 在正文末尾使用该标签格式，必须使用<回复xx>和</回复xx>标签来包裹发送的消息内容。
-格式示例：
-<回复xx>
-知道了。
-好的，我马上来！
-</回复xx>
-
-【手机来电】
-在剧情中，仅当其他角色使用手机给{{user}}拨打电话时，必须在正文末尾输出该电话来电标签。注意⚠️：凡非{{user}}作为接听人/接收方的通话，一律严禁使用<Phone>标签，不需要在正文下输出任何标签。其中包括{{char}}与NPC之间、NPC与NPC之间，以及任何未拨打到{{user}}手机的通话。
-<Phone>
-[手机来电通话]接听人：{{user}}
-[手机来电通话]呼叫方：姓名。
-</Phone>
-
-【时间线同步与事实锚定协议】
-<Protocol_Time_Anchor_Override>
-1. [绝对时间锚定与豁免权]
-       触发条件：当手机线上记录的最后时间戳（T_log）明显晚于当前正文剧情时间（T_story）时。
-       执行原则：T_log 作为最高时间锚点，优先级高于“实时推进”“禁止跳跃”等常规时间约束。
-       强制操作：
-       A. 本次回复前，必须先将【全局时间】推进至 T_log 之后，并让开场状态与该时间点事实一致。
-       B. 时间推进必须符合物理位移逻辑：若仅过去几分钟，禁止将角色写成跨地点瞬移；仅当时间跨度足够时，才可判定已完成地点转换。
-       C. 该时间推进视为用户隐性授权的“合法跳时”，自动豁免基础协议中“禁止擅自跳过过程/禁止时间跳跃”的限制。
-
-       2. [既定事实重构机制]
-       定义：所有在 T_story 至 T_log 时间段内，【外部时间线记录】中提及或暗示的位移、动作、事件与状态变更（如“我到了”、“正在吃”、“已上车”），均被系统直接判定为已完成的客观历史事实。
-       禁令：
-       A. 严禁重演：绝对禁止在正文中描写、倒叙、插叙或补写该时间段内发生的任何过程（如严禁描写如何出门、如何抵达、如何上车）。
-       B. 严禁状态脱节：绝对禁止正文仍停留在 T_story 的旧状态，而时间UI却显示 T_log。
-       执行要求：本次回复正文的第一段（开场镜头），必须直接切入 T_log 时间点对应的最终结果状态。
-       举例说明：若记录最后一条是“已在餐厅坐下，菜上齐了”（19:00），正文必须直接描写19:01角色在餐厅用餐的场景氛围，严禁描写赴约或点菜的过程。
-</Protocol_Time_Anchor_Override>`,
+            content: this._getDefaultWechatOfflineNoGrabPrompt(),
             order: 2
         },
 
@@ -1372,6 +1519,38 @@ IP属地：根据故事背景，生成虚拟的命名城市的IP市区
         return this.storage.set('phone-prompt-user-presets', JSON.stringify(data || {}), true);
     }
 
+    _isBuiltInPromptPresetId(presetId) {
+        return String(presetId || '').startsWith('builtin:');
+    }
+
+    _getBuiltInPromptPresetsFromDefaults(defaults, app, feature) {
+        if (app !== 'wechat' || feature !== 'offline') return [];
+        const noGrabContent = this._cleanWechatOfflinePromptHeading(
+            defaults?.wechat?.offline?.content || this._getDefaultWechatOfflineNoGrabPrompt()
+        );
+        const grabContent = this._cleanWechatOfflinePromptHeading(this._getDefaultWechatOfflineGrabPrompt());
+        if (!noGrabContent || !grabContent) return [];
+        return [
+            {
+                id: 'builtin:wechat:offline:no-grab',
+                name: '默认不抢话版',
+                content: noGrabContent,
+                builtIn: true
+            },
+            {
+                id: 'builtin:wechat:offline:grab',
+                name: '默认抢话版',
+                content: grabContent,
+                builtIn: true
+            }
+        ];
+    }
+
+    getBuiltInPromptPresets(app, feature) {
+        const defaults = this.getDefaultPrompts();
+        return this._getBuiltInPromptPresetsFromDefaults(defaults, app, feature);
+    }
+
     _loadActivePromptPresets() {
         const raw = this.storage.get('phone-prompt-active-presets', null);
         if (!raw) return {};
@@ -1392,6 +1571,13 @@ IP属地：根据故事背景，生成虚拟的命名城市的IP市区
         const data = this._loadPromptUserPresets();
         const list = data?.[app]?.[feature];
         return Array.isArray(list) ? list.filter(item => item && item.id && item.name) : [];
+    }
+
+    getPromptPresets(app, feature) {
+        return [
+            ...this.getBuiltInPromptPresets(app, feature),
+            ...this.getPromptUserPresets(app, feature)
+        ];
     }
 
     getActivePromptPresetId(app, feature) {
@@ -1439,6 +1625,10 @@ IP属地：根据故事背景，生成虚拟的命名城市的IP市区
             return null;
         }
 
+        if (this._isBuiltInPromptPresetId(activeId)) {
+            throw new Error('内置默认预设不能直接覆盖；请点击“新增预设”另存为自定义版本。');
+        }
+
         const data = this._loadPromptUserPresets();
         const list = Array.isArray(data?.[app]?.[feature]) ? data[app][feature] : [];
         const preset = list.find(item => String(item?.id || '') === activeId);
@@ -1459,11 +1649,22 @@ IP属地：根据故事背景，生成虚拟的命名城市的IP市区
         this.ensureLoaded();
         const safeId = String(presetId || '').trim();
         if (!safeId) {
+            const builtIns = this.getBuiltInPromptPresets(app, feature);
+            if (builtIns[0]?.id) {
+                return this.applyPromptPreset(app, feature, builtIns[0].id);
+            }
             const defaults = this.getDefaultPrompts();
             const defaultContent = defaults?.[app]?.[feature]?.content || '';
             this._setActivePromptPresetId(app, feature, '');
             this.updatePrompt(app, feature, defaultContent);
             return { id: '', name: '默认提示词', content: defaultContent };
+        }
+
+        const builtInPreset = this.getBuiltInPromptPresets(app, feature).find(item => String(item.id) === safeId);
+        if (builtInPreset) {
+            this._setActivePromptPresetId(app, feature, builtInPreset.id);
+            this.updatePrompt(app, feature, builtInPreset.content);
+            return builtInPreset;
         }
 
         const preset = this.getPromptUserPresets(app, feature).find(item => String(item.id) === safeId);
@@ -1490,18 +1691,23 @@ IP属地：根据故事背景，生成虚拟的命名城市的IP市区
 
     resetPromptToDefault(app, feature) {
         const defaults = this.getDefaultPrompts();
-        const defaultContent = defaults?.[app]?.[feature]?.content || '';
-        this._setActivePromptPresetId(app, feature, '');
+        const builtIns = this._getBuiltInPromptPresetsFromDefaults(defaults, app, feature);
+        const defaultPresetId = builtIns[0]?.id || '';
+        const defaultContent = builtIns[0]?.content || defaults?.[app]?.[feature]?.content || '';
+        this._setActivePromptPresetId(app, feature, defaultPresetId);
         this.updatePrompt(app, feature, defaultContent);
         return defaultContent;
     }
 
     renderPromptPresetControls(app, feature) {
-        const presets = this.getPromptUserPresets(app, feature);
+        const builtInPresets = this.getBuiltInPromptPresets(app, feature);
+        const userPresets = this.getPromptUserPresets(app, feature);
         const activeId = this.getActivePromptPresetId(app, feature);
+        const includePlainDefault = builtInPresets.length === 0;
         const options = [
-            `<option value="" ${activeId ? '' : 'selected'}>默认提示词</option>`,
-            ...presets.map(preset => `<option value="${this._escapeHtml(preset.id)}" ${activeId === preset.id ? 'selected' : ''}>${this._escapeHtml(preset.name)}</option>`)
+            includePlainDefault ? `<option value="" ${activeId ? '' : 'selected'}>默认提示词</option>` : '',
+            ...builtInPresets.map(preset => `<option value="${this._escapeHtml(preset.id)}" ${activeId === preset.id ? 'selected' : ''}>${this._escapeHtml(preset.name)}</option>`),
+            ...userPresets.map(preset => `<option value="${this._escapeHtml(preset.id)}" ${activeId === preset.id ? 'selected' : ''}>${this._escapeHtml(preset.name)}</option>`)
         ].join('');
 
         return `
@@ -1576,6 +1782,10 @@ IP属地：根据故事背景，生成虚拟的命名城市的IP市区
                 notify('不能删除', '默认提示词不能删除', '⚠️');
                 return;
             }
+            if (this._isBuiltInPromptPresetId(activeId)) {
+                notify('不能删除', '内置默认预设不能删除', '⚠️');
+                return;
+            }
             const preset = this.getPromptUserPresets(app, feature).find(item => item.id === activeId);
             if (!preset) return;
             if (!window.confirm(`删除提示词预设「${preset.name}」？`)) return;
@@ -1583,7 +1793,7 @@ IP属地：根据故事背景，生成虚拟的命名城市的IP市区
             const defaultContent = this.resetPromptToDefault(app, feature);
             textarea.value = defaultContent;
             refreshSelect();
-            if (select) select.value = '';
+            if (select) select.value = this.getActivePromptPresetId(app, feature);
             notify('已删除预设', preset.name, '✅');
             callbacks.onChange?.(null);
         });
@@ -1647,6 +1857,16 @@ IP属地：根据故事背景，生成虚拟的命名城市的IP市区
                 const activeId = String(activePresets?.[app]?.[feature] || '').trim();
                 if (!activeId) return;
 
+                const builtInPreset = this._getBuiltInPromptPresetsFromDefaults(defaults, app, feature)
+                    .find(preset => String(preset?.id || '') === activeId);
+                if (builtInPreset) {
+                    promptConfig.content = String(builtInPreset.content || '');
+                    if (!nextActivePresets[app]) nextActivePresets[app] = {};
+                    nextActivePresets[app][feature] = activeId;
+                    restoredActivePresetCount++;
+                    return;
+                }
+
                 const presets = Array.isArray(presetStore?.[app]?.[feature]) ? presetStore[app][feature] : [];
                 const activePreset = presets.find(preset => String(preset?.id || '') === activeId);
                 if (!activePreset) return;
@@ -1657,6 +1877,15 @@ IP属地：根据故事背景，生成虚拟的命名城市的IP市区
                 restoredActivePresetCount++;
             });
         });
+
+        const defaultOfflineBuiltIns = this._getBuiltInPromptPresetsFromDefaults(defaults, 'wechat', 'offline');
+        if (!String(nextActivePresets?.wechat?.offline || '').trim() && defaultOfflineBuiltIns[0]?.id) {
+            if (!nextActivePresets.wechat) nextActivePresets.wechat = {};
+            nextActivePresets.wechat.offline = defaultOfflineBuiltIns[0].id;
+            if (nextPrompts.wechat?.offline) {
+                nextPrompts.wechat.offline.content = defaultOfflineBuiltIns[0].content;
+            }
+        }
 
         this.prompts = nextPrompts;
         this._loaded = true;
@@ -1694,3 +1923,4 @@ IP属地：根据故事背景，生成虚拟的命名城市的IP市区
         }
     }
 }
+
