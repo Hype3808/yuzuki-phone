@@ -2930,19 +2930,12 @@ renderChatRoom(chat) {
         return `
         <div class="more-panel">
             <div class="more-grid">
-                <!-- 第一排：相册、拍照、语音通话、视频通话 -->
-                <div class="more-item" data-action="photo">
+                <!-- 第一排：图片、截图、蜜语、通话 -->
+                <div class="more-item" data-action="image">
                     <div class="more-icon">
                         <i class="fa-solid fa-image" style="font-size: 14px;"></i>
                     </div>
-                    <div class="more-name">相册</div>
-                </div>
-
-                <div class="more-item" data-action="camera">
-                    <div class="more-icon">
-                        <i class="fa-solid fa-camera" style="font-size: 14px;"></i>
-                    </div>
-                    <div class="more-name">拍照</div>
+                    <div class="more-name">图片</div>
                 </div>
 
                 <div class="more-item" data-action="screenshot">
@@ -3004,6 +2997,16 @@ renderChatRoom(chat) {
             <input type="file" id="photo-upload-input" accept="image/png, image/jpeg, image/gif, image/webp, image/*" style="display: none;">
             <!-- 隐藏的拍照input（带capture调用摄像头） -->
             <input type="file" id="camera-upload-input" accept="image/png, image/jpeg, image/gif, image/webp, image/*" capture="environment" style="display: none;">
+            <div class="wechat-image-source-sheet" id="wechat-image-source-sheet" style="display:none; position:absolute; left:10px; right:10px; bottom:8px; z-index:50;">
+                <div style="background:rgba(255,255,255,0.96); border:0.5px solid rgba(0,0,0,0.08); border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.16); overflow:hidden;">
+                    <button class="wechat-image-source-btn" data-source="photo" style="width:100%; height:44px; border:none; border-bottom:0.5px solid rgba(0,0,0,0.08); background:transparent; color:#111; font-size:14px; display:flex; align-items:center; justify-content:center; gap:8px;">
+                        <i class="fa-solid fa-image" style="font-size:14px;"></i><span>从相册选择</span>
+                    </button>
+                    <button class="wechat-image-source-btn" data-source="camera" style="width:100%; height:44px; border:none; background:transparent; color:#111; font-size:14px; display:flex; align-items:center; justify-content:center; gap:8px;">
+                        <i class="fa-solid fa-camera" style="font-size:14px;"></i><span>调用摄像头</span>
+                    </button>
+                </div>
+            </div>
         </div>
     `;
     }
@@ -4664,6 +4667,7 @@ renderChatRoom(chat) {
                 if (this.showEmoji) {
                     this._setCustomEmojiSelectionMode(false);
                 }
+                this.hideImageSourceSheet();
                 this.showMore = false;
                 this.showEmoji = false;
                 this.app.render();
@@ -4688,6 +4692,14 @@ renderChatRoom(chat) {
 
         query('#photo-upload-input')?.addEventListener('change', handleImageFile);
         query('#camera-upload-input')?.addEventListener('change', handleImageFile);
+        queryAll('.wechat-image-source-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.hideImageSourceSheet();
+                const source = String(btn.dataset.source || '');
+                if (source === 'camera') this.takePhoto();
+                else this.selectPhoto();
+            });
+        });
 
         // 🔥 新增：表情标签切换
         queryAll('.emoji-tab').forEach(tab => {
@@ -6756,7 +6768,10 @@ renderChatRoom(chat) {
                         if (!window.VirtualPhone._pendingImages) {
                             window.VirtualPhone._pendingImages = {};
                         }
-                        window.VirtualPhone._pendingImages[imgId] = resolvedImageData;
+                        window.VirtualPhone._pendingImages[imgId] = {
+                            url: resolvedImageData,
+                            label: imageText
+                        };
                         aiImageTokenIds.push(imgId);
                         aiImageNotes.push(`${timeStr}${speaker}: ${quoteStr}${imageText} ${imgId}`);
                         wechatTranscript += `${timeStr}${speaker}: ${quoteStr}${imageText}\n`;
@@ -6924,11 +6939,8 @@ renderChatRoom(chat) {
                 this.showEmoji = true;
                 this.app.render();
                 break;
-            case 'photo':
-                this.selectPhoto();
-                break;
-            case 'camera':
-                this.takePhoto();
+            case 'image':
+                this.showImageSourceSheet();
                 break;
             case 'screenshot':
                 await this.captureAndSendChatSnapshot({ longCapture: false });
@@ -6954,6 +6966,20 @@ renderChatRoom(chat) {
                 this.showRedPacketDialog();
                 break;
         }
+    }
+
+    showImageSourceSheet() {
+        const sheet = document.getElementById('wechat-image-source-sheet');
+        if (!sheet) {
+            this.selectPhoto();
+            return;
+        }
+        sheet.style.display = sheet.style.display === 'none' ? 'block' : 'none';
+    }
+
+    hideImageSourceSheet() {
+        const sheet = document.getElementById('wechat-image-source-sheet');
+        if (sheet) sheet.style.display = 'none';
     }
 
     async startHoneyInviteFromWechat() {

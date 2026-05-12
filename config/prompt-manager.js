@@ -62,6 +62,13 @@ export class PromptManager {
                 if (parsed.wechat?.groupChat?.content && !String(parsed.wechat.groupChat.content).includes('非群成员发微信')) {
                     parsed.wechat.groupChat.content = defaults.wechat.groupChat.content;
                 }
+                const obsoleteMomentsLine = '本提示词只负责约束朋友圈动态的风格、互动和输出质量；角色卡、用户信息、世界书和最近剧情会由系统自动注入，不要在这里重复填写这些背景变量。';
+                if (parsed.wechat?.moments?.content && String(parsed.wechat.moments.content).includes(obsoleteMomentsLine)) {
+                    parsed.wechat.moments.content = String(parsed.wechat.moments.content)
+                        .replace(obsoleteMomentsLine, '')
+                        .replace(/\n{3,}/g, '\n\n')
+                        .trim();
+                }
                 Object.keys(defaults).forEach(app => {
                     const appConfig = defaults[app];
                     if (!appConfig || typeof appConfig !== 'object') return;
@@ -593,8 +600,6 @@ from:林晓雨: 在呢
         name: '📸 朋友圈',
         description: '朋友圈动态生成规则',
         content: `【朋友圈生成规则】
-
-本提示词只负责约束朋友圈动态的风格、互动和输出质量；角色卡、用户信息、世界书和最近剧情会由系统自动注入，不要在这里重复填写这些背景变量。
 
 要求：
 1. 只为通讯录联系人生成朋友圈，不要替用户生成动态。

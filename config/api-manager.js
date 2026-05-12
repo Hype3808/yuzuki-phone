@@ -149,7 +149,20 @@ export class ApiManager {
         parts.forEach((part) => {
             if (!part) return;
             if (part.startsWith('__ST_PHONE_IMAGE_') && pendingImages?.[part]) {
-                nextContent.push({ type: 'image_url', image_url: { url: pendingImages[part] } });
+                const pendingImage = pendingImages[part];
+                const imageUrl = typeof pendingImage === 'string'
+                    ? pendingImage
+                    : String(pendingImage?.url || pendingImage?.imageUrl || '');
+                const imageLabel = typeof pendingImage === 'string'
+                    ? ''
+                    : String(pendingImage?.label || pendingImage?.name || pendingImage?.description || '').trim();
+                if (imageUrl) {
+                    const imagePart = { type: 'image_url', image_url: { url: imageUrl } };
+                    if (imageLabel) imagePart.phoneImageLabel = imageLabel;
+                    nextContent.push(imagePart);
+                } else if (imageLabel) {
+                    nextContent.push({ type: 'text', text: imageLabel });
+                }
                 if (consume) delete pendingImages[part];
                 replaced = true;
                 return;
@@ -160,6 +173,29 @@ export class ApiManager {
         });
 
         return replaced ? nextContent : text;
+    }
+
+    _getImagePartMimeType(part) {
+        const url = String(part?.image_url?.url || part?.image_url || '').trim();
+        const match = /^data:([^;,]+)[;,]/i.exec(url);
+        return match ? match[1].toLowerCase() : '';
+    }
+
+    _sanitizeContentForModel(content, options = {}) {
+        if (!Array.isArray(content)) return content;
+
+        const unsupportedImageTypes = new Set(['image/gif']);
+
+        return content.flatMap((part) => {
+            if (!part || typeof part !== 'object' || part.type !== 'image_url') return [part];
+
+            const mimeType = this._getImagePartMimeType(part);
+            if (unsupportedImageTypes.has(mimeType)) {
+                const label = String(part.phoneImageLabel || part.imageLabel || part.name || part.description || '').trim();
+                return [{ type: 'text', text: label || '[动图/GIF表情]' }];
+            }
+            return [part];
+        });
     }
 
     _contentToGeminiParts(content) {
@@ -181,13 +217,17 @@ export class ApiManager {
             if (part?.type === 'image_url') {
                 const url = String(part.image_url?.url || '');
                 const match = /^data:([^;,]+);base64,(.+)$/i.exec(url);
-                if (match) {
+                const mimeType = String(match?.[1] || '').toLowerCase();
+                if (match && mimeType !== 'image/gif') {
                     parts.push({
                         inline_data: {
                             mime_type: match[1],
                             data: match[2]
                         }
                     });
+                } else if (match && mimeType === 'image/gif') {
+                    const label = String(part.phoneImageLabel || part.imageLabel || part.name || part.description || '').trim();
+                    parts.push({ text: label || '[动图/GIF表情]' });
                 }
             }
         });
@@ -500,6 +540,12 @@ export class ApiManager {
                 payload.proxy_password = apiKey;
             }
 
+            const requestMessages = cleanMessages.map((message) => ({
+                ...message,
+                content: this._sanitizeContentForModel(message.content, { provider: chatSource, model })
+            }));
+            payload.messages = requestMessages;
+
             console.log(`🚀 [ApiManager] 触发原生 API (模式: ${chatSource}, 模型: ${model || '未指定'}, 代理: ${reverseProxy || '默认'})`);
 
             // 🌟 4. 发送到正确的官方路由
@@ -572,8 +618,15 @@ export class ApiManager {
                 return { success: false, error: '原生 API 失败: 无可用 generateRaw 兜底' };
             }
 
+            const safeMessages = Array.isArray(cleanMessages)
+                ? cleanMessages.map((message) => ({
+                    ...message,
+                    content: this._sanitizeContentForModel(message.content, { forceGifText: true })
+                }))
+                : [];
+
             const generateParams = {
-                prompt: Array.isArray(cleanMessages) ? cleanMessages : [],
+                prompt: safeMessages,
                 images: [],
                 quiet: true,
                 dryRun: false,
@@ -644,9 +697,10 @@ export class ApiManager {
         const preserveSystem = ['openai', 'deepseek', 'claude', 'gemini', 'siliconflow', 'proxy_only', 'compatible'].includes(provider);
         const cleanMessages = sourceMessages.map((m, idx) => {
             const rawContent = this._replacePhoneImageTokens(m?.content, { consume: true });
+            const sanitizedRawContent = this._sanitizeContentForModel(rawContent, { provider, model });
             const content = preserveSystem
-                ? rawContent
-                : (m?.role === 'system' ? `[System]: ${this._normalizeMessageContentForText(rawContent)}` : rawContent);
+                ? sanitizedRawContent
+                : (m?.role === 'system' ? `[System]: ${this._normalizeMessageContentForText(sanitizedRawContent)}` : sanitizedRawContent);
             const normalized = {
                 role: preserveSystem ? (m?.role === 'system' ? 'system' : (m?.role === 'assistant' ? 'assistant' : 'user')) : (m?.role === 'system' ? 'user' : (m?.role || 'user')),
                 content
