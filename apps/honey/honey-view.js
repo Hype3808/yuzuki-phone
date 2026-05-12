@@ -3191,8 +3191,15 @@ export class HoneyView {
                         : (this.app?.honeyData?.getHoneyUserNickname?.() || '你')
                 ).trim() || '你';
                 this._livePendingDisplayLines.push(`${speakerName}：${text}`);
+                const liveInputState = this._captureLiveChatInputState(root);
                 input.value = '';
                 this._refreshLivePageDom({ sourceRoot: root, scene: this.currentSceneData });
+                this._restoreLiveChatInputState({
+                    ...liveInputState,
+                    value: '',
+                    selectionStart: 0,
+                    selectionEnd: 0
+                });
 
                 if (document.activeElement === input) {
                     clearLiveBatchTimer();

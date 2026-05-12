@@ -1807,14 +1807,22 @@ export class SettingsApp {
         ];
         const samplerValue = novelaiSamplers.some(([value]) => value === sampler) ? sampler : 'k_euler';
         const scheduleValue = novelaiSchedules.some(([value]) => value === schedule) ? schedule : 'native';
-        const width = Number(this.storage.get('phone-image-width') || 832);
-        const height = Number(this.storage.get('phone-image-height') || 1216);
-        const honeyWidth = Number(this.storage.get('phone-image-honey-width') || 832);
-        const honeyHeight = Number(this.storage.get('phone-image-honey-height') || 1216);
-        const wechatWidth = Number(this.storage.get('phone-image-wechat-width') || 512);
-        const wechatHeight = Number(this.storage.get('phone-image-wechat-height') || 512);
-        const weiboWidth = Number(this.storage.get('phone-image-weibo-width') || 1024);
-        const weiboHeight = Number(this.storage.get('phone-image-weibo-height') || 1024);
+        const readImageNumber = (key, fallback, min = null, max = null, integer = true) => {
+            const num = Number(this.storage.get(key));
+            let value = Number.isFinite(num) ? num : fallback;
+            if (integer) value = Math.round(value);
+            if (min !== null) value = Math.max(min, value);
+            if (max !== null) value = Math.min(max, value);
+            return value;
+        };
+        const width = readImageNumber('phone-image-width', 832, 64, 2048, true);
+        const height = readImageNumber('phone-image-height', 1216, 64, 2048, true);
+        const honeyWidth = readImageNumber('phone-image-honey-width', 832, 64, 2048, true);
+        const honeyHeight = readImageNumber('phone-image-honey-height', 1216, 64, 2048, true);
+        const wechatWidth = readImageNumber('phone-image-wechat-width', 512, 64, 2048, true);
+        const wechatHeight = readImageNumber('phone-image-wechat-height', 512, 64, 2048, true);
+        const weiboWidth = readImageNumber('phone-image-weibo-width', 1024, 64, 2048, true);
+        const weiboHeight = readImageNumber('phone-image-weibo-height', 1024, 64, 2048, true);
         const steps = Number(this.storage.get('phone-image-steps') || 28);
         const scale = Number(this.storage.get('phone-image-scale') || 7);
         const cfgRescale = Number(this.storage.get('phone-image-cfg-rescale') || 0);
@@ -1993,6 +2001,7 @@ export class SettingsApp {
                 <div class="setting-item">
                     <div class="setting-label">各 App 生图尺寸</div>
                     <div class="setting-desc">蜜语默认使用 NAI 竖图；微信默认小方图；微博默认方图。</div>
+                    <button type="button" id="phone-image-reset-app-sizes" class="setting-btn" style="width: 100%; height: 30px; margin-top: 8px; border: 1px solid #d8d8d8; border-radius: 8px; background: #f7f7f7; color: #333; font-size: 12px; cursor: pointer;">恢复默认尺寸</button>
                     <div style="display: grid; grid-template-columns: 72px 1fr 1fr; gap: 8px; align-items: center; margin-top: 8px;">
                         <div style="font-size: 11px; color: #777;">App</div>
                         <div style="font-size: 11px; color: #777;">宽度</div>
@@ -3342,7 +3351,7 @@ export class SettingsApp {
             await this.storage.set('image_generation_model', nextModel);
         });
 
-        [
+        const imageNumberInputs = [
             ['phone-image-honey-width', 832, 64, 2048, true],
             ['phone-image-honey-height', 1216, 64, 2048, true],
             ['phone-image-wechat-width', 512, 64, 2048, true],
@@ -3355,17 +3364,53 @@ export class SettingsApp {
             ['phone-image-scale', 7, 0, 50, false],
             ['phone-image-cfg-rescale', 0, 0, 1, false],
             ['phone-image-seed', -1, -1, 4294967295, true]
-        ].forEach(([id, fallback, min, max, integer]) => {
+        ];
+        const appSizeInputIds = new Set([
+            'phone-image-honey-width',
+            'phone-image-honey-height',
+            'phone-image-wechat-width',
+            'phone-image-wechat-height',
+            'phone-image-weibo-width',
+            'phone-image-weibo-height',
+            'phone-image-width',
+            'phone-image-height'
+        ]);
+        imageNumberInputs.forEach(([id, fallback, min, max, integer]) => {
             const input = document.getElementById(id);
             if (!input) return;
             const saveNumberInput = async (e) => {
                 await this.storage.set(id, clampNumberInput(e.target, fallback, min, max, integer));
             };
-            if (id !== 'phone-image-seed') {
+            if (id !== 'phone-image-seed' && !appSizeInputIds.has(id)) {
                 input.addEventListener('input', saveNumberInput);
             }
             input.addEventListener('change', saveNumberInput);
             input.addEventListener('blur', saveNumberInput);
+            input.addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter') return;
+                e.preventDefault();
+                saveNumberInput(e).catch(err => console.warn('保存生图数字设置失败:', err));
+                e.currentTarget?.blur?.();
+            });
+        });
+
+        document.getElementById('phone-image-reset-app-sizes')?.addEventListener('click', async () => {
+            const defaults = {
+                'phone-image-honey-width': 832,
+                'phone-image-honey-height': 1216,
+                'phone-image-wechat-width': 512,
+                'phone-image-wechat-height': 512,
+                'phone-image-weibo-width': 1024,
+                'phone-image-weibo-height': 1024,
+                'phone-image-width': 832,
+                'phone-image-height': 1216
+            };
+            for (const [key, value] of Object.entries(defaults)) {
+                const input = document.getElementById(key);
+                if (input) input.value = String(value);
+                await this.storage.set(key, value);
+            }
+            this.phoneShell?.showNotification?.('生图尺寸', '已恢复默认尺寸', '✅');
         });
 
         [

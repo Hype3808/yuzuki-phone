@@ -204,6 +204,10 @@ export class PhoneShell {
         // 🔥 核心修复 1：移除屏幕宽度限制，全面接管虚拟手机的触摸滑动！
         phoneBody.addEventListener('touchmove', (e) => {
             const target = e.target;
+            const touchEditableHost = resolveEditableHost(target);
+            const activeEditableHost = resolveEditableHost(document.activeElement);
+            const hasFocusedTextInput = !!(activeEditableHost && isTextEditableElement(activeEditableHost) && phoneBody.contains(activeEditableHost));
+            if (isTextEditableElement(touchEditableHost) || hasFocusedTextInput) return;
             if (resolveGestureControlHost(target)) return;
 
             // 动态判断当前手势是否是明显的水平滑动
@@ -600,6 +604,11 @@ export class PhoneShell {
             if (!isPhoneEditableTarget(event.target)) return;
             event.stopPropagation();
         };
+        const updateKeyboardState = (event, active) => {
+            if (!isPhoneEditableTarget(event.target)) return;
+            this.container?.classList?.toggle?.('phone-keyboard-open', !!active);
+            document.body?.classList?.toggle?.('phone-input-active', !!active);
+        };
         [
             'beforeinput',
             'input',
@@ -615,6 +624,14 @@ export class PhoneShell {
             'copy'
         ].forEach((eventName) => {
             this.container.addEventListener(eventName, isolate);
+        });
+        this.container.addEventListener('focusin', (event) => updateKeyboardState(event, true));
+        this.container.addEventListener('focusout', (event) => {
+            setTimeout(() => {
+                const active = document.activeElement;
+                if (active && isPhoneEditableTarget(active)) return;
+                updateKeyboardState(event, false);
+            }, 80);
         });
     }
     

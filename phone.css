@@ -3504,6 +3504,32 @@ input:checked + .toggle-slider:before {
     text-shadow: none !important;
 }
 
+/* 手机内输入法安全舱：避免全局手势/主题样式干扰移动端键盘与候选栏 */
+#phone-panel-content .phone-screen input,
+#phone-panel-content .phone-screen textarea,
+#phone-panel-content .phone-screen select,
+#phone-panel-content .phone-screen [contenteditable="true"],
+#phone-panel-content .phone-screen [contenteditable="plaintext-only"],
+#phone-panel-content .phone-screen [contenteditable] {
+    -webkit-user-select: text;
+    user-select: text;
+    touch-action: manipulation;
+    overscroll-behavior: contain;
+    -webkit-tap-highlight-color: transparent;
+}
+
+#phone-panel-content .phone-screen textarea,
+#phone-panel-content .phone-screen input[type="text"],
+#phone-panel-content .phone-screen input[type="search"],
+#phone-panel-content .phone-screen input[type="password"],
+#phone-panel-content .phone-screen input[type="email"],
+#phone-panel-content .phone-screen input[type="number"],
+#phone-panel-content .phone-screen input[type="url"],
+#phone-panel-content .phone-screen input[type="tel"] {
+    -webkit-user-modify: read-write-plaintext-only;
+    caret-color: auto;
+}
+
 /* 特殊元素保持原有颜色（避免影响背景色等） */
 .phone-body-panel .app-icon-bg,
 .phone-body-panel .dock-app,
