@@ -3412,13 +3412,13 @@ input:checked + .toggle-slider:before {
     }
 
     /* 聊天消息区域允许滚动 */
-    .chat-messages {
+    #phone-panel-content .phone-screen .chat-messages {
         overflow-y: auto !important;
         -webkit-overflow-scrolling: touch !important;
     }
 
     /* 输入区域 */
-    .chat-input-area {
+    #phone-panel-content .phone-screen .chat-input-area {
         flex-shrink: 0 !important;
     }
 }
@@ -4281,13 +4281,13 @@ input:checked + .toggle-slider:before {
 .wechat-app,
 .phone-view-current .wechat-content,
 .wechat-content,
-.phone-view-current .chat-room,
-.chat-room {
+#phone-panel-content .phone-screen .phone-view-current .chat-room,
+#phone-panel-content .phone-screen .chat-room {
     touch-action: pan-y !important;
 }
 
-.phone-view-current .chat-messages,
-.chat-messages {
+#phone-panel-content .phone-screen .phone-view-current .chat-messages,
+#phone-panel-content .phone-screen .chat-messages {
     overflow-y: auto !important;
     overflow-x: hidden !important;
     -webkit-overflow-scrolling: touch !important;

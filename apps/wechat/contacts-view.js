@@ -719,10 +719,46 @@ export class ContactsView {
             if (strengthInput) strengthInput.disabled = !hasImage;
         };
 
-        query('#back-from-edit-contact')?.addEventListener('click', () => {
-            if (selectedReferenceImage && selectedReferenceImage !== originalReferenceImage) {
-                pendingReferenceCleanup.add(selectedReferenceImage);
+        let referenceAutosaveTimer = null;
+        const readReferencePatch = () => {
+            const strengthValue = Math.max(0, Math.min(1, Number(query('#edit-contact-reference-strength')?.value) || 0.7));
+            const tagsValue = String(query('#edit-contact-nai-prompt-tags')?.value || '').trim();
+            return {
+                naiReferenceImage: selectedReferenceImage,
+                naiReferenceEnabled: !!selectedReferenceImage && !!query('#edit-contact-reference-enabled')?.checked,
+                naiReferenceStrength: strengthValue,
+                naiReferenceInformationExtracted: 1,
+                naiPromptTags: tagsValue
+            };
+        };
+        const saveReferenceSettings = async (options = {}) => {
+            const patch = readReferencePatch();
+            this.app.wechatData.updateContact(safeContactId, patch);
+            if (window.VirtualPhone) {
+                window.VirtualPhone.cachedWechatData = this.app.wechatData;
             }
+            if (options.flush === true && typeof this.app.wechatData.saveData === 'function') {
+                await this.app.wechatData.saveData();
+            }
+            return patch;
+        };
+        const queueReferenceAutosave = () => {
+            if (referenceAutosaveTimer) clearTimeout(referenceAutosaveTimer);
+            referenceAutosaveTimer = setTimeout(() => {
+                referenceAutosaveTimer = null;
+                saveReferenceSettings().catch(e => console.warn('个人形象设置自动保存失败:', e));
+            }, 300);
+        };
+        const flushReferenceAutosave = async () => {
+            if (referenceAutosaveTimer) {
+                clearTimeout(referenceAutosaveTimer);
+                referenceAutosaveTimer = null;
+            }
+            await saveReferenceSettings({ flush: true });
+        };
+
+        query('#back-from-edit-contact')?.addEventListener('click', async () => {
+            await flushReferenceAutosave().catch(e => console.warn('个人形象设置返回前保存失败:', e));
             cleanupReferenceImages(pendingReferenceCleanup);
             returnFromEditContact();
         });
@@ -808,6 +844,12 @@ export class ContactsView {
                 selectedReferenceImage = uploadedUrl;
                 referenceImageDeleted = false;
                 updateReferenceControls();
+                await saveReferenceSettings({ flush: true });
+                if (oldReferenceImage && oldReferenceImage !== selectedReferenceImage) {
+                    pendingReferenceCleanup.add(oldReferenceImage);
+                    cleanupReferenceImages(pendingReferenceCleanup);
+                    pendingReferenceCleanup.clear();
+                }
                 this.app.phoneShell.showNotification('成功', '个人形象参考图已上传', '✅');
             } catch (err) {
                 console.warn('个人形象参考图上传失败:', err);
@@ -815,23 +857,43 @@ export class ContactsView {
             }
         });
 
-        query('#delete-edit-contact-reference')?.addEventListener('click', () => {
+        query('#delete-edit-contact-reference')?.addEventListener('click', async () => {
             if (!selectedReferenceImage) return;
+            const removedReferenceImage = selectedReferenceImage;
             if (selectedReferenceImage !== originalReferenceImage) {
                 pendingReferenceCleanup.add(selectedReferenceImage);
             }
             selectedReferenceImage = '';
             referenceImageDeleted = true;
             updateReferenceControls();
+            await saveReferenceSettings({ flush: true }).catch(e => console.warn('个人形象参考图删除保存失败:', e));
+            if (removedReferenceImage) {
+                pendingReferenceCleanup.add(removedReferenceImage);
+                cleanupReferenceImages(pendingReferenceCleanup);
+                pendingReferenceCleanup.clear();
+            }
         });
 
         query('#edit-contact-reference-strength')?.addEventListener('input', (e) => {
             const value = Math.max(0, Math.min(1, Number(e.target.value) || 0));
             const text = query('#edit-contact-reference-strength-text');
             if (text) text.textContent = value.toFixed(2);
+            queueReferenceAutosave();
         });
 
-        query('#save-edit-contact-btn')?.addEventListener('click', () => {
+        query('#edit-contact-reference-enabled')?.addEventListener('change', () => {
+            queueReferenceAutosave();
+        });
+
+        query('#edit-contact-nai-prompt-tags')?.addEventListener('input', () => {
+            queueReferenceAutosave();
+        });
+
+        query('#edit-contact-nai-prompt-tags')?.addEventListener('change', () => {
+            flushReferenceAutosave().catch(e => console.warn('专属生图Tag保存失败:', e));
+        });
+
+        query('#save-edit-contact-btn')?.addEventListener('click', async () => {
             const name = query('#edit-contact-name-input').value.trim();
 
             if (!name) {
@@ -846,6 +908,8 @@ export class ContactsView {
                 this.app.phoneShell.showNotification('提示', '该名称已被其他联系人使用', '⚠️');
                 return;
             }
+
+            await flushReferenceAutosave().catch(e => console.warn('个人形象设置保存失败:', e));
 
             // 🔥 新增：读取各服务商音色 ID
             const ttsVoices = {};

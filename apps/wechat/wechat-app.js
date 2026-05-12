@@ -534,7 +534,7 @@ export class WechatApp {
    聊天室样式 - 高仿微信
    ======================================== */
 
-.chat-room {
+.wechat-app .chat-room {
     position: absolute;
     top: 0;
     left: 0;
@@ -545,7 +545,7 @@ export class WechatApp {
     background: transparent !important; /* 🔥 致命修复：彻底杀掉白底，让背景图透上来！ */
 }
 
-.chat-messages {
+.wechat-app .chat-messages {
     flex: 1;
     min-height: 0; /* 防止无限撑开 */
     padding: 10px 6px 5px 6px; /* 顶部和左右留白，底部交由垫片处理 */
@@ -557,12 +557,12 @@ export class WechatApp {
 }
 
 /* 🔥 隐藏 Chrome/Safari/Edge 手机浏览器的滚动条 */
-.chat-messages::-webkit-scrollbar {
+.wechat-app .chat-messages::-webkit-scrollbar {
     display: none;
 }
 
 /* 🔥 物理垫片：彻底治愈部分手机浏览器吞掉底部 padding 导致遮挡的绝症 */
-.chat-messages::after {
+.wechat-app .chat-messages::after {
     content: '';
     display: block;
     height: 20px; /* 强制在最底下塞入一个20px的透明方块 */
@@ -1001,7 +1001,7 @@ export class WechatApp {
    输入区样式
    ======================================== */
 
-.chat-input-area {
+.wechat-app .chat-input-area {
     flex-shrink: 0; 
     /* 🔥 透明度降到极限15%，近乎纯透明，拒绝白上加白 */
     background: rgba(255, 255, 255, 0.15) !important; 
@@ -1014,7 +1014,7 @@ export class WechatApp {
     z-index: 10;
 }
 
-.chat-input {
+.wechat-app .chat-input {
     width: 100%;
     background: rgba(255, 255, 255, 0.6) !important; /* 🔥 纯白改为60%半透明白 */
     color: #000000 !important;
@@ -1027,7 +1027,7 @@ export class WechatApp {
 }
 
 /* 🔥 聊天输入栏 - 重构后的样式 */
-.chat-input-bar {
+.wechat-app .chat-input-bar {
     display: flex;
     align-items: center;
     padding: 8px 12px;
@@ -1035,14 +1035,14 @@ export class WechatApp {
 }
 
 /* 🔥 输入框包装器 - 自动填充剩余空间 */
-.chat-input-wrapper {
+.wechat-app .chat-input-wrapper {
     flex: 1;
     min-width: 0;
     position: relative;
 }
 
 /* 🔥 输入框样式 */
-.chat-input {
+.wechat-app .chat-input {
     width: 100%;
     background: rgba(255, 255, 255, 0.42) !important;
     color: #111111 !important;
@@ -1057,13 +1057,13 @@ export class WechatApp {
     transition: border-color 0.2s;
 }
 
-.chat-input:focus {
+.wechat-app .chat-input:focus {
     border-color: rgba(7, 193, 96, 0.78);
     background: rgba(255, 255, 255, 0.58) !important;
 }
 
 /* 🔥 输入栏按钮 - 统一尺寸 */
-.input-btn {
+.wechat-app .input-btn {
     width: 32px;
     height: 32px;
     display: flex;
@@ -1079,37 +1079,37 @@ export class WechatApp {
 }
 
 /* 🔥 重新生成按钮稍小 */
-.chat-input-bar #regenerate-btn {
+.wechat-app .chat-input-bar #regenerate-btn {
     font-size: 14px;
     color: #888;
 }
 
-.input-btn:hover {
+.wechat-app .input-btn:hover {
     color: #07c160;
 }
 
-.input-btn:active {
+.wechat-app .input-btn:active {
     transform: scale(0.9);
 }
 
 /* 🔥 移动端微调 - 不再限制输入框宽度 */
 @media (max-width: 500px) {
-    .chat-input-bar {
+    .wechat-app .chat-input-bar {
         padding: 6px 8px;
         gap: 4px;
     }
     /* 🔥 移动端按钮稍大 */
-    .input-btn {
+    .wechat-app .input-btn {
         width: 32px;
         height: 32px;
     }
-    .input-btn svg {
+    .wechat-app .input-btn svg {
         width: 22px;
         height: 22px;
     }
 }
 
-.send-btn {
+.wechat-app .send-btn {
     background: #07c160;
     color: #fff;
     border: none;
@@ -1121,11 +1121,11 @@ export class WechatApp {
     transition: background 0.2s;
 }
 
-.send-btn:hover {
+.wechat-app .send-btn:hover {
     background: #06a752;
 }
 
-.send-btn:active {
+.wechat-app .send-btn:active {
     transform: scale(0.95);
 }
 
@@ -1133,7 +1133,7 @@ export class WechatApp {
    表情面板样式
    ======================================== */
 
-.emoji-panel {
+.wechat-app .emoji-panel {
     padding: 8px 10px 6px;
     background: transparent; /* 🔥 去掉死白底色 */
     border-top: 0.5px solid rgba(0,0,0,0.1);
@@ -1147,11 +1147,11 @@ export class WechatApp {
 }
 
 /* 🔥 新增：隐藏滚动条 for Chrome, Safari */
-.emoji-panel::-webkit-scrollbar {
+.wechat-app .emoji-panel::-webkit-scrollbar {
     display: none;
 }
 
-.emoji-scroll {
+.wechat-app .emoji-scroll {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
@@ -1164,7 +1164,7 @@ export class WechatApp {
     -ms-overflow-style: none;
 }
 
-.emoji-scroll::-webkit-scrollbar {
+.wechat-app .emoji-scroll::-webkit-scrollbar {
     display: none;
 }
 
@@ -1487,7 +1487,7 @@ export class WechatApp {
 }
 
 /* 🔥 隐藏聊天消息区的滚动条 */
-.chat-messages::-webkit-scrollbar {
+.wechat-app .chat-messages::-webkit-scrollbar {
     display: none;
 }
 
@@ -1501,7 +1501,7 @@ export class WechatApp {
     -ms-overflow-style: none;
 }
 
-.chat-messages {
+.wechat-app .chat-messages {
     scrollbar-width: none; /* Firefox */
     -ms-overflow-style: none; /* IE and Edge */
 }
@@ -2061,7 +2061,7 @@ export class WechatApp {
 }
 
 /* 聊天背景支持 */
-.chat-room {
+.wechat-app .chat-room {
     background-size: cover !important;
     background-position: center !important;
 }
