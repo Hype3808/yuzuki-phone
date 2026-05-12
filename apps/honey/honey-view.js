@@ -3476,11 +3476,17 @@ export class HoneyView {
                     e.stopPropagation();
                     handler(e);
                 };
+                el.addEventListener('pointerdown', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                });
                 el.addEventListener('pointerup', (e) => {
                     el.dataset.lastPointerAt = String(Date.now());
                     run(e);
                 });
                 el.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
                     const lastPointerAt = Number(el.dataset.lastPointerAt || 0);
                     if (lastPointerAt && Date.now() - lastPointerAt < 500) return;
                     run(e);
@@ -3631,10 +3637,13 @@ export class HoneyView {
 
     _showLiveVisibilityModal() {
         this._liveVisibilityModalOpen = true;
+        this._liveVisibilityModalOpenedAt = Date.now();
         this.renderMinePage();
     }
 
     _hideLiveVisibilityModal() {
+        const openedAt = Number(this._liveVisibilityModalOpenedAt || 0);
+        if (openedAt && Date.now() - openedAt < 420) return;
         this._liveVisibilityModalOpen = false;
         this.renderMinePage();
     }
@@ -3643,6 +3652,7 @@ export class HoneyView {
         const safeVisibility = String(visibility || '').trim() === 'private' ? 'private' : 'public';
         const activeIsLive = this.currentPage === 'live' && (this.currentSceneData || this.selectedTopic);
         this._liveVisibilityModalOpen = false;
+        this._liveVisibilityModalOpenedAt = 0;
         if (activeIsLive) {
             this.currentSceneData = {
                 ...(this.currentSceneData || this._buildBaseScene(this.selectedTopic || this._getFallbackTopic(), this._getActiveTopicTitle(), this._getActiveTopicKey())),

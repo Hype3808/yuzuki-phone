@@ -1442,56 +1442,6 @@ ${replyTo ? `- 回复对象：${replyTo}` : ''}
             const timeManager = window.VirtualPhone?.timeManager;
             const currentTime = timeManager?.getCurrentStoryTime?.() || { date: '2024年1月1日', time: '12:00' };
 
-            // 🔥 获取SillyTavern上下文
-            const context = (typeof SillyTavern !== 'undefined' && SillyTavern.getContext)
-                ? SillyTavern.getContext()
-                : null;
-
-            // 🔥 获取上下文楼层限制（与聊天一致）
-            const storage = window.VirtualPhone?.storage;
-            const contextLimit = storage ? (parseInt(storage.get('phone-context-limit')) || 10) : 10;
-
-            // 🔥 收集角色卡信息（包括角色卡的系统提示词）
-            let characterInfo = '';
-            if (context && context.characterId !== undefined && context.characters?.[context.characterId]) {
-                const char = context.characters[context.characterId];
-                characterInfo = `【角色卡信息】
-角色名：${char.name || '未知'}
-${char.description ? `描述：${char.description.substring(0, 800)}` : ''}
-${char.personality ? `性格：${char.personality}` : ''}
-${char.scenario ? `场景/背景：${char.scenario}` : ''}
-${char.data?.system_prompt ? `\n角色系统提示词：${char.data.system_prompt.substring(0, 500)}` : ''}
-`;
-
-                // 🔥 收集角色卡内置世界书（character_book）
-                if (char.data?.character_book?.entries) {
-                    const entries = char.data.character_book.entries;
-                    if (entries.length > 0) {
-                        characterInfo += '\n【角色书/世界书条目】\n';
-                        entries.forEach((entry, idx) => {
-                            if (entry.content && entry.enabled !== false && idx < 10) { // 最多10条
-                                characterInfo += `${entry.content.substring(0, 300)}\n---\n`;
-                            }
-                        });
-                    }
-                }
-            }
-
-            // 🔥 收集用户卡信息（从DOM读取，与聊天一致）
-            let userInfo = '';
-            const userName = context?.name1 || '用户';
-            const personaTextarea = document.getElementById('persona_description');
-            if (personaTextarea && personaTextarea.value && personaTextarea.value.trim()) {
-                userInfo = `【用户信息】
-用户名：${userName}
-用户设定：${personaTextarea.value.trim().substring(0, 500)}
-`;
-            } else {
-                userInfo = `【用户信息】
-用户名：${userName}
-`;
-            }
-
             // 🔥 收集记忆表格信息（如果Gaigai插件存在）
             let memoryInfo = '';
             if (window.Gaigai?.m?.s && Array.isArray(window.Gaigai.m.s)) {
@@ -1513,32 +1463,6 @@ ${memoryLines.slice(0, 10).join('\n')}
                 }
             }
 
-            // 🔥 收集最近聊天记录（使用上下文楼层限制）
-            let chatHistory = '';
-            if (context?.chat && Array.isArray(context.chat) && context.chat.length > 0) {
-                const recentChat = context.chat.slice(-contextLimit);
-                const chatLines = [];
-
-                recentChat.forEach(msg => {
-                    if (msg.mes && msg.mes.trim()) {
-                        let content = msg.mes || msg.content || '';
-                        content = applyPhoneTagFilter(content, { storage: this.app?.storage || window.VirtualPhone?.storage });
-                        content = content.replace(/<[^>]*>/g, '').replace(/\*.*?\*/g, '').trim().substring(0, 200);
-
-                        if (content.trim()) {
-                            const speaker = msg.is_user ? userName : (context.name2 || '角色');
-                            chatLines.push(`${speaker}: ${content}`);
-                        }
-                    }
-                });
-
-                if (chatLines.length > 0) {
-                    chatHistory = `【最近剧情对话】（最近${chatLines.length}条）
-${chatLines.join('\n')}
-`;
-                }
-            }
-
             // 构建联系人信息
             const contactsInfo = contacts.map(c => `${c.name}(${c.relation || '好友'})`).join('、');
 
@@ -1547,15 +1471,12 @@ ${chatLines.join('\n')}
 
 当前剧情时间：${currentTime.date} ${currentTime.time}
 
-${characterInfo}
-${userInfo}
 ${memoryInfo}
-${chatHistory}
 
 可用联系人列表：
 ${contactsInfo}
 
-请根据以上角色设定、用户信息、记忆和剧情对话，为联系人生成符合当前故事情境的朋友圈动态。
+请根据已注入的角色卡、用户信息、世界书和最近剧情对话，为联系人生成符合当前故事情境的朋友圈动态。
 
 要求：
 1. 每个联系人生成0-1条朋友圈（根据角色性格决定是否发）
@@ -1595,16 +1516,24 @@ ${momentsPrompt}
 
             const normalizedMoments = this._normalizeAiMomentsPayload(result);
             if (normalizedMoments.length > 0) {
-                // 清空旧的朋友圈
-                this.app.wechatData.data.moments = [];
+                const currentUserName = String(this.app.wechatData.getUserInfo()?.name || '').trim();
+                const existingMoments = Array.isArray(this.app.wechatData.data.moments)
+                    ? this.app.wechatData.data.moments
+                    : [];
+                const preservedMoments = existingMoments.filter(moment => {
+                    const authorName = String(moment?.name || '').trim();
+                    const likeList = Array.isArray(moment?.likeList) ? moment.likeList : [];
+                    const isOwnMoment = !!currentUserName && authorName === currentUserName;
+                    const isLikedByUser = !!currentUserName && likeList.includes(currentUserName);
+                    return isOwnMoment || isLikedByUser;
+                });
 
-                // 添加新的朋友圈
-                normalizedMoments.forEach(m => {
+                const newMoments = normalizedMoments.map(m => {
                     // 🔥 优先使用联系人的真实头像，如果没有才用AI返回的
                     const contactAvatar = this.getContactAvatar(m.name);
                     const finalAvatar = (contactAvatar && contactAvatar !== '👤') ? contactAvatar : (m.avatar || '👤');
 
-                    this.app.wechatData.addMoment({
+                    return {
                         id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
                         name: m.name,
                         avatar: finalAvatar,
@@ -1616,9 +1545,11 @@ ${momentsPrompt}
                         likeList: m.likeList || [],
                         comments: m.commentList?.length || 0,
                         commentList: m.commentList || []
-                    });
+                    };
                 });
 
+                // 刷新只替换未被用户点赞、且不是用户自己发布的旧朋友圈；新朋友圈显示在保留内容之前。
+                this.app.wechatData.data.moments = [...newMoments, ...preservedMoments];
                 this.app.wechatData.saveData();
                 this.syncMomentsPullIndicator('success');
                 this.app.render();
@@ -1722,7 +1653,7 @@ ${momentsPrompt}
             const contextMessages = await this._buildWechatMomentsContextMessages(context);
 
             const result = await apiManager.callAI([
-                { role: 'system', content: '你是一个朋友圈内容生成助手。严格返回JSON格式，不要附加解释。', isPhoneMessage: true },
+                { role: 'system', content: '你是一个朋友圈内容生成助手。严格遵守本次任务指定的输出格式，不要附加解释。', isPhoneMessage: true },
                 ...contextMessages,
                 { role: 'user', content: prompt, isPhoneMessage: true }
             ], callAiOptions);

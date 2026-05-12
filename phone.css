@@ -4853,8 +4853,8 @@ input:checked + .toggle-slider:before {
 }
 
 /* 2. 拯救所有表单控件 (对抗主题对裸标签 input, textarea, select 的 !important 劫持) */
-#phone-panel-content input:not([type="checkbox"]):not([type="range"]):not([type="color"]):not(#honey-chat-input):not(#video-chat-input):not(#voice-chat-input):not(#phone-call-input),
-#phone-panel-content textarea {
+#phone-panel-content input:not(.honey-app *):not([type="checkbox"]):not([type="range"]):not([type="color"]):not(#honey-chat-input):not(#video-chat-input):not(#voice-chat-input):not(#phone-call-input),
+#phone-panel-content textarea:not(.honey-app *) {
     background: #ffffff !important;
     background-image: none !important;
     box-shadow: none !important;
@@ -4866,7 +4866,7 @@ input:checked + .toggle-slider:before {
 }
 
 /* select 单独处理：避免和固定高度(如 30px)控件冲突导致文字被截断 */
-#phone-panel-content select {
+#phone-panel-content select:not(.honey-app *) {
     background: #ffffff !important;
     background-image: none !important;
     box-shadow: none !important;
@@ -4878,7 +4878,7 @@ input:checked + .toggle-slider:before {
     text-shadow: none !important;
 }
 
-#phone-panel-content select option {
+#phone-panel-content select:not(.honey-app *) option {
     line-height: 1.35 !important;
 }
 
@@ -4962,6 +4962,77 @@ input:checked + .toggle-slider:before {
 #phone-panel-content #honey-chat-input::placeholder {
     color: rgba(255, 222, 236, 0.56) !important;
     -webkit-text-fill-color: rgba(255, 222, 236, 0.56) !important;
+}
+
+#phone-panel-content .honey-app input:not([type="checkbox"]):not([type="range"]):not([type="color"]),
+#phone-panel-content .honey-app textarea,
+#phone-panel-content .honey-app .honey-settings-input,
+#phone-panel-content .honey-app .honey-prompt-editor {
+    background: #0a0b10 !important;
+    background-color: #0a0b10 !important;
+    background-image: none !important;
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+    caret-color: #ffd7e7 !important;
+    border-color: rgba(255, 133, 181, 0.45) !important;
+    box-shadow: inset 0 0 0 1000px #0a0b10 !important;
+    text-shadow: none !important;
+}
+
+#phone-panel-content .honey-app input:not([type="checkbox"]):not([type="range"]):not([type="color"])::placeholder,
+#phone-panel-content .honey-app textarea::placeholder,
+#phone-panel-content .honey-app .honey-settings-input::placeholder,
+#phone-panel-content .honey-app .honey-prompt-editor::placeholder {
+    color: rgba(255, 225, 239, 0.6) !important;
+    -webkit-text-fill-color: rgba(255, 225, 239, 0.6) !important;
+}
+
+#phone-panel-content .honey-app input:-webkit-autofill,
+#phone-panel-content .honey-app input:-webkit-autofill:hover,
+#phone-panel-content .honey-app input:-webkit-autofill:focus,
+#phone-panel-content .honey-app textarea:-webkit-autofill,
+#phone-panel-content .honey-app textarea:-webkit-autofill:hover,
+#phone-panel-content .honey-app textarea:-webkit-autofill:focus {
+    -webkit-text-fill-color: #ffffff !important;
+    box-shadow: inset 0 0 0 1000px #0a0b10 !important;
+    transition: background-color 9999s ease-in-out 0s !important;
+}
+
+#phone-panel-content .honey-app #honey-mine-live-nickname.honey-settings-input,
+#phone-panel-content .honey-app #honey-mine-live-title.honey-settings-input {
+    background: linear-gradient(145deg, rgba(18, 16, 24, 0.96), rgba(31, 20, 34, 0.92)) !important;
+    background-color: #120f18 !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.05),
+        inset 0 0 0 1000px rgba(18, 16, 24, 0.28) !important;
+}
+
+#phone-panel-content .honey-app .phone-prompt-preset-select {
+    background: #0a0b10 !important;
+    background-color: #0a0b10 !important;
+    background-image: none !important;
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+    border-color: rgba(255, 133, 181, 0.45) !important;
+    box-shadow: inset 0 0 0 1000px #0a0b10 !important;
+}
+
+#phone-panel-content .honey-app .phone-prompt-preset-select option {
+    background: #0a0b10 !important;
+    color: #ffffff !important;
+}
+
+#phone-panel-content .honey-app .phone-prompt-preset-new,
+#phone-panel-content .honey-app .phone-prompt-preset-delete {
+    background: rgba(255, 255, 255, 0.08) !important;
+    color: #fff3f8 !important;
+    border-color: rgba(255, 133, 181, 0.34) !important;
+}
+
+#phone-panel-content .honey-app .phone-prompt-preset-save {
+    background: linear-gradient(135deg, #ff4f93, #12c778) !important;
+    color: #ffffff !important;
+    border-color: transparent !important;
 }
 #phone-panel-content #video-chat-input,
 #phone-panel-content #voice-chat-input {

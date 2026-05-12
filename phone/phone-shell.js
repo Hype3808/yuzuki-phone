@@ -198,7 +198,7 @@ export class PhoneShell {
         };
         const resolveGestureControlHost = (node) => {
             if (!node || typeof node.closest !== 'function') return null;
-            return node.closest('input[type="range"], [role="slider"], .phone-gesture-control');
+            return node.closest('input[type="range"], [role="slider"], .phone-gesture-control, .honey-live-visibility-modal');
         };
 
         // 🔥 核心修复 1：移除屏幕宽度限制，全面接管虚拟手机的触摸滑动！
@@ -237,6 +237,7 @@ export class PhoneShell {
                 '.honey-recommend-wrap', '.honey-content', '#honey-custom-video-list',
                 '.honey-follow-video-modal-panel', '.honey-follow-video-modal-list',
                 '.honey-recharge-modal', '.honey-recharge-panel','#honey-ui-scene-modal','.honey-scene-modal-card',
+                '.honey-live-visibility-modal', '.honey-live-visibility-panel',
                 '.honey-settings-content', '.honey-prompt-editor', '#honey-prompt-editor',
                 '#wallet-eval-modal', '.wallet-eval-modal-panel', '.wallet-eval-modal-body', '.wallet-eval-reasoning',
                 '.weibo-app', '.weibo-tab-content', '.weibo-detail-posts', '.weibo-settings-content', '.weibo-detail-page-body',

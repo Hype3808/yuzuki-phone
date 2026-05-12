@@ -2492,6 +2492,49 @@ export class WechatApp {
     background: #f5f5f5;
 }
 
+.moment-images.double .moment-image-prompt-generate,
+.moment-images.quad .moment-image-prompt-generate,
+.moment-images.grid .moment-image-prompt-generate {
+    gap: 3px;
+    padding: 5px;
+}
+
+.moment-images.double .moment-image-prompt-icon,
+.moment-images.quad .moment-image-prompt-icon,
+.moment-images.grid .moment-image-prompt-icon {
+    width: clamp(20px, 22%, 26px);
+    height: clamp(20px, 22%, 26px);
+    border-radius: 6px;
+    font-size: clamp(11px, 3vw, 13px);
+}
+
+.moment-images.double .moment-image-prompt-text,
+.moment-images.quad .moment-image-prompt-text,
+.moment-images.grid .moment-image-prompt-text {
+    max-width: 100%;
+    font-size: clamp(8px, 2.5vw, 9px);
+    line-height: 1.1;
+}
+
+.moment-images.double .moment-image-show-desc,
+.moment-images.quad .moment-image-show-desc,
+.moment-images.grid .moment-image-show-desc,
+.moment-images.double .moment-image-restore,
+.moment-images.quad .moment-image-restore,
+.moment-images.grid .moment-image-restore {
+    right: 3px;
+    bottom: 3px;
+    padding: 3px 5px;
+    border-radius: 3px;
+    font-size: clamp(8px, 2.45vw, 9px);
+    line-height: 1;
+}
+
+.moment-images.grid .moment-image-show-desc,
+.moment-images.grid .moment-image-restore {
+    padding: 2px 4px;
+}
+
 .moment-img {
     width: 100%;
     height: 100%;

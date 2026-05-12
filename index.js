@@ -38,7 +38,10 @@ const ST_PHONE_CURRENT_UPDATE = {
         '修复蜜语生图功能。',
         '修复通话 app 的解析问题。',
         '修复部分渲染 CSS 问题。',
-        '优化重构手机桌面卡片式布局，时间状态卡片支持上传背景图。'
+        '优化重构手机桌面卡片式布局，时间状态卡片支持上传背景图。',
+        '修复通话 app 语音兜底错误的 bug。',
+        '优化朋友圈刷新逻辑：保留用户点赞和用户自己发布的朋友圈，新生成内容会显示在旧内容之前。',
+        '优化朋友圈默认提示词，避免重复注入角色卡、用户信息、世界书和最近剧情。'
     ]
 };
 
@@ -464,7 +467,9 @@ if (window.GGP_Loaded) {
                 '[data-action]',
                 '.chat-input',
                 '.chat-input-area textarea',
-                '.chat-input-area input'
+                '.chat-input-area input',
+                '.honey-app',
+                '.honey-live-visibility-modal'
             ].join(','));
         };
 
