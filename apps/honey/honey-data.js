@@ -115,6 +115,33 @@ export class HoneyData {
             .slice(0, maxLen);
     }
 
+    _buildPreviousRecommendAvoidanceContext(previousTopics) {
+        if (!Array.isArray(previousTopics) || previousTopics.length === 0) return '';
+        const lines = previousTopics
+            .filter(item => item && typeof item === 'object')
+            .slice(0, 12)
+            .map((item, idx) => {
+                const title = this._sanitizeInlineText(item.title || '', 60);
+                const host = this._sanitizeInlineText(item.host || item.name || '', 40);
+                const category = this._sanitizeInlineText(item.category || item.recommendCategory || '', 40);
+                const intro = this._sanitizeInlineText(item.intro || item.description || '', 120);
+                const parts = [];
+                if (title) parts.push(`标题：${title}`);
+                if (host) parts.push(`主播：${host}`);
+                if (category) parts.push(`分类：${category}`);
+                if (intro) parts.push(`简介：${intro}`);
+                return parts.length ? `${idx + 1}. ${parts.join('；')}` : '';
+            })
+            .filter(Boolean);
+        if (lines.length === 0) return '';
+
+        return [
+            '【上一轮推荐页内容，必须避开重复】',
+            ...lines,
+            '请生成全新一轮推荐页：不要复用以上主播昵称、直播标题、核心题材、场景卖点或相近同义包装；今日推荐和其他推荐都要明显换一批。'
+        ].join('\n');
+    }
+
     _extractNaiPrompt(source) {
         const text = String(source || '').replace(/\r/g, '').trim();
         if (!text) return '';
@@ -3248,6 +3275,7 @@ export class HoneyData {
             .join('\n');
         const safeUserMessageWithNick = this._formatLiveUserMessageForPrompt(safeUserMessage, honeyNickname);
         const historyTurns = this._normalizeContinuePromptTurns(options?.promptTurns);
+        const previousRecommendContext = this._buildPreviousRecommendAvoidanceContext(options?.previousRecommendTopics);
         const isPrivateLive = String(options?.visibility || options?.currentScene?.visibility || '').trim() === 'private'
             || options?.isPrivateLive === true
             || options?.currentScene?.isPrivateLive === true;
@@ -3318,6 +3346,9 @@ export class HoneyData {
         } else if (mode === 'from_scratch') {
             // 从零生成只发一条 user 指令，不拼接“当前直播间状态”
             instructionUserPrompt = '请根据蜜语APP提示词，从零开始生成一套全新的蜜语内容，严格输出 <Honey> 结构。';
+            if (previousRecommendContext) {
+                extraMessages.push({ role: 'user', content: previousRecommendContext });
+            }
         } else if (mode === 'continue') {
             instructionUserPrompt = '';
             instructionSystemPrompt = [

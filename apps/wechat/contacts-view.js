@@ -29,10 +29,41 @@ export class ContactsView {
             .replace(/>/g, '&gt;');
     }
 
+    _escapeHtml(value = '') {
+        return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+
     _normalizeWechatReferenceImage(value = '') {
         const raw = String(value || '').trim();
         if (!raw || /^data:image\/[a-z0-9.+-]+;base64,/i.test(raw)) return '';
-        return /^(?:https?:\/\/|\/backgrounds\/)/i.test(raw) ? raw : '';
+        if (/^(?:blob:|data:application\/octet-stream;base64,)/i.test(raw)) return raw;
+
+        const normalized = raw.replace(/\\/g, '/');
+        const lower = normalized.toLowerCase();
+        const bgToken = '/backgrounds/';
+        const bgIndex = lower.indexOf(bgToken);
+        if (bgIndex >= 0) {
+            const suffix = normalized.slice(bgIndex + bgToken.length).replace(/^\/+/, '').trim();
+            return suffix ? `/backgrounds/${suffix}` : '';
+        }
+
+        if (/^(?:https?:)?\/\//i.test(normalized)) return normalized;
+        if (normalized.startsWith('backgrounds/')) return `/${normalized}`;
+
+        const looksLikeFilePath = /^[a-z]:\//i.test(normalized) || normalized.startsWith('//');
+        if (looksLikeFilePath) {
+            const fileName = normalized.split('/').filter(Boolean).pop() || '';
+            return fileName ? `/backgrounds/${fileName}` : '';
+        }
+
+        if (/^phone_|^wechat_ref_|^honey_ref_/i.test(normalized)) {
+            return `/backgrounds/${normalized.replace(/^\/+/, '')}`;
+        }
+
+        return normalized.startsWith('/') ? normalized : '';
     }
 
     _getWechatReferenceTargetSize(sourceWidth, sourceHeight) {
@@ -390,12 +421,14 @@ export class ContactsView {
         element.insertAdjacentHTML('beforeend', menuHtml);
 
         element.querySelector('.contact-menu-item[data-action="edit"]')?.addEventListener('click', (e) => {
+            e.preventDefault();
             e.stopPropagation();
             document.querySelectorAll('.contact-action-menu').forEach(menu => menu.remove());
             this.showEditContactPage(contactId);
         });
 
         element.querySelector('.contact-menu-item[data-action="delete"]')?.addEventListener('click', (e) => {
+            e.preventDefault();
             e.stopPropagation();
             this.confirmDeleteContact(contactId, contact.name);
         });
@@ -409,8 +442,10 @@ export class ContactsView {
     }
 
     showEditContactPage(contactId, options = {}) {
-        const contact = this.app.wechatData.getContact(contactId);
+        const contact = this.app.wechatData.getContact(contactId)
+            || this.app.wechatData.findContactByNameLoose?.(contactId, { includeChats: false });
         if (!contact) return;
+        const safeContactId = String(contact.id || contactId || '').trim();
         const returnToChatList = options?.returnToChatList === true;
         const returnFromEditContact = () => {
             if (returnToChatList) {
@@ -428,7 +463,7 @@ export class ContactsView {
         const contactTtsVoices = this._getContactTtsVoices(contact);
         const contactTtsProvider = String(contact.ttsProvider || '').trim();
         const legacyTtsVoice = String(contact.ttsVoice || '').trim();
-        const contactGender = String(this.app.wechatData?.getContactGender?.(contactId) || 'unknown').trim();
+        const contactGender = String(this.app.wechatData?.getContactGender?.(safeContactId) || 'unknown').trim();
         const ttsHistoryOptions = this._getTtsVoiceHistoryOptions();
         const referenceImage = this._normalizeWechatReferenceImage(contact.naiReferenceImage || contact.referenceImage || '');
         const referenceEnabled = !!referenceImage && contact.naiReferenceEnabled !== false && contact.naiReferenceEnabled !== 'false';
@@ -638,7 +673,9 @@ export class ContactsView {
             </div>
         `;
 
-        this.app.phoneShell.setContent(html);
+        this.app.currentView = 'contacts';
+        this.app.currentChat = null;
+        this.app.phoneShell.setContent(html, `wechat-edit-contact-${safeContactId || 'unknown'}`);
 
         let selectedAvatar = contact.avatar;
         const originalReferenceImage = referenceImage;
@@ -653,13 +690,17 @@ export class ContactsView {
                     window.VirtualPhone?.imageManager?.deleteManagedBackgroundByPath?.(item, { quiet: true, skipIfReferenced: true })?.catch?.(() => {});
                 });
         };
+        const currentView = document.querySelector('.phone-view-current') || document;
+        const query = (selector) => currentView.querySelector(selector) || document.querySelector(selector);
+        const queryAll = (selector) => Array.from(currentView.querySelectorAll(selector));
+
         const updateReferenceControls = () => {
             const hasImage = !!selectedReferenceImage;
-            const preview = document.getElementById('edit-contact-reference-preview');
-            const uploadBtn = document.getElementById('upload-edit-contact-reference');
-            const deleteBtn = document.getElementById('delete-edit-contact-reference');
-            const enabledInput = document.getElementById('edit-contact-reference-enabled');
-            const strengthInput = document.getElementById('edit-contact-reference-strength');
+            const preview = query('#edit-contact-reference-preview');
+            const uploadBtn = query('#upload-edit-contact-reference');
+            const deleteBtn = query('#delete-edit-contact-reference');
+            const enabledInput = query('#edit-contact-reference-enabled');
+            const strengthInput = query('#edit-contact-reference-strength');
             if (preview) {
                 preview.style.backgroundImage = hasImage ? `url("${selectedReferenceImage}${selectedReferenceImage.includes('?') ? '&' : '?'}t=${Date.now()}")` : '';
                 preview.style.backgroundSize = hasImage ? 'cover' : '';
@@ -678,7 +719,7 @@ export class ContactsView {
             if (strengthInput) strengthInput.disabled = !hasImage;
         };
 
-        document.getElementById('back-from-edit-contact')?.addEventListener('click', () => {
+        query('#back-from-edit-contact')?.addEventListener('click', () => {
             if (selectedReferenceImage && selectedReferenceImage !== originalReferenceImage) {
                 pendingReferenceCleanup.add(selectedReferenceImage);
             }
@@ -687,27 +728,27 @@ export class ContactsView {
         });
 
         // 🔥 下拉框选择后，自动把选中的音色填入输入框
-        document.getElementById('edit-contact-tts-select')?.addEventListener('change', (e) => {
+        query('#edit-contact-tts-select')?.addEventListener('change', (e) => {
             const selectedVoice = e.target.value;
             if (selectedVoice) {
-                const targetProvider = String(document.getElementById('edit-contact-tts-provider-select')?.value || currentTtsProvider).trim() || currentTtsProvider;
-                const currentInput = document.querySelector(`.edit-contact-tts-provider-input[data-provider="${CSS.escape(targetProvider)}"]`)
-                    || document.querySelector('.edit-contact-tts-provider-input');
+                const targetProvider = String(query('#edit-contact-tts-provider-select')?.value || currentTtsProvider).trim() || currentTtsProvider;
+                const currentInput = query(`.edit-contact-tts-provider-input[data-provider="${CSS.escape(targetProvider)}"]`)
+                    || query('.edit-contact-tts-provider-input');
                 if (currentInput) currentInput.value = selectedVoice;
             }
         });
 
-        document.getElementById('upload-edit-contact-avatar')?.addEventListener('click', () => {
-            document.getElementById('edit-contact-avatar-upload').click();
+        query('#upload-edit-contact-avatar')?.addEventListener('click', () => {
+            query('#edit-contact-avatar-upload')?.click();
         });
 
-        document.getElementById('edit-contact-avatar-upload')?.addEventListener('change', async (e) => {
+        query('#edit-contact-avatar-upload')?.addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
             e.target.value = '';
 
-            if (file.size > 2 * 1024 * 1024) {
-                this.app.phoneShell.showNotification('提示', '图片太大，请选择小于2MB的图片', '⚠️');
+            if (file.size > 5 * 1024 * 1024) {
+                this.app.phoneShell.showNotification('提示', '图片太大，请选择小于5MB的图片', '⚠️');
                 return;
             }
 
@@ -722,7 +763,7 @@ export class ContactsView {
                 });
                 const croppedImage = await cropper.open(file);
 
-                const preview = document.getElementById('edit-contact-avatar-preview');
+                const preview = query('#edit-contact-avatar-preview');
                 if (preview) {
                     preview.innerHTML = `<img src="${croppedImage}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
                 }
@@ -738,15 +779,15 @@ export class ContactsView {
             }
         });
 
-        document.getElementById('edit-contact-reference-preview')?.addEventListener('click', () => {
-            document.getElementById('edit-contact-reference-upload')?.click();
+        query('#edit-contact-reference-preview')?.addEventListener('click', () => {
+            query('#edit-contact-reference-upload')?.click();
         });
 
-        document.getElementById('upload-edit-contact-reference')?.addEventListener('click', () => {
-            document.getElementById('edit-contact-reference-upload')?.click();
+        query('#upload-edit-contact-reference')?.addEventListener('click', () => {
+            query('#edit-contact-reference-upload')?.click();
         });
 
-        document.getElementById('edit-contact-reference-upload')?.addEventListener('change', async (e) => {
+        query('#edit-contact-reference-upload')?.addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
             e.target.value = '';
@@ -756,7 +797,7 @@ export class ContactsView {
                 const dataUrl = await this._prepareWechatReferenceImageFile(file);
                 const blobResp = await fetch(dataUrl);
                 const blob = await blobResp.blob();
-                const safeName = String(contact.name || contactId || 'contact')
+                const safeName = String(contact.name || safeContactId || 'contact')
                     .replace(/[^\w\u4e00-\u9fff-]+/g, '_')
                     .slice(0, 24) || 'contact';
                 const uploadedUrl = await window.VirtualPhone?.imageManager?.uploadBlob?.(blob, `wechat_ref_${safeName}`);
@@ -774,7 +815,7 @@ export class ContactsView {
             }
         });
 
-        document.getElementById('delete-edit-contact-reference')?.addEventListener('click', () => {
+        query('#delete-edit-contact-reference')?.addEventListener('click', () => {
             if (!selectedReferenceImage) return;
             if (selectedReferenceImage !== originalReferenceImage) {
                 pendingReferenceCleanup.add(selectedReferenceImage);
@@ -784,14 +825,14 @@ export class ContactsView {
             updateReferenceControls();
         });
 
-        document.getElementById('edit-contact-reference-strength')?.addEventListener('input', (e) => {
+        query('#edit-contact-reference-strength')?.addEventListener('input', (e) => {
             const value = Math.max(0, Math.min(1, Number(e.target.value) || 0));
-            const text = document.getElementById('edit-contact-reference-strength-text');
+            const text = query('#edit-contact-reference-strength-text');
             if (text) text.textContent = value.toFixed(2);
         });
 
-        document.getElementById('save-edit-contact-btn')?.addEventListener('click', () => {
-            const name = document.getElementById('edit-contact-name-input').value.trim();
+        query('#save-edit-contact-btn')?.addEventListener('click', () => {
+            const name = query('#edit-contact-name-input').value.trim();
 
             if (!name) {
                 this.app.phoneShell.showNotification('提示', '请输入昵称', '⚠️');
@@ -799,7 +840,7 @@ export class ContactsView {
             }
 
             const exists = this.app.wechatData.getContacts().find(c =>
-                c.id !== contactId && this.app.wechatData._isSameLookupName?.(c.name, name)
+                c.id !== safeContactId && this.app.wechatData._isSameLookupName?.(c.name, name)
             );
             if (exists) {
                 this.app.phoneShell.showNotification('提示', '该名称已被其他联系人使用', '⚠️');
@@ -809,8 +850,8 @@ export class ContactsView {
             // 🔥 新增：读取各服务商音色 ID
             const ttsVoices = {};
             let currentProviderTtsVoice = '';
-            const ttsProvider = String(document.getElementById('edit-contact-tts-provider-select')?.value || '').trim();
-            document.querySelectorAll('.edit-contact-tts-provider-input').forEach((input) => {
+            const ttsProvider = String(query('#edit-contact-tts-provider-select')?.value || '').trim();
+            queryAll('.edit-contact-tts-provider-input').forEach((input) => {
                 const provider = String(input.dataset.provider || '').trim();
                 const value = String(input.value || '').trim();
                 if (provider && value) ttsVoices[provider] = value;
@@ -819,10 +860,10 @@ export class ContactsView {
             const ttsVoice = String(currentProviderTtsVoice || '').trim();
             const oldAvatar = String(contact.avatar || '').trim();
             const oldReferenceImage = String(contact.naiReferenceImage || contact.referenceImage || '').trim();
-            const referenceStrengthValue = Math.max(0, Math.min(1, Number(document.getElementById('edit-contact-reference-strength')?.value) || 0.7));
-            const naiPromptTagsValue = String(document.getElementById('edit-contact-nai-prompt-tags')?.value || '').trim();
+            const referenceStrengthValue = Math.max(0, Math.min(1, Number(query('#edit-contact-reference-strength')?.value) || 0.7));
+            const naiPromptTagsValue = String(query('#edit-contact-nai-prompt-tags')?.value || '').trim();
 
-            this.app.wechatData.updateContact(contactId, {
+            this.app.wechatData.updateContact(safeContactId, {
                 name: name,
                 avatar: selectedAvatar,
                 letter: this.app.wechatData.getFirstLetter(name),
@@ -830,17 +871,17 @@ export class ContactsView {
                 ttsVoices: ttsVoices, // 🔥 按服务商保存音色
                 ttsProvider: ttsProvider, // 🔥 该角色默认服务商；空值表示跟随全局
                 naiReferenceImage: selectedReferenceImage,
-                naiReferenceEnabled: !!selectedReferenceImage && !!document.getElementById('edit-contact-reference-enabled')?.checked,
+                naiReferenceEnabled: !!selectedReferenceImage && !!query('#edit-contact-reference-enabled')?.checked,
                 naiReferenceStrength: referenceStrengthValue,
                 naiReferenceInformationExtracted: 1,
                 naiPromptTags: naiPromptTagsValue
             });
             this.app.wechatData.setContactGender?.(
-                contactId,
-                String(document.getElementById('edit-contact-gender-select')?.value || 'female').trim() === 'male' ? 'male' : 'female'
+                safeContactId,
+                String(query('#edit-contact-gender-select')?.value || 'female').trim() === 'male' ? 'male' : 'female'
             );
 
-            this.app.wechatData.syncContactAvatar(contactId, selectedAvatar);
+            this.app.wechatData.syncContactAvatar(safeContactId, selectedAvatar);
             if (oldAvatar && oldAvatar !== selectedAvatar) {
                 const cleanupTask = window.VirtualPhone?.imageManager?.deleteManagedBackgroundByPath?.(oldAvatar, { quiet: true, skipIfReferenced: true });
                 cleanupTask?.catch?.(() => { });
@@ -1133,8 +1174,8 @@ export class ContactsView {
             if (!file) return;
             e.target.value = '';
 
-            if (file.size > 2 * 1024 * 1024) {
-                this.app.phoneShell.showNotification('提示', '图片太大，请选择小于2MB的图片', '⚠️');
+            if (file.size > 5 * 1024 * 1024) {
+                this.app.phoneShell.showNotification('提示', '图片太大，请选择小于5MB的图片', '⚠️');
                 return;
             }
 

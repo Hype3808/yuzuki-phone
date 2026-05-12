@@ -23,6 +23,7 @@ export class ChatView {
         this.inputText = '';
         this.showEmoji = false;
         this.showMore = false;
+        this.showQuickReplies = false;
         this.showToolbar = false; // 工具栏默认折叠
         this.emojiTab = 'default';
         this.isSending = false;  // 🔥 发送状态
@@ -739,7 +740,7 @@ export class ChatView {
         const input = currentView.querySelector('#chat-input') || document.getElementById('chat-input');
         const isInputFocused = !!input && document.activeElement === input;
         const hasInputText = !!input && String(input.value || this.inputText || '').trim() !== '';
-        const isPanelOpen = !!(this.showEmoji || this.showMore);
+        const isPanelOpen = !!(this.showEmoji || this.showMore || this.showQuickReplies);
         const isInlineEditing = this._isMessageInlineEditing
             || !!currentView.querySelector('.inline-edit-input, .call-inline-edit');
         return isInputFocused || hasInputText || isPanelOpen || isInlineEditing;
@@ -764,6 +765,7 @@ export class ChatView {
             && trimmedText === ''
             && !this.showEmoji
             && !this.showMore
+            && !this.showQuickReplies
             && document.activeElement !== input;
         if (shouldRestart) {
             this._restartPendingTimerIfNeeded(targetChatId);
@@ -810,18 +812,69 @@ export class ChatView {
     }
 
     _closeActionPanelsAfterImmediateSend() {
-        const shouldRender = this.showEmoji || this.showMore || this.customEmojiSelectionMode;
+        const shouldRender = this.showEmoji || this.showMore || this.showQuickReplies || this.customEmojiSelectionMode;
         this.showEmoji = false;
         this.showMore = false;
+        this.showQuickReplies = false;
         this._setCustomEmojiSelectionMode(false);
         if (shouldRender) {
             this.app.render();
         }
     }
 
+    _renderChatSendButtonIcon(mode = 'send') {
+        if (mode === 'stop') {
+            return '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6"/></svg>';
+        }
+        if (mode === 'more') {
+            return '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>';
+        }
+        return '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>';
+    }
+
+    _syncChatSendButton(input = null) {
+        const currentView = this.getCurrentWechatView ? this.getCurrentWechatView() : document;
+        const button = currentView.querySelector('#send-btn') || document.getElementById('send-btn');
+        if (!button) return;
+        const targetChatId = String(this.app?.currentChat?.id || '').trim();
+        const isCurrentChatSending = this.isSending && String(this._activeSendingChatId || '') === targetChatId;
+        const text = String(input?.value ?? this.inputText ?? '').trim();
+        const mode = isCurrentChatSending ? 'stop' : (text ? 'send' : 'more');
+        if (button.dataset.mode === mode) return;
+        button.dataset.mode = mode;
+        button.innerHTML = this._renderChatSendButtonIcon(mode);
+        button.style.color = mode === 'stop' ? '#ff3b30' : (mode === 'send' ? '#07c160' : '#555');
+    }
+
+    _insertTextIntoChatInput(text = '') {
+        const insertText = String(text || '');
+        if (!insertText) return;
+
+        const currentView = this.getCurrentWechatView ? this.getCurrentWechatView() : document;
+        const input = currentView.querySelector('#chat-input') || document.getElementById('chat-input');
+        const source = String(input?.value ?? this.inputText ?? '');
+        const start = input && Number.isInteger(input.selectionStart) ? input.selectionStart : source.length;
+        const end = input && Number.isInteger(input.selectionEnd) ? input.selectionEnd : start;
+        const insertStart = Math.max(0, Math.min(source.length, start));
+        const insertEnd = Math.max(insertStart, Math.min(source.length, end));
+        const nextText = `${source.slice(0, insertStart)}${insertText}${source.slice(insertEnd)}`;
+        this.inputText = nextText;
+
+        if (input) {
+            input.value = nextText;
+            input.focus();
+            const nextCaret = insertStart + insertText.length;
+            if (typeof input.setSelectionRange === 'function') {
+                input.setSelectionRange(nextCaret, nextCaret);
+            }
+            this._syncChatSendButton(input);
+        }
+    }
+
     resetTransientInputPanels() {
         this.showEmoji = false;
         this.showMore = false;
+        this.showQuickReplies = false;
         this._setCustomEmojiSelectionMode(false);
     }
 
@@ -1156,6 +1209,62 @@ export class ChatView {
         return names;
     }
 
+    _collectGroupParticipantsForFilter(chat = null, context = null) {
+        const targetChat = chat || this.app.currentChat;
+        if (!targetChat || targetChat.type !== 'group') return [];
+
+        const names = [];
+        const seen = new Set();
+        const normalizeKey = (value) => this._normalizeLookupName(value);
+        const pushName = (rawName) => {
+            const raw = String(rawName || '').trim();
+            if (!raw || raw === 'me' || raw === 'system') return;
+
+            const contactById = this.app.wechatData?.getContact?.(raw);
+            const contactByName = this.app.wechatData?.findContactByNameLoose?.(raw, { includeChats: false });
+            const candidates = [
+                contactById?.name,
+                contactByName?.name,
+                raw
+            ];
+
+            candidates.forEach((candidate) => {
+                const name = String(candidate || '').trim();
+                const key = normalizeKey(name);
+                if (!name || !key || key === 'me' || key === 'system' || seen.has(key)) return;
+                seen.add(key);
+                names.push(name);
+            });
+        };
+
+        (Array.isArray(targetChat.members) ? targetChat.members : []).forEach(pushName);
+        this._getGroupChatParticipants(targetChat).forEach(pushName);
+
+        const lobbySelection = this._buildLobbySelection(context || this._safeGetContext());
+        if (lobbySelection?.isLobby) {
+            const groupKey = normalizeKey(targetChat.name);
+            const existingMemberKeys = new Set(names.map(item => normalizeKey(item)).filter(Boolean));
+
+            (lobbySelection.groups || []).forEach((group) => {
+                const groupNameKey = normalizeKey(group?.name);
+                const groupMembers = Array.isArray(group?.members) ? group.members : [];
+                const memberKeys = groupMembers.map(item => normalizeKey(item)).filter(Boolean);
+                const isCurrentGroup = groupKey && groupNameKey && groupNameKey === groupKey;
+                const overlapsSavedMembers = memberKeys.some(key => existingMemberKeys.has(key));
+                const onlySelectedPersonaGroup = String(group?.id || '').startsWith('group_persona:');
+
+                if (isCurrentGroup || overlapsSavedMembers || onlySelectedPersonaGroup) {
+                    groupMembers.forEach(pushName);
+                }
+            });
+
+            (lobbySelection.characters || []).forEach(character => pushName(character?.name));
+            this._resolveLobbySelectedUsers(lobbySelection).forEach(pushName);
+        }
+
+        return names;
+    }
+
     _normalizeGroupParticipantName(name, participants = []) {
         const rawName = String(name || '').trim();
         if (!rawName) return '';
@@ -1193,27 +1302,85 @@ export class ChatView {
         return allowed.includes(normalized) ? normalized : '';
     }
 
-    _filterGroupMessagesByParticipants(messages = [], participants = [], contextLabel = '群聊') {
+    _filterGroupMessagesByParticipants(messages = [], participants = [], contextLabel = '群聊', options = {}) {
         const list = Array.isArray(messages) ? messages : [];
         const allowed = Array.isArray(participants)
             ? participants.map(item => String(item || '').trim()).filter(Boolean)
             : [];
         if (allowed.length === 0) return list;
 
-        return list
+        const dropped = [];
+        const filtered = list
             .map((msg) => {
                 const sender = this._resolveAllowedGroupSpeaker(msg?.sender, allowed);
                 if (!sender) {
-                    console.warn('⚠️ [微信] 已丢弃非群成员发言:', {
-                        group: contextLabel,
-                        sender: msg?.sender,
-                        allowed
-                    });
+                    dropped.push(msg?.sender);
                     return null;
                 }
                 return { ...msg, sender };
             })
             .filter(Boolean);
+
+        if (dropped.length > 0) {
+            const logData = {
+                group: contextLabel,
+                senders: Array.from(new Set(dropped.map(item => String(item || '').trim()).filter(Boolean))),
+                allowed
+            };
+            if (options.keepAllWhenAllDropped && filtered.length === 0 && list.length > 0) {
+                console.warn('⚠️ [微信大厅] 群成员过滤名单不兼容，已保留本轮AI群聊回复:', logData);
+                return list;
+            }
+            console.warn('⚠️ [微信] 已丢弃非群成员发言:', logData);
+        }
+
+        return filtered;
+    }
+
+    _collectSingleChatAliasesForFilter(chat = null, context = null) {
+        const targetChat = chat || this.app.currentChat;
+        if (!targetChat || targetChat.type === 'group') return [];
+
+        const aliases = [];
+        const seen = new Set();
+        const pushAlias = (rawName) => {
+            const name = String(rawName || '').trim();
+            const key = this._normalizeLookupName(name);
+            if (!name || !key || seen.has(key)) return;
+            seen.add(key);
+            aliases.push(name);
+        };
+
+        pushAlias(targetChat.name);
+        pushAlias(targetChat.contactId);
+
+        const contactById = targetChat.contactId ? this.app.wechatData?.getContact?.(targetChat.contactId) : null;
+        const contactByName = this.app.wechatData?.findContactByNameLoose?.(targetChat.name, { includeChats: false });
+        pushAlias(contactById?.name);
+        pushAlias(contactByName?.name);
+        pushAlias(contactById?.remark);
+        pushAlias(contactByName?.remark);
+
+        const lobbySelection = this._buildLobbySelection(context || this._safeGetContext());
+        if (lobbySelection?.isLobby) {
+            const chatKey = this._normalizeLookupName(targetChat.name);
+            const matchedCharacters = (lobbySelection.characters || []).filter((character) => {
+                const charKey = this._normalizeLookupName(character?.name);
+                return chatKey && charKey && (chatKey === charKey || chatKey.includes(charKey) || charKey.includes(chatKey));
+            });
+            matchedCharacters.forEach(character => pushAlias(character?.name));
+
+            (lobbySelection.groups || []).forEach((group) => {
+                const members = Array.isArray(group?.members) ? group.members : [];
+                const hasTargetMember = members.some(member => {
+                    const memberKey = this._normalizeLookupName(member);
+                    return chatKey && memberKey && (memberKey === chatKey || memberKey.includes(chatKey) || chatKey.includes(memberKey));
+                });
+                if (hasTargetMember) members.forEach(pushAlias);
+            });
+        }
+
+        return aliases;
     }
 
     _getCallPromptFeature(callMode, targetChat = null) {
@@ -1615,6 +1782,8 @@ renderChatRoom(chat) {
         const messages = this.app.wechatData.getMessages(chat.id);
         const userInfo = this.app.wechatData.getUserInfo();
         const isCurrentChatSending = this.isSending && String(this._activeSendingChatId || '') === String(chat.id || '');
+        const hasInputText = String(this.inputText || '').trim() !== '';
+        const rightButtonIsMore = !isCurrentChatSending && !hasInputText;
 
         return `
     <div class="chat-room">
@@ -1630,17 +1799,25 @@ renderChatRoom(chat) {
                     <!-- 更多功能面板 -->
                     ${this.showMore ? this.renderMorePanel() : ''}
 
+                    <!-- 快捷回复面板 -->
+                    ${this.showQuickReplies ? this.renderQuickReplyPanel() : ''}
+
                     <!-- 引用预览栏 - 仿真实微信浅灰条 -->
                     ${this.activeQuote ? `<div class="active-quote-bar" style="padding: 2px 8px; background: rgba(0,0,0,0.05); font-size: 10px; color: #888; display: flex; justify-content: space-between; align-items: center; line-height: 1.2;"><div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">${this.activeQuote.sender}: ${this.activeQuote.content.length > 20 ? this.activeQuote.content.substring(0, 20) + '...' : this.activeQuote.content}</div><button id="cancel-quote-btn" style="background: none; border: none; color: #aaa; cursor: pointer; padding: 0 4px; font-size: 10px; line-height: 1;"><i class="fa-solid fa-xmark"></i></button></div>` : ''}
 
                     <!-- 输入行 -->
                     <div class="chat-input-bar" style="display: flex; align-items: center; justify-content: space-between; background: transparent !important;">
                         <div style="display: flex; align-items: center; gap: 0px;">
+                            <button class="input-btn" id="quick-reply-btn" title="快捷回复">
+                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="4" y="4" width="5.4" height="5.4" rx="1.15"/>
+                                    <rect x="14.6" y="4" width="5.4" height="5.4" rx="1.15"/>
+                                    <rect x="4" y="14.6" width="5.4" height="5.4" rx="1.15"/>
+                                    <rect x="14.6" y="14.6" width="5.4" height="5.4" rx="1.15"/>
+                                </svg>
+                            </button>
                             <button class="input-btn" id="regenerate-btn" title="重新生成">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
-                            </button>
-                            <button class="input-btn" id="more-btn">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
                             </button>
                         </div>
                         <div class="chat-input-wrapper" style="flex: 1; margin: 0;">
@@ -1652,10 +1829,12 @@ renderChatRoom(chat) {
                             <button class="input-btn" id="emoji-btn" title="表情">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
                             </button>
-                            <button class="input-btn" id="send-btn" style="color: ${isCurrentChatSending ? '#ff3b30' : '#07c160'};">
+                            <button class="input-btn" id="send-btn" data-mode="${rightButtonIsMore ? 'more' : 'send'}" style="color: ${isCurrentChatSending ? '#ff3b30' : (rightButtonIsMore ? '#555' : '#07c160')};">
                                 ${isCurrentChatSending
                 ? `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6"/></svg>`
-                : `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`
+                : rightButtonIsMore
+                    ? `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>`
+                    : `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`
             }
                             </button>
                         </div>
@@ -3006,6 +3185,42 @@ renderChatRoom(chat) {
                         <i class="fa-solid fa-camera" style="font-size:14px;"></i><span>调用摄像头</span>
                     </button>
                 </div>
+            </div>
+        </div>
+    `;
+    }
+
+    renderQuickReplyPanel() {
+        const items = [
+            { key: 'image', icon: 'fa-solid fa-image', label: '图片', template: '[图片]（描述）' },
+            { key: 'video', icon: 'fa-solid fa-video', label: '视频', template: '[视频]（描述）' },
+            { key: 'sticker', icon: 'fa-regular fa-face-smile', label: '表情包', template: '[表情包]（描述）' },
+            { key: 'location', icon: 'fa-solid fa-location-dot', label: '定位', template: '[定位]（描述）' },
+            { key: 'time', icon: 'fa-regular fa-clock', label: '时间推进', template: '[时间推进：年月日HH:MM]' }
+        ];
+
+        return `
+        <div class="quick-reply-panel more-panel" style="padding:10px 10px 12px;">
+            <div style="display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:8px;">
+                ${items.map(item => `
+                    <button class="quick-reply-item" data-template="${this._escapeHtml(item.template)}" title="${item.template}" style="
+                        min-width:0;
+                        border:none;
+                        background:transparent;
+                        padding:0;
+                        display:flex;
+                        flex-direction:column;
+                        align-items:center;
+                        gap:5px;
+                        color:#555;
+                        cursor:pointer;
+                    ">
+                        <span style="width:38px; height:38px; border-radius:11px; background:rgba(255,255,255,0.9); box-shadow:0 1px 5px rgba(0,0,0,0.08); display:flex; align-items:center; justify-content:center;">
+                            <i class="${item.icon}" style="font-size:15px;"></i>
+                        </span>
+                        <span style="font-size:10px; line-height:1.1; color:#666; white-space:nowrap;">${item.label}</span>
+                    </button>
+                `).join('')}
             </div>
         </div>
     `;
@@ -4553,6 +4768,7 @@ renderChatRoom(chat) {
         // 📱 输入中：有字就打断等待；删空时若仍在 focus，保持安静等待 blur 再决定
         input?.addEventListener('input', (e) => {
             this.inputText = e.target.value;
+            this._syncChatSendButton(e.target);
             const text = e.target.value.trim();
 
             if (text !== '') {
@@ -4574,7 +4790,17 @@ renderChatRoom(chat) {
             if (e) e.preventDefault();
             if (isHandlingSend) return;
             isHandlingSend = true;
-            this.handleSendClick(input);
+            const currentInput = query('#chat-input') || input;
+            const currentSendBtn = query('#send-btn') || sendBtn;
+            if (String(currentInput?.value || '').trim() === '' && currentSendBtn?.dataset.mode === 'more') {
+                this.showMore = !this.showMore;
+                this.showEmoji = false;
+                this.showQuickReplies = false;
+                this._setCustomEmojiSelectionMode(false);
+                this.app.render();
+            } else {
+                this.handleSendClick(currentInput);
+            }
             // 300毫秒防抖，防止触屏和鼠标事件同时触发导致跳过6秒等待
             setTimeout(() => { isHandlingSend = false; }, 300);
         };
@@ -4610,13 +4836,12 @@ renderChatRoom(chat) {
             this.app.render();
         });
 
-        // 更多按钮
-        query('#more-btn')?.addEventListener('click', () => {
-            this.showMore = !this.showMore;
-            if (this.showEmoji) {
-                this._setCustomEmojiSelectionMode(false);
-            }
+        // 快捷回复按钮
+        query('#quick-reply-btn')?.addEventListener('click', () => {
+            this.showQuickReplies = !this.showQuickReplies;
+            if (this.showEmoji) this._setCustomEmojiSelectionMode(false);
             this.showEmoji = false;
+            this.showMore = false;
             this.app.render();
         });
 
@@ -4627,7 +4852,15 @@ renderChatRoom(chat) {
             }
             this.showEmoji = !this.showEmoji;
             this.showMore = false;
+            this.showQuickReplies = false;
             this.app.render();
+        });
+
+        queryAll('.quick-reply-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const template = item.dataset.template || '';
+                this._insertTextIntoChatInput(template);
+            });
         });
 
         // 选择表情
@@ -4663,13 +4896,14 @@ renderChatRoom(chat) {
         messagesDiv?.addEventListener('click', (e) => {
             if (this._isMessageSelectionActiveForCurrentChat()) return;
             // 只有点击空白区域才收起（不是点击消息气泡）
-            if (this.showMore || this.showEmoji) {
+            if (this.showMore || this.showEmoji || this.showQuickReplies) {
                 if (this.showEmoji) {
                     this._setCustomEmojiSelectionMode(false);
                 }
                 this.hideImageSourceSheet();
                 this.showMore = false;
                 this.showEmoji = false;
+                this.showQuickReplies = false;
                 this.app.render();
             }
         });
@@ -5104,6 +5338,7 @@ renderChatRoom(chat) {
             });
             input.value = '';
             this.inputText = '';
+            this._syncChatSendButton(input);
             this.activeQuote = null;  // 🔥 发送后清空引用
 
             // 🔥 移除引用预览栏
@@ -5113,7 +5348,7 @@ renderChatRoom(chat) {
             // 🔥 只更新消息列表，不重新渲染整个界面（防止键盘收回）
             const messagesDiv = document.getElementById('chat-messages');
             if (messagesDiv) {
-                const messages = this.app.wechatData.getMessages(this.app.currentChat.id);
+                const messages = this.app.wechatData.getMessages(targetChatId);
                 const userInfo = this.app.wechatData.getUserInfo();
                 this.smartUpdateMessages(messages, userInfo);
             }
@@ -5380,6 +5615,16 @@ renderChatRoom(chat) {
                 const right = normalizeWechatSingleName(b);
                 return !!left && !!right && left === right;
             };
+            const singleChatAliases = isGroupChat ? [] : this._collectSingleChatAliasesForFilter(targetChat || this.app.currentChat, context);
+            const isAllowedSingleChatSender = (sender, expectedSender) => {
+                const rawSender = String(sender || '').trim();
+                const expected = String(expectedSender || '').trim();
+                if (!rawSender) return true;
+                const allowedNames = [expected, ...singleChatAliases]
+                    .map(item => String(item || '').trim())
+                    .filter(Boolean);
+                return allowedNames.some(name => isSameWechatSingleName(rawSender, name));
+            };
             const getAllowedSingleChatCommonGroup = (name) => {
                 if (isGroupChat) return null;
                 const targetKey = normalizeWechatWindowName(name);
@@ -5389,9 +5634,7 @@ renderChatRoom(chat) {
                 const currentSingleKey = normalizeWechatSingleName(currentSingleName);
                 return allChats.find((chat) => {
                     if (chat?.type !== 'group' || normalizeWechatWindowName(chat.name) !== targetKey) return false;
-                    const members = Array.isArray(chat.members) && chat.members.length > 0
-                        ? chat.members
-                        : this._getGroupChatParticipants(chat);
+                    const members = this._collectGroupParticipantsForFilter(chat, context);
                     return members.some(member => normalizeWechatSingleName(member) === currentSingleKey);
                 }) || null;
             };
@@ -5403,10 +5646,11 @@ renderChatRoom(chat) {
                         const rawSender = String(message?.sender || '').trim();
                         const content = String(message?.content || message?.specialMessage?.content || '').trim();
                         if (!content && !message?.specialMessage) return null;
-                        if (rawSender && !isSameWechatSingleName(rawSender, expectedSender)) {
+                        if (!isAllowedSingleChatSender(rawSender, expectedSender)) {
                             console.warn('⚠️ [微信单聊] 已丢弃共同群聊里的非当前好友发言:', {
                                 currentChat: expectedSender,
-                                sender: rawSender
+                                sender: rawSender,
+                                aliases: singleChatAliases
                             });
                             return null;
                         }
@@ -5430,10 +5674,11 @@ renderChatRoom(chat) {
                 const content = String(message.content || message.specialMessage?.content || '').trim();
                 if (!content && !message.specialMessage) return null;
                 if (!expectedSender) return { ...message, content };
-                if (rawSender && !isSameWechatSingleName(rawSender, expectedSender)) {
+                if (!isAllowedSingleChatSender(rawSender, expectedSender)) {
                     console.warn('⚠️ [微信单聊] 已丢弃非当前好友发言:', {
                         currentChat: expectedSender,
-                        sender: rawSender
+                        sender: rawSender,
+                        aliases: singleChatAliases
                     });
                     return null;
                 }
@@ -5441,10 +5686,9 @@ renderChatRoom(chat) {
             };
             const currentGroupChat = targetChat || this.app.currentChat || { id: savedChatId, name: savedChatName, type: 'group' };
             const currentGroupParticipants = isGroupChat
-                ? (Array.isArray(currentGroupChat?.members) && currentGroupChat.members.length > 0
-                    ? currentGroupChat.members.map(item => String(item || '').trim()).filter(Boolean)
-                    : this._getGroupChatParticipants(currentGroupChat))
+                ? this._collectGroupParticipantsForFilter(currentGroupChat, context)
                 : [];
+            const keepLobbyGroupRepliesOnMismatch = isGroupChat && this._buildLobbySelection(context)?.isLobby;
 
             // 如果AI使用了跨聊天多开标签 <wechat> 或包含了 --- 分隔符
             if (aiRawText.includes('---')) {
@@ -5703,7 +5947,9 @@ renderChatRoom(chat) {
                     .map(normalizeInlineSingleReply);
                 triggerOffline = parsedMessages.some(messageHasOfflineTransferTag);
             } else {
-                parsedMessages = this._filterGroupMessagesByParticipants(parsedMessages, currentGroupParticipants, savedChatName);
+                parsedMessages = this._filterGroupMessagesByParticipants(parsedMessages, currentGroupParticipants, savedChatName, {
+                    keepAllWhenAllDropped: keepLobbyGroupRepliesOnMismatch
+                });
             }
             parsedMessages = parsedMessages
                 .map(stripOfflineTransferTagFromMessage)
@@ -5808,11 +6054,12 @@ renderChatRoom(chat) {
                 const isBgGroupChat = bgChat?.type === 'group';
                 let bgGroupParticipants = [];
                 if (isBgGroupChat) {
-                    bgGroupParticipants = Array.isArray(bgChat?.members) && bgChat.members.length > 0
-                        ? bgChat.members.map(item => String(item || '').trim()).filter(Boolean)
-                        : this._getGroupChatParticipants(bgChat);
+                    bgGroupParticipants = this._collectGroupParticipantsForFilter(bgChat, context);
                     const beforeCount = msgs.length;
-                    msgs = this._filterGroupMessagesByParticipants(msgs, bgGroupParticipants, targetName);
+                    const isLobbyBgGroup = this._buildLobbySelection(context)?.isLobby;
+                    msgs = this._filterGroupMessagesByParticipants(msgs, bgGroupParticipants, targetName, {
+                        keepAllWhenAllDropped: isLobbyBgGroup
+                    });
                     if (msgs.length === 0) {
                         console.warn('⚠️ [微信] 后台群聊消息全部来自非群成员，已跳过:', { group: targetName, beforeCount });
                         continue;
@@ -6099,12 +6346,9 @@ renderChatRoom(chat) {
             // 🔥 只有手机还开着才刷新界面（需要更新发送按钮状态）
             if (this.app.currentChat) {
                 // 🔥 只更新发送按钮区域，避免整个界面重绘
-                const sendBtn = document.getElementById('send-btn');
-                if (sendBtn) {
-                    // 🔥 修复：恢复为SVG线条图标
-                    sendBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>';
-                    sendBtn.style.color = '#07c160';
-                }
+                const currentView = this.getCurrentWechatView ? this.getCurrentWechatView() : document;
+                const input = currentView.querySelector('#chat-input') || document.getElementById('chat-input');
+                this._syncChatSendButton(input);
             }
         }
         return success;
@@ -6278,19 +6522,7 @@ renderChatRoom(chat) {
         // 🔥 从多个来源获取群成员：1.聊天对象的members 2.历史消息中的发送者
         let groupMembersArray = [];
         if (isGroupChat) {
-            // 1. 从聊天对象获取已保存的成员
-            if (targetChat?.members && targetChat.members.length > 0) {
-                groupMembersArray = [...targetChat.members];
-            }
-
-            // 2. 从历史消息中提取发送者（更全面）
-            const wechatMessages = this.app.wechatData.getMessages(targetChat.id);
-            wechatMessages.forEach(msg => {
-                if (msg.from && msg.from !== 'me' && msg.from !== 'system' && !groupMembersArray.includes(msg.from)) {
-                    groupMembersArray.push(msg.from);
-                }
-            });
-
+            groupMembersArray = this._collectGroupParticipantsForFilter(targetChat, context);
         }
         const groupMembers = groupMembersArray.join('、');
 
@@ -6536,17 +6768,13 @@ renderChatRoom(chat) {
             const currentChatKey = normalizeCommonGroupName(currentChatName);
             const relatedGroupChats = allChats.filter((chat) => {
                 if (chat?.type !== 'group') return false;
-                const members = Array.isArray(chat.members) && chat.members.length > 0
-                    ? chat.members
-                    : this._getGroupChatParticipants(chat);
+                const members = this._collectGroupParticipantsForFilter(chat, context);
                 return members.some(member => normalizeCommonGroupName(member) === currentChatKey);
             });
             const relatedGroupMeta = relatedGroupChats
                 .map((chat) => {
                     const name = String(chat?.name || '').trim();
-                    const members = (Array.isArray(chat?.members) && chat.members.length > 0
-                        ? chat.members
-                        : this._getGroupChatParticipants(chat))
+                    const members = this._collectGroupParticipantsForFilter(chat, context)
                         .map(member => String(member || '').trim())
                         .filter(Boolean);
                     return { chat, name, members };
@@ -7226,8 +7454,8 @@ renderChatRoom(chat) {
             if (!file) return;
             e.target.value = '';
 
-            if (file.size > 2 * 1024 * 1024) {
-                this.app.phoneShell.showNotification('提示', '图片太大，请选择小于2MB的图片', '⚠️');
+            if (file.size > 5 * 1024 * 1024) {
+                this.app.phoneShell.showNotification('提示', '图片太大，请选择小于5MB的图片', '⚠️');
                 return;
             }
 
@@ -11327,8 +11555,8 @@ ${chatHistory.slice(-5).map(h => `${h.from === 'me' ? userName : contactName}: $
         document.getElementById('group-avatar-upload')?.addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (file) {
-                if (file.size > 2 * 1024 * 1024) {
-                    this.app.phoneShell.showNotification('提示', '图片太大，请选择小于2MB的图片', '⚠️');
+                if (file.size > 5 * 1024 * 1024) {
+                    this.app.phoneShell.showNotification('提示', '图片太大，请选择小于5MB的图片', '⚠️');
                     return;
                 }
 

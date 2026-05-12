@@ -224,7 +224,7 @@ export class PhoneShell {
 
             // 垂直滑动时的可滚动区域白名单
             const scrollableAreas =[
-                '.home-dashboard',
+                '.home-dashboard', '.home-app-cluster-scroll',
                 '.chat-messages', '#voice-chat-messages', '#video-chat-messages',
                 '.wechat-content', '.app-body', '.settings-app', '.moments-list',
                 '#tab-memory', '.settings-app #tab-memory',
@@ -256,6 +256,7 @@ export class PhoneShell {
                 '.mofo-app', '.mofo-list-col', '.mofo-detail-col',
                 '.mofo-editor-overlay', '.mofo-editor-panel', '.mofo-editor-body',
                 '.games-app', '.games-lobby-content', '.games-log',
+                '.album-body', '.album-grid', '.album-preview-panel',
                 '#phone-inline-reply-menu-pop', '.inline-reply-tabbar', '.inline-reply-page',
                 '#mofo-list-wrap', '#mofo-preview-wrap'
             ];

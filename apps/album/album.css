@@ -1,0 +1,381 @@
+#phone-panel-content .phone-screen .album-app {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    color: #1f2933;
+    background:
+        radial-gradient(circle at 20% 0%, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0) 34%),
+        linear-gradient(180deg, #f7f9fb 0%, #edf2f6 100%);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+#phone-panel-content .phone-screen .album-header {
+    flex: 0 0 auto;
+    display: grid;
+    grid-template-columns: 34px 1fr auto;
+    align-items: center;
+    gap: 8px;
+    min-height: 68px;
+    padding: 32px 14px 8px;
+    box-sizing: border-box;
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(18px) saturate(150%);
+    -webkit-backdrop-filter: blur(18px) saturate(150%);
+    border-bottom: 0.5px solid rgba(31, 41, 51, 0.06);
+    position: relative;
+    z-index: 2;
+}
+
+#phone-panel-content .phone-screen .album-icon-btn,
+#phone-panel-content .phone-screen .album-preview-close,
+#phone-panel-content .phone-screen .album-preview-delete {
+    width: 34px;
+    height: 34px;
+    border: 1px solid rgba(31, 41, 51, 0.08);
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.68);
+    color: #25313c;
+    box-shadow: 0 8px 22px rgba(21, 31, 40, 0.08);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+}
+
+#phone-panel-content .phone-screen .album-icon-btn:disabled {
+    opacity: 0.42;
+    cursor: default;
+}
+
+#phone-panel-content .phone-screen .album-header-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    min-width: 34px;
+}
+
+#phone-panel-content .phone-screen .album-select-btn {
+    height: 30px;
+    min-width: 44px;
+    border: 1px solid rgba(31, 41, 51, 0.08);
+    border-radius: 999px;
+    padding: 0 10px;
+    background: rgba(255, 255, 255, 0.68);
+    color: #25313c;
+    font-size: 12px;
+    line-height: 30px;
+    box-shadow: 0 8px 22px rgba(21, 31, 40, 0.08);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    cursor: pointer;
+}
+
+#phone-panel-content .phone-screen .album-danger-btn {
+    color: #d92d20;
+}
+
+#phone-panel-content .phone-screen .album-title-wrap {
+    min-width: 0;
+    text-align: center;
+}
+
+#phone-panel-content .phone-screen .album-title {
+    font-size: 18px;
+    font-weight: 650;
+    line-height: 1.2;
+}
+
+#phone-panel-content .phone-screen .album-subtitle {
+    margin-top: 2px;
+    font-size: 11px;
+    color: rgba(31, 41, 51, 0.54);
+    line-height: 1.2;
+}
+
+#phone-panel-content .phone-screen .album-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 4px 14px 18px;
+    touch-action: pan-y;
+    overscroll-behavior: contain;
+}
+
+#phone-panel-content .phone-screen .album-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(74px, 1fr));
+    gap: 8px;
+    padding-bottom: 10px;
+    touch-action: pan-y;
+    overscroll-behavior: contain;
+}
+
+#phone-panel-content .phone-screen .album-tile {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid rgba(31, 41, 51, 0.08);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.6);
+    padding: 0;
+    box-shadow: 0 10px 24px rgba(21, 31, 40, 0.08);
+}
+
+#phone-panel-content .phone-screen .album-tile-main {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+    border-radius: inherit;
+    overflow: hidden;
+    background: transparent;
+    padding: 0;
+    cursor: pointer;
+}
+
+#phone-panel-content .phone-screen .album-tile img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+}
+
+#phone-panel-content .phone-screen .album-tile.is-broken .album-tile-main::before {
+    content: "\f1c5";
+    font-family: "Font Awesome 6 Free";
+    font-weight: 400;
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #eef3f8, #dfe7ef);
+    color: rgba(37, 49, 60, 0.36);
+    font-size: 24px;
+}
+
+#phone-panel-content .phone-screen .album-source {
+    position: absolute;
+    left: 5px;
+    right: 5px;
+    bottom: 5px;
+    min-width: 0;
+    padding: 3px 5px;
+    border-radius: 999px;
+    background: rgba(15, 23, 31, 0.5);
+    color: #fff;
+    font-size: 9px;
+    line-height: 1.1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+#phone-panel-content .phone-screen .album-tile-delete {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    z-index: 3;
+    width: 24px;
+    height: 24px;
+    border: 1px solid rgba(255, 255, 255, 0.32);
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    background: rgba(15, 23, 31, 0.52);
+    color: #fff;
+    font-size: 11px;
+    line-height: 1;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    cursor: pointer;
+}
+
+#phone-panel-content .phone-screen .album-checkmark {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    z-index: 2;
+    width: 23px;
+    height: 23px;
+    border-radius: 50%;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    background: rgba(255, 255, 255, 0.36);
+    color: transparent;
+    font-size: 10px;
+    box-sizing: border-box;
+}
+
+#phone-panel-content .phone-screen .album-selecting .album-checkmark {
+    display: inline-flex;
+}
+
+#phone-panel-content .phone-screen .album-selecting .album-tile.selected {
+    outline: 2px solid #4096ff;
+    outline-offset: -2px;
+}
+
+#phone-panel-content .phone-screen .album-selecting .album-tile.selected .album-checkmark {
+    background: #4096ff;
+    border-color: #4096ff;
+    color: #fff;
+}
+
+#phone-panel-content .phone-screen .album-selecting .album-tile.selected img,
+#phone-panel-content .phone-screen .album-selecting .album-tile.selected .album-tile-main::before {
+    filter: brightness(0.78);
+}
+
+#phone-panel-content .phone-screen .album-empty {
+    height: 100%;
+    min-height: 300px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+    color: rgba(31, 41, 51, 0.62);
+}
+
+#phone-panel-content .phone-screen .album-empty-icon {
+    width: 58px;
+    height: 58px;
+    border-radius: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 14px;
+    background: rgba(255, 255, 255, 0.72);
+    color: #4b7fb7;
+    font-size: 25px;
+    box-shadow: 0 14px 28px rgba(21, 31, 40, 0.08);
+}
+
+#phone-panel-content .phone-screen .album-empty-title {
+    font-size: 15px;
+    font-weight: 650;
+    color: #25313c;
+}
+
+#phone-panel-content .phone-screen .album-empty-copy {
+    max-width: 220px;
+    margin-top: 8px;
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+#phone-panel-content .phone-screen .album-preview {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    display: flex;
+    background: rgba(10, 14, 18, 0.88);
+}
+
+#phone-panel-content .phone-screen .album-preview-panel {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    touch-action: pan-y;
+    overscroll-behavior: contain;
+}
+
+#phone-panel-content .phone-screen .album-preview-top {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    right: 14px;
+    z-index: 2;
+    display: flex;
+    justify-content: space-between;
+    pointer-events: none;
+}
+
+#phone-panel-content .phone-screen .album-preview-close,
+#phone-panel-content .phone-screen .album-preview-delete {
+    pointer-events: auto;
+    background: rgba(255, 255, 255, 0.18);
+    border-color: rgba(255, 255, 255, 0.16);
+    color: #fff;
+}
+
+#phone-panel-content .phone-screen .album-preview-delete:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+#phone-panel-content .phone-screen .album-preview-image-wrap {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 58px 14px 18px;
+}
+
+#phone-panel-content .phone-screen .album-preview-image {
+    max-width: 100%;
+    max-height: 100%;
+    border-radius: 14px;
+    object-fit: contain;
+    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.34);
+}
+
+#phone-panel-content .phone-screen .album-preview-meta {
+    flex: 0 0 auto;
+    padding: 12px 16px 18px;
+    color: #fff;
+}
+
+#phone-panel-content .phone-screen .album-preview-name {
+    font-size: 13px;
+    font-weight: 650;
+    word-break: break-all;
+}
+
+#phone-panel-content .phone-screen .album-preview-path {
+    margin-top: 5px;
+    font-size: 10px;
+    line-height: 1.4;
+    color: rgba(255, 255, 255, 0.56);
+    word-break: break-all;
+}
+
+#phone-panel-content .phone-screen .album-preview-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 9px;
+}
+
+#phone-panel-content .phone-screen .album-preview-tags span {
+    max-width: 100%;
+    padding: 4px 7px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.12);
+    color: rgba(255, 255, 255, 0.82);
+    font-size: 10px;
+    line-height: 1.1;
+}

@@ -1116,12 +1116,7 @@
 #phone-panel-content .phone-screen .home-app-cluster {
     grid-column: 1 / span 2;
     grid-row: 2 / span 4;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-rows: repeat(3, minmax(0, 1fr));
-    align-items: center;
-    justify-items: center;
-    gap: clamp(5px, 1.45vh, 9px) clamp(7px, 2.2vw, 10px);
+    display: block;
     padding: clamp(8px, 2.4vw, 12px) clamp(7px, 2.2vw, 10px);
     min-height: 0;
     background: rgba(255, 255, 255, 0.28);
@@ -1133,6 +1128,31 @@
     height: 92%;
     align-self: center;
     justify-self: center;
+    overflow: hidden;
+}
+
+#phone-panel-content .phone-screen .home-app-cluster-scroll {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-rows: calc((100% - (clamp(5px, 1.45vh, 9px) * 2)) / 3);
+    align-items: center;
+    justify-items: center;
+    gap: clamp(5px, 1.45vh, 9px) clamp(7px, 2.2vw, 10px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    touch-action: pan-y;
+    overscroll-behavior: contain;
+}
+
+#phone-panel-content .phone-screen .home-app-cluster-scroll::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
 }
 
 #phone-panel-content .phone-screen .home-social-stack {
@@ -5010,11 +5030,33 @@ input:checked + .toggle-slider:before {
 #phone-panel-content .honey-app .phone-prompt-preset-select {
     background: #0a0b10 !important;
     background-color: #0a0b10 !important;
-    background-image: none !important;
+    background-image:
+        linear-gradient(45deg, transparent 50%, rgba(255, 243, 248, 0.82) 50%),
+        linear-gradient(135deg, rgba(255, 243, 248, 0.82) 50%, transparent 50%) !important;
+    background-position:
+        calc(100% - 16px) 50%,
+        calc(100% - 10px) 50% !important;
+    background-size: 6px 6px, 6px 6px !important;
+    background-repeat: no-repeat !important;
     color: #ffffff !important;
     -webkit-text-fill-color: #ffffff !important;
     border-color: rgba(255, 133, 181, 0.45) !important;
     box-shadow: inset 0 0 0 1000px #0a0b10 !important;
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 34px !important;
+    min-height: 34px !important;
+    padding: 0 30px 0 10px !important;
+    line-height: 34px !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    box-sizing: border-box !important;
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    pointer-events: auto !important;
+    position: relative !important;
+    z-index: 1 !important;
 }
 
 #phone-panel-content .honey-app .phone-prompt-preset-select option {

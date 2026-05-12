@@ -106,7 +106,9 @@ export class HomeScreen {
                 ${this.renderMusicCard()}
                 ${this.renderSocialPills()}
                 <section class="home-app-cluster yzp-home-app-cluster">
-                    ${this.renderClusterApps()}
+                    <div class="home-app-cluster-scroll yzp-home-app-cluster-scroll">
+                        ${this.renderClusterApps()}
+                    </div>
                 </section>
             </div>
         `;
@@ -217,7 +219,7 @@ export class HomeScreen {
     }
 
     renderClusterApps() {
-        const clusterIds = ['honey', 'games', 'phone', 'diary', 'mofo', 'settings'];
+        const clusterIds = ['honey', 'games', 'phone', 'diary', 'mofo', 'settings', 'album'];
         return clusterIds
             .map(id => this.getAppById(id))
             .filter(Boolean)

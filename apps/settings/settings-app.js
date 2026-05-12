@@ -1175,7 +1175,7 @@ export class SettingsApp {
                             <!-- 壁纸设置 -->
                             <div class="setting-item">
                                 <div class="setting-label">手机壁纸</div>
-                                <div class="setting-desc">支持jpg/png，最大2MB</div>
+                                <div class="setting-desc">支持jpg/png，最大5MB</div>
                                 <div style="margin-top: 10px; display: flex; gap: 8px;">
                                     <label for="upload-wallpaper" class="setting-btn" style="padding: 6px 12px; font-size: 12px; background: rgba(255,255,255,0.6); backdrop-filter: blur(10px); border: 1px solid rgba(0,0,0,0.1); cursor: pointer; color: #333; border-radius: 6px;">
                                         <i class="fa-solid fa-upload"></i> 选择壁纸
@@ -2092,6 +2092,7 @@ export class SettingsApp {
             { id: 'phone', name: '通话', icon: '📞', color: '#52c41a' },
             { id: 'diary', name: '日记', icon: '📔', color: '#faad14' },
             { id: 'music', name: '音乐', icon: '🎵', color: '#eb2f96' },
+            { id: 'album', name: '相册', icon: '🖼️', color: '#4096ff' },
             { id: 'settings', name: '设置', icon: '⚙️', color: '#8c8c8c' }
         ];
         
@@ -2125,6 +2126,7 @@ export class SettingsApp {
             { id: 'phone', name: '通话', icon: '📞', color: '#52c41a' },
             { id: 'diary', name: '日记', icon: '📔', color: '#faad14' },
             { id: 'music', name: '音乐', icon: '🎵', color: '#eb2f96' },
+            { id: 'album', name: '相册', icon: '🖼️', color: '#4096ff' },
             { id: 'settings', name: '设置', icon: '⚙️', color: '#8c8c8c' }
         ];
 
@@ -2792,7 +2794,7 @@ export class SettingsApp {
                         preserveTransparency: true, // 支持PNG透明
                         outputFormat: file.type === 'image/png' ? 'image/png' : 'image/jpeg',
                         quality: 0.9,
-                        maxFileSize: 2 * 1024 * 1024
+                        maxFileSize: 5 * 1024 * 1024
                     });
 
                     const croppedImage = await cropper.open(file);

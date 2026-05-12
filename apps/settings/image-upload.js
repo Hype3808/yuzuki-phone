@@ -137,7 +137,10 @@ export class ImageUploadManager {
             headers,
             credentials: options.credentials || 'include'
         });
-        if (response.ok) return finalUrl;
+        if (response.ok) {
+            await this._recordUploadedBackground(finalUrl, prefix);
+            return finalUrl;
+        }
 
         let reason = '';
         try {
@@ -287,6 +290,29 @@ export class ImageUploadManager {
     async saveImages(images) {
         this.cache = images;
         await this._saveCache();
+    }
+
+    async _recordUploadedBackground(pathLike, prefix = '') {
+        const path = this._normalizeBackgroundPath(pathLike);
+        if (!path || !/^\/backgrounds\/phone_[^?#]+/i.test(path)) return;
+
+        try {
+            const raw = this.storage.get('phone_album_upload_index', '[]');
+            const list = Array.isArray(raw) ? raw : JSON.parse(raw || '[]');
+            const normalizedList = Array.isArray(list) ? list : [];
+            const nextItem = {
+                path,
+                prefix: String(prefix || ''),
+                createdAt: Date.now()
+            };
+            const next = [
+                nextItem,
+                ...normalizedList.filter(item => this._normalizeBackgroundPath(item?.path || item) !== path)
+            ].slice(0, 1000);
+            await this.storage.set('phone_album_upload_index', JSON.stringify(next));
+        } catch (e) {
+            console.warn('[ImageUpload] 记录相册上传索引失败:', e);
+        }
     }
 
     // ========================================

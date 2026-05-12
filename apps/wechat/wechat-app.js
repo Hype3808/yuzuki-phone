@@ -4014,9 +4014,9 @@ export class WechatApp {
                 return;
             }
 
-            const contact = chat.contactId
-                ? this.wechatData.getContact(chat.contactId)
-                : this.wechatData.findContactByNameLoose?.(chat.name, { includeChats: false });
+            const contact = (chat.contactId ? this.wechatData.getContact(chat.contactId) : null)
+                || this.wechatData.getContactByName?.(chat.name)
+                || this.wechatData.findContactByNameLoose?.(chat.name, { includeChats: false });
             if (contact?.id && this.contactsView?.showEditContactPage) {
                 this.currentView = 'contacts';
                 this.currentChat = null;
@@ -4598,8 +4598,8 @@ export class WechatApp {
             if (!file) return;
             e.target.value = '';
 
-            if (file.size > 2 * 1024 * 1024) {
-                this.phoneShell.showNotification('提示', '图片太大，请选择小于2MB的图片', '⚠️');
+            if (file.size > 5 * 1024 * 1024) {
+                this.phoneShell.showNotification('提示', '图片太大，请选择小于5MB的图片', '⚠️');
                 return;
             }
 

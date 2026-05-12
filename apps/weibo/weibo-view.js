@@ -2935,7 +2935,7 @@ export class WeiboView {
                     outputWidth: 200,
                     outputHeight: 200,
                     quality: 0.9,
-                    maxFileSize: 2 * 1024 * 1024
+                    maxFileSize: 5 * 1024 * 1024
                 });
                 const croppedImage = await cropper.open(file);
                 const avatarUrl = await window.VirtualPhone?.imageManager?.uploadDataUrl?.(croppedImage, 'weibo_avatar');

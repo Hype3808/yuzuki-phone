@@ -479,13 +479,15 @@ export class HoneyView {
         }
         if (this._isGeneratingScene || this._recommendRefreshStatus === 'loading') return;
 
+        const previousRecommendTopics = this._cloneRecommendTopicsForPrompt(this.recommendTopics);
         clearTimeout(this._recommendRefreshTimer);
         this._recommendRefreshStatus = 'loading';
         this._syncRecommendRefreshIndicatorByState();
 
         try {
             const aiData = await this.app.honeyData.generateLiveScene(null, {
-                requestMode: 'from_scratch'
+                requestMode: 'from_scratch',
+                previousRecommendTopics
             });
 
             const nextRecommendTopics = this._normalizeRecommendTopics(aiData?.recommendTopics);
@@ -527,6 +529,21 @@ export class HoneyView {
                 this._syncRecommendRefreshIndicatorByState();
             }, this._recommendRefreshStatus === 'success' ? 1200 : 1600);
         }
+    }
+
+    _cloneRecommendTopicsForPrompt(topics) {
+        if (!Array.isArray(topics)) return [];
+        return topics
+            .filter(item => item && typeof item === 'object')
+            .slice(0, 12)
+            .map(item => ({
+                title: String(item.title || '').trim(),
+                host: String(item.host || item.name || '').trim(),
+                category: String(item.category || item.recommendCategory || '').trim(),
+                intro: String(item.intro || item.description || '').trim(),
+                heat: String(item.heat || item.viewers || item.playCount || '').trim()
+            }))
+            .filter(item => item.title || item.host || item.intro);
     }
 
     _bindRecommendPullRefresh() {

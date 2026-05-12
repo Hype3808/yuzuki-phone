@@ -87,6 +87,15 @@ export const APPS = [
         }
     },
     {
+        id: 'album',
+        name: '相册',
+        icon: '🖼️',
+        color: '#4096ff',
+        data: {
+            images: []
+        }
+    },
+    {
         id: 'games',
         name: '游戏',
         icon: '🎮',

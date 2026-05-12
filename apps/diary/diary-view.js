@@ -1133,7 +1133,7 @@ export class DiaryView {
                     outputHeight: 1050,
                     outputFormat: exportFormat,
                     quality: exportFormat === 'image/png' ? undefined : 0.6,
-                    maxFileSize: 3 * 1024 * 1024
+                    maxFileSize: 5 * 1024 * 1024
                 });
                 return await cropper.open(file);
             } catch (cropErr) {
