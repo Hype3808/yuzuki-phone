@@ -540,7 +540,9 @@ export class HoneyView {
                 title: String(item.title || '').trim(),
                 host: String(item.host || item.name || '').trim(),
                 category: String(item.category || item.recommendCategory || '').trim(),
-                intro: String(item.intro || item.description || '').trim(),
+                intro: this._hasMeaningfulSceneDescription(item.intro || item.description || '')
+                    ? String(item.intro || item.description || '').trim()
+                    : '',
                 heat: String(item.heat || item.viewers || item.playCount || '').trim()
             }))
             .filter(item => item.title || item.host || item.intro);

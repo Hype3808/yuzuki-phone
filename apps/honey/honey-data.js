@@ -124,7 +124,10 @@ export class HoneyData {
                 const title = this._sanitizeInlineText(item.title || '', 60);
                 const host = this._sanitizeInlineText(item.host || item.name || '', 40);
                 const category = this._sanitizeInlineText(item.category || item.recommendCategory || '', 40);
-                const intro = this._sanitizeInlineText(item.intro || item.description || '', 120);
+                const introSource = item.intro || item.description || '';
+                const intro = this._isMeaningfulDescription(introSource)
+                    ? this._sanitizeInlineText(introSource, 120)
+                    : '';
                 const parts = [];
                 if (title) parts.push(`标题：${title}`);
                 if (host) parts.push(`主播：${host}`);
@@ -3347,7 +3350,7 @@ export class HoneyData {
             // 从零生成只发一条 user 指令，不拼接“当前直播间状态”
             instructionUserPrompt = '请根据蜜语APP提示词，从零开始生成一套全新的蜜语内容，严格输出 <Honey> 结构。';
             if (previousRecommendContext) {
-                extraMessages.push({ role: 'user', content: previousRecommendContext });
+                instructionUserPrompt = `${previousRecommendContext}\n\n${instructionUserPrompt}`;
             }
         } else if (mode === 'continue') {
             instructionUserPrompt = '';
