@@ -1001,10 +1001,13 @@ export class HoneyView {
     }
 
     renderLivePage() {
-        const topic = this.selectedTopic || this.recommendTopics[0] || this._getFallbackTopic();
+        const activeLiveScene = (this.currentPage === 'live' && this.currentSceneData && typeof this.currentSceneData === 'object')
+            ? this.currentSceneData
+            : null;
+        const topic = activeLiveScene || this.selectedTopic || this.recommendTopics[0] || this._getFallbackTopic();
         const honeyEnabled = this._isHoneyLiveEnabled();
-        const activeTopicTitle = String(topic?.title || '直播间').trim();
-        const activeTopicKey = this._resolveTopicKey(topic, activeTopicTitle);
+        const activeTopicTitle = String(topic?._topicTitle || topic?.title || '直播间').trim();
+        const activeTopicKey = String(topic?._topicKey || this._resolveTopicKey(topic, activeTopicTitle)).trim();
         if (topic && typeof topic === 'object' && !topic._topicKey) {
             topic._topicKey = activeTopicKey;
         }
@@ -6887,6 +6890,7 @@ export class HoneyView {
         const hasMetaDelta = ['viewers', 'playCount', 'fans', 'collab'].some((key) => {
             const nextVal = String(aiData?.[key] || '').trim();
             if (!nextVal) return false;
+            if (key !== 'collab' && /^(?:0|0人|0在线|0\s*online)$/i.test(nextVal)) return false;
             const prevVal = String(currentScene?.[key] || '').trim();
             return nextVal !== prevVal;
         });
@@ -7237,8 +7241,13 @@ export class HoneyView {
     }
 
     _getActiveTopicTitle() {
+        const activeLiveScene = (this.currentPage === 'live' && this.currentSceneData && typeof this.currentSceneData === 'object')
+            ? this.currentSceneData
+            : null;
         return String(
-            this.selectedTopic?.title
+            activeLiveScene?._topicTitle
+            || activeLiveScene?.title
+            || this.selectedTopic?.title
             || this.currentSceneData?._topicTitle
             || this.currentSceneData?.title
             || this.recommendTopics?.[0]?.title
@@ -7247,10 +7256,14 @@ export class HoneyView {
     }
 
     _getActiveTopicKey() {
+        const activeLiveScene = (this.currentPage === 'live' && this.currentSceneData && typeof this.currentSceneData === 'object')
+            ? this.currentSceneData
+            : null;
         return String(
-            this.selectedTopic?._topicKey
+            activeLiveScene?._topicKey
+            || this.selectedTopic?._topicKey
             || this.currentSceneData?._topicKey
-            || this._resolveTopicKey(this.selectedTopic || this.currentSceneData || this.recommendTopics?.[0] || this._getFallbackTopic(), this._getActiveTopicTitle())
+            || this._resolveTopicKey(activeLiveScene || this.selectedTopic || this.currentSceneData || this.recommendTopics?.[0] || this._getFallbackTopic(), this._getActiveTopicTitle())
         ).trim();
     }
 

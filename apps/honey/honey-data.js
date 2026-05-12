@@ -3490,7 +3490,13 @@ export class HoneyData {
 
         const rawText = result.summary || result.content || result.text || '';
         const filteredText = applyPhoneTagFilter(rawText, { storage: this.storage });
-        const parsed = this.parseHoneyContent(filteredText || rawText);
+        const responseText = String(filteredText || rawText || '').trim();
+        if (!responseText) throw new Error('AI 返回为空');
+        if (!/<Honey>[\s\S]*?<\/Honey>/i.test(responseText)
+            && !/---\s*(?:热门推荐|当前\s*激情直播|激情直播)\s*---/i.test(responseText)) {
+            throw new Error('AI 未返回有效 Honey 内容');
+        }
+        const parsed = this.parseHoneyContent(responseText);
         if (mode === 'continue') {
             const nextPromptTurns = [...historyTurns];
             if (runtimeContext && safeUserMessageWithNick) {
