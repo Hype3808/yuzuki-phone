@@ -17,6 +17,7 @@ export class TimeManager {
         this._cache = null;
         this._cacheTimestamp = 0;
         this._cacheTTL = 5000; // 缓存有效期 5 秒
+        this._lastStableStoryTime = null;
     }
 
     /**
@@ -33,20 +34,70 @@ export class TimeManager {
             if (!saved) return null;
 
             const data = JSON.parse(saved);
-            const isRecent = (Date.now() - Number(data.timestamp || 0)) < 30 * 60 * 1000;
-            if (!isRecent || !data.time || !data.date || !data.weekday) return null;
+            if (!data.time || !data.date || !data.weekday) return null;
 
             return {
                 time: data.time,
                 date: data.date,
                 weekday: data.weekday,
                 timestamp: this.parseTimeToTimestamp(data),
-                source: 'manual-sync'
+                source: data.source || 'story-current'
             };
         } catch (e) {
             console.warn('⚠️ 读取手动同步时间失败:', e);
             return null;
         }
+    }
+
+    _rememberStableStoryTime(timeData) {
+        if (!timeData?.time || !timeData?.date) return timeData;
+        this._lastStableStoryTime = {
+            ...timeData,
+            isReal: false
+        };
+        return timeData;
+    }
+
+    _isStorageToggleEnabled(key, defaultValue = true) {
+        try {
+            const raw = this.storage?.get?.(key);
+            if (raw === undefined || raw === null) return defaultValue;
+            return raw !== false && raw !== 'false';
+        } catch (e) {
+            console.warn(`⚠️ 读取开关 ${key} 失败:`, e);
+            return defaultValue;
+        }
+    }
+
+    isOfflineTimeSourceEnabled() {
+        return this._isStorageToggleEnabled('offline-wechat-prompt-enabled', true)
+            || this._isStorageToggleEnabled('offline-single-chat-enabled', true)
+            || this._isStorageToggleEnabled('offline-group-chat-enabled', true)
+            || this._isStorageToggleEnabled('offline-honey-chat-enabled', false)
+            || this._isStorageToggleEnabled('offline-phone-call-history-enabled', false)
+            || this._isStorageToggleEnabled('offline-weibo-history-enabled', false)
+            || this._isStorageToggleEnabled('offline-diary-history-enabled', false);
+    }
+
+    _isLikelyRealClockPollution(candidate, references = []) {
+        if (!candidate?.date || !candidate?.time || !references.length) return false;
+
+        const candidateTs = this.parseTimeToTimestamp(candidate);
+        if (!Number.isFinite(candidateTs)) return false;
+
+        const now = new Date();
+        const realTodayTs = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+        const candidateDate = new Date(candidateTs);
+        const candidateDateTs = new Date(candidateDate.getFullYear(), candidateDate.getMonth(), candidateDate.getDate()).getTime();
+        const candidateNearRealToday = Math.abs(candidateDateTs - realTodayTs) <= 2 * 24 * 60 * 60 * 1000;
+        if (!candidateNearRealToday) return false;
+
+        return references.some(ref => {
+            const refTs = this.parseTimeToTimestamp(ref);
+            if (!Number.isFinite(refTs)) return false;
+            const diffDays = Math.abs(candidateTs - refTs) / (1000 * 60 * 60 * 24);
+            return diffDays > 30;
+        });
     }
 
     /**
@@ -80,36 +131,61 @@ export class TimeManager {
     const context = this.getContext();
     const manualSyncTime = this._getRecentManualSyncTime();
 
-    // 🔹 情况1：未选择角色，返回现实时间（不缓存，因为是实时的）
+    // 🔹 情况1：上下文短暂不可用时，优先保留当前聊天的剧情时间，避免状态栏跳回现实时间
     if (!context || context.characterId === undefined || context.characterId === null || context.characterId === '') {
         if (manualSyncTime) {
-            this._cache = manualSyncTime;
+            this._cache = this._rememberStableStoryTime(manualSyncTime);
             this._cacheTimestamp = now;
-            return manualSyncTime;
+            return this._cache;
+        }
+        if (this._lastStableStoryTime) {
+            this._cache = this._lastStableStoryTime;
+            this._cacheTimestamp = now;
+            return this._cache;
         }
         return this.getRealTime();
     }
 
-    // 🔥 收集所有时间源，最终取最晚的（时间只进不退）
-    const candidates = [];
+    const offlineTimeSourceEnabled = this.isOfflineTimeSourceEnabled();
 
-    // 来源1：manual-sync（通过设置页/手动同步写入）。存在时压住微信消息里的现实时间戳，但仍允许正文剧情时间继续推进。
+    // 来源1：正文聊天记录时间。线下注入全部关闭时，用户通常只使用线上功能，此时不读正文时间。
+    const timeFromChat = offlineTimeSourceEnabled ? this.extractTimeFromChat(context) : null;
+    const timeFromPhone = this.getPhoneLastMessageTime();
+
+    // 🔥 收集所有时间源。正文/持久剧情时间是权威源，手机消息只用于没有权威源时兜底。
+    const authoritativeCandidates = [];
+
+    // 来源2：已保存的剧情时间。若旧数据明显偏离最新正文时间，按旧污染数据处理。
     if (manualSyncTime) {
-        candidates.push(manualSyncTime);
-    }
-
-    // 来源2：正文聊天记录时间
-    const timeFromChat = this.extractTimeFromChat(context);
-    if (timeFromChat) {
-        candidates.push(timeFromChat);
-    }
-
-    // 来源3：手机微信最后消息时间。手动同步后的短时间内跳过，避免现实时间戳覆盖剧情时间。
-    if (!manualSyncTime) {
-        const timeFromPhone = this.getPhoneLastMessageTime();
-        if (timeFromPhone) {
-            candidates.push(timeFromPhone);
+        let shouldUseSavedTime = true;
+        if (!offlineTimeSourceEnabled && timeFromPhone && manualSyncTime.source !== 'manual-sync') {
+            shouldUseSavedTime = false;
         }
+        if (timeFromChat && manualSyncTime.source !== 'manual-sync') {
+            const savedTs = this.parseTimeToTimestamp(manualSyncTime);
+            const chatTs = this.parseTimeToTimestamp(timeFromChat);
+            const diffDays = Math.abs(savedTs - chatTs) / (1000 * 60 * 60 * 24);
+            shouldUseSavedTime = Number.isFinite(diffDays) && diffDays <= 7;
+        }
+        if (shouldUseSavedTime) {
+            authoritativeCandidates.push(manualSyncTime);
+        }
+    }
+
+    if (timeFromChat) {
+        authoritativeCandidates.push({
+            ...timeFromChat,
+            source: timeFromChat.source || 'chat'
+        });
+    }
+
+    const candidates = [...authoritativeCandidates];
+
+    // 来源3：手机线上消息时间。正常参与“取最晚”，允许线上聊天把剧情时间推到正文之后。
+    // 只过滤一种情况：候选时间接近现实今天，且和正文/保存剧情时间相差很远，通常是旧版本现实时间戳污染。
+    const phoneTimeLooksPolluted = this._isLikelyRealClockPollution(timeFromPhone, authoritativeCandidates);
+    if (timeFromPhone && !phoneTimeLooksPolluted) {
+        candidates.push(timeFromPhone);
     }
 
     // 🔥 从所有候选中取时间戳最大的（时间只进不退）
@@ -130,15 +206,15 @@ export class TimeManager {
             source: best.source || 'merged'
         };
         delete result._ts;
-        this._cache = result;
+        this._cache = this._rememberStableStoryTime(result);
         this._cacheTimestamp = now;
-        return result;
+        return this._cache;
     }
 
     // 🔹 情况4：使用剧情初始时间（智能加载联系人时生成）
     const storyInitialTime = this.getStoryInitialTime();
     if (storyInitialTime) {
-        this._cache = storyInitialTime;
+        this._cache = this._rememberStableStoryTime(storyInitialTime);
         this._cacheTimestamp = now;
         return storyInitialTime;
     }
@@ -146,7 +222,7 @@ export class TimeManager {
     // 🔹 情况5：智能推断时间
     const inferredTime = this.inferTimeFromLore(context);
     if (inferredTime) {
-        this._cache = inferredTime;
+        this._cache = this._rememberStableStoryTime(inferredTime);
         this._cacheTimestamp = now;
         return inferredTime;
     }
@@ -193,7 +269,7 @@ export class TimeManager {
         const rawText = String(text || '');
 
         // 1. 优先匹配时间包裹标签；如果没有标签，则直接从正文全文提取
-        const tagMatch = rawText.match(/<(statusbar|globalTime|time)>([\s\S]*?)<\/\1>/i);
+        const tagMatch = rawText.match(/<(statusbar|globalTime|time|horae)>([\s\S]*?)<\/\1>/i);
         const baseContent = tagMatch ? tagMatch[2] : rawText;
         const content = String(baseContent)
             .replace(/<[^>]*>/g, ' ')
@@ -638,8 +714,17 @@ setTime(time, date, weekday = null, options = {}) {
             time: finalTime,
             date: finalDate,
             weekday: finalWeekday,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            source: options?.source || (force ? 'manual-sync' : 'story-current')
         };
+
+        this._rememberStableStoryTime({
+            time: finalTime,
+            date: finalDate,
+            weekday: finalWeekday,
+            timestamp: this.parseTimeToTimestamp(timeData),
+            source: timeData.source
+        });
 
         this.storage.set('story-current-time', JSON.stringify(timeData), true);
 

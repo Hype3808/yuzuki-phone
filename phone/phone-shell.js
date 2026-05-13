@@ -33,6 +33,7 @@ export class PhoneShell {
         this.notificationQueue = [];
         this.isShowingNotification = false;
         this.currentNotificationData = null;
+        this._lastStatusBarStoryTime = null;
     }
 
     createInPanel(panelContainer) {
@@ -640,7 +641,14 @@ export class PhoneShell {
     
     if (timeManager) {
         const storyTime = timeManager.getCurrentStoryTime();
-        return storyTime.time;
+        if (storyTime?.time && !storyTime.isReal) {
+            this._lastStatusBarStoryTime = storyTime;
+            return storyTime.time;
+        }
+        if (this._lastStatusBarStoryTime?.time) {
+            return this._lastStatusBarStoryTime.time;
+        }
+        return storyTime?.time;
     }
     
     // 降级方案
@@ -667,12 +675,6 @@ export class PhoneShell {
 
     // 🔥 强制刷新状态栏时间（供外部调用）
     updateStatusBarTime() {
-        // 🔥 先清除 TimeManager 缓存，确保获取最新时间
-        const timeManager = window.VirtualPhone?.timeManager;
-        if (timeManager) {
-            timeManager.clearCache();
-        }
-
         const timeEl = this.container?.querySelector('.statusbar-left .time');
         if (timeEl) {
             timeEl.textContent = this.getCurrentTime();
