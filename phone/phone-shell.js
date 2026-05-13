@@ -234,7 +234,7 @@ export class PhoneShell {
                 '.wechat-content', '.app-body', '.settings-app', '.app-name-custom-list', '.moments-list',
                 '#tab-memory', '.settings-app #tab-memory',
                 '#tab-lobby', '.settings-app #tab-lobby', '.phone-lobby-groups-list', '.phone-lobby-characters-list',
-                '.contact-list', '.chat-list', '.diary-toc-list', '.diary-page-body',
+                '.contact-list', '.chat-list', '.diary-toc-list', '.diary-page-body', '.diary-photo-back',
                 '.diary-settings-body', '.diary-edit-body',
                 '.music-settings-body',
                 '.honey-gift-picker','.honey-live-gifts-list',

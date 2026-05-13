@@ -217,6 +217,7 @@ export class DiaryData {
         const entries = this.getEntries();
         entry.id = entry.id || Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
         entry.createdAt = entry.createdAt || Date.now();
+        entry.photos = this.mergeEntryPhotos(entry.photos, this.extractPhotoPrompts(entry.content).photos);
         entries.push(entry);
         this.saveEntries();
         return entry;
@@ -230,6 +231,7 @@ export class DiaryData {
             content: normalized,
             title: meta.title || this._extractTitleFromContent(normalized),
             date: meta.date || this._extractDateFromContent(normalized),
+            photos: Array.isArray(meta.photos) ? meta.photos : this.extractPhotoPrompts(normalized).photos,
             startIndex: Number.isFinite(meta.startIndex) ? meta.startIndex : null,
             endIndex: Number.isFinite(meta.endIndex) ? meta.endIndex : null,
             imported: !!meta.imported,
@@ -309,6 +311,7 @@ export class DiaryData {
         const entry = entries.find(e => e.id === entryId);
         if (entry) {
             entry.content = newContent;
+            entry.photos = this.mergeEntryPhotos(entry.photos, this.extractPhotoPrompts(newContent).photos);
             // 更新日期（如果内容中有新日期）
             const newDate = this._extractDateFromContent(newContent);
             if (newDate) {
@@ -318,6 +321,254 @@ export class DiaryData {
             return true;
         }
         return false;
+    }
+
+    extractPhotoPrompts(content = '') {
+        const source = String(content || '');
+        const photos = [];
+        const regex = /\[(个人图片|图片)\]\s*(?:（([^）]*?)）(?:\s*（([^）]*?)）)?|\(([^)]*?)\)(?:\s*\(([^)]*?)\))?)/g;
+        let match;
+        while ((match = regex.exec(source)) !== null) {
+            const type = String(match[1] || '').trim();
+            const first = String(match[2] ?? match[4] ?? '').replace(/\s+/g, ' ').trim();
+            const second = String(match[3] ?? match[5] ?? '').replace(/\s+/g, ' ').trim();
+            const reason = second ? first : '';
+            const prompt = second || first;
+            if (!prompt) continue;
+            photos.push({
+                id: `diary_photo_${Date.now().toString(36)}_${photos.length}_${Math.random().toString(36).slice(2, 7)}`,
+                type,
+                prompt,
+                reason,
+                status: 'idle',
+                imageUrl: '',
+                error: ''
+            });
+            if (photos.length >= 3) break;
+        }
+        return { photos };
+    }
+
+    stripPhotoPromptTags(content = '') {
+        return String(content || '')
+            .replace(/\[(?:个人图片|图片)\]\s*(?:（[^）]*）(?:\s*（[^）]*）)?|\([^)]*\)(?:\s*\([^)]*\))?)/g, '')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+    }
+
+    mergeEntryPhotos(existingPhotos = [], parsedPhotos = []) {
+        const existing = Array.isArray(existingPhotos) ? existingPhotos : [];
+        const parsed = Array.isArray(parsedPhotos) ? parsedPhotos : [];
+        if (parsed.length === 0) return existing;
+
+        const used = new Set();
+        return parsed.map((photo, index) => {
+            const same = existing.find((item, existingIndex) => {
+                if (used.has(existingIndex)) return false;
+                return String(item?.type || '') === String(photo?.type || '')
+                    && String(item?.prompt || '').trim() === String(photo?.prompt || '').trim();
+            });
+            if (same) {
+                used.add(existing.indexOf(same));
+                return { ...same, reason: photo.reason || same.reason || '' };
+            }
+            return {
+                ...photo,
+                id: photo.id || `diary_photo_${Date.now().toString(36)}_${index}_${Math.random().toString(36).slice(2, 7)}`
+            };
+        });
+    }
+
+    normalizeEntryPhotos(entry) {
+        if (!entry) return [];
+        const parsed = this.extractPhotoPrompts(entry.content).photos;
+        const merged = this.mergeEntryPhotos(entry.photos, parsed);
+        entry.photos = merged;
+        return merged;
+    }
+
+    updateEntryPhoto(entryId, photoId, patch = {}) {
+        const entry = this.getEntry(entryId);
+        if (!entry || !photoId) return null;
+        const photos = this.normalizeEntryPhotos(entry);
+        const index = photos.findIndex(photo => String(photo?.id || '') === String(photoId));
+        if (index < 0) return null;
+        photos[index] = {
+            ...photos[index],
+            ...patch,
+            updatedAt: Date.now()
+        };
+        entry.photos = photos;
+        this.saveEntries();
+        return photos[index];
+    }
+
+    async generateEntryPhotos(entryId, options = {}) {
+        const entry = this.getEntry(entryId);
+        if (!entry) return [];
+        const photos = this.normalizeEntryPhotos(entry).slice(0, 3);
+        if (photos.length === 0) return [];
+        this.saveEntries();
+
+        const results = [];
+        for (const photo of photos) {
+            if (!options.force && (photo.status === 'done' || photo.status === 'loading')) {
+                results.push(photo);
+                continue;
+            }
+            // 串行生成，避免和微信/微博生图并发抢队列。
+            results.push(await this.generateEntryPhoto(entryId, photo.id));
+        }
+        return results;
+    }
+
+    async generateEntryPhoto(entryId, photoId) {
+        const entry = this.getEntry(entryId);
+        if (!entry) throw new Error('日记不存在');
+        const photo = this.normalizeEntryPhotos(entry).find(item => String(item?.id || '') === String(photoId));
+        if (!photo) throw new Error('照片不存在');
+
+        const imageManager = window.VirtualPhone?.imageGenerationManager;
+        if (!imageManager || typeof imageManager.generate !== 'function') {
+            throw new Error('生图管理器未初始化');
+        }
+        if (this.storage && imageManager.storage !== this.storage) {
+            imageManager.storage = this.storage;
+        }
+
+        const generationId = `diary_img_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        this.updateEntryPhoto(entryId, photoId, {
+            status: 'loading',
+            generationId,
+            error: '',
+            imageUrl: ''
+        });
+
+        try {
+            const references = await this._buildDiaryPersonalImageReferences(photo);
+            const prompt = await this._buildDiaryImagePrompt(photo);
+            const result = await imageManager.generate({
+                app: 'wechat',
+                prompt,
+                novelAIReferences: references
+            });
+            const imageUrl = String(result?.imageUrl || result?.imageData || '').trim();
+            if (!imageUrl) throw new Error('接口返回成功，但没有拿到图片地址');
+            const storedImageUrl = await this._persistDiaryGeneratedImage(imageUrl, `diary_photo_${entryId}`);
+
+            const latest = this.getEntry(entryId)?.photos?.find(item => String(item?.id || '') === String(photoId));
+            if (String(latest?.generationId || '') !== generationId) return latest;
+
+            return this.updateEntryPhoto(entryId, photoId, {
+                status: 'done',
+                imageUrl: storedImageUrl,
+                error: '',
+                finalPrompt: prompt,
+                imageModel: String(result?.model || '').trim(),
+                imageProvider: String(result?.provider || '').trim(),
+                imageGenerationWidth: Number(result?.width || result?.requestedWidth || 0) || '',
+                imageGenerationHeight: Number(result?.height || result?.requestedHeight || 0) || ''
+            });
+        } catch (err) {
+            const message = String(err?.message || err || '未知错误').trim();
+            this.updateEntryPhoto(entryId, photoId, {
+                status: 'failed',
+                error: message
+            });
+            throw err;
+        }
+    }
+
+    async _persistDiaryGeneratedImage(imageUrl, prefix = 'diary_photo') {
+        const safeUrl = String(imageUrl || '').trim();
+        if (!safeUrl) return '';
+        if (!safeUrl.startsWith('data:image/')) return safeUrl;
+
+        const uploader = window.VirtualPhone?.imageManager;
+        if (!uploader || typeof uploader.uploadDataUrl !== 'function') {
+            throw new Error('图片上传管理器未初始化，无法保存日记照片');
+        }
+        return uploader.uploadDataUrl(safeUrl, prefix, { allowBase64Fallback: false });
+    }
+
+    async _getWechatDataForDiaryPhotos() {
+        if (window.VirtualPhone?.wechatApp?.wechatData) return window.VirtualPhone.wechatApp.wechatData;
+        if (window.VirtualPhone?.cachedWechatData) return window.VirtualPhone.cachedWechatData;
+        try {
+            const module = await import('../wechat/wechat-data.js');
+            const data = new module.WechatData(this.storage);
+            if (!window.VirtualPhone) window.VirtualPhone = {};
+            window.VirtualPhone.cachedWechatData = data;
+            return data;
+        } catch (err) {
+            console.warn('[Diary] 加载微信联系人失败:', err);
+            return null;
+        }
+    }
+
+    async _resolveDiaryPhotoContact() {
+        const context = this._getContext();
+        const charName = String(context?.name2 || '').trim();
+        if (!charName) return null;
+        const wechatData = await this._getWechatDataForDiaryPhotos();
+        const contacts = wechatData?.getContacts?.() || [];
+        return contacts.find(contact => wechatData?._isSameLookupName?.(contact.name, charName))
+            || contacts.find(contact => String(contact?.name || '').trim() === charName)
+            || null;
+    }
+
+    async _buildDiaryImagePrompt(photo = {}) {
+        const basePrompt = String(photo.prompt || '').trim();
+        if (String(photo.type || '') !== '个人图片') return basePrompt;
+
+        const contact = await this._resolveDiaryPhotoContact();
+        const contactTags = String(contact?.naiPromptTags || contact?.imageTags || '')
+            .split(',')
+            .map(tag => tag.trim())
+            .filter(Boolean)
+            .join(', ');
+        if (!contactTags) return basePrompt;
+        if (!basePrompt) return contactTags;
+        return `${contactTags}, ${basePrompt}`;
+    }
+
+    async _imageUrlToDiaryReferenceDataUrl(url) {
+        const safeUrl = String(url || '').trim();
+        if (!safeUrl) return '';
+        if (safeUrl.startsWith('data:image/')) return safeUrl;
+        const response = await fetch(safeUrl, {
+            credentials: 'include',
+            cache: 'no-store'
+        });
+        if (!response.ok) throw new Error(`个人形象参考图读取失败 (${response.status})`);
+        const blob = await response.blob();
+        const dataUrl = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ''));
+            reader.onerror = () => reject(reader.error || new Error('个人形象参考图读取失败'));
+            reader.readAsDataURL(blob);
+        });
+        return dataUrl.startsWith('data:image/') ? dataUrl : '';
+    }
+
+    async _buildDiaryPersonalImageReferences(photo = {}) {
+        if (String(photo.type || '') !== '个人图片') return [];
+        const contact = await this._resolveDiaryPhotoContact();
+        if (!contact) return [];
+        const referenceImage = String(contact.naiReferenceImage || contact.referenceImage || '').trim();
+        if (!referenceImage || contact.naiReferenceEnabled === false || contact.naiReferenceEnabled === 'false') return [];
+        try {
+            const image = await this._imageUrlToDiaryReferenceDataUrl(referenceImage);
+            if (!image) return [];
+            const rawStrength = Number(contact.naiReferenceStrength ?? 0.7);
+            const strength = Math.max(0, Math.min(1, Number.isFinite(rawStrength) ? rawStrength : 0.7));
+            const rawInfo = Number(contact.naiReferenceInformationExtracted ?? 1);
+            const informationExtracted = Math.max(0, Math.min(1, Number.isFinite(rawInfo) ? rawInfo : 1));
+            return [{ image, strength, informationExtracted }];
+        } catch (err) {
+            console.warn('[Diary NAI] 个人形象参考图读取失败，已跳过:', err);
+            return [];
+        }
     }
 
     setEntryOfflineHidden(entryId, hidden) {
@@ -416,7 +667,7 @@ export class DiaryData {
         const messages = [
             { role: 'system', content: filledPrompt, isPhoneMessage: true },
             ...chatMessages,
-            { role: 'user', content: '请根据上述聊天记录，以第一人称写一篇私人日记。', isPhoneMessage: true }
+            { role: 'user', content: `请根据上述聊天记录，以第一人称写一篇私人日记；如有适合被${charName}用手机留存的瞬间，请按系统规则在日记中插入1-3个照片标签，格式为[图片]（中文照片说明/拍摄原因）（English NAI tags）或[个人图片]（中文照片说明/拍摄原因）（English NAI tags）。`, isPhoneMessage: true }
         ];
 
         // 🚀 核心：移交 ApiManager 处理
@@ -451,15 +702,34 @@ export class DiaryData {
         const results = [];
         this.stopBatch = false;
         const expectedChatId = String(options.chatId || '').trim();
+        const setGenerationState = (patch = {}) => {
+            if (!window.VirtualPhone) window.VirtualPhone = {};
+            window.VirtualPhone.diaryGenerationState = {
+                ...(window.VirtualPhone.diaryGenerationState || {}),
+                ...patch,
+                updatedAt: Date.now()
+            };
+        };
 
         // 🔥 设置全局状态，防止切出界面后任务丢失
         if (window.VirtualPhone) {
             window.VirtualPhone.isDiaryBatchRunning = true;
             window.VirtualPhone.diaryBatchProgress = { current: 0, total: batchCount };
         }
+        setGenerationState({
+            running: true,
+            stopping: false,
+            done: false,
+            error: false,
+            status: '生成中...',
+            current: 0,
+            total: batchCount,
+            startedAt: Date.now()
+        });
 
         try {
             if (totalFloors <= batchSize) {
+                setGenerationState({ running: true, status: '生成中...', current: 0, total: 1 });
                 if (onProgress) onProgress(0, 1, '生成中...');
                 const diaries = await this.callAIToWriteDiary(startIndex, endIndex);
                 if (expectedChatId && this.getCurrentChatIdentity() !== expectedChatId) return results;
@@ -475,14 +745,17 @@ export class DiaryData {
                 }
                 if (isAuto) this.setAutoLastFloor(endIndex);
                 if (window.VirtualPhone?.diaryBatchProgress) window.VirtualPhone.diaryBatchProgress.current = 1;
+                setGenerationState({ running: true, status: '完成', current: 1, total: 1 });
                 if (onProgress) onProgress(1, 1, '完成');
             } else {
                 for (let i = 0; i < batchCount; i++) {
                     if (this.stopBatch) {
+                        setGenerationState({ running: true, stopping: true, status: '已停止', current: i, total: batchCount });
                         if (onProgress) onProgress(i, batchCount, '已停止');
                         break;
                     }
                     if (expectedChatId && this.getCurrentChatIdentity() !== expectedChatId) {
+                        setGenerationState({ running: true, status: '聊天已切换，已停止', current: i, total: batchCount });
                         if (onProgress) onProgress(i, batchCount, '聊天已切换，已停止');
                         break;
                     }
@@ -491,6 +764,7 @@ export class DiaryData {
                     if (i > 0) {
                         for (let d = 5; d > 0; d--) {
                             if (this.stopBatch) break;
+                            setGenerationState({ running: true, status: `冷却 ${d}s...`, current: i, total: batchCount });
                             if (onProgress) onProgress(i, batchCount, `冷却 ${d}s...`);
                             await new Promise(r => setTimeout(r, 1000));
                         }
@@ -500,6 +774,7 @@ export class DiaryData {
                     const bStart = startIndex + i * batchSize;
                     const bEnd = Math.min(bStart + batchSize, endIndex);
 
+                    setGenerationState({ running: true, status: `生成 ${i + 1}/${batchCount}...`, current: i, total: batchCount });
                     if (onProgress) onProgress(i, batchCount, `生成 ${i + 1}/${batchCount}...`);
 
                     try {
@@ -521,6 +796,7 @@ export class DiaryData {
                         if (isAuto) this.setAutoLastFloor(bEnd);
                     } catch (err) {
                         console.error(`[DiaryData] 批次 ${i + 1} 失败:`, err);
+                        setGenerationState({ running: true, error: true, status: `批次 ${i + 1} 失败: ${err.message}`, current: i, total: batchCount });
                         if (onProgress) onProgress(i, batchCount, `批次 ${i + 1} 失败: ${err.message}`);
                     }
 
@@ -528,6 +804,7 @@ export class DiaryData {
                     if (window.VirtualPhone?.diaryBatchProgress) {
                         window.VirtualPhone.diaryBatchProgress.current = i + 1;
                     }
+                    setGenerationState({ running: true, status: `已完成 ${i + 1}/${batchCount}`, current: i + 1, total: batchCount });
                 }
                 if (!this.stopBatch && onProgress) onProgress(batchCount, batchCount, '全部完成');
             }
@@ -537,6 +814,14 @@ export class DiaryData {
                 window.VirtualPhone.isDiaryBatchRunning = false;
                 delete window.VirtualPhone.diaryBatchProgress;
             }
+            setGenerationState({
+                running: false,
+                stopping: false,
+                done: !this.stopBatch,
+                error: false,
+                status: this.stopBatch ? '已停止' : '生成完成！',
+                finishedAt: Date.now()
+            });
         }
 
         return results;

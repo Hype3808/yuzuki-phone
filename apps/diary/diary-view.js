@@ -124,7 +124,10 @@ export class DiaryView {
         } else {
             listHtml = sorted.map(entry => {
                 const parsed = this._parseDate(entry.date);
-                const preview = (entry.content || '').replace(/【[^】]*】/g, '').trim().slice(0, 40);
+                const previewSource = data.stripPhotoPromptTags
+                    ? data.stripPhotoPromptTags(entry.content || '')
+                    : String(entry.content || '');
+                const preview = previewSource.replace(/【[^】]*】/g, '').trim().slice(0, 40);
                 const titleMatch = (entry.content || '').match(/【([^】]+)】/);
                 const diaryTitle = (titleMatch && !titleMatch[1].match(/\d{1,6}年/)) ? titleMatch[1] : '';
                 const isHidden = entry.offlineHidden === true;
@@ -205,6 +208,40 @@ export class DiaryView {
     }
 
     _bindTOCEvents() {
+        const syncTocSelectionUI = () => {
+            const liveIds = new Set();
+            document.querySelectorAll('.phone-view-current .diary-toc-item').forEach(item => {
+                const id = String(item.dataset.id || '');
+                if (!id) return;
+                liveIds.add(id);
+                const isSelected = this.tocSelectedIds.has(id);
+                item.classList.toggle('is-selected', isSelected);
+                const input = item.querySelector('.diary-toc-select');
+                if (input) input.checked = isSelected;
+            });
+
+            for (const id of Array.from(this.tocSelectedIds)) {
+                if (!liveIds.has(id)) this.tocSelectedIds.delete(id);
+            }
+
+            const selectedCount = this.tocSelectedIds.size;
+            const deleteBtn = document.getElementById('diary-delete-selected');
+            if (deleteBtn) {
+                deleteBtn.title = selectedCount > 0 ? `删除已选 ${selectedCount} 篇` : '删除已选';
+                let countEl = deleteBtn.querySelector('.diary-delete-selected-count');
+                if (selectedCount > 0) {
+                    if (!countEl) {
+                        countEl = document.createElement('span');
+                        countEl.className = 'diary-delete-selected-count';
+                        deleteBtn.appendChild(countEl);
+                    }
+                    countEl.textContent = String(selectedCount);
+                } else {
+                    countEl?.remove();
+                }
+            }
+        };
+
         const addBtn = document.getElementById('diary-add-entry');
         if (addBtn) addBtn.onclick = () => {
             this._previousView = this.currentView;
@@ -309,12 +346,16 @@ export class DiaryView {
             const selectInput = item.querySelector('.diary-toc-select');
 
             if (selectInput) {
+                selectInput.onclick = (e) => {
+                    e.stopPropagation();
+                };
                 selectInput.onchange = (e) => {
                     e.stopPropagation();
                     const id = String(selectInput.dataset.id || '');
                     if (!id) return;
                     if (selectInput.checked) this.tocSelectedIds.add(id);
                     else this.tocSelectedIds.delete(id);
+                    syncTocSelectionUI();
                 };
             }
 
@@ -358,7 +399,7 @@ export class DiaryView {
                     if (!id) return;
                     if (this.tocSelectedIds.has(id)) this.tocSelectedIds.delete(id);
                     else this.tocSelectedIds.add(id);
-                    this.render();
+                    syncTocSelectionUI();
                     return;
                 }
                 if (actionsDiv.style.display === 'flex') {
@@ -413,6 +454,8 @@ export class DiaryView {
         const bgHtml = pageBg ? `<div class="diary-page-bg" style="background-image: url('${pageBg}');"></div>` : '';
         const bodyClass = pageBg ? 'diary-page-body has-bg' : 'diary-page-body';
         const diaryTitle = this._extractTitle(entry.content);
+        const diaryPhotos = data.normalizeEntryPhotos(entry);
+        if (diaryPhotos.length) data.saveEntries();
 
         const html = `
             <div class="diary-app">
@@ -432,6 +475,7 @@ export class DiaryView {
                     </div>
                     ${bgHtml}
                     <div class="${bodyClass}" id="diary-page-body">
+                        ${this._renderDiaryPhotoMemory(entry)}
                         <div class="diary-page-content" id="diary-page-content" style="font-size: ${fontSize}px; line-height: ${lineHeight};">
                             ${this._formatContent(entry.content)}
                         </div>
@@ -459,6 +503,143 @@ export class DiaryView {
             this.currentView = 'settings';
             this.render();
         };
+
+        this._bindDiaryPhotoEvents();
+    }
+
+    _bindDiaryPhotoEvents() {
+        document.querySelectorAll('.diary-photo-card').forEach(card => {
+            const photoId = String(card.getAttribute('data-photo-id') || '').trim();
+            if (!photoId) return;
+            const runAction = () => {
+                if (card.classList.contains('is-flipped')) {
+                    card.classList.remove('is-flipped');
+                    return;
+                }
+                const livePhoto = this.app.diaryData.getEntry(this.currentEntryId)?.photos?.find(item => String(item?.id || '') === photoId);
+                if (String(livePhoto?.status || '') === 'loading') return;
+                this._generateDiaryPhoto(photoId);
+            };
+            card.onclick = runAction;
+            card.onkeydown = (e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                e.preventDefault();
+                runAction();
+            };
+        });
+
+        document.querySelectorAll('.diary-photo-regenerate').forEach(btn => {
+            btn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const photoId = String(btn.getAttribute('data-photo-id') || '').trim();
+                if (photoId) this._generateDiaryPhoto(photoId, { force: true });
+            };
+        });
+
+        document.querySelectorAll('.diary-photo-flip').forEach(btn => {
+            btn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const card = btn.closest('.diary-photo-card');
+                if (card) card.classList.toggle('is-flipped');
+            };
+        });
+    }
+
+    _renderDiaryPhotoMemory(entry) {
+        const photos = Array.isArray(entry?.photos) ? entry.photos.slice(0, 3) : [];
+        if (photos.length === 0) return '';
+        const cards = photos.map((photo, index) => {
+            const status = String(photo?.status || 'idle');
+            const imageUrl = String(photo?.imageUrl || '').trim();
+            const prompt = this._escapeHtml(String(photo?.prompt || ''));
+            const reason = this._escapeHtml(String(photo?.reason || ''));
+            const rawType = String(photo?.type || '图片');
+            const rotate = index % 2 === 0 ? '-2deg' : '2deg';
+            const displayUrl = imageUrl && status === 'done'
+                ? imageUrl
+                : this._getDiaryFallbackPhotoUrl(entry, photo, index);
+            const imageHtml = `<img class="diary-photo-img" src="${this._escapeAttr(displayUrl)}" alt="${prompt || reason || '日记照片'}" loading="lazy">`;
+            const statusHtml = status === 'failed'
+                ? `<div class="diary-photo-status diary-photo-status-error">生成失败，点击重试</div>`
+                : (status === 'loading'
+                    ? `<div class="diary-photo-status">显影中...</div>`
+                    : '');
+            const actionHtml = `
+                <button class="diary-photo-tool diary-photo-regenerate" type="button" data-photo-id="${this._escapeAttr(photo.id)}" title="重新生成">↻</button>
+                <button class="diary-photo-tool diary-photo-flip" type="button" title="查看照片说明">i</button>
+            `;
+            const backText = reason || '这张照片还没有留下说明。';
+            const frontCaption = rawType === '个人图片' ? '「 私人影像 」' : '「 沉溺于那片海 」';
+            return `
+                <div class="diary-photo-card diary-photo-card-${index + 1}" role="button" tabindex="0" data-photo-id="${this._escapeAttr(photo.id)}" style="--diary-photo-rotate:${rotate};">
+                    <div class="diary-photo-tape" aria-hidden="true"></div>
+                    <div class="diary-photo-face diary-photo-front">
+                        ${imageHtml}
+                        ${statusHtml}
+                        <div class="diary-photo-actions">${actionHtml}</div>
+                    </div>
+                    <div class="diary-photo-face diary-photo-back">
+                        <div class="diary-photo-back-title">${rawType === '个人图片' ? '私人影像' : '照片说明'}</div>
+                        <div class="diary-photo-back-text">${backText}</div>
+                    </div>
+                    <div class="diary-photo-caption">${frontCaption}</div>
+                </div>
+            `;
+        }).join('');
+        return `<div class="diary-photo-memory" id="diary-photo-memory">${cards}</div>`;
+    }
+
+    async _generateDiaryPhoto(photoId, options = {}) {
+        const entryId = String(this.currentEntryId || '').trim();
+        const safePhotoId = String(photoId || '').trim();
+        if (!entryId || !safePhotoId) return;
+        const photo = this.app.diaryData.updateEntryPhoto(entryId, safePhotoId, {
+            status: 'loading',
+            error: ''
+        });
+        this._refreshDiaryPhotoMemory();
+        try {
+            await this.app.diaryData.generateEntryPhoto(entryId, safePhotoId, options);
+        } catch (err) {
+            this.app.phoneShell?.showNotification?.('日记照片', String(err?.message || err || '生成失败'), '❌');
+        } finally {
+            this._refreshDiaryPhotoMemory();
+        }
+        return photo;
+    }
+
+    _getDiaryFallbackPhotoUrl(entry, photo, index = 0) {
+        const seedSource = [
+            entry?.id,
+            photo?.id,
+            photo?.reason,
+            photo?.prompt,
+            index
+        ].map(value => String(value || '').trim()).join('|');
+        let hash = 0;
+        for (let i = 0; i < seedSource.length; i++) {
+            hash = ((hash << 5) - hash) + seedSource.charCodeAt(i);
+            hash |= 0;
+        }
+        const seed = Math.abs(hash).toString(36) || 'diary';
+        return `https://picsum.photos/seed/diary-${seed}/480/480`;
+    }
+
+    _refreshDiaryPhotoMemory() {
+        const entry = this.app.diaryData.getEntry(this.currentEntryId);
+        const root = document.getElementById('diary-photo-memory');
+        if (!entry || !root) return;
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = this._renderDiaryPhotoMemory(entry);
+        const next = wrapper.firstElementChild;
+        if (!next) {
+            root.remove();
+            return;
+        }
+        root.replaceWith(next);
+        this._bindDiaryPhotoEvents();
     }
 
     // ==================== 设置视图 ====================
@@ -620,19 +801,7 @@ export class DiaryView {
 
     _bindSettingsEvents() {
         this._bindPromptFoldToggles(document.querySelector('.phone-view-current .diary-settings-view') || document);
-        // 🔥 UI 状态恢复：如果后台正在跑分批任务，立即恢复进度显示
-        const runBtn = document.getElementById('diary-manual-run');
-        const statusEl = document.getElementById('diary-manual-status');
-        if (window.VirtualPhone?.isDiaryBatchRunning) {
-            if (runBtn) {
-                runBtn.textContent = '🛑 停止 (后台执行中)';
-                runBtn.disabled = false;
-            }
-            const progress = window.VirtualPhone?.diaryBatchProgress;
-            if (progress && statusEl) {
-                statusEl.textContent = `🔄 正在执行第 ${progress.current}/${progress.total} 批...`;
-            }
-        }
+        this._syncDiaryGenerationStatusUI();
 
         const backBtn = document.getElementById('diary-settings-back');
         if (backBtn) backBtn.onclick = () => {
@@ -717,8 +886,14 @@ export class DiaryView {
             if (!btn) return;
 
             // 🔥 使用全局状态判断是否正在运行
-            if (window.VirtualPhone?.isDiaryBatchRunning) {
+            if (this._getDiaryGenerationState()?.running || window.VirtualPhone?.isDiaryBatchRunning) {
                 this.app.diaryData.stopBatch = true;
+                this._setDiaryGenerationState({
+                    ...this._getDiaryGenerationState(),
+                    running: true,
+                    stopping: true,
+                    status: '正在停止...'
+                });
                 btn.textContent = '🛑 正在停止...';
                 btn.disabled = true;
                 return;
@@ -733,9 +908,15 @@ export class DiaryView {
             if (end - start < 2) { alert('楼层范围太小，至少需要2层'); return; }
 
             this.app.diaryData.stopBatch = false;
-            btn.textContent = '⏳ 正在执行...';
-            btn.disabled = true;
-            if (statusEl) statusEl.textContent = '初始化中...';
+            this._setDiaryGenerationState({
+                running: true,
+                stopping: false,
+                status: '初始化中...',
+                current: 0,
+                total: 1,
+                startedAt: Date.now()
+            });
+            this._syncDiaryGenerationStatusUI();
 
             try {
                 const batchModeEnabled = document.getElementById('diary-s-batch')?.checked !== false;
@@ -744,16 +925,25 @@ export class DiaryView {
                 const data = this.app.diaryData;
 
                 if (batchModeEnabled && (end - start) > batchSize) {
-                    btn.textContent = '🛑 停止';
-                    btn.disabled = false;
                     await data.batchGenerateDiary(start, end, batchSize, (current, total, status) => {
-                        const liveBtn = document.getElementById('diary-manual-run');
-                        const liveStatus = document.getElementById('diary-manual-status');
-                        if (liveStatus) liveStatus.textContent = `🔄 ${status}`;
-                        if (liveBtn) liveBtn.textContent = `🛑 停止 (${current}/${total})`;
+                        this._setDiaryGenerationState({
+                            running: true,
+                            stopping: false,
+                            status,
+                            current,
+                            total
+                        });
+                        this._syncDiaryGenerationStatusUI();
                     });
                 } else {
-                    if (statusEl) statusEl.textContent = '🔄 正在写日记...';
+                    this._setDiaryGenerationState({
+                        running: true,
+                        stopping: false,
+                        status: '正在写日记...',
+                        current: 0,
+                        total: 1
+                    });
+                    this._syncDiaryGenerationStatusUI();
                     const diaries = await data.callAIToWriteDiary(start, end);
                     for (const diary of diaries) {
                         data.addEntry({
@@ -765,18 +955,25 @@ export class DiaryView {
                         });
                     }
                 }
-                if (statusEl) statusEl.textContent = '✅ 生成完成！';
-                setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000);
+                this._setDiaryGenerationState({
+                    running: false,
+                    done: true,
+                    status: '生成完成！',
+                    finishedAt: Date.now()
+                });
+                this._syncDiaryGenerationStatusUI();
             } catch (err) {
                 console.error('[DiaryView] 生成日记失败:', err);
-                if (statusEl) statusEl.textContent = `❌ 失败: ${err.message}`;
+                this._setDiaryGenerationState({
+                    running: false,
+                    error: true,
+                    status: `失败: ${err.message}`,
+                    finishedAt: Date.now()
+                });
+                this._syncDiaryGenerationStatusUI();
             } finally {
                 this.app.diaryData.stopBatch = false;
-                const liveBtn = document.getElementById('diary-manual-run');
-                if (liveBtn) {
-                    liveBtn.textContent = '🚀 开始生成日记';
-                    liveBtn.disabled = false;
-                }
+                this._syncDiaryGenerationStatusUI();
             }
         };
 
@@ -879,6 +1076,66 @@ export class DiaryView {
         });
 
         // 提示词折叠交互
+    }
+
+    _getDiaryGenerationState() {
+        return window.VirtualPhone?.diaryGenerationState || null;
+    }
+
+    _setDiaryGenerationState(patch = {}) {
+        if (!window.VirtualPhone) window.VirtualPhone = {};
+        const current = window.VirtualPhone.diaryGenerationState || {};
+        window.VirtualPhone.diaryGenerationState = {
+            ...current,
+            ...patch,
+            updatedAt: Date.now()
+        };
+        return window.VirtualPhone.diaryGenerationState;
+    }
+
+    _syncDiaryGenerationStatusUI() {
+        const btn = document.getElementById('diary-manual-run');
+        const statusEl = document.getElementById('diary-manual-status');
+        if (!btn && !statusEl) return;
+
+        const state = this._getDiaryGenerationState();
+        const progress = window.VirtualPhone?.diaryBatchProgress;
+        const isRunning = !!(state?.running || window.VirtualPhone?.isDiaryBatchRunning);
+        const isStopping = !!state?.stopping;
+
+        if (isRunning) {
+            const current = Number(state?.current ?? progress?.current ?? 0);
+            const total = Number(state?.total ?? progress?.total ?? 1);
+            if (btn) {
+                btn.textContent = isStopping
+                    ? '🛑 正在停止...'
+                    : (total > 1 ? `🛑 停止 (${current}/${total})` : '🛑 停止');
+                btn.disabled = isStopping;
+            }
+            if (statusEl) {
+                statusEl.textContent = `🔄 ${state?.status || '正在写日记...'}`;
+            }
+            return;
+        }
+
+        if (btn) {
+            btn.textContent = '🚀 开始生成日记';
+            btn.disabled = false;
+        }
+
+        if (!statusEl) return;
+
+        if (state?.done) {
+            statusEl.textContent = '✅ 生成完成！';
+            return;
+        }
+
+        if (state?.error) {
+            statusEl.textContent = `❌ ${state.status || '生成失败'}`;
+            return;
+        }
+
+        statusEl.textContent = '';
     }
 
     _bindPromptFoldToggles(root) {
@@ -1238,6 +1495,9 @@ export class DiaryView {
         if (!content) return '<span style="color:#baa;">（空白页）</span>';
 
         let formatted = content;
+        formatted = this.app?.diaryData?.stripPhotoPromptTags
+            ? this.app.diaryData.stripPhotoPromptTags(formatted)
+            : formatted;
         formatted = formatted.replace(/^(?:[^\S\r\n]|&nbsp;|&emsp;|&ensp;|&#160;|&#8195;|\u200B|\u3000)+/gm, '');
         formatted = formatted.replace(/^【[^】]+】\s*/, '');
         formatted = formatted.replace(/^(?:[^\S\r\n]|&nbsp;|&emsp;|&ensp;|&#160;|&#8195;|\u200B|\u3000)+/gm, '');
@@ -1248,6 +1508,25 @@ export class DiaryView {
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;');
 
+        formatted = formatted.replace(/~~([\s\S]*?)~~/g, (match, inner) => {
+            const text = String(inner || '').trim();
+            if (!text) return match;
+            return `<del class="diary-strike">${text}</del>`;
+        });
+
         return `<div class="diary-text-body" style="text-indent: 0 !important; margin: 0 !important; padding: 0 !important; clear: both; display: block; text-align: left;">${formatted}</div>`;
+    }
+
+    _escapeHtml(value = '') {
+        return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    _escapeAttr(value = '') {
+        return this._escapeHtml(value);
     }
 }

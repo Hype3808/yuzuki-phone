@@ -69,6 +69,16 @@ export class PromptManager {
                         .replace(/\n{3,}/g, '\n\n')
                         .trim();
                 }
+                const diaryPromptContent = String(parsed.diary?.generate?.content || '');
+                const isOldDefaultDiaryPrompt = diaryPromptContent.includes('【日记生成任务】')
+                    && diaryPromptContent.includes('请根据以下聊天记录，以第一人称写一篇私人日记。')
+                    && diaryPromptContent.includes('要求：');
+                const isPreviousBuiltInDiaryPrompt = diaryPromptContent.includes('【日记生成任务：沉浸式内心独白】')
+                    && (!diaryPromptContent.includes('日记开头或触动瞬间附近可以插入1-3张')
+                        || diaryPromptContent.includes('[图片]（English NAI tags）'));
+                if (parsed.diary?.generate && (isOldDefaultDiaryPrompt || isPreviousBuiltInDiaryPrompt)) {
+                    parsed.diary.generate.content = defaults.diary.generate.content;
+                }
                 Object.keys(defaults).forEach(app => {
                     const appConfig = defaults[app];
                     if (!appConfig || typeof appConfig !== 'object') return;
@@ -926,23 +936,37 @@ from:林晓雨: 在呢
                     enabled: true,
                     name: '📔 日记生成',
                     description: '角色自动写日记的提示词',
-                    content: `【日记生成任务】
+                    content: `【日记生成任务：沉浸式内心独白】
 
-请根据以下聊天记录，以第一人称写一篇私人日记。
+请根据以下聊天记录，深度代入{{char}}的心理状态，以第一人称写一篇极具文学性和私密感的日记。
 
-要求：
-1. 以{{char}}的口吻和性格来书写，体现真实的情感变化
-2. 记录当天发生的重要事件、与{{user}}的互动、内心感受
-3. 文风要像真实的私人日记，可以有涂鸦感、口语化表达
-4. 适当体现{{char}}对{{user}}的态度和情感变化
-5. 长度控制在200-500字之间
-6. 在日记开头用【xxxxx】自拟标题，末尾标注日记的年月日、星期、天气及姓名。
-7. 只输出日记正文，不要任何解释或元信息
-8. 当有多个主角色或多篇日记时，使用分割线分割。
+【核心风格：文学性与灵魂独白】（重要！）
+1. 意象化与诗意表达：拒绝直白干瘪的情绪宣泄。请使用隐喻、环境投射或极富画面感的假设，来表达内心深处的波澜。
+  (例如：不要写“我很想你”，可以写“你的窗口是这栋灰色大楼里唯一的颜色，我在想如果雨一直不停，我是不是可以直接游上去找你。”)
+2. 极致的人设张力（表里反差）：日记是{{char}}卸下所有伪装的地方，必须展现出他/她性格的“隐藏面”与情感的拉扯感。
+   - 若是温柔型，请展现包容之下的小心翼翼、患得患失、或是隐忍的守护感；
+   - 若是高冷/傲娇型，请展现冰冷或嘴硬之下，其实防线正在悄悄崩塌的动摇与贪恋；
+   - 若是偏执/腹黑型，请展现看似理智冷静，实则极度渴望占有的暗流涌动。
+   请写出那种“只有在深夜独处时，才敢流露出的灵魂底色”。
+3. 细节放大与感官捕捉：抓住聊天记录中极其微小的一两个细节（一句话的语气、一段空白的沉默、一个不经意的称呼），将其在内心中无限放大，化作某种只有他自己懂的隐秘回响。
 
-日记正确格式：
+【行文规范】
+1. 绝对禁止流水账：严禁按时间顺序复述聊天记录。日记应是意识流的、跳跃的，由某个刺痛/触动他/她的瞬间直接切入。
+2. 潜台词与留白：写出他/她在对话中没说出口的话。句式可以长短结合，允许出现未完的省略号、或突兀的转折，营造真实的“书写呼吸感”。
+3. 字数与格式：长度控制在300-500字。
+4. 在开头用【xxxxx】自拟一个具有隐喻性或诗意的标题。末尾标注日记的年月日、星期、天气及姓名。只输出正文。
+5. 日记可以保留涂改痕迹：当{{char}}写下后又想划掉、否认或不敢承认某句话时，使用 Markdown 删除线格式 \`~~被划掉的文字~~\`。划掉的内容必须仍然可读，用来表现自我否认、欲言又止或情绪失控后的修正。
+6. 日记开头或触动瞬间附近可以插入1-3张{{char}}用自己手机随手拍下的照片。照片不是正式摄影，而是手机里私藏的生活碎片；必须让画面说明{{char}}为什么拍下它，例如为了记住某个瞬间、藏起某种心情、确认某个人留下过的痕迹。
+7. 照片标签格式只能使用以下两种。第一个括号必须写中文照片说明，说明{{char}}为什么拍下这张照片、照片承载了什么隐秘心情；第二个括号必须写英文 NovelAI tags，供生图使用，不要中文：
+   [图片]（中文照片说明/拍摄原因）（English NAI tags）
+   [个人图片]（中文照片说明/拍摄原因）（English NAI tags）
+   [图片]用于风景、物品、房间、天空、食物、他人或无人物画面；[个人图片]用于包含{{char}}本人脸、自拍、身体局部、全身照、生活照等自身形象的画面。第二个括号的英文 tags 中必须包含 phone photo / casual snapshot / private diary photo 等手机拍摄感，并用英文视觉 tags 配合中文说明。
+8. 当有多个主角色或多篇日记时，使用分割线“---分割线---”分割。
+
+【日记正确格式】：
 
 【标题】
+[图片]（中文照片说明/拍摄原因）（English NAI tags）
 日记内容
 ————YYYY年MM月DD日 星期* 天气 姓名
 

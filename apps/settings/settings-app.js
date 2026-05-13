@@ -581,7 +581,18 @@ export class SettingsApp {
                         min-width: 0 !important;
                         min-height: 0 !important;
                         flex: 1 1 auto !important;
+                        overflow-y: auto !important;
                         overflow-x: hidden !important;
+                        touch-action: pan-y !important;
+                        overscroll-behavior: contain !important;
+                        -webkit-overflow-scrolling: touch !important;
+                        scrollbar-width: none !important;
+                        -ms-overflow-style: none !important;
+                    }
+                    .settings-app .app-body::-webkit-scrollbar {
+                        width: 0 !important;
+                        height: 0 !important;
+                        display: none !important;
                     }
                     .settings-app,
                     .settings-app *,
@@ -2228,7 +2239,7 @@ export class SettingsApp {
                         </div>
                         <div style="font-size: 9px; margin-top: 3px; color: #666;">${this._escapeHtml(displayName)}</div>
                     </label>
-                    <input type="file" id="upload-icon-${app.id}" accept="image/png, image/jpeg, image/gif, image/webp, image/*" style="display: none;" class="app-icon-upload" data-app-id="${app.id}">
+                    <input type="file" id="upload-icon-${app.id}" accept="image/png, image/jpeg, image/gif, image/webp, image/svg+xml, image/*" style="display: none;" class="app-icon-upload" data-app-id="${app.id}">
                 </div>
             `;
         }).join('');
@@ -2913,7 +2924,7 @@ export class SettingsApp {
                         outputWidth: 200,
                         outputHeight: 200,
                         preserveTransparency: true, // 支持PNG透明
-                        outputFormat: file.type === 'image/png' ? 'image/png' : 'image/jpeg',
+                        outputFormat: ['image/png', 'image/svg+xml', 'image/webp'].includes(file.type) ? 'image/png' : 'image/jpeg',
                         quality: 0.9,
                         maxFileSize: 5 * 1024 * 1024
                     });

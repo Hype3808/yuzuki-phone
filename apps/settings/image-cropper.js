@@ -49,8 +49,8 @@ export class ImageCropper {
                 return;
             }
 
-            // 检测是否为PNG（支持透明）
-            if (file.type === 'image/png' && this.options.preserveTransparency) {
+            // 检测是否为支持透明的图片，统一导出 PNG 保留 alpha。
+            if (['image/png', 'image/svg+xml', 'image/webp'].includes(file.type) && this.options.preserveTransparency) {
                 this.options.outputFormat = 'image/png';
             }
 
@@ -730,4 +730,3 @@ export async function cropImage(file, options = {}) {
     const cropper = new ImageCropper(options);
     return cropper.open(file);
 }
-

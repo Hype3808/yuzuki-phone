@@ -2616,6 +2616,22 @@ body > .st-phone-honey-invite-modal.honey-live-collab-modal {
     touch-action: pan-y;
 }
 
+.settings-app .app-body {
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.settings-app .app-body::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+}
+
 .settings-app #tab-memory {
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
@@ -3318,12 +3334,16 @@ input:checked + .toggle-slider:before {
    ======================================== */
 
 #phone-panel-content .phone-screen .home-screen::-webkit-scrollbar,
-.settings-app::-webkit-scrollbar {
+.settings-app::-webkit-scrollbar,
+.settings-app .app-body::-webkit-scrollbar {
     width: 0;
+    height: 0;
+    display: none;
 }
 
 #phone-panel-content .phone-screen .home-screen,
-.settings-app {
+.settings-app,
+.settings-app .app-body {
     scroll-behavior: smooth;
 }
 
