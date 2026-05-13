@@ -276,6 +276,7 @@ export class WechatData {
                         contactGenderMap: data.contactGenderMap || {},
                         contactAutoAvatarMap: data.contactAutoAvatarMap || {},
                         walletByChat: walletByChat,
+                        musicListening: data.musicListening || {},
                         honeyInviteLog: data.honeyInviteLog || []
                     };
                 } catch (parseError) {
@@ -297,7 +298,8 @@ export class WechatData {
             customEmojis: this._loadGlobalCustomEmojis(),
             contactGenderMap: {},
             contactAutoAvatarMap: {},
-            walletByChat: {}
+            walletByChat: {},
+            musicListening: {}
         };
     }
 
@@ -1127,6 +1129,7 @@ export class WechatData {
                 contactGenderMap: this.data.contactGenderMap || {},
                 contactAutoAvatarMap: this.data.contactAutoAvatarMap || {},
                 walletByChat: this.data.walletByChat || {},
+                musicListening: this.data.musicListening || {},
                 honeyInviteLog: this.data.honeyInviteLog || []
                 // 🔥 messages 不再保存到主数据中
             };
@@ -1178,7 +1181,8 @@ export class WechatData {
             customEmojis: [],
             contactGenderMap: {},
             contactAutoAvatarMap: {},
-            walletByChat: {}
+            walletByChat: {},
+            musicListening: {}
         };
 
         this._saveGlobalCustomEmojis([]);
@@ -1340,6 +1344,59 @@ export class WechatData {
     setChatListBackground(background) {
         this.data.userInfo.chatListBackground = background || null;
         this.saveData();
+    }
+
+    getMusicListening(chatId) {
+        const safeChatId = String(chatId || '').trim();
+        if (!safeChatId) return null;
+        const sessions = this.data.musicListening || {};
+        const session = sessions[safeChatId];
+        return session && session.active !== false ? session : null;
+    }
+
+    startMusicListening(chatId, contact = {}, snapshot = {}) {
+        const safeChatId = String(chatId || '').trim();
+        if (!safeChatId) return null;
+        if (!this.data.musicListening || typeof this.data.musicListening !== 'object') {
+            this.data.musicListening = {};
+        }
+
+        const userInfo = this.getUserInfo();
+        const userAvatar = String(userInfo?.avatar || '').trim();
+        let contactAvatar = String(contact?.avatar || '').trim();
+        if (contactAvatar && userAvatar && contactAvatar === userAvatar) {
+            contactAvatar = String(
+                this.getContactAutoAvatar?.(contact?.id)
+                || this.getContactAutoAvatar?.(contact?.name)
+                || ''
+            ).trim();
+        }
+        const session = {
+            active: true,
+            chatId: safeChatId,
+            contactId: String(contact?.id || '').trim(),
+            contactName: String(contact?.name || '').trim(),
+            contactAvatar,
+            userName: String(userInfo?.name || '我').trim(),
+            userAvatar,
+            startedAt: Date.now(),
+            songName: String(snapshot?.songName || '').trim(),
+            artist: String(snapshot?.artist || '').trim(),
+            cover: String(snapshot?.cover || '').trim()
+        };
+
+        this.data.musicListening[safeChatId] = session;
+        this.saveData();
+        return session;
+    }
+
+    stopMusicListening(chatId) {
+        const safeChatId = String(chatId || '').trim();
+        if (!safeChatId || !this.data.musicListening) return false;
+        if (!this.data.musicListening[safeChatId]) return false;
+        this.data.musicListening[safeChatId].active = false;
+        this.saveData();
+        return true;
     }
     
     getChatList() {
@@ -1847,6 +1904,8 @@ getMessagePreview(message) {
             return `${icon} ${stripSpeechPrefix(message.content || '')}`;
         case 'weibo_card':
             return '[微博分享]';
+        case 'music_listen':
+            return '[一起听歌]';
         default:
             return stripSpeechPrefix(message.content || '');
     }

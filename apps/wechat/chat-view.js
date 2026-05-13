@@ -2486,6 +2486,50 @@ renderChatRoom(chat) {
                 break;
             }
 
+            case 'music_listen': {
+                const activeSession = this.app.wechatData.getMusicListening?.(this.app.currentChat?.id);
+                const musicInfo = msg.musicListen || activeSession || {};
+                const songTitle = this._escapeHtml(musicInfo.songName || '正在播放');
+                const artistName = this._escapeHtml(musicInfo.artist || '');
+                const contactName = this._escapeHtml(activeSession?.contactName || senderName || this.app.currentChat?.name || '好友');
+                const userAvatar = activeSession?.userAvatar || userInfo.avatar || '';
+                const normalizeAvatar = value => String(value || '').trim();
+                const pickContactAvatar = (...candidates) => {
+                    const normalizedUserAvatar = normalizeAvatar(userAvatar);
+                    for (const candidate of candidates) {
+                        const normalized = normalizeAvatar(candidate);
+                        if (normalized && normalized !== normalizedUserAvatar) return candidate;
+                    }
+                    return '';
+                };
+                const contactAvatar = pickContactAvatar(
+                    this.app.wechatData.getContact?.(activeSession?.contactId)?.avatar,
+                    this.app.wechatData.getContactByName?.(activeSession?.contactName)?.avatar,
+                    this.app.currentChat?.avatar,
+                    this.app.wechatData.getContactAutoAvatar?.(activeSession?.contactId),
+                    this.app.wechatData.getContactAutoAvatar?.(activeSession?.contactName),
+                    senderAvatar,
+                    activeSession?.contactAvatar
+                );
+                messageBody = `
+                <div class="message-music-listen-card" data-chat-id="${this._escapeHtml(this.app.currentChat?.id || '')}">
+                    <div class="message-music-listen-avatars">
+                        <span>${this.app.renderAvatar(userAvatar, '😊', userInfo.name)}</span>
+                        <span>${this.app.renderAvatar(contactAvatar, '👤', contactName)}</span>
+                    </div>
+                    <div class="message-music-listen-main">
+                        <div class="message-music-listen-title">正在一起听歌</div>
+                        <div class="message-music-listen-song">${songTitle}${artistName ? ` · ${artistName}` : ''}</div>
+                        <div class="message-music-listen-sub">你和 ${contactName}</div>
+                    </div>
+                    <button type="button" class="message-music-listen-cancel" data-chat-id="${this._escapeHtml(this.app.currentChat?.id || '')}">
+                        取消听歌
+                    </button>
+                </div>
+            `;
+                break;
+            }
+
             case 'honey_invite': {
                 const statusText = String(msg.honeyInviteStatus || msg.status || '').trim();
                 const displayStatus = statusText || (isMe ? '等待回应' : '等待中...');
@@ -4091,6 +4135,23 @@ renderChatRoom(chat) {
                 }
                 const messageId = e.currentTarget.dataset.msgId;
                 if (messageId) this.openWeiboCard(messageId);
+            });
+        });
+        currentView.querySelectorAll('.message-music-listen-cancel').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                if (this._isMessageSelectionActiveForCurrentChat()) return;
+                e.preventDefault();
+                e.stopPropagation();
+                const chatId = btn.dataset.chatId || this.app.currentChat?.id || '';
+                this.app.wechatData.stopMusicListening?.(chatId);
+                this.app.wechatData.addMessage(chatId, {
+                    from: 'system',
+                    type: 'system',
+                    content: '已取消一起听歌'
+                });
+                const messages = this.app.wechatData.getMessages(chatId);
+                const userInfo = this.app.wechatData.getUserInfo();
+                this.smartUpdateMessages(messages, userInfo);
             });
         });
         currentView.querySelectorAll('.message-image-prompt-generate').forEach(card => {
@@ -6938,6 +6999,9 @@ renderChatRoom(chat) {
         const paymentStatusContext = !isGroupChat
             ? this._buildWechatPaymentStatusContext(recentWechatMessages, userName)
             : '';
+        const musicListeningContext = !callMode
+            ? this._buildMusicListeningContext(targetChat, userName)
+            : '';
 
         const timeManager = window.VirtualPhone?.timeManager;
         const currentTime = timeManager?.getCurrentStoryTime?.()?.time || '21:30';
@@ -7100,6 +7164,14 @@ renderChatRoom(chat) {
             if (contactProfileMessage) {
                 messages.push(contactProfileMessage);
             }
+            if (musicListeningContext) {
+                messages.push({
+                    role: 'system',
+                    content: musicListeningContext,
+                    name: 'SYSTEM (一起听歌)',
+                    isPhoneMessage: true
+                });
+            }
             if (wechatTranscript) {
                 messages.push({
                     role: 'system',
@@ -7195,6 +7267,61 @@ renderChatRoom(chat) {
                 this.showRedPacketDialog();
                 break;
         }
+    }
+
+    _buildMusicListeningContext(targetChat, userName = '用户') {
+        if (!targetChat?.id) return '';
+        const session = this.app.wechatData.getMusicListening?.(targetChat.id);
+        if (!session) return '';
+
+        const snapshot = window.VirtualPhone?.musicApp?.musicData?.getListeningSnapshot?.() || null;
+        const songName = String(snapshot?.songName || session.songName || '').trim() || '未知歌曲';
+        const artist = String(snapshot?.artist || session.artist || '').trim() || '未知歌手';
+        const currentSeconds = Number(snapshot?.currentTime || 0);
+        const currentTime = this._formatMusicListenTime(currentSeconds);
+        const duration = Number(snapshot?.duration || 0) > 0 ? this._formatMusicListenTime(Number(snapshot.duration)) : '';
+        const lyric = String(snapshot?.lyric || '').trim();
+        const translation = String(snapshot?.lyricTranslation || '').trim();
+        const around = Array.isArray(snapshot?.lyricAround)
+            ? snapshot.lyricAround.map(item => String(item || '').trim()).filter(Boolean)
+            : [];
+        const lyricWindow = Array.isArray(snapshot?.lyricWindow)
+            ? snapshot.lyricWindow.map(item => String(item || '').trim()).filter(Boolean)
+            : [];
+        const playlistSongs = Array.isArray(snapshot?.playlistSongs)
+            ? snapshot.playlistSongs.map(item => String(item || '').trim()).filter(Boolean)
+            : [];
+        const favoriteSongs = Array.isArray(snapshot?.favoriteSongs)
+            ? snapshot.favoriteSongs.map(item => String(item || '').trim()).filter(Boolean)
+            : [];
+        const otherName = String(session.contactName || targetChat.name || '对方').trim();
+
+        const lines = [
+            '【一起听歌状态】',
+            `${userName} 正在和微信好友“${otherName}”一起听歌。`,
+            `当前歌曲：《${songName}》`,
+            `歌手/演唱者：${artist}`,
+            `当前播放位置：${currentTime}${duration ? ` / ${duration}` : ''}`
+        ];
+
+        if (lyric) lines.push(`当前唱到的歌词：${lyric}${translation ? `（${translation}）` : ''}`);
+        if (around.length > 0) lines.push(`附近歌词节选：${around.join(' / ')}`);
+        if (lyricWindow.length > 0) {
+            lines.push('预计AI回复时段歌词节选（当前播放点后约40-80秒）：');
+            lyricWindow.forEach(item => lines.push(`- ${item}`));
+        }
+        if (playlistSongs.length > 0) lines.push(`用户普通歌单：${playlistSongs.join('；')}`);
+        if (favoriteSongs.length > 0) lines.push(`用户收藏歌单：${favoriteSongs.join('；')}`);
+        lines.push('后续微信回复必须知道双方正在一起听这首歌，可以自然提及歌曲、歌手、当前歌词或播放位置，但不要机械复述这段系统说明。');
+
+        return lines.join('\n');
+    }
+
+    _formatMusicListenTime(seconds = 0) {
+        const value = Math.max(0, Number(seconds || 0));
+        const m = Math.floor(value / 60);
+        const s = Math.floor(value % 60);
+        return `${m}:${String(s).padStart(2, '0')}`;
     }
 
     showImageSourceSheet() {

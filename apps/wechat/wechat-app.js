@@ -681,6 +681,85 @@ export class WechatApp {
     border-right: 0;
 }
 
+.message-music-listen-card {
+    width: 230px;
+    max-width: 72vw;
+    box-sizing: border-box;
+    padding: 10px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    color: #1c1c1e;
+}
+
+.message-music-listen-avatars {
+    display: flex;
+    align-items: center;
+    height: 30px;
+    margin-bottom: 8px;
+}
+
+.message-music-listen-avatars > span {
+    width: 30px;
+    height: 30px;
+    flex: 0 0 30px;
+    box-sizing: border-box;
+    border-radius: 50%;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #f2f2f2;
+    border: 2px solid #fff;
+}
+
+.message-music-listen-avatars > span + span {
+    margin-left: -8px;
+}
+
+.message-music-listen-avatars > span > img,
+.message-music-listen-avatars > span > div {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: inherit;
+    display: block;
+}
+
+.message-music-listen-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #222;
+}
+
+.message-music-listen-song {
+    margin-top: 3px;
+    font-size: 12px;
+    color: #666;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.message-music-listen-sub {
+    margin-top: 3px;
+    font-size: 11px;
+    color: #999;
+}
+
+.message-music-listen-cancel {
+    margin-top: 9px;
+    width: 100%;
+    height: 28px;
+    border: none;
+    border-radius: 7px;
+    background: rgba(0, 0, 0, 0.06);
+    color: #666;
+    font-size: 12px;
+    cursor: pointer;
+}
+
 .message-time {
     font-size: 10px;
     color: #b0b0b0;

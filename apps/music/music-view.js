@@ -30,6 +30,10 @@ export class MusicView {
         this._isPlaylistCollapsed = false;
         this._currentTab = 'playlist'; // 记录当前在哪个列表
         this._panelFace = 'front'; // front: 播放器正面, back: 社交背面
+        this._lyricsRenderKey = '';
+        this._lyricsActiveIndex = -1;
+        this._lyricsUserScrolling = false;
+        this._lyricsScrollTimer = null;
     }
 
     // 🔥 核心补救：缺失的统一刷新入口
@@ -52,7 +56,7 @@ export class MusicView {
     // ========== CSS 注入 ==========
 
     _injectCSS() {
-        const cssHref = new URL('./music.css?v=1.0.1', import.meta.url).href;
+        const cssHref = new URL('./music.css?v=1.0.4', import.meta.url).href;
         let link = document.getElementById('music-app-style');
 
         if (link) {
@@ -554,6 +558,7 @@ export class MusicView {
                 <div class="song-info">
                     <div class="song-name">${song ? this._escapeHtml(song.name) : '暂无播放'}</div>
                     <div class="song-artist">${song ? this._escapeHtml(song.artist) : '等待推荐中...'}</div>
+                    <div class="music-lyrics-box" id="music-fp-lyrics"></div>
                 </div>
                     <div class="progress-container">
                         <div class="progress-bar" id="music-fp-progress">
@@ -563,6 +568,9 @@ export class MusicView {
                             <span id="music-fp-time-current">0:00</span>
                             <span id="music-fp-time-total">0:00</span>
                         </div>
+                        <button type="button" class="music-listen-share-btn" id="music-fp-share-listen" title="邀请微信好友一起听">
+                            <i class="fa-solid fa-share-nodes"></i>
+                        </button>
                     </div>
                     <div class="controls-wrap">
                         <div class="controls controls-symmetric">
@@ -615,6 +623,17 @@ export class MusicView {
             </div>
         `;
         panel.insertAdjacentHTML('beforeend', searchModalHTML);
+
+        const listenShareModalHTML = `
+            <div class="music-listen-share-modal" id="music-listen-share-modal" style="display: none;">
+                <div class="music-listen-share-header">
+                    <span>邀请好友一起听</span>
+                    <button type="button" id="music-listen-share-close">✕</button>
+                </div>
+                <div class="music-listen-share-list" id="music-listen-share-list"></div>
+            </div>
+        `;
+        panel.insertAdjacentHTML('beforeend', listenShareModalHTML);
 
         this._bindPanelEvents(panel);
         this._startProgressTimer();
@@ -692,12 +711,37 @@ export class MusicView {
             };
         }
 
+        const lyricsBox = panel.querySelector('#music-fp-lyrics');
+        if (lyricsBox) {
+            lyricsBox.addEventListener('scroll', () => {
+                this._lyricsUserScrolling = true;
+                clearTimeout(this._lyricsScrollTimer);
+                this._lyricsScrollTimer = setTimeout(() => {
+                    this._lyricsUserScrolling = false;
+                }, 1800);
+            }, { passive: true });
+            lyricsBox.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const line = e.target.closest('.music-lyric-line');
+                if (!line || !line.dataset.time) return;
+                const time = parseFloat(line.dataset.time);
+                if (!Number.isFinite(time)) return;
+                data.audioPlayer.currentTime = time;
+                if (!data.isPlaying) data.resume();
+                this._syncLyrics(time, true);
+            });
+        }
+
         // 【新增：绑定搜索功能事件】
         const searchModal = panel.querySelector('#music-search-modal');
         const searchBtn = panel.querySelector('#music-fp-search');
         const searchCloseBtn = panel.querySelector('#music-search-close');
         const searchInput = panel.querySelector('#music-search-input');
         const searchSubmitBtn = panel.querySelector('#music-search-submit');
+        const shareListenBtn = panel.querySelector('#music-fp-share-listen');
+        const listenShareModal = panel.querySelector('#music-listen-share-modal');
+        const listenShareClose = panel.querySelector('#music-listen-share-close');
+        const listenShareList = panel.querySelector('#music-listen-share-list');
 
         const openSearch = (e) => {
             if (e) e.stopPropagation();
@@ -728,6 +772,215 @@ export class MusicView {
                 performSearch();
             }
         };
+
+        const openListenShare = async (e) => {
+            if (e) e.stopPropagation();
+            if (listenShareModal) listenShareModal.style.setProperty('display', 'flex');
+            if (listenShareList) {
+                listenShareList.innerHTML = '<div class="music-listen-share-empty">正在读取微信好友...</div>';
+            }
+            await this._renderListenShareFriends(listenShareList);
+        };
+        const closeListenShare = (e) => {
+            if (e) e.stopPropagation();
+            if (listenShareModal) listenShareModal.style.setProperty('display', 'none');
+        };
+        if (shareListenBtn) shareListenBtn.onclick = openListenShare;
+        if (listenShareClose) listenShareClose.onclick = closeListenShare;
+    }
+
+    async _renderListenShareFriends(listEl) {
+        if (!listEl) return;
+
+        const wechatData = await this._getWechatDataForListenShare();
+        const userAvatar = wechatData?.getUserInfo?.()?.avatar || '';
+        const contacts = (wechatData?.getContacts?.() || [])
+            .filter(contact => contact && !contact.blocked && String(contact.name || '').trim());
+
+        if (contacts.length === 0) {
+            listEl.innerHTML = '<div class="music-listen-share-empty">暂无微信好友</div>';
+            return;
+        }
+
+        listEl.innerHTML = contacts.map((contact, index) => {
+            const resolvedAvatar = this._resolveWechatListenAvatar(contact, wechatData, { excludeAvatar: userAvatar });
+            const rawAvatar = this._normalizeWechatListenAvatarPath(contact.avatar);
+            const safeRawAvatar = rawAvatar && rawAvatar !== this._normalizeWechatListenAvatarPath(userAvatar) ? contact.avatar : '';
+            return `
+                <button type="button" class="music-listen-friend" data-contact-index="${index}">
+                    <span class="music-listen-friend-avatar">
+                        ${this._renderWechatListenAvatar(resolvedAvatar || safeRawAvatar, contact.name)}
+                    </span>
+                    <span class="music-listen-friend-name">${this._escapeHtml(contact.name)}</span>
+                </button>
+            `;
+        }).join('');
+
+        listEl.querySelectorAll('.music-listen-friend').forEach(item => {
+            item.onclick = (e) => {
+                e.stopPropagation();
+                const contact = contacts[Number(item.dataset.contactIndex)];
+                if (contact) this._inviteWechatFriendToListen(contact);
+            };
+        });
+    }
+
+    async _inviteWechatFriendToListen(contact) {
+        const snapshot = this.app.musicData.getListeningSnapshot();
+        if (!snapshot) {
+            if (window.VirtualPhone?.notify) {
+                window.VirtualPhone.notify('音乐', '当前没有正在播放的歌曲', '🎵');
+            } else {
+                alert('当前没有正在播放的歌曲');
+            }
+            return;
+        }
+
+        const ok = confirm(`邀请 ${contact.name} 一起听《${snapshot.songName}》吗？`);
+        if (!ok) return;
+
+        const wechatApp = window.VirtualPhone?.wechatApp;
+        const wechatData = await this._getWechatDataForListenShare();
+        if (!wechatData) {
+            alert('微信数据未初始化');
+            return;
+        }
+
+        const currentUserAvatar = wechatData.getUserInfo?.()?.avatar || '';
+        const resolvedAvatar = this._resolveWechatListenAvatar(contact, wechatData, { excludeAvatar: currentUserAvatar });
+        const rawContactAvatar = this._normalizeWechatListenAvatarPath(contact.avatar);
+        const safeRawContactAvatar = rawContactAvatar && rawContactAvatar !== this._normalizeWechatListenAvatarPath(currentUserAvatar)
+            ? contact.avatar
+            : '';
+        const resolvedContact = {
+            ...contact,
+            avatar: resolvedAvatar || safeRawContactAvatar
+        };
+        const contactId = String(resolvedContact.id || '').trim();
+        let chat = contactId
+            ? wechatData.getChatByContactId?.(contactId)
+            : null;
+        if (!chat) {
+            chat = wechatData.getChatList?.().find(item =>
+                item?.type !== 'group'
+                && typeof wechatData._isSameLookupName === 'function'
+                && wechatData._isSameLookupName(item.name, resolvedContact.name)
+            );
+        }
+        if (!chat) {
+            chat = wechatData.createChat?.({
+                id: contactId ? `chat_${contactId}` : `chat_${Date.now()}`,
+                contactId: contactId || undefined,
+                name: resolvedContact.name,
+                type: 'single',
+                avatar: resolvedContact.avatar
+            });
+        }
+        if (!chat?.id) return;
+
+        wechatData.startMusicListening?.(chat.id, resolvedContact, snapshot);
+        wechatData.addMessage(chat.id, {
+            from: 'me',
+            type: 'music_listen',
+            content: `[一起听歌] ${snapshot.songName} - ${snapshot.artist}`,
+            musicListen: snapshot,
+            avatar: wechatData.getUserInfo?.()?.avatar || ''
+        });
+        await Promise.resolve(wechatData.saveData?.());
+
+        this._floatingPanel?.querySelector('#music-listen-share-modal')?.style.setProperty('display', 'none');
+        if (wechatApp?.currentChat?.id === chat.id && typeof wechatApp?.chatView?.smartUpdateMessages === 'function') {
+            wechatApp.chatView.smartUpdateMessages(wechatData.getMessages(chat.id), wechatData.getUserInfo());
+        } else if (wechatApp && !wechatApp.currentChat && wechatApp.currentView === 'chats' && typeof wechatApp.render === 'function') {
+            wechatApp.render();
+        }
+        window.VirtualPhone?.notify?.('一起听歌', `已邀请 ${resolvedContact.name}`, '🎵');
+    }
+
+    async _getWechatDataForListenShare() {
+        let wechatData = window.VirtualPhone?.wechatApp?.wechatData || window.VirtualPhone?.cachedWechatData;
+        if (wechatData) return wechatData;
+
+        try {
+            const module = await import('../wechat/wechat-data.js');
+            wechatData = new module.WechatData(window.VirtualPhone?.storage || this.app.storage);
+            if (window.VirtualPhone) window.VirtualPhone.cachedWechatData = wechatData;
+            return wechatData;
+        } catch (error) {
+            console.error('加载微信数据库失败:', error);
+            return null;
+        }
+    }
+
+    _resolveWechatListenAvatar(target, wechatData, options = {}) {
+        if (!target) return '';
+        const excludedAvatar = this._normalizeWechatListenAvatarPath(options.excludeAvatar || '');
+        const isExcludedAvatar = (avatar) => {
+            const normalized = this._normalizeWechatListenAvatarPath(avatar);
+            return normalized && excludedAvatar && normalized === excludedAvatar;
+        };
+        const directAvatar = this._normalizeWechatListenAvatarPath(target.avatar);
+        if (directAvatar && !isExcludedAvatar(directAvatar)) return directAvatar;
+        if (!wechatData) return '';
+
+        const keySet = new Set([
+            target.id,
+            target.contactId,
+            target.name
+        ].filter(Boolean).map(value => String(value).trim()));
+
+        for (const key of keySet) {
+            const autoAvatar = this._normalizeWechatListenAvatarPath(wechatData.getContactAutoAvatar?.(key));
+            if (autoAvatar && !isExcludedAvatar(autoAvatar)) return autoAvatar;
+        }
+
+        const autoMap = typeof wechatData.getContactAutoAvatarMap === 'function'
+            ? wechatData.getContactAutoAvatarMap()
+            : null;
+        if (autoMap && typeof autoMap === 'object') {
+            for (const key of keySet) {
+                const mappedAvatar = this._normalizeWechatListenAvatarPath(autoMap[key]);
+                if (mappedAvatar && !isExcludedAvatar(mappedAvatar)) return mappedAvatar;
+            }
+        }
+
+        return '';
+    }
+
+    _normalizeWechatListenAvatarPath(value) {
+        const raw = String(value || '').trim();
+        if (!raw || raw === '👤' || raw === '👥') return '';
+        if (/^(?:data:image|https?:\/\/|\/|blob:)/i.test(raw)) return raw;
+        const cleaned = raw
+            .replace(/^['"]|['"]$/g, '')
+            .replace(/^\.?\/*/, '')
+            .replace(/^apps\/wechat\/avatars\//i, '')
+            .replace(/^wechat\/avatars\//i, '')
+            .replace(/^avatars\//i, '');
+        if (!cleaned || /\s/.test(cleaned)) return '';
+        if (/^(?:male|female)\d+$/i.test(cleaned)) {
+            return new URL(`../wechat/avatars/${cleaned}.png`, import.meta.url).href;
+        }
+        if (/^[a-z0-9._-]+\.(?:png|jpg|jpeg|webp|gif)$/i.test(cleaned)) {
+            return new URL(`../wechat/avatars/${cleaned}`, import.meta.url).href;
+        }
+        return '';
+    }
+
+    _renderWechatListenAvatar(avatar, fallbackName = '') {
+        const imageAvatar = this._normalizeWechatListenAvatarPath(avatar);
+        if (imageAvatar) {
+            return `<img src="${this._escapeAttr(imageAvatar)}" alt="">`;
+        }
+        const avatarText = String(avatar || '').trim();
+        if (avatarText) return this._escapeHtml(avatarText);
+        return this._escapeHtml(this._getAvatarInitial(fallbackName || '微'));
+    }
+
+    _getAvatarInitial(name) {
+        const raw = String(name || '').trim();
+        if (!raw) return '微';
+        return Array.from(raw)[0];
     }
 
     _setPanelFace(face) {
@@ -780,7 +1033,11 @@ export class MusicView {
                 e.stopPropagation();
                 const name = button.dataset.songName;
                 const artist = button.dataset.songArtist;
-                this.app.musicData.addSong(name, artist);
+                const songMeta = results.find(item => item.name === name && item.artist === artist) || {};
+                this.app.musicData.addSong(name, artist, {
+                    id: songMeta.id || null,
+                    pic: songMeta.pic || null
+                });
 
                 // 给出反馈并关闭搜索框
                 button.innerText = '✓';
@@ -816,7 +1073,7 @@ export class MusicView {
         this._stopProgressTimer();
         this._progressTimer = setInterval(() => {
             this._updateProgress();
-        }, 500);
+        }, 250);
     }
 
     _stopProgressTimer() {
@@ -828,19 +1085,21 @@ export class MusicView {
 
     _updateProgress() {
         const audio = this.app.musicData.audioPlayer;
-        if (!audio.duration) return;
-
-        const ratio = (audio.currentTime / audio.duration) * 100;
+        const hasDuration = Number.isFinite(audio.duration) && audio.duration > 0;
+        const currentTime = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+        const ratio = hasDuration ? (currentTime / audio.duration) * 100 : 0;
 
         // 悬浮面板进度条
         const fpBar = document.querySelector('#music-fp-progress-bar');
         if (fpBar) fpBar.style.width = `${ratio}%`;
 
         const fpCurrent = document.querySelector('#music-fp-time-current');
-        if (fpCurrent) fpCurrent.textContent = this._formatTime(audio.currentTime);
+        if (fpCurrent) fpCurrent.textContent = this._formatTime(currentTime);
 
         const fpTotal = document.querySelector('#music-fp-time-total');
-        if (fpTotal) fpTotal.textContent = this._formatTime(audio.duration);
+        if (fpTotal) fpTotal.textContent = hasDuration ? this._formatTime(audio.duration) : '0:00';
+
+        this._syncLyrics(currentTime);
     }
 
     // ========== 状态更新回调 ==========
@@ -872,6 +1131,8 @@ export class MusicView {
 
         const artistEl = this._floatingPanel.querySelector('.song-artist');
         if (artistEl) artistEl.textContent = song ? song.artist : '等待推荐中...';
+
+        this._renderLyrics(song);
 
         // 2.5 更新社交卡片
         const socialSection = this._floatingPanel.querySelector('.social-card-section');
@@ -1164,6 +1425,84 @@ export class MusicView {
         return `${m}:${s.toString().padStart(2, '0')}`;
     }
 
+    _renderLyrics(song) {
+        if (!this._floatingPanel) return;
+
+        const lyricsBox = this._floatingPanel.querySelector('#music-fp-lyrics');
+        if (!lyricsBox) return;
+
+        const lyrics = Array.isArray(song?.lrc) ? song.lrc : null;
+        const status = !song ? 'empty' : song._lrcLoading ? 'loading' : Array.isArray(song.lrc) ? `lrc:${song.lrc.length}` : 'pending';
+        const key = `${song?.id || ''}|${song?.name || ''}|${song?.artist || ''}|${status}`;
+        if (key === this._lyricsRenderKey) return;
+
+        this._lyricsRenderKey = key;
+        this._lyricsActiveIndex = -1;
+
+        if (!song) {
+            lyricsBox.innerHTML = '<div class="music-lyrics-placeholder">等待推荐中...</div>';
+            return;
+        }
+
+        if (song._lrcLoading || (!Array.isArray(song.lrc) && song.id)) {
+            lyricsBox.innerHTML = '<div class="music-lyrics-placeholder">歌词载入中...</div>';
+            return;
+        }
+
+        if (!lyrics || lyrics.length === 0) {
+            lyricsBox.innerHTML = '<div class="music-lyrics-placeholder">暂无歌词</div>';
+            return;
+        }
+
+        lyricsBox.innerHTML = `
+            <div class="music-lyrics-list">
+                ${lyrics.map((line, index) => `
+                    <div class="music-lyric-line" data-index="${index}" data-time="${line.t}">
+                        <span class="music-lyric-text">${this._escapeHtml(line.txt)}</span>
+                        ${line.tr ? `<span class="music-lyric-trans">${this._escapeHtml(line.tr)}</span>` : ''}
+                    </div>
+                `).join('')}
+            </div>
+        `;
+
+        this._syncLyrics(this.app.musicData.audioPlayer.currentTime || 0, true);
+    }
+
+    _syncLyrics(currentTime, forceScroll = false) {
+        if (!this._floatingPanel) return;
+
+        const song = this.app.musicData.getCurrentSong();
+        const lyrics = Array.isArray(song?.lrc) ? song.lrc : [];
+        if (lyrics.length === 0) return;
+
+        const nextIndex = lyrics.findIndex(line => line.t > currentTime);
+        let activeIndex = nextIndex === -1 ? lyrics.length - 1 : nextIndex - 1;
+        if (activeIndex < 0) activeIndex = 0;
+        if (activeIndex === this._lyricsActiveIndex && !forceScroll) return;
+
+        this._lyricsActiveIndex = activeIndex;
+        const lyricsBox = this._floatingPanel.querySelector('#music-fp-lyrics');
+        if (!lyricsBox) return;
+
+        const lines = lyricsBox.querySelectorAll('.music-lyric-line');
+        lines.forEach((line, index) => {
+            line.classList.toggle('is-active', index === activeIndex);
+        });
+
+        const activeLine = lines[activeIndex];
+        if (activeLine && (!this._lyricsUserScrolling || forceScroll)) {
+            const boxRect = lyricsBox.getBoundingClientRect();
+            const lineRect = activeLine.getBoundingClientRect();
+            const currentLineCenter = lineRect.top - boxRect.top + lyricsBox.scrollTop + (lineRect.height / 2);
+            const targetTop = currentLineCenter - (lyricsBox.clientHeight / 2);
+
+            lyricsBox.scrollTo({
+                top: Math.max(0, targetTop),
+                behavior: forceScroll ? 'auto' : 'smooth'
+            });
+        }
+    }
+
     _escapeHtml(str) {
         if (!str) return '';
         return String(str)
@@ -1171,5 +1510,9 @@ export class MusicView {
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;');
+    }
+
+    _escapeAttr(str) {
+        return this._escapeHtml(str).replace(/'/g, '&#39;');
     }
 }

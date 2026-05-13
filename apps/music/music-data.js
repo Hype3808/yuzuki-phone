@@ -31,6 +31,7 @@ export class MusicData {
         this._playGeneration = 0;  // 播放请求代次，用于取消过期请求
         this._userPaused = false;  // 记录用户是否手动按了暂停
         this._prefetching = new Set(); // 预取中的歌曲，避免重复请求
+        this._lyricCache = new Map(); // 歌词缓存，避免同一首歌重复请求
 
         // 音频事件绑定
         this.audioPlayer.addEventListener('ended', () => this._onTrackEnded());
@@ -121,14 +122,21 @@ export class MusicData {
         return this.activeListType === 'favorites' ? this.getFavorites() : this.getPlaylist();
     }
 
-    addSong(name, artist) {
+    addSong(name, artist, meta = {}) {
         const playlist = this.getPlaylist();
 
         // 去重
         const exists = playlist.some(s => s.name === name && s.artist === artist);
         if (exists) return;
 
-        playlist.push({ name, artist, url: null, pic: null, lrc: null });
+        playlist.push({
+            name,
+            artist,
+            id: meta.id || null,
+            url: meta.url || null,
+            pic: meta.pic || null,
+            lrc: Array.isArray(meta.lrc) ? meta.lrc : null
+        });
         this.savePlaylist();
 
         // 🔥 修复核心：新歌加入时，绝不允许打断当前正在播放的歌曲！
@@ -264,6 +272,8 @@ export class MusicData {
                 if (result && result.url) {
                     song.url = result.url;
                     song.pic = result.pic;
+                    song.id = result.id || song.id || null;
+                    song.urlSource = result.urlSource || song.urlSource || null;
                     song.lrc = result.lrc;
                     if (listType === 'favorites') this.saveFavorites();
                     else this.savePlaylist();
@@ -277,11 +287,15 @@ export class MusicData {
 
             if (generation !== this._playGeneration) return;
 
+            await this._preferMetingSource(song, listType);
+            if (generation !== this._playGeneration) return;
+
             this.audioPlayer.src = song.url;
             await this.audioPlayer.play();
             this.isPlaying = true;
             this._playLock = false;
             this._notifyStateChange();
+            this._ensureLyrics(song, listType, generation);
             this._prefetchNeighbors(index, listType);
         } catch (e) {
             if (generation === this._playGeneration) {
@@ -360,7 +374,9 @@ export class MusicData {
                         // 更新播放列表中的歌曲信息
                         song.id = candidate.id;
                         song.url = newUrl;
+                        song.urlSource = 'meting';
                         song.pic = urlData[0].pic || song.pic;
+                        song.lrc = await this._fetchLyrics(candidate.id);
                         delete song._autoRetried; // 成功后移除标记
                         if (this.activeListType === 'favorites') this.saveFavorites();
                         else this.savePlaylist();
@@ -439,6 +455,8 @@ export class MusicData {
             if (result && result.url) {
                 song.url = result.url;
                 song.pic = result.pic;
+                song.id = result.id || song.id || null;
+                song.urlSource = result.urlSource || song.urlSource || null;
                 song.lrc = result.lrc;
                 if (listType === 'favorites') this.saveFavorites();
                 else this.savePlaylist();
@@ -456,6 +474,79 @@ export class MusicData {
             return playlist[this.currentIndex];
         }
         return null;
+    }
+
+    getListeningSnapshot() {
+        const song = this.getCurrentSong();
+        if (!song) return null;
+
+        const currentTime = Number.isFinite(this.audioPlayer.currentTime) ? this.audioPlayer.currentTime : 0;
+        const duration = Number.isFinite(this.audioPlayer.duration) ? this.audioPlayer.duration : 0;
+        const lyrics = Array.isArray(song.lrc) ? song.lrc : [];
+        let lyricIndex = -1;
+        if (lyrics.length > 0) {
+            const nextIndex = lyrics.findIndex(line => Number(line?.t || 0) > currentTime);
+            lyricIndex = nextIndex === -1 ? lyrics.length - 1 : Math.max(0, nextIndex - 1);
+        }
+        const lyricLine = lyricIndex >= 0 ? lyrics[lyricIndex] : null;
+        const aroundLyrics = lyricIndex >= 0
+            ? lyrics.slice(Math.max(0, lyricIndex - 1), Math.min(lyrics.length, lyricIndex + 2))
+                .map(line => String(line?.txt || '').trim())
+                .filter(Boolean)
+            : [];
+        const lyricWindow = lyrics.length > 0
+            ? lyrics
+                .filter(line => {
+                    const lineTime = Number(line?.t);
+                    return Number.isFinite(lineTime) && lineTime >= currentTime + 40 && lineTime <= currentTime + 80;
+                })
+                .slice(0, 18)
+                .map(line => {
+                    const text = String(line?.txt || '').trim();
+                    const trans = String(line?.tr || '').trim();
+                    if (!text) return '';
+                    return trans ? `${this._formatListenTime(line.t)} ${text}（${trans}）` : `${this._formatListenTime(line.t)} ${text}`;
+                })
+                .filter(Boolean)
+            : [];
+        const playlistSongs = this._formatSongListForPrompt(this.getPlaylist());
+        const favoriteSongs = this._formatSongListForPrompt(this.getFavorites());
+
+        return {
+            songId: song.id || '',
+            songName: song.name || '未知歌曲',
+            artist: song.artist || '未知歌手',
+            cover: song.pic || '',
+            currentTime,
+            duration,
+            isPlaying: !!this.isPlaying,
+            lyric: lyricLine ? String(lyricLine.txt || '').trim() : '',
+            lyricTranslation: lyricLine ? String(lyricLine.tr || '').trim() : '',
+            lyricAround: aroundLyrics,
+            lyricWindow,
+            playlistSongs,
+            favoriteSongs,
+            activeListType: this.activeListType
+        };
+    }
+
+    _formatListenTime(seconds = 0) {
+        const value = Math.max(0, Number(seconds || 0));
+        const m = Math.floor(value / 60);
+        const s = Math.floor(value % 60);
+        return `${m}:${String(s).padStart(2, '0')}`;
+    }
+
+    _formatSongListForPrompt(list = []) {
+        return (Array.isArray(list) ? list : [])
+            .map(song => {
+                const name = String(song?.name || '').trim();
+                const artist = String(song?.artist || '').trim();
+                if (!name && !artist) return '';
+                return artist ? `${name} - ${artist}` : name;
+            })
+            .filter(Boolean)
+            .slice(0, 40);
     }
 
     // ========== 自动连播 ==========
@@ -520,30 +611,33 @@ export class MusicData {
                 if (!songId) continue;
 
                 let url = null;
+                let urlSource = null;
                 let pic = candidate.cover || candidate.pic || null;
 
-                // 方案A：vkeys 获取播放链接
+                // 方案A：Meting 获取播放链接。歌词也来自同一 ID，优先保持音频和歌词版本一致。
                 try {
-                    const urlRes = await fetch(`https://api.vkeys.cn/v2/music/netease?id=${songId}`);
-                    const urlJson = await urlRes.json();
-                    if (urlJson?.data?.url) {
-                        url = urlJson.data.url;
+                    const metingRes = await fetch(`https://api.qijieya.cn/meting/?server=netease&type=song&id=${songId}`);
+                    const metingData = await metingRes.json();
+                    if (metingData?.[0]?.url && !metingData[0].url.includes('music.163.com/404')) {
+                        url = metingData[0].url;
+                        urlSource = 'meting';
+                        if (!pic) pic = metingData[0].pic || null;
                     }
                 } catch (e) {
-                    console.warn(`🎵 [音乐] vkeys获取URL失败(id:${songId}):`, e.message);
+                    console.warn(`🎵 [音乐] meting获取URL失败(id:${songId}):`, e.message);
                 }
 
-                // 方案B：Meting API 兜底
+                // 方案B：vkeys 兜底
                 if (!url) {
                     try {
-                        const metingRes = await fetch(`https://api.qijieya.cn/meting/?server=netease&type=song&id=${songId}`);
-                        const metingData = await metingRes.json();
-                        if (metingData?.[0]?.url && !metingData[0].url.includes('music.163.com/404')) {
-                            url = metingData[0].url;
-                            if (!pic) pic = metingData[0].pic || null;
+                        const urlRes = await fetch(`https://api.vkeys.cn/v2/music/netease?id=${songId}`);
+                        const urlJson = await urlRes.json();
+                        if (urlJson?.data?.url) {
+                            url = urlJson.data.url;
+                            urlSource = 'vkeys';
                         }
                     } catch (e) {
-                        console.warn(`🎵 [音乐] meting获取URL失败(id:${songId}):`, e.message);
+                        console.warn(`🎵 [音乐] vkeys获取URL失败(id:${songId}):`, e.message);
                     }
                 }
 
@@ -560,7 +654,7 @@ export class MusicData {
                         continue; // 直接进入下一轮循环，尝试下一个 candidate
                     }
 
-                    return { url, pic, lrc: null };
+                    return { url, pic, id: songId, urlSource, lrc: null };
                 }
             }
 
@@ -569,6 +663,160 @@ export class MusicData {
             console.error('🎵 [音乐] API请求失败:', e);
             return null;
         }
+    }
+
+    async _preferMetingSource(song, listType = this.activeListType) {
+        if (!song || song.urlSource === 'meting' || song._metingRefreshTried) return;
+
+        song._metingRefreshTried = true;
+        try {
+            if (!song.id) {
+                const resolved = await this._findSongMeta(song.name, song.artist);
+                if (resolved?.id) {
+                    song.id = resolved.id;
+                    if (!song.pic && resolved.pic) song.pic = resolved.pic;
+                }
+            }
+
+            if (!song.id) return;
+
+            const metingRes = await fetch(`https://api.qijieya.cn/meting/?server=netease&type=song&id=${encodeURIComponent(song.id)}`);
+            const metingData = await metingRes.json();
+            let metingUrl = metingData?.[0]?.url || '';
+            if (!metingUrl || metingUrl.includes('music.163.com/404')) return;
+
+            if (metingUrl.startsWith('http://')) {
+                metingUrl = metingUrl.replace('http://', 'https://');
+            }
+
+            song.url = metingUrl;
+            song.urlSource = 'meting';
+            song.pic = metingData[0].pic || song.pic;
+            if (listType === 'favorites') this.saveFavorites();
+            else this.savePlaylist();
+        } catch (e) {
+            console.warn(`🎵 [音乐] 切换同源歌词音频失败: ${song.name}`, e);
+        }
+    }
+
+    async _ensureLyrics(song, listType = this.activeListType, generation = this._playGeneration) {
+        if (!song || Array.isArray(song.lrc) || song._lrcLoading) return;
+
+        song._lrcLoading = true;
+        this._notifyStateChange();
+
+        try {
+            if (!song.id) {
+                const resolved = await this._findSongMeta(song.name, song.artist);
+                if (resolved?.id) {
+                    song.id = resolved.id;
+                    if (!song.pic && resolved.pic) song.pic = resolved.pic;
+                }
+            }
+            song.lrc = await this._fetchLyrics(song.id);
+        } catch (e) {
+            song.lrc = [];
+        } finally {
+            delete song._lrcLoading;
+        }
+
+        if (listType === 'favorites') this.saveFavorites();
+        else this.savePlaylist();
+
+        if (generation === this._playGeneration || this.getCurrentSong() === song) {
+            this._notifyStateChange();
+        }
+    }
+
+    async _findSongMeta(name, artist) {
+        if (!name) return null;
+
+        try {
+            const searchQuery = encodeURIComponent(`${name} ${artist || ''}`.trim());
+            const response = await fetch(`https://api.vkeys.cn/v2/music/netease?word=${searchQuery}`);
+            const json = await response.json();
+            const candidate = Array.isArray(json?.data) ? json.data.find(item => item?.id) : null;
+            if (!candidate) return null;
+
+            return {
+                id: candidate.id,
+                pic: candidate.cover || candidate.pic || null
+            };
+        } catch (e) {
+            console.warn(`🎵 [音乐] 歌词补查歌曲ID失败: ${name}`, e);
+            return null;
+        }
+    }
+
+    async _fetchLyrics(songId) {
+        if (!songId) return [];
+        const cacheKey = String(songId);
+        if (this._lyricCache.has(cacheKey)) {
+            return this._lyricCache.get(cacheKey);
+        }
+
+        try {
+            const lrcText = await fetch(`https://api.qijieya.cn/meting/?server=netease&type=lrc&id=${encodeURIComponent(songId)}`).then(r => r.text());
+            if (!lrcText || lrcText.includes('[00:00.00]暂无歌词') || lrcText.includes('暂无歌词')) {
+                this._lyricCache.set(cacheKey, []);
+                return [];
+            }
+
+            const mainLines = this._parseLrc(lrcText);
+            if (mainLines.length === 0) {
+                this._lyricCache.set(cacheKey, []);
+                return [];
+            }
+
+            const transText = await fetch(`https://api.qijieya.cn/meting/?server=netease&type=lrc&id=${encodeURIComponent(songId)}&type=tlrc`)
+                .then(r => r.text())
+                .catch(() => '');
+            const transLines = transText ? this._parseLrc(transText) : [];
+
+            const lyrics = mainLines.map(line => {
+                const trans = transLines.find(item => Math.abs(item.t - line.t) < 1);
+                return {
+                    t: line.t,
+                    txt: line.txt,
+                    tr: trans ? trans.txt : ''
+                };
+            });
+
+            this._lyricCache.set(cacheKey, lyrics);
+            return lyrics;
+        } catch (e) {
+            console.warn(`🎵 [音乐] 歌词获取失败(id:${songId}):`, e);
+            this._lyricCache.set(cacheKey, []);
+            return [];
+        }
+    }
+
+    _parseLrc(text) {
+        const lines = [];
+        const timeRegex = /\[(\d+):(\d+)(\.\d+)?\]/g;
+
+        String(text || '').split(/\r?\n/).forEach(rawLine => {
+            const line = rawLine.trim();
+            if (!line) return;
+
+            const matches = [...line.matchAll(timeRegex)];
+            if (matches.length === 0) return;
+
+            const lyricText = line.replace(timeRegex, '').trim();
+            if (!lyricText) return;
+
+            matches.forEach(match => {
+                const minutes = parseInt(match[1], 10);
+                const seconds = parseInt(match[2], 10);
+                const fraction = match[3] ? parseFloat(`0${match[3]}`) : 0;
+                lines.push({
+                    t: minutes * 60 + seconds + fraction,
+                    txt: lyricText
+                });
+            });
+        });
+
+        return lines.sort((a, b) => a.t - b.t);
     }
 
     // ========== 卡片数据 ==========
@@ -616,5 +864,6 @@ export class MusicData {
         this._failedSongs.clear();
         this._playLock = false;
         this._playGeneration++;
+        this._lyricCache.clear();
     }
 }

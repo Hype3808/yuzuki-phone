@@ -159,7 +159,7 @@ export class MofoView {
                     <div style="position:absolute; left:50%; transform:translateX(-50%); font-size: 16px; font-weight: 700; letter-spacing: 0.5px; color:#1f2f46;">魔坊</div>
                     <div style="width:30px; height:30px;"></div>
                 </div>
-                <div style="flex:1; min-height:0; overflow:auto; padding:10px;">
+                <div style="flex:1; min-height:0; overflow:auto; padding:10px; touch-action:pan-y; overscroll-behavior:contain;">
                     <div style="margin-bottom:8px; font-size:11px; color:#5b7196; line-height:1.5; border-radius:10px; border:1px solid #d9e3f4; background:#f7faff; padding:8px 10px;">
                         这里支持模板导入/导出与排序。新建、编辑、删除、清理请在外部魔坊面板操作。
                     </div>
@@ -196,6 +196,62 @@ export class MofoView {
         const notify = (title, text, icon) => {
             this.app.phoneShell?.showNotification?.(title, text, icon);
         };
+        const bindTap = (el, handler) => {
+            if (!el) return;
+            let handledAt = 0;
+            let startX = 0;
+            let startY = 0;
+            let moved = false;
+            el.addEventListener('pointerdown', (e) => {
+                startX = Number(e.clientX || 0);
+                startY = Number(e.clientY || 0);
+                moved = false;
+                e.stopPropagation?.();
+            });
+            el.addEventListener('pointermove', (e) => {
+                if (Math.abs(Number(e.clientX || 0) - startX) > 6 || Math.abs(Number(e.clientY || 0) - startY) > 6) {
+                    moved = true;
+                }
+                e.stopPropagation?.();
+            });
+            const run = (e) => {
+                if (moved) return;
+                const now = Date.now();
+                if (e.type === 'click' && now - handledAt < 450) return;
+                handledAt = now;
+                e.preventDefault?.();
+                e.stopPropagation?.();
+                handler(e);
+            };
+            el.addEventListener('pointerup', run);
+            el.addEventListener('click', run);
+        };
+        const toggleSelection = (id) => {
+            const safeId = String(id || '').trim();
+            if (!safeId) return;
+            if (this.selectedIds.has(safeId)) {
+                this.selectedIds.delete(safeId);
+            } else {
+                this.selectedIds.add(safeId);
+            }
+            this.render();
+        };
+        const mofoRoot = currentView.querySelector('.mofo-app');
+        if (mofoRoot) {
+            let rootStartX = 0;
+            let rootStartY = 0;
+            mofoRoot.addEventListener('pointerdown', (e) => {
+                rootStartX = Number(e.clientX || 0);
+                rootStartY = Number(e.clientY || 0);
+            });
+            mofoRoot.addEventListener('pointermove', (e) => {
+                const dx = Math.abs(Number(e.clientX || 0) - rootStartX);
+                const dy = Math.abs(Number(e.clientY || 0) - rootStartY);
+                if (dx > dy && dx > 4) {
+                    e.stopPropagation();
+                }
+            });
+        }
         const backBtn = currentView.querySelector('.mofo-back-btn');
 
         if (backBtn) {
@@ -217,15 +273,15 @@ export class MofoView {
             notify('导出成功', `已导出 ${count} 条模板`, '✅');
         };
 
-        currentView.querySelector('#mofo-import-btn')?.addEventListener('click', () => {
+        bindTap(currentView.querySelector('#mofo-import-btn'), () => {
             currentView.querySelector('#mofo-import-input')?.click();
         });
 
-        currentView.querySelector('#mofo-export-all-btn')?.addEventListener('click', () => {
+        bindTap(currentView.querySelector('#mofo-export-all-btn'), () => {
             exportByIds([]);
         });
 
-        currentView.querySelector('#mofo-toggle-select-btn')?.addEventListener('click', () => {
+        bindTap(currentView.querySelector('#mofo-toggle-select-btn'), () => {
             this.selectionMode = !this.selectionMode;
             if (!this.selectionMode) {
                 this.selectedIds.clear();
@@ -233,12 +289,12 @@ export class MofoView {
             this.render();
         });
 
-        currentView.querySelector('#mofo-export-selected-btn')?.addEventListener('click', () => {
+        bindTap(currentView.querySelector('#mofo-export-selected-btn'), () => {
             const ids = Array.from(this.selectedIds);
             exportByIds(ids);
         });
 
-        currentView.querySelector('#mofo-select-all-btn')?.addEventListener('click', () => {
+        bindTap(currentView.querySelector('#mofo-select-all-btn'), () => {
             const items = this.app.mofoData.getItems();
             const ids = items.map(item => String(item?.id || '').trim()).filter(Boolean);
             const allSelected = ids.length > 0 && ids.every(id => this.selectedIds.has(id));
@@ -296,22 +352,21 @@ export class MofoView {
         });
 
         currentView.querySelectorAll('.mofo-select-btn[data-mofo-id]').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const id = String(btn.getAttribute('data-mofo-id') || '').trim();
-                if (!id) return;
-                if (this.selectedIds.has(id)) {
-                    this.selectedIds.delete(id);
-                } else {
-                    this.selectedIds.add(id);
-                }
-                this.render();
+            bindTap(btn, () => {
+                toggleSelection(btn.getAttribute('data-mofo-id'));
+            });
+        });
+
+        currentView.querySelectorAll('.mofo-item-row[data-mofo-id]').forEach(row => {
+            bindTap(row, (e) => {
+                if (!this.selectionMode) return;
+                if (e.target?.closest?.('.mofo-export-btn, .mofo-sort-btn')) return;
+                toggleSelection(row.getAttribute('data-mofo-id'));
             });
         });
 
         currentView.querySelectorAll('.mofo-export-btn[data-mofo-id]').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
+            bindTap(btn, () => {
                 const id = String(btn.getAttribute('data-mofo-id') || '').trim();
                 if (!id) return;
                 const item = this.app.mofoData.getItemById(id);
@@ -320,8 +375,7 @@ export class MofoView {
         });
 
         currentView.querySelectorAll('.mofo-sort-btn[data-mofo-id][data-dir]').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
+            bindTap(btn, () => {
                 const id = String(btn.getAttribute('data-mofo-id') || '').trim();
                 const dir = String(btn.getAttribute('data-dir') || '').trim();
                 if (!id || !dir) return;

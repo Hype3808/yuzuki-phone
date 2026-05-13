@@ -199,7 +199,7 @@ export class PhoneShell {
         };
         const resolveGestureControlHost = (node) => {
             if (!node || typeof node.closest !== 'function') return null;
-            return node.closest('input[type="range"], [role="slider"], .phone-gesture-control, .honey-live-visibility-modal');
+            return node.closest('input[type="range"], [role="slider"], .phone-gesture-control, .honey-live-visibility-modal, .mofo-app');
         };
 
         // 🔥 核心修复 1：移除屏幕宽度限制，全面接管虚拟手机的触摸滑动！
