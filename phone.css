@@ -1444,10 +1444,17 @@
     display: flex;
     justify-content: center;
     gap: clamp(5px, 1.8vw, 8px);
-    color: color-mix(in srgb, var(--app-color, #4096ff) 82%, #1f2a3a);
+    color: #000000 !important;
+    font-family: Arial, "Microsoft YaHei", sans-serif;
     font-size: clamp(10px, 3vw, 12px);
+    font-variant-emoji: text;
     line-height: 1;
     margin-top: -1px;
+}
+
+#phone-panel-content .phone-screen .home-music-controls span {
+    color: inherit !important;
+    background: transparent !important;
 }
 
 #phone-panel-content .phone-screen .home-quick-card {
