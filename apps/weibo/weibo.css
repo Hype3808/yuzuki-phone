@@ -118,6 +118,57 @@
     text-shadow: none;
 }
 
+.weibo-search-bar {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    margin: 0 14px 8px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.86);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    flex-shrink: 0;
+}
+
+.weibo-search-bar.is-open {
+    display: flex;
+}
+
+.weibo-search-bar > i {
+    color: #8a8a8a;
+    font-size: 11px;
+    flex: 0 0 auto;
+}
+
+.weibo-search-bar input {
+    min-width: 0;
+    flex: 1;
+    height: 24px;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: #1f1f1f;
+    font-size: 12px;
+    line-height: 24px;
+}
+
+.weibo-search-bar input::placeholder {
+    color: #999;
+}
+
+.weibo-search-bar button {
+    flex: 0 0 auto;
+    height: 24px;
+    padding: 0 9px;
+    border: none;
+    border-radius: 999px;
+    background: #ff8200;
+    color: #fff;
+    font-size: 11px;
+    line-height: 24px;
+    cursor: pointer;
+}
+
 /* ========================================
    头像和个人信息区   ======================================== */
 /* 外层容器：不带背景，用于定位头像 */
@@ -654,20 +705,6 @@
 .weibo-action-btn-secondary {
     background: rgba(0, 0, 0, 0.05);
     color: #666;
-}
-
-.weibo-hot-load-more-wrap {
-    display: flex;
-    justify-content: center;
-    padding: 10px 0 18px;
-}
-
-.weibo-hot-load-more-btn {
-    min-width: 94px;
-    padding: 6px 14px;
-    border-radius: 14px;
-    font-size: 10px;
-    gap: 3px;
 }
 
 /* ========================================

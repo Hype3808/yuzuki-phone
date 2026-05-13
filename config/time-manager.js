@@ -27,6 +27,28 @@ export class TimeManager {
         this._cacheTimestamp = 0;
     }
 
+    _getRecentManualSyncTime() {
+        try {
+            const saved = this.storage.get('story-current-time', true);
+            if (!saved) return null;
+
+            const data = JSON.parse(saved);
+            const isRecent = (Date.now() - Number(data.timestamp || 0)) < 30 * 60 * 1000;
+            if (!isRecent || !data.time || !data.date || !data.weekday) return null;
+
+            return {
+                time: data.time,
+                date: data.date,
+                weekday: data.weekday,
+                timestamp: this.parseTimeToTimestamp(data),
+                source: 'manual-sync'
+            };
+        } catch (e) {
+            console.warn('⚠️ 读取手动同步时间失败:', e);
+            return null;
+        }
+    }
+
     /**
      * 🔥 完全重置时间（清除缓存 + 清除 manual-sync 存储）
      * 用于删除消息后重新计算最新时间
@@ -56,45 +78,38 @@ export class TimeManager {
     }
 
     const context = this.getContext();
+    const manualSyncTime = this._getRecentManualSyncTime();
 
     // 🔹 情况1：未选择角色，返回现实时间（不缓存，因为是实时的）
-    if (!context || !context.characterId) {
+    if (!context || context.characterId === undefined || context.characterId === null || context.characterId === '') {
+        if (manualSyncTime) {
+            this._cache = manualSyncTime;
+            this._cacheTimestamp = now;
+            return manualSyncTime;
+        }
         return this.getRealTime();
     }
 
     // 🔥 收集所有时间源，最终取最晚的（时间只进不退）
     const candidates = [];
 
-    // 来源1：manual-sync（通过 setTime 设置的）
-    try {
-        const saved = this.storage.get('story-current-time', true);
-        if (saved) {
-            const data = JSON.parse(saved);
-            const isRecent = (Date.now() - data.timestamp) < 30 * 60 * 1000;
-            if (isRecent && data.time && data.date && data.weekday) {
-                candidates.push({
-                    time: data.time,
-                    date: data.date,
-                    weekday: data.weekday,
-                    timestamp: data.timestamp,
-                    source: 'manual-sync'
-                });
-            }
-        }
-    } catch (e) {
-        console.warn('⚠️ 读取手动同步时间失败:', e);
+    // 来源1：manual-sync（通过设置页/手动同步写入）。存在时压住微信消息里的现实时间戳，但仍允许正文剧情时间继续推进。
+    if (manualSyncTime) {
+        candidates.push(manualSyncTime);
     }
 
-    // 来源2：手机微信最后消息时间
-    const timeFromPhone = this.getPhoneLastMessageTime();
-    if (timeFromPhone) {
-        candidates.push(timeFromPhone);
-    }
-
-    // 来源3：正文聊天记录时间
+    // 来源2：正文聊天记录时间
     const timeFromChat = this.extractTimeFromChat(context);
     if (timeFromChat) {
         candidates.push(timeFromChat);
+    }
+
+    // 来源3：手机微信最后消息时间。手动同步后的短时间内跳过，避免现实时间戳覆盖剧情时间。
+    if (!manualSyncTime) {
+        const timeFromPhone = this.getPhoneLastMessageTime();
+        if (timeFromPhone) {
+            candidates.push(timeFromPhone);
+        }
     }
 
     // 🔥 从所有候选中取时间戳最大的（时间只进不退）

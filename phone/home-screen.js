@@ -142,6 +142,23 @@ export class HomeScreen {
         return null;
     }
 
+    _getCustomAppNames() {
+        try {
+            const raw = window.VirtualPhone?.storage?.get?.('phone-app-custom-names');
+            const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            return (parsed && typeof parsed === 'object') ? parsed : {};
+        } catch (e) {
+            console.warn('读取自定义APP名称失败:', e);
+            return {};
+        }
+    }
+
+    _getAppDisplayName(app) {
+        const customNames = this._getCustomAppNames();
+        const customName = String(customNames?.[app?.id] || '').trim();
+        return customName || String(app?.name || '');
+    }
+
     renderAppGlyph(app, className = 'home-widget-icon') {
         if (!app) return '';
         const customIcon = this._getCustomIcon(app.id);
@@ -172,7 +189,7 @@ export class HomeScreen {
                         </div>
                     </div>
                 </div>
-                <div class="home-card-title yzp-home-card-title">${this._escapeHtml(app.name)}</div>
+                <div class="home-card-title yzp-home-card-title">${this._escapeHtml(this._getAppDisplayName(app))}</div>
                 <div class="home-music-controls yzp-home-music-controls" aria-hidden="true">
                     <span>⏮</span>
                     <span>⏸</span>
@@ -213,7 +230,7 @@ export class HomeScreen {
                     ${iconContent}
                 </div>
                 ${this.renderAppBadge(app)}
-                <div class="home-social-name yzp-home-social-name">${this._escapeHtml(app.name)}</div>
+                <div class="home-social-name yzp-home-social-name">${this._escapeHtml(this._getAppDisplayName(app))}</div>
             </div>
         `;
     }
@@ -241,7 +258,7 @@ export class HomeScreen {
                     ${iconContent}
                 </div>
                 ${this.renderAppBadge(app)}
-                <div class="home-mini-name yzp-home-mini-name">${this._escapeHtml(app.name)}</div>
+                <div class="home-mini-name yzp-home-mini-name">${this._escapeHtml(this._getAppDisplayName(app))}</div>
             </div>
         `;
     }
@@ -254,7 +271,7 @@ export class HomeScreen {
             <section class="app-icon yzp-home-app-action home-diary-card yzp-home-diary-card" data-app="${app.id}" style="--app-color:${app.color};">
                 <div class="home-diary-header yzp-home-diary-header">
                     ${this.renderAppGlyph(app, 'home-diary-icon yzp-home-diary-icon')}
-                    <div class="home-card-title yzp-home-card-title">${this._escapeHtml(diaryPreview.title || app.name)}</div>
+                    <div class="home-card-title yzp-home-card-title">${this._escapeHtml(diaryPreview.title || this._getAppDisplayName(app))}</div>
                 </div>
                 <div class="home-diary-copy yzp-home-diary-copy">
                     <div class="home-card-desc yzp-home-card-desc">${this._escapeHtml(diaryPreview.preview)}</div>
@@ -334,7 +351,7 @@ export class HomeScreen {
             <section class="app-icon yzp-home-app-action home-settings-card yzp-home-settings-card" data-app="${app.id}" style="--app-color:${app.color};">
                 <div class="home-settings-left yzp-home-settings-left">
                     ${this.renderAppGlyph(app, 'home-settings-icon yzp-home-settings-icon')}
-                    <div class="home-settings-title yzp-home-settings-title">${this._escapeHtml(app.name)}</div>
+                    <div class="home-settings-title yzp-home-settings-title">${this._escapeHtml(this._getAppDisplayName(app))}</div>
                 </div>
                 <div class="home-settings-chevron yzp-home-settings-chevron">›</div>
                 ${this.renderAppBadge(app)}
@@ -414,7 +431,7 @@ export class HomeScreen {
                     ${iconContent}
                 </div>
                 ${badge}
-                <div class="app-name yzp-home-app-name">${app.name}</div>
+                <div class="app-name yzp-home-app-name">${this._escapeHtml(this._getAppDisplayName(app))}</div>
             </div>
         `;
     }

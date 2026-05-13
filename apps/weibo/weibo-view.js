@@ -32,6 +32,8 @@ export class WeiboView {
         this._hasPendingExternalRecommendRefresh = false;
         this._profileMediaCheckRunning = false;
         this._profileBrokenPathSet = new Set();
+        this._isSearchOpen = false;
+        this._lastSearchQuery = '';
     }
 
     // ========================================
@@ -129,8 +131,9 @@ export class WeiboView {
             ? `background-image: url('${profile.banner}'); background-size: 100% auto; background-position: center top; background-repeat: no-repeat; background-color: #f5f5f5;`
             : 'background: linear-gradient(135deg, #ff8200 0%, #ff6a00 50%, #e85d04 100%); background-color: #f5f5f5;';
 
-        const avatarHtml = profile.avatar
-            ? `<img src="${profile.avatar}" class="weibo-avatar-img">`
+        const displayAvatar = this._getWeiboDisplayAvatar(profile);
+        const avatarHtml = displayAvatar
+            ? `<img src="${this._escapeAttr(displayAvatar)}" class="weibo-avatar-img">`
             : `<div class="weibo-avatar-default">📷</div>`;
 
         const context = this.app.weiboData._getContext();
@@ -159,10 +162,19 @@ export class WeiboView {
                     </div>
                     <div class="weibo-nav-title">微博</div>
                     <div class="weibo-nav-right">
+                        <button class="weibo-nav-btn" id="weibo-search-toggle-btn" title="搜索微博">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </button>
                         <button class="weibo-nav-btn" id="weibo-settings-btn">
                             <i class="fa-solid fa-gear"></i>
                         </button>
                     </div>
+                </div>
+
+                <div class="weibo-search-bar ${this._isSearchOpen ? 'is-open' : ''}">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <input id="weibo-search-input" type="text" value="${this._escapeAttr(this._lastSearchQuery)}" placeholder="搜索相关微博">
+                    <button id="weibo-search-submit" title="搜索">搜索</button>
                 </div>
 
                 <!-- 背景图展示区占位 -->
@@ -216,6 +228,10 @@ export class WeiboView {
 
         this.app.phoneShell.setContent(html, 'weibo-home');
         this.bindHomeEvents();
+        this._bindWeiboSearchEvents();
+        if (this._isSearchOpen) {
+            requestAnimationFrame(() => document.getElementById('weibo-search-input')?.focus());
+        }
         this._scheduleProfileMediaHealthCheck();
         this._hasPendingExternalRecommendRefresh = false;
     }
@@ -341,9 +357,10 @@ export class WeiboView {
         const isCurrentUserPost = post.isUserPost || post.blogger === (profile.nickname || userName);
         
         let avatarHtml = '';
-        if (isCurrentUserPost && profile.avatar) {
-            // 如果是用户的帖子，且上传了自定义头像，则显示真实图片
-            avatarHtml = `<img src="${profile.avatar}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%; border: 1px solid #e0e0e0; box-sizing: border-box;">`;
+        const displayAvatar = this._getWeiboDisplayAvatar(profile);
+        if (isCurrentUserPost && displayAvatar) {
+            // 用户自己的微博优先显示手动上传头像；未上传时继承当前酒馆 Persona 头像。
+            avatarHtml = `<img src="${this._escapeAttr(displayAvatar)}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%; border: 1px solid #e0e0e0; box-sizing: border-box;">`;
         } else {
             // 否则（AI模拟的其他网友）继续显示默认的文字首字母圈圈
             const avatarInitial = this._getAvatarInitial(post.blogger);
@@ -447,10 +464,11 @@ export class WeiboView {
                                         ${isVideoProcessed ? `<div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none;"><div style="width:32px; height:32px; border-radius:50%; background:rgba(0,0,0,0.5); border:1.5px solid #fff; display:flex; align-items:center; justify-content:center; color:#fff; font-size:14px; padding-left:3px;"><i class="fa-solid fa-play"></i></div></div>` : ''}
                                         ${canRegenerateMedia ? `
                                             <div class="weibo-image-prompt-regenerate" data-post-id="${post.id}" data-index="${index}" data-prompt="${this._escapeAttr(promptText)}" data-type="${mediaType}" title="重新生成${mediaType}" style="
-                                                position:absolute; left:4px; bottom:4px; background:rgba(0,0,0,0.55); color:#fff;
-                                                border-radius:999px; padding:3px 7px; font-size:11px; line-height:1; cursor:pointer;
-                                                box-shadow:0 2px 8px rgba(0,0,0,0.18);
-                                            ">重新生成</div>
+                                                position:absolute; left:4px; bottom:4px; background:transparent; color:#fff;
+                                                width:22px; height:22px; border:none; border-radius:4px; padding:0; font-size:10px; font-weight:400; line-height:1; cursor:pointer;
+                                                display:flex; align-items:center; justify-content:center;
+                                                box-shadow:none; text-shadow:0 1px 3px rgba(0,0,0,0.55);
+                                            "><i class="fa-solid fa-rotate"></i></div>
                                         ` : ''}
                                         <div class="weibo-image-prompt-show-back" title="查看${mediaType}描述" style="
                                             position:absolute; right:4px; bottom:4px; background:rgba(0,0,0,0.55); color:#fff;
@@ -597,7 +615,7 @@ export class WeiboView {
                 <div class="weibo-topic-header">
                     <div class="weibo-topic-tag">#${title}#</div>
                     <div class="weibo-topic-stats">
-                        <span>楼层 ${floorData.currentFloor}</span>
+                        <span id="weibo-hot-floor-count">楼层 ${floorData.currentFloor}</span>
                     </div>
                 </div>
 
@@ -610,11 +628,6 @@ export class WeiboView {
                     ${detail?.posts?.length > 0
                 ? `
                             ${detail.posts.map(post => this.renderWeiboPost(post, 'hotSearch')).join('')}
-                            <div class="weibo-hot-load-more-wrap">
-                                <button class="weibo-refresh-btn weibo-hot-load-more-btn" id="weibo-hot-load-more">
-                                    <i class="fa-solid fa-plus"></i> 加载更多
-                                </button>
-                            </div>
                         `
                 : `
                             <div class="weibo-empty">
@@ -664,7 +677,7 @@ export class WeiboView {
             console.error('热搜生成失败:', error);
             this.app.phoneShell.showNotification('微博', error.message || '热搜生成失败', '❌');
             const hint = document.getElementById('weibo-auto-gen-hint');
-            if (hint) hint.textContent = '生成失败，请下拉重新生成';
+            if (hint) hint.textContent = '生成失败，请下拉加载更新';
         } finally {
             // 🔥 无论成功失败，最终必须解锁
             this._generatingHotSearches.delete(title);
@@ -1202,8 +1215,9 @@ export class WeiboView {
         const profile = this.app.weiboData.getProfile();
         const nickname = profile.nickname || userName;
 
-        const avatarHtml = profile.avatar
-            ? `<img src="${profile.avatar}" style="width: 100%; height: 100%; object-fit: cover;">`
+        const displayAvatar = this._getWeiboDisplayAvatar(profile);
+        const avatarHtml = displayAvatar
+            ? `<img src="${this._escapeAttr(displayAvatar)}" style="width: 100%; height: 100%; object-fit: cover;">`
             : '📷';
 
         const html = `
@@ -2330,6 +2344,53 @@ export class WeiboView {
         this._bindPostEvents(this.currentTab === 'myPosts' ? 'myPosts' : 'recommend');
     }
 
+    _bindWeiboSearchEvents() {
+        const toggleBtn = document.getElementById('weibo-search-toggle-btn');
+        const searchBar = document.querySelector('.weibo-search-bar');
+        const input = document.getElementById('weibo-search-input');
+        const submitBtn = document.getElementById('weibo-search-submit');
+
+        toggleBtn?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this._isSearchOpen = !this._isSearchOpen;
+            searchBar?.classList.toggle('is-open', this._isSearchOpen);
+            if (this._isSearchOpen) {
+                requestAnimationFrame(() => input?.focus());
+            }
+        });
+
+        const submitSearch = async () => {
+            const query = String(input?.value || '').trim();
+            if (!query) {
+                input?.focus();
+                return;
+            }
+            this._lastSearchQuery = query;
+            this._isSearchOpen = true;
+            this.switchTab('recommend', { force: true });
+            await this.handleRecommendRefresh({ searchQuery: query });
+        };
+
+        submitBtn?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            submitSearch();
+        });
+
+        input?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                submitSearch();
+            }
+            if (e.key === 'Escape') {
+                this._isSearchOpen = false;
+                searchBar?.classList.remove('is-open');
+                input.blur();
+            }
+        });
+    }
+
     _bindWeiboMediaCardEvents() {
         // 🔥 微博卡片翻转事件
         document.querySelectorAll('.weibo-image-prompt-show-back').forEach(btn => {
@@ -2561,18 +2622,12 @@ export class WeiboView {
             this.render();
         });
 
-        // 加载更多（替代底部追加生成按钮）
-        document.getElementById('weibo-hot-load-more')?.addEventListener('click', async (e) => {
-            const btn = e.currentTarget;
-            if (btn.disabled) return;
-            await this.handleHotSearchAppend(title, btn);
-        });
-
         // 绑定帖子交互事件
         this._bindPostEvents('hotSearch');
+        this._bindWeiboMediaCardEvents();
     }
 
-    async handleHotSearchRegenerate(title) {
+    async handleHotSearchPullAppend(title) {
         if (!title) return;
 
         if (!this._generatingHotSearches) this._generatingHotSearches = new Set();
@@ -2586,22 +2641,22 @@ export class WeiboView {
         this._syncHotDetailRefreshIndicatorByState();
 
         try {
-            this.app.weiboData.clearHotSearchDetail(title);
-            this.app.phoneShell.showNotification('微博', '正在重新生成...', '⏳');
-            await this.app.weiboData.generateHotSearchDetail(title);
+            const existingCount = this.app.weiboData.getHotSearchDetail(title)?.posts?.length || 0;
+            this.app.phoneShell.showNotification('微博', '正在加载更新...', '⏳');
+            const updatedDetail = await this.app.weiboData.appendHotSearchContent(title);
             this._hotDetailRefreshStatus = 'success';
 
             const isWeiboActive = document.querySelector('.phone-view-current .weibo-app');
             if (isWeiboActive && this.currentView === 'hotSearchDetail' && this.currentHotSearchTitle === title) {
-                this.renderHotSearchDetail(title);
+                this._appendHotSearchPostsToCurrentView(title, existingCount, updatedDetail);
             } else {
                 this._syncHotDetailRefreshIndicatorByState();
             }
-            this.app.phoneShell.showNotification('微博', '生成完成', '✅');
+            this.app.phoneShell.showNotification('微博', '更新已加载', '✅');
         } catch (error) {
             this._hotDetailRefreshStatus = 'error';
             this._syncHotDetailRefreshIndicatorByState();
-            this.app.phoneShell.showNotification('微博', error.message || '重新生成失败', '❌');
+            this.app.phoneShell.showNotification('微博', error.message || '加载更新失败', '❌');
         } finally {
             this._generatingHotSearches.delete(title);
             if (this._hotDetailRefreshTimer) {
@@ -2618,32 +2673,35 @@ export class WeiboView {
         }
     }
 
-    async handleHotSearchAppend(title, btn = null) {
-        if (!title) return;
-
-        if (!this._generatingHotSearches) this._generatingHotSearches = new Set();
-        if (this._generatingHotSearches.has(title)) {
-            this.app.phoneShell.showNotification('提示', '该热搜正在生成中，请稍候...', '⏳');
+    _appendHotSearchPostsToCurrentView(title, previousCount = 0, detail = null) {
+        if (!(this.currentView === 'hotSearchDetail' && this.currentHotSearchTitle === title)) {
+            this._syncHotDetailRefreshIndicatorByState();
             return;
         }
 
-        this._generatingHotSearches.add(title);
-        if (btn) btn.disabled = true;
-        try {
-            this.app.phoneShell.showNotification('微博', '正在追加生成...', '⏳');
-            await this.app.weiboData.appendHotSearchContent(title);
-
-            const isWeiboActive = document.querySelector('.phone-view-current .weibo-app');
-            if (isWeiboActive && this.currentView === 'hotSearchDetail' && this.currentHotSearchTitle === title) {
-                this.renderHotSearchDetail(title);
-            }
-            this.app.phoneShell.showNotification('微博', '追加完成', '✅');
-        } catch (error) {
-            this.app.phoneShell.showNotification('微博', error.message || '追加生成失败', '❌');
-        } finally {
-            this._generatingHotSearches.delete(title);
-            if (btn) btn.disabled = false;
+        const listEl = document.getElementById('weibo-detail-posts');
+        if (!listEl) {
+            this._syncHotDetailRefreshIndicatorByState();
+            return;
         }
+
+        const latestDetail = detail || this.app.weiboData.getHotSearchDetail(title);
+        const posts = Array.isArray(latestDetail?.posts) ? latestDetail.posts : [];
+        const newPosts = posts.slice(Math.max(0, previousCount));
+
+        if (newPosts.length > 0) {
+            listEl.insertAdjacentHTML('beforeend', newPosts.map(post => this.renderWeiboPost(post, 'hotSearch')).join(''));
+            this._bindPostEvents('hotSearch');
+            this._bindWeiboMediaCardEvents();
+        }
+
+        const floorEl = document.getElementById('weibo-hot-floor-count');
+        const floorData = this.app.weiboData.getHotFloorData(title);
+        if (floorEl) {
+            floorEl.textContent = `楼层 ${floorData.currentFloor}`;
+        }
+
+        this._syncHotDetailRefreshIndicatorByState();
     }
 
     _bindHotDetailPullRefresh(title) {
@@ -2708,7 +2766,7 @@ export class WeiboView {
             const ready = pullDistance >= triggerThreshold;
             this._setHotDetailPullHint(
                 pullDistance,
-                ready ? '松手重新生成' : '下拉重新生成',
+                ready ? '松手加载更新' : '下拉加载更新',
                 ready
             );
 
@@ -2728,7 +2786,7 @@ export class WeiboView {
             pressType = '';
 
             if (shouldTrigger) {
-                this.handleHotSearchRegenerate(title);
+                this.handleHotSearchPullAppend(title);
             } else {
                 this._syncHotDetailRefreshIndicatorByState();
             }
@@ -2813,14 +2871,14 @@ export class WeiboView {
         if (this._hotDetailRefreshStatus === 'loading') {
             wrap.classList.add('loading');
             wrap.style.height = '40px';
-            inner.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在重新生成...';
+            inner.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在加载更新...';
             return;
         }
 
         if (this._hotDetailRefreshStatus === 'success') {
             wrap.classList.add('success');
             wrap.style.height = '40px';
-            inner.innerHTML = '<i class="fa-solid fa-circle-check"></i> 生成成功';
+            inner.innerHTML = '<i class="fa-solid fa-circle-check"></i> 更新已加载';
             return;
         }
 
@@ -3360,13 +3418,14 @@ export class WeiboView {
     // 🔄 推荐刷新
     // ========================================
 
-    async handleRecommendRefresh() {
+    async handleRecommendRefresh(options = {}) {
         if (this.isLoading) return;
         this.isLoading = true;
         this._recommendRefreshStatus = 'loading';
         this._syncRecommendRefreshIndicatorByState();
 
         try {
+            const searchQuery = String(options.searchQuery || '').trim();
             const oldRecommendImages = this._collectManagedWeiboImages(this.app.weiboData.getRecommendPosts());
 
             // 刷新前先清内存缓存，避免微博与热搜对象长期堆积占用
@@ -3374,7 +3433,7 @@ export class WeiboView {
 
             await this.app.weiboData.generateRecommend((msg) => {
                 // 静默处理进度
-            });
+            }, { searchQuery });
             if (oldRecommendImages.length > 0) {
                 await this._deleteServerImages(oldRecommendImages);
             }
@@ -3382,7 +3441,7 @@ export class WeiboView {
 
             // 🔥 核心修复：只有当用户还在看微博推荐页时，才执行刷新。防止暴力切屏。
             const isWeiboActive = document.querySelector('.phone-view-current .weibo-app');
-            if (isWeiboActive && this.currentView === 'home' && this.currentTab === 'recommend') {
+            if (isWeiboActive && this.currentView === 'home') {
                 // 使用局部刷新代替全局渲染，解决下拉刷新完闪屏的问题
                 this.switchTab('recommend', { force: true }); 
             } else {
@@ -3619,6 +3678,26 @@ export class WeiboView {
         if (num >= 10000) return (num / 10000).toFixed(1) + '万';
         if (num >= 1000) return (num / 1000).toFixed(1) + 'k';
         return num.toString();
+    }
+
+    _getSillyTavernPersonaAvatar() {
+        try {
+            const selectedAvatarEl = document.querySelector('#user_avatar_block .avatar-container.selected img');
+            if (selectedAvatarEl?.src) return selectedAvatarEl.src;
+
+            const topBarAvatar = document.querySelector('#rm_button_panel_persona img');
+            if (topBarAvatar?.src) return topBarAvatar.src;
+        } catch (e) {
+            console.warn('[Weibo] 获取默认 Persona 头像失败:', e);
+        }
+        return '';
+    }
+
+    _getWeiboDisplayAvatar(profile = null) {
+        const safeProfile = profile || this.app.weiboData.getProfile();
+        const customAvatar = String(safeProfile?.avatar || '').trim();
+        if (customAvatar) return customAvatar;
+        return this._getSillyTavernPersonaAvatar();
     }
 
     _isDirectWeiboMediaUrl(value) {

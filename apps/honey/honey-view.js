@@ -1093,7 +1093,7 @@ export class HoneyView {
         const avatarSet = isUserLive
             ? {
                 ...avatarSetBase,
-                hostAvatarUrl: String(userLiveProfile?.avatarUrl || '').trim() || avatarSetBase.hostAvatarUrl
+                hostAvatarUrl: this._getHoneyDisplayUserAvatar(userLiveProfile) || avatarSetBase.hostAvatarUrl
             }
             : avatarSetBase;
         const hostAvatarStyle = avatarSet.hostAvatarUrl
@@ -2348,8 +2348,9 @@ export class HoneyView {
         };
         const friendRequests = this.app?.honeyData?.getHoneyFriendRequests?.() || [];
         const friends = this.app?.honeyData?.getHoneyFriends?.() || [];
-        const avatarStyle = profile.avatarUrl ? ` style="${this._buildAvatarInlineStyle(profile.avatarUrl)}"` : '';
-        const avatarPhotoClass = profile.avatarUrl ? ' is-photo' : '';
+        const displayAvatar = this._getHoneyDisplayUserAvatar(profile);
+        const avatarStyle = displayAvatar ? ` style="${this._buildAvatarInlineStyle(displayAvatar)}"` : '';
+        const avatarPhotoClass = displayAvatar ? ' is-photo' : '';
 
         const requestHtml = friendRequests.length > 0
             ? friendRequests.map((item) => `
@@ -2407,7 +2408,7 @@ export class HoneyView {
                     <div class="honey-follow-list honey-mine-list">
                         <div class="honey-settings-card honey-mine-account-card">
                             <div class="honey-mine-account-head">
-                                <button class="honey-mine-avatar${avatarPhotoClass}" id="honey-mine-avatar-btn"${avatarStyle}>${profile.avatarUrl ? '' : this._escapeHtml(String(profile.nickname || '我').slice(0, 1))}</button>
+                                <button class="honey-mine-avatar${avatarPhotoClass}" id="honey-mine-avatar-btn"${avatarStyle}>${displayAvatar ? '' : this._escapeHtml(String(profile.nickname || '我').slice(0, 1))}</button>
                                 <div class="honey-mine-account-meta">
                                     <div class="honey-settings-label honey-mine-inline-label">直播昵称</div>
                                     <input type="text" id="honey-mine-live-nickname" class="honey-settings-input honey-mine-live-nickname" maxlength="20" value="${this._escapeHtml(profile.nickname || '')}" placeholder="输入直播昵称">
@@ -6416,6 +6417,26 @@ export class HoneyView {
         if (!url) return '';
         const safe = encodeURI(String(url)).replace(/'/g, '%27').replace(/\(/g, '%28').replace(/\)/g, '%29');
         return `background-image:url('${safe}');`;
+    }
+
+    _getSillyTavernPersonaAvatar() {
+        try {
+            const selectedAvatarEl = document.querySelector('#user_avatar_block .avatar-container.selected img');
+            if (selectedAvatarEl?.src) return selectedAvatarEl.src;
+
+            const topBarAvatar = document.querySelector('#rm_button_panel_persona img');
+            if (topBarAvatar?.src) return topBarAvatar.src;
+        } catch (e) {
+            console.warn('[Honey] 获取默认 Persona 头像失败:', e);
+        }
+        return '';
+    }
+
+    _getHoneyDisplayUserAvatar(profile = null) {
+        const safeProfile = profile || this.app?.honeyData?.getHoneyUserProfile?.() || {};
+        const customAvatar = String(safeProfile?.avatarUrl || '').trim();
+        if (customAvatar) return customAvatar;
+        return this._getSillyTavernPersonaAvatar();
     }
 
     _readFileAsDataUrl(file) {

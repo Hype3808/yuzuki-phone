@@ -2365,15 +2365,17 @@ export class WechatApp {
 .moment-image-restore {
     position: absolute;
     z-index: 4;
+    appearance: none;
+    -webkit-appearance: none;
     border: none;
     cursor: pointer;
     font-family: inherit;
-    background: rgba(255,255,255,0.9);
-    color: #2f2f2f;
-    border: 1px solid rgba(0,0,0,0.08);
-    box-shadow: 0 1px 4px rgba(0,0,0,0.12);
-    backdrop-filter: blur(3px);
-    -webkit-backdrop-filter: blur(3px);
+    background: transparent;
+    color: #fff;
+    box-shadow: none;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.55);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 
 .moment-image-show-desc {
@@ -2398,7 +2400,9 @@ export class WechatApp {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 12px;
+    font-size: 10px;
+    font-weight: 400;
+    line-height: 1;
 }
 
 .moment-image-desc-panel {

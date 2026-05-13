@@ -3195,13 +3195,14 @@ renderChatRoom(chat) {
             { key: 'image', icon: 'fa-solid fa-image', label: '图片', template: '[图片]（描述）' },
             { key: 'video', icon: 'fa-solid fa-video', label: '视频', template: '[视频]（描述）' },
             { key: 'sticker', icon: 'fa-regular fa-face-smile', label: '表情包', template: '[表情包]（描述）' },
+            { key: 'voice-strip', icon: 'fa-solid fa-microphone-lines', label: '语音条', template: '[语音条]（描述）' },
             { key: 'location', icon: 'fa-solid fa-location-dot', label: '定位', template: '[定位]（描述）' },
             { key: 'time', icon: 'fa-regular fa-clock', label: '时间推进', template: '[时间推进：年月日HH:MM]' }
         ];
 
         return `
         <div class="quick-reply-panel more-panel" style="padding:10px 10px 12px;">
-            <div style="display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:8px;">
+            <div style="display:grid; grid-template-columns:repeat(6, minmax(0, 1fr)); gap:6px;">
                 ${items.map(item => `
                     <button class="quick-reply-item" data-template="${this._escapeHtml(item.template)}" title="${item.template}" style="
                         min-width:0;

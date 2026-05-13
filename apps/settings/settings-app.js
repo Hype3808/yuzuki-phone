@@ -75,6 +75,37 @@ export class SettingsApp {
         }
     }
 
+    _getDefaultAppsForCustomization() {
+        return [
+            { id: 'wechat', name: '微信', icon: '💬', color: '#07c160' },
+            { id: 'weibo', name: '微博', icon: '👁️‍🗨️', color: '#ff8200' },
+            { id: 'honey', name: '蜜语', icon: '💕', color: '#ff6b9d' },
+            { id: 'games', name: '游戏', icon: '🎮', color: '#722ed1' },
+            { id: 'mofo', name: '魔坊', icon: '🪄', color: '#1677ff' },
+            { id: 'phone', name: '通话', icon: '📞', color: '#52c41a' },
+            { id: 'diary', name: '日记', icon: '📔', color: '#faad14' },
+            { id: 'music', name: '音乐', icon: '🎵', color: '#eb2f96' },
+            { id: 'album', name: '相册', icon: '🖼️', color: '#4096ff' },
+            { id: 'settings', name: '设置', icon: '⚙️', color: '#8c8c8c' }
+        ];
+    }
+
+    _getCustomAppNames() {
+        try {
+            const raw = this.storage.get('phone-app-custom-names');
+            const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            return (parsed && typeof parsed === 'object') ? parsed : {};
+        } catch (e) {
+            return {};
+        }
+    }
+
+    _getAppDisplayName(app, customNames = null) {
+        const names = customNames || this._getCustomAppNames();
+        const customName = String(names?.[app?.id] || '').trim();
+        return customName || String(app?.name || '');
+    }
+
     _isLobbyMode(context = null) {
         const ctx = context || this._safeGetContext();
         const charName = String(ctx?.name2 || '').trim();
@@ -796,6 +827,73 @@ export class SettingsApp {
                         grid-template-columns: repeat(auto-fit, minmax(52px, 1fr)) !important;
                         gap: 10px !important;
                     }
+                    #tab-general .app-name-custom-list {
+                        display: flex;
+                        flex-direction: column;
+                        gap: 8px;
+                        margin-top: 10px;
+                        max-height: 210px;
+                        overflow-y: auto;
+                        scrollbar-width: none;
+                        -ms-overflow-style: none;
+                        touch-action: pan-y;
+                        overscroll-behavior: contain;
+                        -webkit-overflow-scrolling: touch;
+                    }
+                    #tab-general .app-name-custom-list::-webkit-scrollbar {
+                        display: none;
+                    }
+                    #tab-general .app-name-custom-row {
+                        display: grid;
+                        grid-template-columns: 76px 1fr;
+                        align-items: center;
+                        gap: 8px;
+                    }
+                    #tab-general .app-name-custom-label {
+                        min-width: 0;
+                        color: #333;
+                        font-size: 12px;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                        white-space: nowrap;
+                    }
+                    #tab-general .app-name-custom-input {
+                        width: 100%;
+                        height: 30px;
+                        box-sizing: border-box;
+                        border: 1px solid rgba(18, 24, 38, 0.12);
+                        border-radius: 9px;
+                        padding: 0 8px;
+                        background: #f8fafc;
+                        color: #111827;
+                        font-size: 12px;
+                        outline: none;
+                    }
+                    #tab-general .app-name-custom-fold {
+                        display: block;
+                    }
+                    #tab-general .app-name-custom-fold > summary {
+                        display: flex;
+                        align-items: center;
+                        justify-content: space-between;
+                        gap: 10px;
+                        cursor: pointer;
+                        list-style: none;
+                    }
+                    #tab-general .app-name-custom-fold > summary::-webkit-details-marker {
+                        display: none;
+                    }
+                    #tab-general .app-name-custom-fold > summary > span:first-child {
+                        display: flex;
+                        flex-direction: column;
+                        min-width: 0;
+                    }
+                    #tab-general .app-name-custom-fold[open] > summary {
+                        margin-bottom: 8px;
+                    }
+                    #tab-general .app-name-custom-fold[open] > summary .settings-fold-arrow {
+                        transform: rotate(90deg);
+                    }
                     @media (max-width: 380px) {
                         #tab-general > details[data-settings-fold-key] > summary {
                             min-height: 44px !important;
@@ -1222,6 +1320,27 @@ export class SettingsApp {
                                 </div>
                             </div>
 
+                            <details class="setting-item app-name-custom-fold">
+                                <summary>
+                                    <span>
+                                        <span class="setting-label">自定义APP名称</span>
+                                        <span class="setting-desc">仅修改桌面和设置里的显示名称，不影响功能和数据</span>
+                                    </span>
+                                    ${SETTINGS_FOLD_ARROW_HTML}
+                                </summary>
+                                <div class="app-name-custom-list">
+                                    ${this.renderAppNameCustomization()}
+                                </div>
+                                <div style="margin-top: 10px; display: flex; gap: 8px;">
+                                    <button id="save-app-custom-names" class="setting-btn" style="padding: 6px 12px; font-size: 12px; background: #07c160; border: none; color: #fff; border-radius: 6px;">
+                                        <i class="fa-solid fa-check"></i> 保存名称
+                                    </button>
+                                    <button id="reset-app-custom-names" class="setting-btn" style="padding: 6px 12px; font-size: 12px; background: rgba(255,255,255,0.88); border: 1px solid rgba(0,0,0,0.12); color: #666; border-radius: 6px;">
+                                        <i class="fa-solid fa-rotate-left"></i> 恢复默认
+                                    </button>
+                                </div>
+                            </details>
+
                             <!-- 🔥 快捷栏设置 -->
                             <div class="setting-item">
                                 <div class="setting-label">底部快捷栏</div>
@@ -1264,7 +1383,7 @@ export class SettingsApp {
 
                             <div class="setting-item">
                                 <div>
-                                    <div class="setting-label">当前手机时间</div>
+                                    <div class="setting-label">当前剧情时间</div>
                                     <div class="setting-desc" id="current-phone-time">加载中...</div>
                                 </div>
                             </div>
@@ -2092,21 +2211,12 @@ export class SettingsApp {
     // 渲染APP图标上传
     renderAppIconUpload() {
         // 从APPS配置中获取
-        const APPS = [
-            { id: 'wechat', name: '微信', icon: '💬', color: '#07c160' },
-            { id: 'weibo', name: '微博', icon: '👁️‍🗨️', color: '#ff8200' },
-            { id: 'honey', name: '蜜语', icon: '💕', color: '#ff6b9d' },
-            { id: 'games', name: '游戏', icon: '🎮', color: '#722ed1' },
-            { id: 'mofo', name: '魔坊', icon: '🪄', color: '#1677ff' },
-            { id: 'phone', name: '通话', icon: '📞', color: '#52c41a' },
-            { id: 'diary', name: '日记', icon: '📔', color: '#faad14' },
-            { id: 'music', name: '音乐', icon: '🎵', color: '#eb2f96' },
-            { id: 'album', name: '相册', icon: '🖼️', color: '#4096ff' },
-            { id: 'settings', name: '设置', icon: '⚙️', color: '#8c8c8c' }
-        ];
+        const APPS = this._getDefaultAppsForCustomization();
+        const customNames = this._getCustomAppNames();
         
         return APPS.map(app => {
             const customIcon = this.imageManager.getAppIcon(app.id);
+            const displayName = this._getAppDisplayName(app, customNames);
             return `
                 <div class="upload-app-icon-item" data-app="${app.id}" style="text-align: center;">
                     <label for="upload-icon-${app.id}" style="cursor: pointer; display: block;">
@@ -2116,7 +2226,7 @@ export class SettingsApp {
                                     font-size: 20px;">
                             ${customIcon ? '' : app.icon}
                         </div>
-                        <div style="font-size: 9px; margin-top: 3px; color: #666;">${app.name}</div>
+                        <div style="font-size: 9px; margin-top: 3px; color: #666;">${this._escapeHtml(displayName)}</div>
                     </label>
                     <input type="file" id="upload-icon-${app.id}" accept="image/png, image/jpeg, image/gif, image/webp, image/*" style="display: none;" class="app-icon-upload" data-app-id="${app.id}">
                 </div>
@@ -2124,20 +2234,21 @@ export class SettingsApp {
         }).join('');
     }
 
+    renderAppNameCustomization() {
+        const apps = this._getDefaultAppsForCustomization();
+        const customNames = this._getCustomAppNames();
+        return apps.map(app => `
+            <label class="app-name-custom-row">
+                <span class="app-name-custom-label">${this._escapeHtml(app.name)}</span>
+                <input class="app-name-custom-input" data-app-id="${this._escapeHtml(app.id)}" maxlength="8" value="${this._escapeHtml(String(customNames[app.id] || ''))}" placeholder="${this._escapeHtml(app.name)}">
+            </label>
+        `).join('');
+    }
+
     // 🔥 渲染快捷栏配置
     renderDockConfig() {
-        const APPS = [
-            { id: 'wechat', name: '微信', icon: '💬', color: '#07c160' },
-            { id: 'weibo', name: '微博', icon: '👁️‍🗨️', color: '#ff8200' },
-            { id: 'honey', name: '蜜语', icon: '💕', color: '#ff6b9d' },
-            { id: 'games', name: '游戏', icon: '🎮', color: '#722ed1' },
-            { id: 'mofo', name: '魔坊', icon: '🪄', color: '#1677ff' },
-            { id: 'phone', name: '通话', icon: '📞', color: '#52c41a' },
-            { id: 'diary', name: '日记', icon: '📔', color: '#faad14' },
-            { id: 'music', name: '音乐', icon: '🎵', color: '#eb2f96' },
-            { id: 'album', name: '相册', icon: '🖼️', color: '#4096ff' },
-            { id: 'settings', name: '设置', icon: '⚙️', color: '#8c8c8c' }
-        ];
+        const APPS = this._getDefaultAppsForCustomization();
+        const customNames = this._getCustomAppNames();
 
         // 获取当前配置
         let dockAppIds = ['wechat', 'weibo', 'phone', 'settings'];
@@ -2151,6 +2262,7 @@ export class SettingsApp {
         return APPS.map((app, index) => {
             const isSelected = dockAppIds.includes(app.id);
             const customIcon = this.imageManager.getAppIcon(app.id);
+            const displayName = this._getAppDisplayName(app, customNames);
 
             return `
                 <div class="dock-config-item" data-app="${app.id}" style="text-align: center; cursor: pointer;">
@@ -2163,7 +2275,7 @@ export class SettingsApp {
                         ${customIcon ? '' : app.icon}
                         ${isSelected ? '<span style="position: absolute; bottom: -2px; right: -2px; background: #07c160; color: #fff; width: 14px; height: 14px; border-radius: 50%; font-size: 9px; display: flex; align-items: center; justify-content: center;">✓</span>' : ''}
                     </div>
-                    <div style="font-size: 9px; margin-top: 3px; color: #666;">${app.name}</div>
+                    <div style="font-size: 9px; margin-top: 3px; color: #666;">${this._escapeHtml(displayName)}</div>
                 </div>
             `;
         }).join('');
@@ -2871,6 +2983,30 @@ export class SettingsApp {
                     btn.innerHTML = oldText || '恢复默认图标并清理上传';
                 }
             }
+        });
+
+        document.getElementById('save-app-custom-names')?.addEventListener('click', async () => {
+            const defaults = new Map(this._getDefaultAppsForCustomization().map(app => [app.id, app.name]));
+            const names = {};
+            document.querySelectorAll('.app-name-custom-input').forEach(input => {
+                const appId = String(input.dataset.appId || '').trim();
+                const value = String(input.value || '').trim().slice(0, 8);
+                if (!appId || !value) return;
+                if (value === defaults.get(appId)) return;
+                names[appId] = value;
+            });
+
+            await this.storage.set('phone-app-custom-names', JSON.stringify(names));
+            window.dispatchEvent(new CustomEvent('phone:updateAppIcon'));
+            this.phoneShell?.showNotification?.('已保存', 'APP显示名称已更新', '✅');
+            this.render();
+        });
+
+        document.getElementById('reset-app-custom-names')?.addEventListener('click', async () => {
+            await this.storage.set('phone-app-custom-names', JSON.stringify({}));
+            window.dispatchEvent(new CustomEvent('phone:updateAppIcon'));
+            this.phoneShell?.showNotification?.('已恢复', 'APP显示名称已恢复默认', '✅');
+            this.render();
         });
         
         // 在线模式切换（会话模式用会话键；大厅模式用全局键）
@@ -4729,7 +4865,7 @@ export class SettingsApp {
                 const timeManager = window.VirtualPhone?.timeManager;
                 if (timeManager && timeManager.setTime) {
                     // 🔥 传递星期
-                    timeManager.setTime(extractedTime.time, extractedTime.date, extractedTime.weekday);
+                    timeManager.setTime(extractedTime.time, extractedTime.date, extractedTime.weekday, { force: true });
                     this.updatePhoneTimeDisplay();
 
                     // 🔥 同步更新状态栏时间

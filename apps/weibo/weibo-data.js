@@ -674,6 +674,10 @@ export class WeiboData {
             promptManager?.ensureLoaded();
             let recommendPrompt = promptManager?.getPromptForFeature('weibo', 'recommend') || '';
             let recommendPromptWithFollowers = this._injectCurrentFollowersToPrompt(recommendPrompt);
+            const searchQuery = String(options.searchQuery || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+            if (searchQuery) {
+                recommendPromptWithFollowers += `\n\n【微博搜索约束】用户正在微博上搜索「${searchQuery}」相关内容。请保持原有微博推荐生成格式不变，但本次生成的微博热搜和推荐微博必须重点围绕该搜索关键词展开，优先生成与「${searchQuery}」直接相关的讨论、观点、评论和配图描述。`;
+            }
 
             const rawResponse = await this._callAI(recommendPromptWithFollowers, contextMessages);
             const parsed = this.parseWeiboContent(rawResponse);

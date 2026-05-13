@@ -230,7 +230,7 @@ export class PhoneShell {
             const scrollableAreas =[
                 '.home-dashboard', '.home-app-cluster-scroll',
                 '.chat-messages', '#voice-chat-messages', '#video-chat-messages',
-                '.wechat-content', '.app-body', '.settings-app', '.moments-list',
+                '.wechat-content', '.app-body', '.settings-app', '.app-name-custom-list', '.moments-list',
                 '#tab-memory', '.settings-app #tab-memory',
                 '#tab-lobby', '.settings-app #tab-lobby', '.phone-lobby-groups-list', '.phone-lobby-characters-list',
                 '.contact-list', '.chat-list', '.diary-toc-list', '.diary-page-body',
