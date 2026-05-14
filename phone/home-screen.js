@@ -191,9 +191,9 @@ export class HomeScreen {
                 </div>
                 <div class="home-card-title yzp-home-card-title">${this._escapeHtml(this._getAppDisplayName(app))}</div>
                 <div class="home-music-controls yzp-home-music-controls" aria-hidden="true">
-                    <span>&#x23EE;&#xFE0E;</span>
-                    <span>&#x23F8;&#xFE0E;</span>
-                    <span>&#x23ED;&#xFE0E;</span>
+                    <span class="home-music-control home-music-control-prev"></span>
+                    <span class="home-music-control home-music-control-pause"></span>
+                    <span class="home-music-control home-music-control-next"></span>
                 </div>
                 ${this.renderAppBadge(app)}
             </section>

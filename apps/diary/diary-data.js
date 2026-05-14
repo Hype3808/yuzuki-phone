@@ -326,12 +326,12 @@ export class DiaryData {
     extractPhotoPrompts(content = '') {
         const source = String(content || '');
         const photos = [];
-        const regex = /\[(个人图片|图片)\]\s*(?:（([^）]*?)）(?:\s*（([^）]*?)）)?|\(([^)]*?)\)(?:\s*\(([^)]*?)\))?)/g;
+        const regex = this._getPhotoPromptTagRegex();
         let match;
         while ((match = regex.exec(source)) !== null) {
             const type = String(match[1] || '').trim();
-            const first = String(match[2] ?? match[4] ?? '').replace(/\s+/g, ' ').trim();
-            const second = String(match[3] ?? match[5] ?? '').replace(/\s+/g, ' ').trim();
+            const first = String(match[2] || '').replace(/\s+/g, ' ').trim();
+            const second = String(match[3] || '').replace(/\s+/g, ' ').trim();
             const reason = second ? first : '';
             const prompt = second || first;
             if (!prompt) continue;
@@ -349,9 +349,13 @@ export class DiaryData {
         return { photos };
     }
 
+    _getPhotoPromptTagRegex() {
+        return /\[(个人图片|图片)\]\s*[（(]([\s\S]*?)[）)](?:\s*[（(]([\s\S]*?)[）)])?/g;
+    }
+
     stripPhotoPromptTags(content = '') {
         return String(content || '')
-            .replace(/\[(?:个人图片|图片)\]\s*(?:（[^）]*）(?:\s*（[^）]*）)?|\([^)]*\)(?:\s*\([^)]*\))?)/g, '')
+            .replace(this._getPhotoPromptTagRegex(), '')
             .replace(/\n{3,}/g, '\n\n')
             .trim();
     }

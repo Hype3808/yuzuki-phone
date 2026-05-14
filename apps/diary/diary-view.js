@@ -25,6 +25,7 @@ export class DiaryView {
         this.isBackNav = false; 
         this.tocManageMode = false;
         this.tocSelectedIds = new Set();
+        this._diaryPhotoActiveIndexByEntry = new Map();
     }
 
     loadCSS() {
@@ -512,6 +513,13 @@ export class DiaryView {
             const photoId = String(card.getAttribute('data-photo-id') || '').trim();
             if (!photoId) return;
             const runAction = () => {
+                const cardIndex = Number.parseInt(card.getAttribute('data-photo-index') || '0', 10) || 0;
+                const activeIndex = Number.parseInt(card.closest('.diary-photo-memory')?.getAttribute('data-active-index') || '0', 10) || 0;
+                if (cardIndex !== activeIndex) {
+                    this._setDiaryPhotoActiveIndex(cardIndex);
+                    this._refreshDiaryPhotoMemory();
+                    return;
+                }
                 if (card.classList.contains('is-flipped')) {
                     card.classList.remove('is-flipped');
                     return;
@@ -547,16 +555,31 @@ export class DiaryView {
         });
     }
 
+    _setDiaryPhotoActiveIndex(index = 0) {
+        const entryId = String(this.currentEntryId || '').trim();
+        if (!entryId) return;
+        this._diaryPhotoActiveIndexByEntry.set(entryId, Math.max(0, Number.parseInt(index, 10) || 0));
+    }
+
+    _getDiaryPhotoActiveIndex(photoCount = 0) {
+        const entryId = String(this.currentEntryId || '').trim();
+        const stored = entryId ? this._diaryPhotoActiveIndexByEntry.get(entryId) : 0;
+        const index = Math.max(0, Number.parseInt(stored, 10) || 0);
+        return Math.min(index, Math.max(0, photoCount - 1));
+    }
+
     _renderDiaryPhotoMemory(entry) {
         const photos = Array.isArray(entry?.photos) ? entry.photos.slice(0, 3) : [];
         if (photos.length === 0) return '';
+        const activeIndex = this._getDiaryPhotoActiveIndex(photos.length);
         const cards = photos.map((photo, index) => {
             const status = String(photo?.status || 'idle');
             const imageUrl = String(photo?.imageUrl || '').trim();
             const prompt = this._escapeHtml(String(photo?.prompt || ''));
             const reason = this._escapeHtml(String(photo?.reason || ''));
             const rawType = String(photo?.type || '图片');
-            const rotate = index % 2 === 0 ? '-2deg' : '2deg';
+            const stackOffset = (index - activeIndex + photos.length) % photos.length;
+            const rotate = stackOffset === 0 ? '-1.5deg' : (stackOffset === 1 ? '4deg' : '-5deg');
             const displayUrl = imageUrl && status === 'done'
                 ? imageUrl
                 : this._getDiaryFallbackPhotoUrl(entry, photo, index);
@@ -573,7 +596,7 @@ export class DiaryView {
             const backText = reason || '这张照片还没有留下说明。';
             const frontCaption = rawType === '个人图片' ? '「 私人影像 」' : '「 沉溺于那片海 」';
             return `
-                <div class="diary-photo-card diary-photo-card-${index + 1}" role="button" tabindex="0" data-photo-id="${this._escapeAttr(photo.id)}" style="--diary-photo-rotate:${rotate};">
+                <div class="diary-photo-card diary-photo-card-${index + 1} diary-photo-stack-${stackOffset}" role="button" tabindex="0" data-photo-id="${this._escapeAttr(photo.id)}" data-photo-index="${index}" style="--diary-photo-rotate:${rotate}; --diary-photo-stack-offset:${stackOffset};">
                     <div class="diary-photo-tape" aria-hidden="true"></div>
                     <div class="diary-photo-face diary-photo-front">
                         ${imageHtml}
@@ -581,14 +604,13 @@ export class DiaryView {
                         <div class="diary-photo-actions">${actionHtml}</div>
                     </div>
                     <div class="diary-photo-face diary-photo-back">
-                        <div class="diary-photo-back-title">${rawType === '个人图片' ? '私人影像' : '照片说明'}</div>
                         <div class="diary-photo-back-text">${backText}</div>
                     </div>
                     <div class="diary-photo-caption">${frontCaption}</div>
                 </div>
             `;
         }).join('');
-        return `<div class="diary-photo-memory" id="diary-photo-memory">${cards}</div>`;
+        return `<div class="diary-photo-memory" id="diary-photo-memory" data-photo-count="${photos.length}" data-active-index="${activeIndex}">${cards}</div>`;
     }
 
     async _generateDiaryPhoto(photoId, options = {}) {

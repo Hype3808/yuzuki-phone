@@ -1442,19 +1442,73 @@
 
 #phone-panel-content .phone-screen .home-music-controls {
     display: flex;
+    align-items: center;
     justify-content: center;
-    gap: clamp(5px, 1.8vw, 8px);
+    gap: clamp(3px, 0.9vw, 5px);
     color: #000000 !important;
-    font-family: Arial, "Microsoft YaHei", sans-serif;
-    font-size: clamp(10px, 3vw, 12px);
-    font-variant-emoji: text;
     line-height: 1;
     margin-top: -1px;
 }
 
-#phone-panel-content .phone-screen .home-music-controls span {
+#phone-panel-content .phone-screen .home-music-controls .home-music-control {
+    position: relative;
+    width: clamp(6px, 1.8vw, 8px);
+    height: clamp(7px, 2vw, 9px);
+    flex: 0 0 auto;
     color: inherit !important;
     background: transparent !important;
+    display: inline-block;
+}
+
+#phone-panel-content .phone-screen .home-music-control-prev::before,
+#phone-panel-content .phone-screen .home-music-control-next::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: 0;
+    height: 0;
+    border-top: clamp(2.5px, 0.8vw, 3.5px) solid transparent;
+    border-bottom: clamp(2.5px, 0.8vw, 3.5px) solid transparent;
+    transform: translateY(-50%);
+}
+
+#phone-panel-content .phone-screen .home-music-control-prev::before {
+    left: 1px;
+    border-right: clamp(3.5px, 1.05vw, 5px) solid currentColor;
+}
+
+#phone-panel-content .phone-screen .home-music-control-next::before {
+    right: 1px;
+    border-left: clamp(3.5px, 1.05vw, 5px) solid currentColor;
+}
+
+#phone-panel-content .phone-screen .home-music-control-prev::after,
+#phone-panel-content .phone-screen .home-music-control-next::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: 0.8px;
+    height: clamp(6px, 1.7vw, 8px);
+    background: currentColor;
+    border-radius: 1px;
+    transform: translateY(-50%);
+}
+
+#phone-panel-content .phone-screen .home-music-control-prev::after {
+    left: 0;
+}
+
+#phone-panel-content .phone-screen .home-music-control-next::after {
+    right: 0;
+}
+
+#phone-panel-content .phone-screen .home-music-controls .home-music-control.home-music-control-pause {
+    width: clamp(7px, 2vw, 9px);
+    height: clamp(6px, 1.7vw, 8px);
+    background:
+        linear-gradient(currentColor, currentColor) left 18% center / 22% 100% no-repeat,
+        linear-gradient(currentColor, currentColor) right 18% center / 22% 100% no-repeat !important;
+    border-radius: 1px;
 }
 
 #phone-panel-content .phone-screen .home-quick-card {
