@@ -32,6 +32,7 @@ export class MusicData {
         this._userPaused = false;  // 记录用户是否手动按了暂停
         this._prefetching = new Set(); // 预取中的歌曲，避免重复请求
         this._lyricCache = new Map(); // 歌词缓存，避免同一首歌重复请求
+        this.onPlaybackStopped = null;
 
         // 音频事件绑定
         this.audioPlayer.addEventListener('ended', () => this._onTrackEnded());
@@ -153,6 +154,37 @@ export class MusicData {
         }
     }
 
+    async playSongByName(name, artist, meta = {}) {
+        const safeName = String(name || '').trim();
+        const safeArtist = String(artist || '').trim();
+        if (!safeName) return false;
+
+        this.activeListType = 'playlist';
+        const playlist = this.getPlaylist();
+        let index = playlist.findIndex(song =>
+            String(song?.name || '').trim() === safeName
+            && (safeArtist
+                ? String(song?.artist || '').trim() === safeArtist
+                : true)
+        );
+
+        if (index < 0) {
+            playlist.push({
+                name: safeName,
+                artist: safeArtist || '',
+                id: meta.id || null,
+                url: meta.url || null,
+                pic: meta.pic || null,
+                lrc: Array.isArray(meta.lrc) ? meta.lrc : null
+            });
+            index = playlist.length - 1;
+            this.savePlaylist();
+        }
+
+        await this.play(index, 'playlist');
+        return this.getPlaylist()[index] || null;
+    }
+
     removeSong(index) {
         const playlist = this.getPlaylist();
         if (index < 0 || index >= playlist.length) return;
@@ -181,6 +213,7 @@ export class MusicData {
     }
 
     clearPlaylist() {
+        const wasPlaying = this.activeListType === 'playlist' && (this.isPlaying || !this.audioPlayer.paused);
         this._playlist = [];
         // 仅当当前激活列表就是歌单时，才重置播放状态
         if (this.activeListType === 'playlist') {
@@ -192,9 +225,11 @@ export class MusicData {
         }
         this.savePlaylist();
         this._notifyStateChange();
+        if (wasPlaying) this._notifyPlaybackStopped('clear_playlist');
     }
 
     clearFavorites() {
+        const wasPlaying = this.activeListType === 'favorites' && (this.isPlaying || !this.audioPlayer.paused);
         this._favorites = [];
         // 仅当当前激活列表就是收藏时，才重置播放状态
         if (this.activeListType === 'favorites') {
@@ -206,6 +241,7 @@ export class MusicData {
         }
         this.saveFavorites();
         this._notifyStateChange();
+        if (wasPlaying) this._notifyPlaybackStopped('clear_favorites');
     }
 
     async searchSongs(query) {
@@ -271,6 +307,8 @@ export class MusicData {
 
                 if (result && result.url) {
                     song.url = result.url;
+                    song.name = result.name || song.name;
+                    song.artist = result.artist || song.artist || artist || '未知';
                     song.pic = result.pic;
                     song.id = result.id || song.id || null;
                     song.urlSource = result.urlSource || song.urlSource || null;
@@ -399,10 +437,12 @@ export class MusicData {
     }
 
     pause() {
+        const wasPlaying = this.isPlaying || !this.audioPlayer.paused;
         this.audioPlayer.pause();
         this.isPlaying = false;
         this._userPaused = true;
         this._notifyStateChange();
+        if (wasPlaying) this._notifyPlaybackStopped('pause');
     }
 
     resume() {
@@ -557,6 +597,7 @@ export class MusicData {
         } else {
             this.isPlaying = false;
             this._notifyStateChange();
+            this._notifyPlaybackStopped('ended');
         }
     }
 
@@ -654,7 +695,15 @@ export class MusicData {
                         continue; // 直接进入下一轮循环，尝试下一个 candidate
                     }
 
-                    return { url, pic, id: songId, urlSource, lrc: null };
+                    return {
+                        url,
+                        pic,
+                        id: songId,
+                        urlSource,
+                        lrc: null,
+                        name: candidate.song || candidate.name || name,
+                        artist: candidate.singer || candidate.artist || artist || ''
+                    };
                 }
             }
 
@@ -740,7 +789,9 @@ export class MusicData {
 
             return {
                 id: candidate.id,
-                pic: candidate.cover || candidate.pic || null
+                pic: candidate.cover || candidate.pic || null,
+                name: candidate.song || candidate.name || name,
+                artist: candidate.singer || candidate.artist || artist || ''
             };
         } catch (e) {
             console.warn(`🎵 [音乐] 歌词补查歌曲ID失败: ${name}`, e);
@@ -853,7 +904,14 @@ export class MusicData {
         }
     }
 
+    _notifyPlaybackStopped(reason = '') {
+        if (typeof this.onPlaybackStopped === 'function') {
+            this.onPlaybackStopped(reason);
+        }
+    }
+
     clearCache() {
+        const wasPlaying = this.isPlaying || !this.audioPlayer.paused;
         this._playlist = null;
         this.currentIndex = -1;
         this.audioPlayer.pause();
@@ -865,5 +923,6 @@ export class MusicData {
         this._playLock = false;
         this._playGeneration++;
         this._lyricCache.clear();
+        if (wasPlaying) this._notifyPlaybackStopped('clear');
     }
 }

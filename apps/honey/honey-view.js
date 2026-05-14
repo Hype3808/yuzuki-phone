@@ -1194,7 +1194,10 @@ export class HoneyView {
                 <div class="honey-live-gift-item honey-live-gift-intro">
                     <span class="honey-gift-icon">🔔</span>
                     <span class="honey-live-gift-text-wrap" id="honey-intro-ticker-wrap">
-                        <span class="honey-live-gift-text" id="honey-intro-ticker-text">简介：${this._escapeHtml(introTickerText)}</span>
+                        <span class="honey-live-gift-text-track" id="honey-intro-ticker-track">
+                            <span class="honey-live-gift-text" id="honey-intro-ticker-text">简介：${this._escapeHtml(introTickerText)}</span>
+                            <span class="honey-live-gift-text honey-live-gift-text-clone" id="honey-intro-ticker-clone" aria-hidden="true"></span>
+                        </span>
                     </span>
                 </div>
                 ` : ''}
@@ -1500,7 +1503,10 @@ export class HoneyView {
                 <div class="honey-live-gift-item honey-live-gift-intro">
                     <span class="honey-gift-icon">🔔</span>
                     <span class="honey-live-gift-text-wrap" id="honey-intro-ticker-wrap">
-                        <span class="honey-live-gift-text" id="honey-intro-ticker-text">简介：${this._escapeHtml(introTickerText)}</span>
+                        <span class="honey-live-gift-text-track" id="honey-intro-ticker-track">
+                            <span class="honey-live-gift-text" id="honey-intro-ticker-text">简介：${this._escapeHtml(introTickerText)}</span>
+                            <span class="honey-live-gift-text honey-live-gift-text-clone" id="honey-intro-ticker-clone" aria-hidden="true"></span>
+                        </span>
                     </span>
                 </div>
             `
@@ -6776,21 +6782,28 @@ export class HoneyView {
         const root = document.querySelector('.phone-view-current .honey-page-live') || document.querySelector('.honey-page-live');
         if (!root) return;
         const wrap = root.querySelector('#honey-intro-ticker-wrap');
+        const track = root.querySelector('#honey-intro-ticker-track');
         const text = root.querySelector('#honey-intro-ticker-text');
-        if (!wrap || !text) return;
+        const clone = root.querySelector('#honey-intro-ticker-clone');
+        if (!wrap || !track || !text || !clone) return;
 
-        text.classList.remove('marquee');
-        text.style.removeProperty('--honey-intro-marquee-distance');
-        text.style.removeProperty('--honey-intro-marquee-duration');
+        track.classList.remove('marquee');
+        clone.textContent = '';
+        clone.style.removeProperty('margin-left');
+        track.style.removeProperty('--honey-intro-marquee-distance');
+        track.style.removeProperty('--honey-intro-marquee-duration');
 
         requestAnimationFrame(() => {
             const overflow = text.scrollWidth - wrap.clientWidth;
             if (overflow > 8) {
-                const distance = overflow + 20;
-                const duration = Math.max(14, distance / 14);
-                text.style.setProperty('--honey-intro-marquee-distance', `${distance}px`);
-                text.style.setProperty('--honey-intro-marquee-duration', `${duration.toFixed(2)}s`);
-                text.classList.add('marquee');
+                const gap = 28;
+                const distance = text.scrollWidth + gap;
+                const duration = Math.max(14, distance / 18);
+                clone.textContent = text.textContent;
+                clone.style.marginLeft = `${gap}px`;
+                track.style.setProperty('--honey-intro-marquee-distance', `${distance}px`);
+                track.style.setProperty('--honey-intro-marquee-duration', `${duration.toFixed(2)}s`);
+                track.classList.add('marquee');
             }
         });
     }
@@ -7040,7 +7053,7 @@ export class HoneyView {
                 seed: requestSeed
             })
             : promptPreview;
-        const hostNaiReference = provider === 'novelai'
+        const hostNaiReference = ['novelai', 'sd'].includes(provider)
             ? this.app?.honeyData?.getHostNaiReference?.(sceneHostName)
             : null;
         let novelAIReferences = [];

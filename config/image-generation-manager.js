@@ -15,6 +15,12 @@ export class ImageGenerationManager {
         this.storage = storage;
         this._queueUserId = null;
         this._lastQueueNotice = '';
+        this._sdModelsCache = null;
+        this._sdModelsCacheUrl = '';
+        this._sdModelsCacheTime = 0;
+        this._sdModelsCacheTtl = 5 * 60 * 1000;
+        this._csrfToken = null;
+        this._csrfTokenPromise = null;
     }
 
     _get(key, fallback = '') {
@@ -37,6 +43,124 @@ export class ImageGenerationManager {
         if (min !== null) result = Math.max(min, result);
         if (max !== null) result = Math.min(max, result);
         return result;
+    }
+
+    _normalizeSdBaseUrl(value) {
+        let baseUrl = String(value || '').trim().replace(/\/+$/, '');
+        if (!baseUrl) return '';
+        if (!/^https?:\/\/.+/i.test(baseUrl)) {
+            baseUrl = `http://${baseUrl.replace(/^\/+/, '')}`;
+        }
+        return baseUrl;
+    }
+
+    _normalizeSdAuth(value) {
+        const auth = String(value || '').trim();
+        if (!auth) return '';
+        if (/^basic\s+/i.test(auth)) return auth;
+        if (!auth.includes(':')) return auth;
+        try {
+            return `Basic ${btoa(unescape(encodeURIComponent(auth)))}`;
+        } catch (e) {
+            return `Basic ${btoa(auth)}`;
+        }
+    }
+
+    _buildSdHeaders(extra = {}, config = null) {
+        const headers = { ...extra };
+        const auth = this._normalizeSdAuth(config?.sdAuth || this._get('phone-image-sd-auth', ''));
+        if (auth) headers.Authorization = auth;
+        return headers;
+    }
+
+    _isSillyTavern() {
+        try {
+            const inBrowser = typeof window !== 'undefined';
+            return Boolean(
+                (inBrowser && window.location && window.location.port === '8000') ||
+                (typeof globalThis !== 'undefined' && globalThis.SillyTavern)
+            );
+        } catch (e) {
+            return false;
+        }
+    }
+
+    async _getCsrfToken() {
+        if (this._csrfToken) return this._csrfToken;
+        if (this._csrfTokenPromise) return this._csrfTokenPromise;
+        this._csrfTokenPromise = (async () => {
+            try {
+                const response = await fetch('/csrf-token');
+                if (!response.ok) return null;
+                const data = await response.json().catch(() => null);
+                this._csrfToken = String(data?.token || '').trim() || null;
+                return this._csrfToken;
+            } catch (e) {
+                this._csrfTokenPromise = null;
+                return null;
+            }
+        })();
+        return this._csrfTokenPromise;
+    }
+
+    async _sdProxyRequest(endpoint, body = {}, method = 'POST') {
+        const token = await this._getCsrfToken();
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) headers['X-CSRF-Token'] = token;
+        return fetch(`/api/sd/${endpoint}`, {
+            method,
+            headers,
+            body: method === 'GET' ? undefined : JSON.stringify(body || {})
+        });
+    }
+
+    _normalizeSdListPayload(payload) {
+        return Array.isArray(payload)
+            ? payload
+            : (Array.isArray(payload?.items)
+                ? payload.items
+                : (Array.isArray(payload?.data)
+                    ? payload.data
+                    : (Array.isArray(payload?.result) ? payload.result : [])));
+    }
+
+    _mapSdListItems(payload, mapper = item => item) {
+        return this._normalizeSdListPayload(payload)
+            .map(mapper)
+            .map(item => String(item || '').trim())
+            .filter(Boolean);
+    }
+
+    _sdDirectRequest(url, options = {}) {
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open(options.method || 'GET', url, true);
+            if (options.headers) {
+                Object.entries(options.headers).forEach(([key, value]) => {
+                    xhr.setRequestHeader(key, value);
+                });
+            }
+            xhr.responseType = 'text';
+            xhr.timeout = Number(options.timeout || 120000);
+            xhr.onload = () => {
+                resolve({
+                    ok: xhr.status >= 200 && xhr.status < 300,
+                    status: xhr.status,
+                    statusText: xhr.statusText,
+                    text: () => Promise.resolve(xhr.responseText || ''),
+                    json: () => {
+                        try {
+                            return Promise.resolve(JSON.parse(xhr.responseText || 'null'));
+                        } catch (err) {
+                            return Promise.reject(err);
+                        }
+                    }
+                });
+            };
+            xhr.onerror = () => reject(new Error(`请求失败: ${url}`));
+            xhr.ontimeout = () => reject(new Error(`请求超时: ${url}`));
+            xhr.send(options.body || null);
+        });
     }
 
     _normalizeNovelAISampler(value) {
@@ -114,6 +238,21 @@ export class ImageGenerationManager {
             })
             .filter(Boolean)
             .slice(0, 4);
+    }
+
+    _normalizeSdReferenceImages(options = {}) {
+        const rawList = Array.isArray(options.novelAIReferences)
+            ? options.novelAIReferences
+            : (Array.isArray(options.referenceImages) ? options.referenceImages : []);
+        return rawList
+            .map((item) => {
+                const image = typeof item === 'string'
+                    ? this._normalizeNovelAIReferenceImage(item)
+                    : this._normalizeNovelAIReferenceImage(item?.image || item?.imageData || item?.dataUrl || item?.base64);
+                return image || '';
+            })
+            .filter(Boolean)
+            .slice(0, 1);
     }
 
     _containsCjk(text) {
@@ -246,15 +385,37 @@ export class ImageGenerationManager {
             ? 28
             : rawSteps;
 
+        const site = String(overrides.site || this._get('phone-image-novelai-site', 'official')).trim() || 'official';
+        const apiKey = provider === 'novelai' && site === 'public'
+            ? String(overrides.apiKey || this._get('phone-image-novelai-public-key', '') || '').trim()
+            : String(overrides.apiKey || this._get(`phone-image-${provider}-key`, '') || (provider === 'siliconflow' ? legacySiliconflowKey : '')).trim();
+
         return {
             enabled: overrides.enabled ?? this._getBool('phone-image-enabled', false),
             provider,
-            apiKey: String(overrides.apiKey || this._get(`phone-image-${provider}-key`, '') || (provider === 'siliconflow' ? legacySiliconflowKey : '')).trim(),
-            site: String(overrides.site || this._get('phone-image-novelai-site', 'official')).trim() || 'official',
+            apiKey,
+            site,
+            sdUrl: this._normalizeSdBaseUrl(overrides.sdUrl || this._get('phone-image-sd-url', 'http://127.0.0.1:7860')),
+            sdAuth: String(overrides.sdAuth || this._get('phone-image-sd-auth', '')).trim(),
+            sdVae: String(overrides.sdVae || this._get('phone-image-sd-vae', '')).trim(),
+            sdScheduler: String(overrides.sdScheduler || this._get('phone-image-sd-scheduler', '')).trim(),
+            sdClipSkip: this._getNumber('phone-image-sd-clip-skip', 0, 0, 12),
+            sdLora: String(overrides.sdLora || this._get('phone-image-sd-lora', '')).trim(),
+            sdHiresFix: this._getBool('phone-image-sd-hires-fix', false),
+            sdHiresSteps: this._getNumber('phone-image-sd-hires-steps', 0, 0, 80),
+            sdUpscaler: String(overrides.sdUpscaler || this._get('phone-image-sd-upscaler', '')).trim(),
+            sdUpscaleFactor: this._getNumber('phone-image-sd-upscale-factor', 1.5, 1, 4),
+            sdDenoisingStrength: this._getNumber('phone-image-sd-denoising-strength', 0.45, 0, 1),
+            sdRestoreFaces: this._getBool('phone-image-sd-restore-faces', false),
+            sdADetailer: this._getBool('phone-image-sd-adetailer', false),
             customUrl: String(overrides.customUrl || this._get('phone-image-novelai-url', '')).trim(),
-            queueUrl: String(overrides.queueUrl || this._get('phone-image-novelai-queue-url', '')).trim(),
-            model: String(overrides.model || this._get(`phone-image-${provider}-model`, '') || (provider === 'novelai' ? 'nai-diffusion-4-5-full' : legacySiliconflowModel || 'Kwai-Kolors/Kolors')).trim(),
-            sampler: this._normalizeNovelAISampler(overrides.sampler || this._get('phone-image-novelai-sampler', 'k_euler')),
+            publicKey: String(overrides.publicKey || this._get('phone-image-novelai-public-key', '')).trim(),
+            publicUrl: String(overrides.publicUrl || this._get('phone-image-novelai-public-url', '')).trim(),
+            queueUrl: site === 'public' ? '' : String(overrides.queueUrl || this._get('phone-image-novelai-queue-url', '')).trim(),
+            model: String(overrides.model || this._get(`phone-image-${provider}-model`, '') || (provider === 'novelai' ? 'nai-diffusion-4-5-full' : (provider === 'siliconflow' ? legacySiliconflowModel || 'Kwai-Kolors/Kolors' : ''))).trim(),
+            sampler: provider === 'sd'
+                ? String(overrides.sampler || this._get('phone-image-sd-sampler', 'Euler a')).trim() || 'Euler a'
+                : this._normalizeNovelAISampler(overrides.sampler || this._get('phone-image-novelai-sampler', 'k_euler')),
             schedule: this._normalizeNovelAISchedule(overrides.schedule || this._get('phone-image-novelai-schedule', 'native')),
             width: size.width,
             height: size.height,
@@ -273,10 +434,13 @@ export class ImageGenerationManager {
     async generate(options = {}) {
         const config = this.getConfig(options);
         if (!config.enabled && options.ignoreEnabled !== true) throw new Error('生图功能未启用');
-        if (!config.apiKey) throw new Error('缺少生图 API Key');
+        if (config.provider !== 'sd' && !config.apiKey) throw new Error('缺少生图 API Key');
 
         if (config.provider === 'siliconflow') {
             return this._generateSiliconflow(options, config);
+        }
+        if (config.provider === 'sd') {
+            return this._generateStableDiffusion(options, config);
         }
         if (config.provider === 'novelai') {
             const novelAIOptions = await this._prepareNovelAIOptions(options);
@@ -424,6 +588,10 @@ export class ImageGenerationManager {
     }
 
     _resolveNovelAIEndpoint(config) {
+        if (config.site === 'public') {
+            if (!config.publicUrl) throw new Error('缺少公益站 Base URL');
+            return config.publicUrl.replace(/\/+$/, '');
+        }
         if (config.site === 'custom' && config.customUrl) {
             return config.customUrl.replace(/\/+$/, '');
         }
@@ -920,6 +1088,411 @@ export class ImageGenerationManager {
                 : this._joinPrompt([config.fixedPrompt, prompt, config.fixedPromptEnd]),
             negativePrompt: this._joinPrompt([config.negativePrompt, options.negativePrompt]),
             seed: Number(options.seed ?? config.seed)
+        };
+    }
+
+    async fetchSdModels(baseUrl) {
+        const normalizedUrl = this._normalizeSdBaseUrl(baseUrl || this._get('phone-image-sd-url', 'http://127.0.0.1:7860'));
+        if (!normalizedUrl) throw new Error('未配置 Stable Diffusion 服务地址');
+
+        const now = Date.now();
+        if (
+            this._sdModelsCache &&
+            this._sdModelsCacheUrl === normalizedUrl &&
+            now - this._sdModelsCacheTime < this._sdModelsCacheTtl
+        ) {
+            return this._sdModelsCache;
+        }
+
+        if (this._isSillyTavern()) {
+            try {
+                const response = await this._sdProxyRequest('models', { url: normalizedUrl });
+                if (response.ok) {
+                    const data = await response.json().catch(() => null);
+                    let models = Array.isArray(data) ? data : [];
+                    if (models.length > 0 && models[0]?.value !== undefined && models[0]?.text !== undefined) {
+                        models = models.map(item => ({
+                            title: String(item.value || item.text || ''),
+                            model_name: String(item.text || item.value || '').replace(/\.[^.]+$/, ''),
+                            hash: String(item.value || ''),
+                            config: null
+                        }));
+                    }
+                    if (models.length > 0) {
+                        this._sdModelsCache = models;
+                        this._sdModelsCacheUrl = normalizedUrl;
+                        this._sdModelsCacheTime = now;
+                        return models;
+                    }
+                }
+            } catch (err) {
+                console.warn('[SD] 代理获取模型列表失败，尝试直连:', err);
+            }
+        }
+
+        const endpoints = ['/sdapi/v1/sd-models', '/api/sd-models'];
+        let lastError = '';
+        for (const endpoint of endpoints) {
+            try {
+                const response = await this._sdDirectRequest(`${normalizedUrl}${endpoint}`, {
+                    method: 'GET',
+                    headers: this._buildSdHeaders({ Accept: 'application/json' })
+                });
+                if (!response.ok) {
+                    lastError = `HTTP ${response.status}: ${endpoint}`;
+                    continue;
+                }
+                const models = await response.json();
+                if (Array.isArray(models)) {
+                    this._sdModelsCache = models;
+                    this._sdModelsCacheUrl = normalizedUrl;
+                    this._sdModelsCacheTime = now;
+                    return models;
+                }
+                lastError = `${endpoint} 返回格式不是数组`;
+            } catch (err) {
+                lastError = `${endpoint}: ${err?.message || err}`;
+            }
+        }
+
+        throw new Error(`SD 模型列表获取失败${lastError ? `: ${lastError}` : ''}。请确认 SD WebUI 已启动并开启 --api。`);
+    }
+
+    async _fetchSdProxyList(baseUrl, proxyEndpoint, mapper = item => item) {
+        if (!this._isSillyTavern() || !proxyEndpoint) return [];
+        const normalizedUrl = this._normalizeSdBaseUrl(baseUrl || this._get('phone-image-sd-url', 'http://127.0.0.1:7860'));
+        if (!normalizedUrl) return [];
+        try {
+            const response = await this._sdProxyRequest(proxyEndpoint, {
+                url: normalizedUrl,
+                auth: this._get('phone-image-sd-auth', '')
+            });
+            if (!response.ok) return [];
+            const payload = await response.json().catch(() => null);
+            return this._mapSdListItems(payload, mapper);
+        } catch (err) {
+            console.warn(`[SD] 代理获取列表失败 ${proxyEndpoint}:`, err);
+            return [];
+        }
+    }
+
+    async _fetchSdList(baseUrl, endpoints, mapper = item => item, proxyEndpoint = '') {
+        const normalizedUrl = this._normalizeSdBaseUrl(baseUrl || this._get('phone-image-sd-url', 'http://127.0.0.1:7860'));
+        if (!normalizedUrl) return [];
+        const endpointList = Array.isArray(endpoints) ? endpoints : [endpoints];
+        for (const endpoint of endpointList) {
+            try {
+                const response = await this._sdDirectRequest(`${normalizedUrl}${endpoint}`, {
+                    method: 'GET',
+                    headers: this._buildSdHeaders({ Accept: 'application/json' })
+                });
+                if (!response.ok) continue;
+                const payload = await response.json();
+                const directItems = this._mapSdListItems(payload, mapper);
+                if (directItems.length) return directItems;
+            } catch (err) {
+                console.warn(`[SD] 获取列表失败 ${endpoint}:`, err);
+            }
+        }
+        const proxyItems = await this._fetchSdProxyList(normalizedUrl, proxyEndpoint, mapper);
+        if (proxyItems.length) return proxyItems;
+        return [];
+    }
+
+    async _refreshSdLoraIndex(baseUrl) {
+        const normalizedUrl = this._normalizeSdBaseUrl(baseUrl || this._get('phone-image-sd-url', 'http://127.0.0.1:7860'));
+        if (!normalizedUrl) return;
+        const endpoints = ['/sdapi/v1/refresh-loras', '/api/refresh-loras'];
+        for (const endpoint of endpoints) {
+            try {
+                const response = await this._sdDirectRequest(`${normalizedUrl}${endpoint}`, {
+                    method: 'POST',
+                    headers: this._buildSdHeaders({ Accept: 'application/json' })
+                });
+                if (response.ok) return;
+            } catch (err) {
+                console.warn(`[SD] 刷新 LoRA 索引失败 ${endpoint}:`, err);
+            }
+        }
+    }
+
+    async fetchSdSamplers(baseUrl) {
+        return this._fetchSdList(baseUrl, ['/sdapi/v1/samplers', '/api/samplers'], item => item?.name || item?.label || item?.value || item?.text, 'samplers');
+    }
+
+    async fetchSdSchedulers(baseUrl) {
+        return this._fetchSdList(baseUrl, ['/sdapi/v1/schedulers', '/api/schedulers'], item => item?.name || item?.label || item?.value || item?.text, 'schedulers');
+    }
+
+    async fetchSdVae(baseUrl) {
+        return this._fetchSdList(baseUrl, ['/sdapi/v1/sd-vae', '/api/sd-vae'], item => item?.model_name || item?.name || item?.filename || item?.value || item?.text, 'vaes');
+    }
+
+    async fetchSdUpscalers(baseUrl) {
+        return this._fetchSdList(baseUrl, ['/sdapi/v1/upscalers', '/api/upscalers'], item => item?.name || item?.label || item?.value || item?.text, 'upscalers');
+    }
+
+    async fetchSdLoras(baseUrl) {
+        await this._refreshSdLoraIndex(baseUrl).catch(() => {});
+        return this._fetchSdList(baseUrl, ['/sdapi/v1/loras', '/api/loras'], item => {
+            const name = item?.name || item?.alias || item?.metadata?.ss_output_name || item?.value || item?.text;
+            return name || String(item?.path || item?.filename || '').replace(/\\/g, '/').split('/').pop()?.replace(/\.(safetensors|ckpt|pt)$/i, '');
+        }, 'loras');
+    }
+
+    async fetchSdResources(baseUrl) {
+        const [models, samplers, schedulers, vae, upscalers, loras] = await Promise.all([
+            this.fetchSdModels(baseUrl).catch(() => []),
+            this.fetchSdSamplers(baseUrl).catch(() => []),
+            this.fetchSdSchedulers(baseUrl).catch(() => []),
+            this.fetchSdVae(baseUrl).catch(() => []),
+            this.fetchSdUpscalers(baseUrl).catch(() => []),
+            this.fetchSdLoras(baseUrl).catch(() => [])
+        ]);
+        return { models, samplers, schedulers, vae, upscalers, loras };
+    }
+
+    buildSdModelHashMap(models) {
+        const map = new Map();
+        (Array.isArray(models) ? models : []).forEach((model) => {
+            const names = [
+                model?.model_name,
+                model?.name,
+                model?.title,
+                model?.value,
+                model?.text
+            ].map(item => String(item || '').trim()).filter(Boolean);
+            const hash = String(model?.hash || model?.sha256 || '').trim();
+            if (!hash) return;
+            names.forEach((name) => {
+                map.set(name, hash);
+                map.set(name.toLowerCase(), hash);
+                map.set(name.replace(/\.[^.]+$/, ''), hash);
+                map.set(name.replace(/\.[^.]+$/, '').toLowerCase(), hash);
+            });
+        });
+        return map;
+    }
+
+    async getSdModelHash(baseUrl, modelName) {
+        const name = String(modelName || '').trim();
+        if (!name) return null;
+        const models = await this.fetchSdModels(baseUrl);
+        const map = this.buildSdModelHashMap(models);
+        return map.get(name) || map.get(name.toLowerCase()) || null;
+    }
+
+    _extractSdImage(payload) {
+        const candidates = [
+            ...(Array.isArray(payload?.images) ? payload.images : []),
+            payload?.image,
+            payload?.data,
+            payload?.output,
+            payload?.result?.image,
+            ...(Array.isArray(payload?.result?.images) ? payload.result.images : [])
+        ];
+        for (const item of candidates) {
+            if (!item) continue;
+            if (typeof item === 'string') {
+                const text = item.trim();
+                if (text.startsWith('data:image/')) return text;
+                if (/^[A-Za-z0-9+/=\s]+$/.test(text.slice(0, 120))) {
+                    return `data:image/png;base64,${text.replace(/\s+/g, '')}`;
+                }
+            } else if (typeof item === 'object') {
+                const nested = this._extractSdImage(item);
+                if (nested) return nested;
+            }
+        }
+        return '';
+    }
+
+    _normalizeSdLoraPrompt(value) {
+        return String(value || '')
+            .split(/[\n,，]+/)
+            .map(item => item.trim())
+            .filter(Boolean)
+            .map((item) => {
+                if (/^<lora:[^>]+>$/i.test(item)) return item;
+                const match = item.match(/^(.+?)(?:[:：]\s*([0-9.]+))?$/);
+                const name = String(match?.[1] || item).trim();
+                const weight = Number.parseFloat(match?.[2]);
+                const safeWeight = Number.isFinite(weight) ? Math.max(0, Math.min(2, weight)) : 1;
+                return name ? `<lora:${name}:${safeWeight}>` : '';
+            })
+            .filter(Boolean)
+            .join(', ');
+    }
+
+    async _generateStableDiffusion(options, config) {
+        const prompt = String(options.prompt || '').trim();
+        if (!prompt) throw new Error('缺少生图提示词');
+
+        const baseUrl = this._normalizeSdBaseUrl(config.sdUrl);
+        if (!baseUrl) throw new Error('未配置 Stable Diffusion 服务地址');
+
+        const appKey = String(options.app || '').trim().toLowerCase();
+        const appDefaults = this._getAppDefaultSize(appKey);
+        let width = Number(options.width || config.width);
+        let height = Number(options.height || config.height);
+        let steps = Number(options.steps || config.steps);
+        let scale = Number(options.scale ?? config.scale);
+        const seed = Number(options.seed ?? config.seed);
+        const cfgRescale = Number(options.cfgRescale ?? config.cfgRescale);
+
+        if (appKey === 'honey') {
+            if (!Number.isFinite(width) || !Number.isFinite(height) || width < 512 || height < 768) {
+                width = appDefaults.width;
+                height = appDefaults.height;
+            }
+            if (!Number.isFinite(steps) || steps < 20) steps = 28;
+            if (!Number.isFinite(scale) || scale < 1) scale = 7;
+        }
+
+        const modelName = String(config.model || '').trim();
+        const modelHash = await this.getSdModelHash(baseUrl, modelName).catch(() => null);
+        const loraPrompt = this._normalizeSdLoraPrompt(config.sdLora);
+        const positivePrompt = this._joinPrompt([config.fixedPrompt, loraPrompt, prompt, config.fixedPromptEnd]);
+        const negativePrompt = this._joinPrompt([config.negativePrompt, options.negativePrompt]);
+        const sdReferenceImages = this._normalizeSdReferenceImages(options);
+        const useImg2Img = sdReferenceImages.length > 0;
+        const payload = {
+            prompt: positivePrompt,
+            negative_prompt: negativePrompt,
+            width,
+            height,
+            steps,
+            cfg_scale: scale,
+            seed: Number.isFinite(seed) && seed >= 0 ? Math.floor(seed) : -1,
+            sampler_name: String(config.sampler || 'Euler a').trim() || 'Euler a',
+            batch_size: 1,
+            n_iter: 1,
+            restore_faces: Boolean(config.sdRestoreFaces)
+        };
+        if (useImg2Img) {
+            payload.init_images = sdReferenceImages;
+            payload.denoising_strength = this._clampReferenceValue(
+                options.denoisingStrength ?? options.sdDenoisingStrength ?? config.sdDenoisingStrength,
+                0.45,
+                0,
+                1
+            );
+        }
+
+        const overrideSettings = {};
+        if (modelName) {
+            overrideSettings.sd_model_checkpoint = modelName;
+        }
+        if (config.sdVae) {
+            overrideSettings.sd_vae = config.sdVae;
+        }
+        if (Number(config.sdClipSkip) > 0) {
+            overrideSettings.CLIP_stop_at_last_layers = Math.round(Number(config.sdClipSkip));
+        }
+        if (Object.keys(overrideSettings).length > 0) {
+            payload.override_settings = overrideSettings;
+        }
+        if (cfgRescale > 0) {
+            payload.cfg_rescale = cfgRescale;
+        }
+        if (config.sdScheduler) {
+            payload.scheduler = config.sdScheduler;
+        }
+        if (config.sdHiresFix && !useImg2Img) {
+            payload.enable_hr = true;
+            payload.hr_scale = Number(config.sdUpscaleFactor) || 1.5;
+            payload.hr_second_pass_steps = Math.max(0, Math.round(Number(config.sdHiresSteps) || 0));
+            payload.denoising_strength = Number(config.sdDenoisingStrength) || 0.45;
+            if (config.sdUpscaler) payload.hr_upscaler = config.sdUpscaler;
+        }
+        if (config.sdADetailer) {
+            payload.alwayson_scripts = {
+                ...(payload.alwayson_scripts || {}),
+                ADetailer: {
+                    args: [
+                        true,
+                        false,
+                        {
+                            ad_model: 'face_yolov8n.pt'
+                        }
+                    ]
+                }
+            };
+        }
+
+        let result = null;
+        if (this._isSillyTavern() && !useImg2Img) {
+            try {
+                const response = await this._sdProxyRequest('generate', { ...payload, url: baseUrl });
+                if (response.ok) {
+                    const proxyResult = await response.json().catch(() => null);
+                    if (proxyResult && (proxyResult.images || proxyResult.image || proxyResult.result)) {
+                        result = proxyResult;
+                    }
+                } else {
+                    const text = await response.text().catch(() => '');
+                    console.warn('[SD] 代理生图失败，尝试直连:', response.status, text);
+                }
+            } catch (err) {
+                console.warn('[SD] 代理生图异常，尝试直连:', err);
+            }
+        }
+
+        if (!result) {
+            const endpoints = useImg2Img
+                ? ['/sdapi/v1/img2img', '/api/img2img']
+                : ['/sdapi/v1/txt2img', '/api/txt2img'];
+            let lastError = '';
+            for (const endpoint of endpoints) {
+                try {
+                    const response = await this._sdDirectRequest(`${baseUrl}${endpoint}`, {
+                        method: 'POST',
+                        headers: this._buildSdHeaders({
+                            'Content-Type': 'application/json',
+                            Accept: 'application/json'
+                        }, config),
+                        body: JSON.stringify(payload)
+                    });
+                    const text = await response.text();
+                    const parsed = text ? JSON.parse(text) : null;
+                    if (response.ok && parsed && (parsed.images || parsed.image || parsed.result)) {
+                        result = parsed;
+                        break;
+                    }
+                    lastError = `HTTP ${response.status}: ${endpoint}`;
+                    if (parsed?.error || parsed?.message) {
+                        lastError += ` ${String(parsed.error?.message || parsed.message || parsed.error).slice(0, 180)}`;
+                    }
+                } catch (err) {
+                    lastError = `${endpoint}: ${err?.message || err}`;
+                }
+            }
+            if (!result) {
+                throw new Error(`Stable Diffusion 请求失败${lastError ? `: ${lastError}` : ''}`);
+            }
+        }
+
+        const imageData = this._extractSdImage(result);
+        if (!imageData) throw new Error('Stable Diffusion 未返回可用图片');
+        const imageInfo = await this._waitForImageDecode(imageData).catch((err) => {
+            throw new Error(`SD 返回图片不可用: ${err?.message || err}`);
+        });
+
+        return {
+            provider: 'sd',
+            model: modelName,
+            modelHash,
+            prompt,
+            width: imageInfo.width,
+            height: imageInfo.height,
+            requestedWidth: width,
+            requestedHeight: height,
+            steps,
+            sampler: payload.sampler_name,
+            scale,
+            seed: payload.seed,
+            imageData,
+            imageUrl: imageData
         };
     }
 

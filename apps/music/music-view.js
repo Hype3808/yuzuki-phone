@@ -569,7 +569,12 @@ export class MusicView {
                             <span id="music-fp-time-total">0:00</span>
                         </div>
                         <button type="button" class="music-listen-share-btn" id="music-fp-share-listen" title="邀请微信好友一起听">
-                            <i class="fa-solid fa-share-nodes"></i>
+                            <svg class="music-listen-share-icon" viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M8.6 10.8 15.4 7M8.6 13.2l6.8 3.8"/>
+                                <circle cx="6" cy="12" r="2.4"/>
+                                <circle cx="17.4" cy="5.9" r="2.4"/>
+                                <circle cx="17.4" cy="18.1" r="2.4"/>
+                            </svg>
                         </button>
                     </div>
                     <div class="controls-wrap">
@@ -878,12 +883,22 @@ export class MusicView {
         }
         if (!chat?.id) return;
 
-        wechatData.startMusicListening?.(chat.id, resolvedContact, snapshot);
+        const listenMessageId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        wechatData.startMusicListening?.(chat.id, resolvedContact, {
+            ...snapshot,
+            sourceMessageId: listenMessageId
+        });
         wechatData.addMessage(chat.id, {
+            id: listenMessageId,
             from: 'me',
             type: 'music_listen',
-            content: `[一起听歌] ${snapshot.songName} - ${snapshot.artist}`,
-            musicListen: snapshot,
+            content: `用户邀请了“${resolvedContact.name || '好友'}”一起听歌。当前正在一起听《${snapshot.songName || '未知歌曲'}》${snapshot.artist ? ` - ${snapshot.artist}` : ''}。`,
+            musicListen: {
+                ...snapshot,
+                contactId: contactId || resolvedContact.id || '',
+                contactName: resolvedContact.name || '',
+                contactAvatar: resolvedContact.avatar || ''
+            },
             avatar: wechatData.getUserInfo?.()?.avatar || ''
         });
         await Promise.resolve(wechatData.saveData?.());
@@ -891,6 +906,7 @@ export class MusicView {
         this._floatingPanel?.querySelector('#music-listen-share-modal')?.style.setProperty('display', 'none');
         if (wechatApp?.currentChat?.id === chat.id && typeof wechatApp?.chatView?.smartUpdateMessages === 'function') {
             wechatApp.chatView.smartUpdateMessages(wechatData.getMessages(chat.id), wechatData.getUserInfo());
+            wechatApp.syncMusicListenHeaderIndicator?.(chat.id);
         } else if (wechatApp && !wechatApp.currentChat && wechatApp.currentView === 'chats' && typeof wechatApp.render === 'function') {
             wechatApp.render();
         }

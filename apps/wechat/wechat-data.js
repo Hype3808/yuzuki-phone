@@ -1380,6 +1380,7 @@ export class WechatData {
             userName: String(userInfo?.name || '我').trim(),
             userAvatar,
             startedAt: Date.now(),
+            sourceMessageId: String(snapshot?.sourceMessageId || '').trim(),
             songName: String(snapshot?.songName || '').trim(),
             artist: String(snapshot?.artist || '').trim(),
             cover: String(snapshot?.cover || '').trim()
@@ -1397,6 +1398,49 @@ export class WechatData {
         this.data.musicListening[safeChatId].active = false;
         this.saveData();
         return true;
+    }
+
+    endMusicListening(chatId, options = {}) {
+        const safeChatId = String(chatId || '').trim();
+        if (!safeChatId) return false;
+
+        const stopped = this.stopMusicListening(safeChatId);
+        const messages = this.getMessages(safeChatId);
+        if (!Array.isArray(messages) || messages.length === 0) return stopped;
+
+        let changed = false;
+        let latestChangedIndex = -1;
+        for (let i = messages.length - 1; i >= 0; i--) {
+            const msg = messages[i];
+            if (msg?.type !== 'music_listen' && !(msg?.type === 'music_invite' && ['accepted', 'ended', 'cancelled'].includes(String(msg?.musicInviteStatus || '').trim()))) continue;
+            const isInvite = msg?.type === 'music_invite';
+            messages[i] = {
+                ...msg,
+                ...(isInvite ? { musicInviteStatus: 'ended' } : { musicListenStatus: 'ended' }),
+                musicListenEndedAt: Date.now(),
+                musicListenEndReason: String(options.reason || '').trim(),
+                content: String(options.content || '已结束一起听歌').trim() || '已结束一起听歌'
+            };
+            changed = true;
+            if (latestChangedIndex < 0) latestChangedIndex = i;
+        }
+
+        if (changed) {
+            const chat = this.getChat(safeChatId);
+            if (chat && latestChangedIndex === messages.length - 1) {
+                chat.lastMessage = this.getMessagePreview(messages[latestChangedIndex]);
+                chat.time = messages[latestChangedIndex].time || chat.time || '';
+                chat.timestamp = messages[latestChangedIndex].timestamp || chat.timestamp || Date.now();
+            }
+
+            this._messagesLoaded[safeChatId] = true;
+            this._messagesDirty[safeChatId] = true;
+            this._saveMessages(safeChatId);
+            this.saveData();
+            return true;
+        }
+
+        return stopped;
     }
     
     getChatList() {
@@ -1906,6 +1950,8 @@ getMessagePreview(message) {
             return '[微博分享]';
         case 'music_listen':
             return '[一起听歌]';
+        case 'music_invite':
+            return '[音乐邀请]';
         default:
             return stripSpeechPrefix(message.content || '');
     }

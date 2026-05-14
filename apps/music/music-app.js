@@ -25,13 +25,36 @@ export class MusicApp {
 
         // 数据变化时更新UI
         this.musicData.onStateChange = () => this.view.updateDisplay();
+        this.musicData.onPlaybackStopped = (reason) => this.endWechatListening(reason);
 
         // 监听滑动返回
         window.addEventListener('phone:swipeBack', (e) => this.handleSwipeBack(e));
+        window.addEventListener('phone:goHome', () => this.pauseForNavigation());
     }
 
     render() {
         this.view.renderSettings();
+    }
+
+    pauseForNavigation() {
+        if (this.musicData?.isPlaying) {
+            this.musicData.pause();
+        } else {
+            this.endWechatListening('navigation');
+        }
+    }
+
+    endWechatListening(reason = '') {
+        const wechatData = window.VirtualPhone?.wechatApp?.wechatData || window.VirtualPhone?.cachedWechatData;
+        const sessions = wechatData?.data?.musicListening || {};
+        Object.keys(sessions).forEach(chatId => {
+            if (sessions[chatId]?.active === false) return;
+            const ended = window.VirtualPhone?.wechatApp?.endMusicListening?.(chatId, { reason })
+                || wechatData?.endMusicListening?.(chatId, { reason });
+            if (ended && window.VirtualPhone?.wechatApp?.currentChat?.id === chatId) {
+                window.VirtualPhone.wechatApp.syncMusicListenHeaderIndicator?.(chatId);
+            }
+        });
     }
 
     addSongToQueue(name, artist) {
@@ -164,4 +187,3 @@ export class MusicApp {
         }
     }
  }
-

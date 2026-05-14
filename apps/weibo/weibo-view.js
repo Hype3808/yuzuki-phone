@@ -816,9 +816,12 @@ export class WeiboView {
                 this.app.phoneShell.showNotification('微博', '新评论已加载', '💬');
             } catch (error) {
                 console.error('加载评论失败:', error);
-                this.app.phoneShell.showNotification('微博', '加载评论失败', '❌');
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fa-regular fa-comment-dots"></i> 加载更多评论...';
+                this.app.phoneShell.showNotification('微博', error.message || '加载评论失败', '❌');
+            } finally {
+                if (btn.isConnected) {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fa-regular fa-comment-dots"></i> 加载更多评论...';
+                }
             }
         });
 

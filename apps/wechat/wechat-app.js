@@ -214,6 +214,47 @@ export class WechatApp {
     transition: background-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
+.wechat-header-title-text .wechat-music-listen-indicator {
+    display: inline-flex;
+    position: absolute;
+    left: 100%;
+    top: 50%;
+    transform: translate(14px, -50%);
+    align-items: flex-end;
+    gap: 2.5px;
+    width: 18px;
+    height: 13px;
+    color: #34c759 !important;
+}
+
+.wechat-header-title-text .wechat-music-listen-indicator span {
+    width: 2.5px;
+    border-radius: 999px;
+    background: #34c759 !important;
+    opacity: 0.95;
+    animation: wechatMusicListenBars 0.8s ease-in-out infinite;
+}
+
+.wechat-header-title-text .wechat-music-listen-indicator span:nth-child(1) {
+    height: 6px;
+    animation-delay: -0.2s;
+}
+
+.wechat-header-title-text .wechat-music-listen-indicator span:nth-child(2) {
+    height: 12px;
+    animation-delay: -0.4s;
+}
+
+.wechat-header-title-text .wechat-music-listen-indicator span:nth-child(3) {
+    height: 8px;
+    animation-delay: -0.1s;
+}
+
+@keyframes wechatMusicListenBars {
+    0%, 100% { transform: scaleY(0.58); opacity: 0.64; }
+    50% { transform: scaleY(1); opacity: 1; }
+}
+
 .dot-green {
     background: #34c759;
     box-shadow: 0 0 4px rgba(52, 199, 89, 0.6);
@@ -759,6 +800,333 @@ export class WechatApp {
     font-size: 12px;
     cursor: pointer;
 }
+
+.message-music-listen-card.is-cancelled {
+    opacity: 0.76;
+}
+
+.message-music-listen-card.is-cancelled .message-music-listen-title,
+.message-music-listen-card.is-cancelled .message-music-listen-song {
+    color: #8e8e93;
+}
+
+.message-music-listen-ended {
+    margin-top: 9px;
+    width: 100%;
+    height: 28px;
+    border-radius: 7px;
+    background: rgba(0, 0, 0, 0.04);
+    color: #9a9a9a;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.message-music-card {
+    width: clamp(190px, 56vw, 224px);
+    max-width: calc(100vw - 128px);
+    position: relative;
+    overflow: hidden;
+    box-sizing: border-box;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #fff;
+}
+
+.message-left .message-music-card {
+    border-radius: 4px 18px 18px 18px;
+}
+
+.message-right .message-music-card {
+    border-radius: 18px 4px 18px 18px;
+}
+
+.message-music-card-bg {
+    position: absolute;
+    top: -10%;
+    left: -10%;
+    width: 120%;
+    height: 120%;
+    background-size: cover;
+    background-position: center;
+    filter: blur(16px) saturate(1.08);
+    z-index: 0;
+}
+
+.message-music-card-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0.6) 100%);
+    z-index: 1;
+}
+
+.message-music-card-content {
+    position: relative;
+    z-index: 2;
+    padding: clamp(9px, 2.5vw, 12px);
+    display: flex;
+    flex-direction: column;
+    gap: clamp(7px, 2vw, 10px);
+}
+
+.message-music-card-top,
+.message-music-card-bottom {
+    display: flex;
+    align-items: center;
+}
+
+.message-music-card-visual {
+    position: relative;
+    width: clamp(38px, 10vw, 46px);
+    height: clamp(38px, 10vw, 46px);
+    flex: 0 0 clamp(38px, 10vw, 46px);
+    margin-right: clamp(22px, 6vw, 28px);
+}
+
+.message-music-card-cover {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: clamp(38px, 10vw, 46px);
+    height: clamp(38px, 10vw, 46px);
+    border-radius: 6px;
+    object-fit: cover;
+    z-index: 2;
+    box-shadow: 2px 0 10px rgba(0,0,0,0.4);
+}
+
+.message-music-card-vinyl {
+    position: absolute;
+    right: clamp(-19px, -4.6vw, -15px);
+    top: 3px;
+    width: clamp(32px, 8.6vw, 39px);
+    height: clamp(32px, 8.6vw, 39px);
+    background: #111;
+    border-radius: 50%;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+}
+
+.message-music-card-vinyl::before {
+    content: '';
+    width: clamp(10px, 2.8vw, 13px);
+    height: clamp(10px, 2.8vw, 13px);
+    border-radius: 50%;
+}
+
+.message-music-card-vinyl::after {
+    content: '';
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    background: rgba(255,255,255,0.8);
+    border-radius: 50%;
+}
+
+.message-music-card-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.message-music-card-status {
+    font-size: clamp(8px, 2.2vw, 10px);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-bottom: 4px;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+
+.message-music-card-title {
+    font-size: clamp(12px, 3.2vw, 14px);
+    font-weight: 600;
+    margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+
+.message-music-card-artist {
+    font-size: clamp(9px, 2.5vw, 11px);
+    color: rgba(255, 255, 255, 0.7);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.message-music-card-bottom {
+    justify-content: space-between;
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    padding-top: clamp(7px, 1.8vw, 9px);
+    gap: 6px;
+}
+
+.message-music-card-users {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.message-music-card-avatars {
+    display: flex;
+    flex: 0 0 auto;
+}
+
+.message-music-card-avatars > span {
+    width: 20px;
+    height: 20px;
+    flex: 0 0 20px;
+    border-radius: 50%;
+    overflow: hidden;
+    border: 1.5px solid rgba(255,255,255,0.5);
+    background: rgba(255,255,255,0.18);
+}
+
+.message-music-card-avatars > span + span {
+    margin-left: -8px;
+}
+
+.message-music-card-avatars > span > img,
+.message-music-card-avatars > span > div {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: inherit;
+    display: block;
+}
+
+.message-music-card-user-text {
+    min-width: 0;
+    font-size: 10px;
+    color: rgba(255,255,255,0.86) !important;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.72);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.message-music-card-actions {
+    display: flex;
+    gap: 8px;
+    flex: 0 0 auto;
+}
+
+.message-music-card-btn {
+    border: none;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 5px 12px;
+    border-radius: 20px;
+    cursor: pointer;
+    backdrop-filter: blur(5px);
+}
+
+.message-music-card-btn.is-glass {
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.message-music-card-btn.is-primary {
+    background: #1ed760;
+    color: #000;
+    font-weight: 600;
+}
+
+.message-music-listen-cancel.message-music-card-btn {
+    width: clamp(72px, 22vw, 88px);
+    height: 22px;
+    padding: 0 8px;
+    flex: 0 0 clamp(72px, 22vw, 88px);
+    color: rgba(255,255,255,0.9) !important;
+    font-size: 10px;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.65);
+    border-radius: 999px;
+}
+
+.message-music-card-ended {
+    flex: 0 0 auto;
+    font-size: 11px;
+    color: rgba(255,255,255,0.66) !important;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.72);
+}
+
+.message-music-card.state-invite .message-music-card-status {
+    color: #1ed760;
+}
+
+.message-music-card.state-invite .message-music-card-vinyl::before {
+    background: #1ed760;
+}
+
+.message-music-card.state-active .message-music-card-status {
+    color: rgba(255,255,255,0.9);
+}
+
+.message-music-card.state-active .message-music-card-dot {
+    width: 6px;
+    height: 6px;
+    background-color: #ff3b30;
+    border-radius: 50%;
+    animation: messageMusicCardPulse 1.5s infinite;
+}
+
+.message-music-card.state-active .message-music-card-vinyl {
+    animation: messageMusicCardSpin 3s linear infinite;
+}
+
+.message-music-card.state-active .message-music-card-vinyl::before {
+    background: #ff3b30;
+}
+
+.message-music-card.state-ended .message-music-card-bg {
+    filter: blur(16px) saturate(0.95);
+    opacity: 0.9;
+}
+
+.message-music-card.state-ended .message-music-card-overlay {
+    background: linear-gradient(135deg, rgba(0,0,0,0.46) 0%, rgba(0,0,0,0.68) 100%);
+}
+
+.message-music-card.state-ended .message-music-card-status,
+.message-music-card.state-ended .message-music-card-title {
+    color: rgba(255,255,255,0.55);
+}
+
+.message-music-card.state-ended .message-music-card-artist {
+    color: rgba(255,255,255,0.4);
+}
+
+.message-music-card.state-ended .message-music-card-cover {
+    filter: saturate(0.85) opacity(0.9);
+}
+
+.message-music-card.state-ended .message-music-card-vinyl {
+    right: -8px;
+    opacity: 0.4;
+}
+
+.message-music-card.state-ended .message-music-card-vinyl::before {
+    background: #555;
+}
+
+@keyframes messageMusicCardPulse {
+    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.7); }
+    70% { transform: scale(1.2); box-shadow: 0 0 0 4px rgba(255, 59, 48, 0); }
+    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 59, 48, 0); }
+}
+
+@keyframes messageMusicCardSpin {
+    100% { transform: rotate(360deg); }
+}
+
 
 .message-time {
     font-size: 10px;
@@ -3092,6 +3460,7 @@ export class WechatApp {
                 this.currentChat = refreshedChat;
             }
         }
+        this._reconcileMusicListeningWithPlayback();
 
         this._wechatPanelMode = 'main';
         this._isAvatarManagerOpen = false;
@@ -3153,6 +3522,17 @@ export class WechatApp {
             }
             if (this.currentView === 'discover') return '朋友圈';
             return '微信';
+        };
+
+        const getMusicListenIndicator = () => {
+            if (!this.currentChat) return '';
+            const session = this.wechatData.getMusicListening?.(this.currentChat.id);
+            if (!session) return '';
+            return `
+                <span class="wechat-music-listen-indicator" title="正在一起听歌" aria-label="正在一起听歌">
+                    <span></span><span></span><span></span>
+                </span>
+            `;
         };
 
         const getHeaderRight = () => {
@@ -3227,6 +3607,7 @@ export class WechatApp {
                         <span class="wechat-header-title-text">
                             ${getHeaderTitle()}
                             ${this.currentChat ? `<span class="status-dot ${this.chatView?.getHeaderStatusDotClass?.(this.currentChat.id) || 'dot-green'}"></span>` : ''}
+                            ${getMusicListenIndicator()}
                         </span>
                         ${unreadCount > 0 && !this.currentChat && this.currentView !== 'discover' ? `<span class="header-badge">(${unreadCount})</span>` : ''}
                     </div>
@@ -3604,6 +3985,60 @@ export class WechatApp {
         }
 
         return `<div style="position:relative;width:100%;height:100%;background:#fff;color:#000;border:none;outline:none;box-shadow:none;"><span style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);line-height:1;white-space:nowrap;">${escapeHtml(initial)}</span></div>`;
+    }
+
+    syncMusicListenHeaderIndicator(chatId = '') {
+        const safeChatId = String(chatId || this.currentChat?.id || '').trim();
+        if (!safeChatId || String(this.currentChat?.id || '').trim() !== safeChatId) return;
+        const title = document.querySelector('.phone-view-current .wechat-header-title-text')
+            || document.querySelector('.wechat-header-title-text');
+        if (!title) return;
+
+        title.querySelector('.wechat-music-listen-indicator')?.remove();
+        const session = this.wechatData.getMusicListening?.(safeChatId);
+        if (!session) return;
+
+        const indicator = document.createElement('span');
+        indicator.className = 'wechat-music-listen-indicator';
+        indicator.title = '正在一起听歌';
+        indicator.setAttribute('aria-label', '正在一起听歌');
+        indicator.innerHTML = '<span></span><span></span><span></span>';
+        title.appendChild(indicator);
+    }
+
+    endMusicListening(chatId = '', options = {}) {
+        const safeChatId = String(chatId || this.currentChat?.id || '').trim();
+        if (!safeChatId) return false;
+        const changed = this.wechatData.endMusicListening?.(safeChatId, options)
+            || this.wechatData.stopMusicListening?.(safeChatId);
+        if (!changed) return false;
+
+        if (String(this.currentChat?.id || '').trim() === safeChatId) {
+            const messages = this.wechatData.getMessages(safeChatId);
+            const userInfo = this.wechatData.getUserInfo();
+            this.chatView?.smartUpdateMessages?.(messages, userInfo);
+            this.syncMusicListenHeaderIndicator(safeChatId);
+        }
+        return true;
+    }
+
+    _reconcileMusicListeningWithPlayback() {
+        const sessions = this.wechatData?.data?.musicListening || {};
+        const activeChatIds = Object.keys(sessions).filter(chatId => sessions[chatId]?.active !== false);
+        if (activeChatIds.length === 0) return;
+
+        const musicData = window.VirtualPhone?.musicApp?.musicData || null;
+        const isActuallyPlaying = !!(
+            musicData
+            && musicData.isPlaying
+            && musicData.audioPlayer
+            && !musicData.audioPlayer.paused
+        );
+        if (isActuallyPlaying) return;
+
+        activeChatIds.forEach(chatId => {
+            this.wechatData.endMusicListening?.(chatId, { reason: 'playback_not_active' });
+        });
     }
 
     // 群名显示：超过6个字时缩写，人数不参与缩写

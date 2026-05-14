@@ -4,6 +4,8 @@
  * ======================================================== */
 
 const WORLD_INFO_GET_ENDPOINT = '/api/worldinfo/get';
+let cachedCsrfToken = '';
+let cachedCsrfTokenAt = 0;
 
 function safeString(value) {
     return String(value || '').trim();
@@ -74,18 +76,74 @@ function createWorldBook(name, index = 0, extra = {}) {
     };
 }
 
-async function fetchJson(url, body = {}) {
-    const headers = typeof window.getRequestHeaders === 'function'
-        ? window.getRequestHeaders()
-        : {};
-    headers['Content-Type'] = 'application/json';
+async function getCsrfToken(forceRefresh = false) {
+    const now = Date.now();
+    if (!forceRefresh && cachedCsrfToken && now - cachedCsrfTokenAt < 60000) {
+        return cachedCsrfToken;
+    }
+
+    try {
+        const response = await fetch(`/csrf-token?_=${now}`, {
+            credentials: 'include',
+            cache: 'no-store'
+        });
+        if (!response.ok) return '';
+        const data = await response.json().catch(() => null);
+        cachedCsrfToken = safeString(data?.token);
+        cachedCsrfTokenAt = now;
+        return cachedCsrfToken;
+    } catch (_error) {
+        return '';
+    }
+}
+
+async function getJsonHeaders(forceRefresh = false) {
+    const headers = {};
+
+    if (!forceRefresh) {
+        try {
+            if (typeof window.getRequestHeaders === 'function') {
+                Object.assign(headers, window.getRequestHeaders() || {});
+            }
+        } catch (_error) {
+            // Fall back to /csrf-token below.
+        }
+    }
+
+    headers['Content-Type'] = headers['Content-Type'] || headers['content-type'] || 'application/json';
+    if (!headers['X-CSRF-Token'] && !headers['x-csrf-token']) {
+        const token = await getCsrfToken(forceRefresh);
+        if (token) headers['X-CSRF-Token'] = token;
+    }
+    return headers;
+}
+
+function isCsrfError(status, text = '') {
+    return [400, 401, 403].includes(Number(status))
+        && /csrf|forbidden|invalid token/i.test(String(text || ''));
+}
+
+async function fetchJson(url, body = {}, options = {}) {
+    const forceRefresh = options.forceRefresh === true;
+    const headers = await getJsonHeaders(forceRefresh);
 
     const response = await fetch(url, {
         method: 'POST',
         headers,
+        credentials: 'include',
+        cache: 'no-store',
         body: JSON.stringify(body)
     });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    if (!response.ok) {
+        const text = await response.text().catch(() => '');
+        if (!forceRefresh && isCsrfError(response.status, text)) {
+            cachedCsrfToken = '';
+            cachedCsrfTokenAt = 0;
+            return fetchJson(url, body, { forceRefresh: true });
+        }
+        throw new Error(`HTTP ${response.status}${text ? `: ${text.slice(0, 160)}` : ''}`);
+    }
     return response.json();
 }
 

@@ -62,6 +62,9 @@ export class PromptManager {
                 if (parsed.wechat?.groupChat?.content && !String(parsed.wechat.groupChat.content).includes('非群成员发微信')) {
                     parsed.wechat.groupChat.content = defaults.wechat.groupChat.content;
                 }
+                if (parsed.wechat?.online?.content && !String(parsed.wechat.online.content).includes('[音乐]（音乐名称')) {
+                    parsed.wechat.online.content = this._appendWechatOnlineMusicInviteRule(parsed.wechat.online.content);
+                }
                 const obsoleteMomentsLine = '本提示词只负责约束朋友圈动态的风格、互动和输出质量；角色卡、用户信息、世界书和最近剧情会由系统自动注入，不要在这里重复填写这些背景变量。';
                 if (parsed.wechat?.moments?.content && String(parsed.wechat.moments.content).includes(obsoleteMomentsLine)) {
                     parsed.wechat.moments.content = String(parsed.wechat.moments.content)
@@ -139,6 +142,26 @@ export class PromptManager {
             changed = true;
         }
         if (changed) this._saveActivePromptPresets(active);
+    }
+
+    _appendWechatOnlineMusicInviteRule(content = '') {
+        const text = String(content || '');
+        const rule = '14. 音乐邀请：如果{{chatName}}想主动邀请{{user}}一起听歌，可以单独发送音乐邀请标签，格式为：[音乐]（音乐名称，歌手名）。如果不知道歌手名，也可以使用：[音乐]（音乐名称）。该标签会渲染为微信音乐邀请卡片；不要把它写成解释文字，也不要和普通聊天内容混在同一条消息里。';
+        const example = '{{chatName}}: [音乐]（半壶纱，大碗小面）\n{{chatName}}: [音乐]（Écoute Chérie）';
+        let next = text;
+        if (!next.includes(rule)) {
+            next = next.replace(
+                /(13\.\s*当[\s\S]*?禁止其他群成员回复。)/,
+                `$1\n${rule}`
+            );
+        }
+        if (!next.includes('{{chatName}}: [音乐]（半壶纱')) {
+            next = next.replace(
+                /({{chatName}}:\s*\[蜜语\]（接受）\/\[蜜语\]（拒绝）)/,
+                `$1\n${example}`
+            );
+        }
+        return next;
     }
 
     _getWeiboPublicBoundaryRule() {
@@ -467,6 +490,7 @@ getDefaultPrompts() {
 11. 【补充上下文：共同群聊参考】只记录{{user}}与{{chatName}}共同参与的微信群近期消息，只能作为当前私聊的共同经历、话题背景和情绪参考。
 12. 共同群聊参考的硬性限制：禁止让群成员在当前单聊发言；禁止让群成员知道当前单聊内容。
 13. 当{{user}}明确要求{{chatName}}去共同群聊里发消息，或剧情关键节点确实需要{{chatName}}把消息发到共同群聊时，才允许额外输出一个共同群聊窗口块；该群名必须来自【与当前好友共同所在群聊】，且群聊块里只能由{{chatName}}发言，禁止其他群成员回复。
+14. 音乐邀请：如果{{chatName}}可以主动邀请{{user}}一起听歌，可以单独发送音乐邀请标签，格式为：[音乐]（音乐名称，歌手名）。如果不知道歌手名，也可以使用：[音乐]（音乐名称）。该标签会渲染为微信音乐邀请卡片；不要把它写成解释文字，也不要和普通聊天内容混在同一条消息里。
 
 ✅ 【以下为所有正确的消息回复格式示例】：
 <wechat>
@@ -483,6 +507,7 @@ getDefaultPrompts() {
 {{chatName}}: [定位]（地点位置）
 {{chatName}}: [蜜语]（等待中...）
 {{chatName}}: [蜜语]（接受）/[蜜语]（拒绝）
+{{chatName}}: [音乐]（半壶纱，大碗小面）/[音乐]（半壶纱）
 {{chatName}}: [语音条]（语音转化出的文字内容）
 {{chatName}}: [图片]（English NovelAI tags）
 {{chatName}}: [个人图片]（English NovelAI tags）

@@ -25,6 +25,7 @@ export class WeiboData {
         // API调用队列（防并发）
         this._apiQueue = Promise.resolve();
         this._apiRunning = false;
+        this._aiTimeoutMs = 120000;
 
         // 缓存
         this._recommendCache = null;
@@ -350,6 +351,18 @@ export class WeiboData {
         return this._apiRunning;
     }
 
+    _withTimeout(promise, timeoutMs, message) {
+        let timer = null;
+        return Promise.race([
+            Promise.resolve(promise),
+            new Promise((_, reject) => {
+                timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+            })
+        ]).finally(() => {
+            if (timer) clearTimeout(timer);
+        });
+    }
+
     // ========================================
     // 🌐 收集上下文（复用moments-view模式）
     // ========================================
@@ -653,7 +666,11 @@ export class WeiboData {
         const apiManager = window.VirtualPhone?.apiManager;
         if (!apiManager) throw new Error('API Manager 未初始化');
 
-        const result = await apiManager.callAI(messages, { max_tokens: context.max_response_length, appId: 'weibo' });
+        const result = await this._withTimeout(
+            apiManager.callAI(messages, { max_tokens: context.max_response_length, appId: 'weibo' }),
+            this._aiTimeoutMs,
+            '微博生成超时，请检查网络或稍后重试'
+        );
 
         if (!result.success) {
             throw new Error(result.error || 'AI 返回为空');
@@ -681,6 +698,9 @@ export class WeiboData {
 
             const rawResponse = await this._callAI(recommendPromptWithFollowers, contextMessages);
             const parsed = this.parseWeiboContent(rawResponse);
+            if (!Array.isArray(parsed.posts) || parsed.posts.length === 0) {
+                throw new Error('微博推荐解析失败，AI返回内容不完整，请重试');
+            }
 
             // 为每条微博添加ID
             parsed.posts.forEach((post, idx) => {
@@ -1599,6 +1619,9 @@ export class WeiboData {
 
             // 解析评论
             const newComments = this._parseCommentsFromResponse(rawResponse);
+            if (newComments.length === 0) {
+                throw new Error('评论解析失败，AI未返回有效评论，请重试');
+            }
 
             if (newComments.length > 0) {
                 if (!post.commentList) post.commentList = [];

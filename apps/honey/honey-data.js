@@ -3234,19 +3234,36 @@ export class HoneyData {
         if (!apiManager) throw new Error('API Manager 未初始化');
 
         const context = this._getContext();
-        const result = await apiManager.callAI(messages, {
-            max_tokens: Number.parseInt(context?.max_response_length, 10)
-                || Number.parseInt(context?.max_length, 10)
-                || Number.parseInt(context?.maxContextLength, 10)
-                || 8192,
-            preserve_roles: false,
-            appId: 'honey'
+        const timeoutMs = 90000;
+        let timeoutId = null;
+        const timeoutPromise = new Promise((_, reject) => {
+            timeoutId = setTimeout(() => reject(new Error('蜜语AI请求超时，请重试')), timeoutMs);
+        });
+
+        const result = await Promise.race([
+            apiManager.callAI(messages, {
+                max_tokens: Number.parseInt(context?.max_response_length, 10)
+                    || Number.parseInt(context?.max_length, 10)
+                    || Number.parseInt(context?.maxContextLength, 10)
+                    || 8192,
+                preserve_roles: false,
+                appId: 'honey'
+            }),
+            timeoutPromise
+        ]).finally(() => {
+            if (timeoutId) clearTimeout(timeoutId);
         });
         if (!result?.success) throw new Error(result?.error || 'AI 返回为空');
 
         const rawText = result.summary || result.content || result.text || '';
         const filteredText = applyPhoneTagFilter(rawText, { storage: this.storage });
-        const parsed = this.parseHoneyUserLiveContent(filteredText || rawText);
+        const responseText = String(filteredText || rawText || '').trim();
+        if (!responseText) throw new Error('AI 返回为空');
+        if (!/<Honey>[\s\S]*?<\/Honey>/i.test(responseText)
+            && !/(?:在线人数|粉丝数|榜单|打赏记录|好友申请|互动记录|直播剧情描写|评论区)[：:]/.test(responseText)) {
+            throw new Error('AI 未返回有效 Honey 内容');
+        }
+        const parsed = this.parseHoneyUserLiveContent(responseText);
         this._syncHoneyUserProfileFromUserLiveScene(parsed);
         if (mode === 'continue') {
             const nextPromptTurns = [...historyTurns];

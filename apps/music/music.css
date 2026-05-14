@@ -524,6 +524,16 @@
     background: transparent;
     color: rgba(0, 0, 0, 0.72);
 }
+.music-listen-share-icon {
+    width: 13px;
+    height: 13px;
+    display: block;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
 .music-listen-share-modal {
     position: absolute;
     inset: 0;

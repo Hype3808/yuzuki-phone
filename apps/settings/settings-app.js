@@ -1912,11 +1912,24 @@ export class SettingsApp {
         const provider = String(this.storage.get('phone-image-provider') || 'novelai').trim() || 'novelai';
         const enabled = this.storage.get('phone-image-enabled') === true || this.storage.get('phone-image-enabled') === 'true';
         const novelaiKey = String(this.storage.get('phone-image-novelai-key') || '').trim();
+        const novelaiPublicKey = String(this.storage.get('phone-image-novelai-public-key') || '').trim();
         const siliconflowKey = String(this.storage.get('phone-image-siliconflow-key') || this.storage.get('siliconflow_api_key') || '').trim();
         const novelaiModel = String(this.storage.get('phone-image-novelai-model') || 'nai-diffusion-4-5-full').trim();
         const siliconflowModel = String(this.storage.get('phone-image-siliconflow-model') || this.storage.get('image_generation_model') || 'Kwai-Kolors/Kolors').trim();
+        const sdUrl = String(this.storage.get('phone-image-sd-url') || 'http://127.0.0.1:7860').trim();
+        const sdModel = String(this.storage.get('phone-image-sd-model') || '').trim();
+        const sdSampler = String(this.storage.get('phone-image-sd-sampler') || 'Euler a').trim() || 'Euler a';
+        const sdAuth = String(this.storage.get('phone-image-sd-auth') || '').trim();
+        const sdVae = String(this.storage.get('phone-image-sd-vae') || '').trim();
+        const sdScheduler = String(this.storage.get('phone-image-sd-scheduler') || '').trim();
+        const sdLora = String(this.storage.get('phone-image-sd-lora') || '').trim();
+        const sdHiresFix = this.storage.get('phone-image-sd-hires-fix') === true || this.storage.get('phone-image-sd-hires-fix') === 'true';
+        const sdUpscaler = String(this.storage.get('phone-image-sd-upscaler') || '').trim();
+        const sdRestoreFaces = this.storage.get('phone-image-sd-restore-faces') === true || this.storage.get('phone-image-sd-restore-faces') === 'true';
+        const sdADetailer = this.storage.get('phone-image-sd-adetailer') === true || this.storage.get('phone-image-sd-adetailer') === 'true';
         const novelaiSite = String(this.storage.get('phone-image-novelai-site') || 'official').trim() || 'official';
         const novelaiUrl = String(this.storage.get('phone-image-novelai-url') || '').trim();
+        const novelaiPublicUrl = String(this.storage.get('phone-image-novelai-public-url') || '').trim();
         const novelaiQueueUrl = String(this.storage.get('phone-image-novelai-queue-url') || '').trim();
         const sampler = String(this.storage.get('phone-image-novelai-sampler') || 'k_euler').trim() || 'k_euler';
         const schedule = String(this.storage.get('phone-image-novelai-schedule') || 'native').trim() || 'native';
@@ -1935,6 +1948,27 @@ export class SettingsApp {
             ['polyexponential', 'polyexponential'],
             ['karras', 'karras']
         ];
+        const sdSamplers = [
+            'Euler a',
+            'Euler',
+            'LMS',
+            'Heun',
+            'DPM2',
+            'DPM2 a',
+            'DPM++ 2S a',
+            'DPM++ 2M',
+            'DPM++ SDE',
+            'DPM fast',
+            'DPM adaptive',
+            'LMS Karras',
+            'DPM2 Karras',
+            'DPM2 a Karras',
+            'DPM++ 2S a Karras',
+            'DPM++ 2M Karras',
+            'DPM++ SDE Karras',
+            'DDIM',
+            'PLMS'
+        ];
         const samplerValue = novelaiSamplers.some(([value]) => value === sampler) ? sampler : 'k_euler';
         const scheduleValue = novelaiSchedules.some(([value]) => value === schedule) ? schedule : 'native';
         const readImageNumber = (key, fallback, min = null, max = null, integer = true) => {
@@ -1945,6 +1979,10 @@ export class SettingsApp {
             if (max !== null) value = Math.min(max, value);
             return value;
         };
+        const sdClipSkip = readImageNumber('phone-image-sd-clip-skip', 0, 0, 12, true);
+        const sdHiresSteps = readImageNumber('phone-image-sd-hires-steps', 0, 0, 80, true);
+        const sdUpscaleFactor = readImageNumber('phone-image-sd-upscale-factor', 1.5, 1, 4, false);
+        const sdDenoisingStrength = readImageNumber('phone-image-sd-denoising-strength', 0.45, 0, 1, false);
         const width = readImageNumber('phone-image-width', 832, 64, 2048, true);
         const height = readImageNumber('phone-image-height', 1216, 64, 2048, true);
         const honeyWidth = readImageNumber('phone-image-honey-width', 832, 64, 2048, true);
@@ -1980,6 +2018,7 @@ export class SettingsApp {
         }).join('');
         const novelaiDisplay = provider === 'novelai' ? '' : 'display: none;';
         const siliconflowDisplay = provider === 'siliconflow' ? '' : 'display: none;';
+        const sdDisplay = provider === 'sd' ? '' : 'display: none;';
 
         return `
             <div class="setting-section">
@@ -2001,6 +2040,7 @@ export class SettingsApp {
                         <span style="font-size: 14px; color: #000;">生图供应商</span>
                         <select id="phone-image-provider" style="width: 150px; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa;">
                             <option value="novelai" ${provider === 'novelai' ? 'selected' : ''}>NovelAI / NAI</option>
+                            <option value="sd" ${provider === 'sd' ? 'selected' : ''}>本地 SD</option>
                             <option value="siliconflow" ${provider === 'siliconflow' ? 'selected' : ''}>硅基流动</option>
                         </select>
                     </div>
@@ -2011,11 +2051,11 @@ export class SettingsApp {
                 <div class="setting-section-title">🎨 NovelAI / NAI</div>
 
                 <div class="setting-item" style="display: flex; align-items: center; justify-content: space-between;">
-                    <span style="font-size: 14px; color: #000;">API Key</span>
+                    <span id="phone-image-novelai-key-label" style="font-size: 14px; color: #000;">${novelaiSite === 'public' ? '公益站 Key' : 'API Key'}</span>
                     <div style="display: flex; align-items: center; width: 150px; height: 30px; border: 1px solid #e0e0e0; border-radius: 8px; background: #fafafa; overflow: hidden;">
                         <input type="password" id="phone-image-novelai-key"
-                               value="${this._escapeHtml(novelaiKey)}"
-                               placeholder="NovelAI API Key"
+                               value="${this._escapeHtml(novelaiSite === 'public' ? novelaiPublicKey : novelaiKey)}"
+                               placeholder="${novelaiSite === 'public' ? '公益站 API Key' : 'NovelAI API Key'}"
                                style="flex: 1; min-width: 0; height: 100%; padding: 0 4px 0 8px; border: none; outline: none; font-size: 12px; background: transparent;">
                         <button type="button" class="phone-password-toggle" data-toggle-password-target="phone-image-novelai-key" aria-label="显示或隐藏 API Key" style="width: 30px; height: 100%; border: none; background: transparent; color: #777; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;">
                             <i class="fa-solid fa-eye"></i>
@@ -2041,7 +2081,7 @@ export class SettingsApp {
                     </label>
                 </div>
 
-                <div class="setting-item">
+                <div class="setting-item" id="phone-image-novelai-queue-row" style="${novelaiSite === 'public' ? 'display: none;' : ''}">
                     <div class="setting-label">共享队列服务 URL</div>
                     <div class="setting-desc">多人共用同一个 NAI Key 时填写；留空则直接请求 NAI。</div>
                     <input type="text" id="phone-image-novelai-queue-url"
@@ -2054,8 +2094,18 @@ export class SettingsApp {
                     <span style="font-size: 14px; color: #000;">接口站点</span>
                     <select id="phone-image-novelai-site" style="width: 150px; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa;">
                         <option value="official" ${novelaiSite === 'official' ? 'selected' : ''}>官方站点</option>
+                        <option value="public" ${novelaiSite === 'public' ? 'selected' : ''}>公益站点</option>
                         <option value="custom" ${novelaiSite === 'custom' ? 'selected' : ''}>自定义地址</option>
                     </select>
+                </div>
+
+                <div class="setting-item" id="phone-image-novelai-public-url-row" style="${novelaiSite === 'public' ? '' : 'display: none;'}">
+                    <div class="setting-label">公益站点 Base URL</div>
+                    <div class="setting-desc">填写兼容 NovelAI /ai/generate-image 的中转或公益站地址。</div>
+                    <input type="text" id="phone-image-novelai-public-url"
+                           value="${this._escapeHtml(novelaiPublicUrl)}"
+                           placeholder="例如：https://your-nai-site.example.com"
+                           style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
                 </div>
 
                 <div class="setting-item" id="phone-image-novelai-url-row" style="${novelaiSite === 'custom' ? '' : 'display: none;'}">
@@ -2122,6 +2172,145 @@ export class SettingsApp {
                            value="${this._escapeHtml(siliconflowModel)}"
                            placeholder="Kwai-Kolors/Kolors"
                            style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                </div>
+            </div>
+
+            <div class="setting-section" id="phone-image-sd-section" style="${sdDisplay}">
+                <div class="setting-section-title">本地 Stable Diffusion</div>
+
+                <div class="setting-item">
+                    <div class="setting-label">SD WebUI 地址</div>
+                    <div class="setting-desc">填写本地或局域网 Stable Diffusion WebUI 地址，WebUI 需要开启 API。</div>
+                    <input type="text" id="phone-image-sd-url"
+                           value="${this._escapeHtml(sdUrl)}"
+                           placeholder="http://127.0.0.1:7860"
+                           style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-label">身份验证</div>
+                    <div class="setting-desc">WebUI 设置了 --api-auth 时填写，格式为 用户名:密码；没有则留空。</div>
+                    <input type="text" id="phone-image-sd-auth"
+                           value="${this._escapeHtml(sdAuth)}"
+                           placeholder="例如：user:password"
+                           style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                </div>
+
+                <div class="setting-item">
+                    <button id="phone-image-sd-refresh-models" class="phone-image-test-btn" style="width: 100%; height: 34px; border: none; border-radius: 8px; background: #3b82f6 !important; color: #fff !important; font-size: 13px; font-weight: 600; cursor: pointer;">
+                        连接并刷新 SD 数据
+                    </button>
+                    <div class="setting-desc" id="phone-image-sd-models-status" style="margin-top: 6px;">选择本地 SD 时，可先刷新模型、VAE、采样器、调度器、放大器和 LoRA。</div>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-label">模型</div>
+                    <select id="phone-image-sd-model" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                        <option value="${this._escapeHtml(sdModel)}">${sdModel ? this._escapeHtml(sdModel) : '不指定模型'}</option>
+                    </select>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                    <div class="setting-item">
+                        <div class="setting-label">VAE</div>
+                        <select id="phone-image-sd-vae" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                            <option value="${this._escapeHtml(sdVae)}">${sdVae ? this._escapeHtml(sdVae) : '自动'}</option>
+                        </select>
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-label">Clip Skip</div>
+                        <input type="number" id="phone-image-sd-clip-skip" min="0" max="12" step="1" value="${sdClipSkip}"
+                               style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-label">采样器</div>
+                        <select id="phone-image-sd-sampler" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                            ${sdSamplers.map(value => `<option value="${this._escapeHtml(value)}" ${sdSampler === value ? 'selected' : ''}>${this._escapeHtml(value)}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-label">调度器</div>
+                        <select id="phone-image-sd-scheduler" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                            <option value="${this._escapeHtml(sdScheduler)}">${sdScheduler ? this._escapeHtml(sdScheduler) : '自动'}</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-label">LoRA</div>
+                    <div class="setting-desc">选择 LoRA 后点添加；也可手动填写 name:weight 或 &lt;lora:name:weight&gt;，多个用换行分隔。</div>
+                    <div style="display: grid; grid-template-columns: 1fr 64px; gap: 8px; margin-top: 6px;">
+                        <select id="phone-image-sd-lora-select" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box;">
+                            <option value="">未加载 LoRA</option>
+                        </select>
+                        <button type="button" id="phone-image-sd-add-lora" style="height: 30px; border: none; border-radius: 8px; background: #f1f5f9; color: #111; font-size: 12px; cursor: pointer;">添加</button>
+                    </div>
+                    <textarea id="phone-image-sd-lora" rows="3" placeholder="例如：detail_slider_v4:0.8"
+                              style="width: 100%; min-height: 66px; padding: 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px; resize: vertical;">${this._escapeHtml(sdLora)}</textarea>
+                </div>
+
+                <div class="setting-item setting-toggle">
+                    <div>
+                        <div class="setting-label">高清修复</div>
+                        <div class="setting-desc">对应 WebUI Hires.fix，适合先小图再放大修复。</div>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="phone-image-sd-hires-fix" ${sdHiresFix ? 'checked' : ''}>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                    <div class="setting-item">
+                        <div class="setting-label">高清步数</div>
+                        <input type="number" id="phone-image-sd-hires-steps" min="0" max="80" step="1" value="${sdHiresSteps}"
+                               style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-label">放大器</div>
+                        <select id="phone-image-sd-upscaler" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                            <option value="${this._escapeHtml(sdUpscaler)}">${sdUpscaler ? this._escapeHtml(sdUpscaler) : '自动'}</option>
+                        </select>
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-label">放大倍数</div>
+                        <input type="number" id="phone-image-sd-upscale-factor" min="1" max="4" step="0.1" value="${sdUpscaleFactor}"
+                               style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-label">去噪强度</div>
+                        <input type="number" id="phone-image-sd-denoising-strength" min="0" max="1" step="0.05" value="${sdDenoisingStrength}"
+                               style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                    </div>
+                </div>
+
+                <div class="setting-item setting-toggle">
+                    <div>
+                        <div class="setting-label">面部修复</div>
+                        <div class="setting-desc">对应 WebUI restore_faces。</div>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="phone-image-sd-restore-faces" ${sdRestoreFaces ? 'checked' : ''}>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="setting-item setting-toggle">
+                    <div>
+                        <div class="setting-label">ADetailer 脸部</div>
+                        <div class="setting-desc">需要 WebUI 已安装并启用 ADetailer 扩展。</div>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="phone-image-sd-adetailer" ${sdADetailer ? 'checked' : ''}>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="setting-item">
+                    <button id="phone-image-test-sd" class="phone-image-test-btn" style="width: 100%; height: 34px; border: none; border-radius: 8px; background: #10b981 !important; color: #fff !important; font-size: 13px; font-weight: 600; cursor: pointer;">
+                        测试 SD 生图连接
+                    </button>
+                    <div class="setting-desc" id="phone-image-test-sd-result" style="margin-top: 6px;">使用蜜语尺寸和当前 SD 参数生成一张测试图。</div>
                 </div>
             </div>
 
@@ -3185,7 +3374,12 @@ export class SettingsApp {
         const imageProvider = document.getElementById('phone-image-provider');
         const imageNovelaiSection = document.getElementById('phone-image-novelai-section');
         const imageSiliconflowSection = document.getElementById('phone-image-siliconflow-section');
+        const imageSdSection = document.getElementById('phone-image-sd-section');
         const imageNovelaiSite = document.getElementById('phone-image-novelai-site');
+        const imageNovelaiKey = document.getElementById('phone-image-novelai-key');
+        const imageNovelaiKeyLabel = document.getElementById('phone-image-novelai-key-label');
+        const imageNovelaiQueueRow = document.getElementById('phone-image-novelai-queue-row');
+        const imageNovelaiPublicUrlRow = document.getElementById('phone-image-novelai-public-url-row');
         const imageNovelaiUrlRow = document.getElementById('phone-image-novelai-url-row');
         const imageNovelaiModel = document.getElementById('phone-image-novelai-model');
         const imageNovelaiModelPreset = document.getElementById('phone-image-novelai-model-preset');
@@ -3202,6 +3396,20 @@ export class SettingsApp {
             const provider = String(imageProvider?.value || 'novelai').trim() || 'novelai';
             if (imageNovelaiSection) imageNovelaiSection.style.display = provider === 'novelai' ? '' : 'none';
             if (imageSiliconflowSection) imageSiliconflowSection.style.display = provider === 'siliconflow' ? '' : 'none';
+            if (imageSdSection) imageSdSection.style.display = provider === 'sd' ? '' : 'none';
+        };
+        let currentNovelaiSite = String(imageNovelaiSite?.value || this.storage.get('phone-image-novelai-site') || 'official').trim() || 'official';
+        const syncNovelaiSiteFields = () => {
+            const site = String(imageNovelaiSite?.value || 'official').trim() || 'official';
+            if (imageNovelaiQueueRow) imageNovelaiQueueRow.style.display = site === 'public' ? 'none' : '';
+            if (imageNovelaiPublicUrlRow) imageNovelaiPublicUrlRow.style.display = site === 'public' ? '' : 'none';
+            if (imageNovelaiUrlRow) imageNovelaiUrlRow.style.display = site === 'custom' ? '' : 'none';
+            if (imageNovelaiKeyLabel) imageNovelaiKeyLabel.textContent = site === 'public' ? '公益站 Key' : 'API Key';
+            if (imageNovelaiKey) {
+                imageNovelaiKey.placeholder = site === 'public' ? '公益站 API Key' : 'NovelAI API Key';
+                imageNovelaiKey.value = String(this.storage.get(site === 'public' ? 'phone-image-novelai-public-key' : 'phone-image-novelai-key') || '').trim();
+            }
+            currentNovelaiSite = site;
         };
         const clampNumberInput = (input, fallback, min, max, integer = false) => {
             if (!input) return fallback;
@@ -3286,8 +3494,9 @@ export class SettingsApp {
             setImageProviderVisibility();
         });
 
-        document.getElementById('phone-image-novelai-key')?.addEventListener('change', async (e) => {
-            await this.storage.set('phone-image-novelai-key', String(e.target.value || '').trim());
+        imageNovelaiKey?.addEventListener('change', async (e) => {
+            const site = String(imageNovelaiSite?.value || currentNovelaiSite || 'official').trim() || 'official';
+            await this.storage.set(site === 'public' ? 'phone-image-novelai-public-key' : 'phone-image-novelai-key', String(e.target.value || '').trim());
         });
 
         document.querySelectorAll('[data-toggle-password-target]').forEach((button) => {
@@ -3321,10 +3530,14 @@ export class SettingsApp {
             try {
                 await this.storage.set('phone-image-provider', 'novelai');
                 await this.storage.set('phone-image-enabled', true);
-                await this.storage.set('phone-image-novelai-key', String(document.getElementById('phone-image-novelai-key')?.value || '').trim());
-                await this.storage.set('phone-image-novelai-site', String(document.getElementById('phone-image-novelai-site')?.value || 'official').trim() || 'official');
+                const site = String(document.getElementById('phone-image-novelai-site')?.value || 'official').trim() || 'official';
+                const publicUrl = String(document.getElementById('phone-image-novelai-public-url')?.value || '').trim();
+                if (site === 'public' && !publicUrl) throw new Error('请先填写公益站点 Base URL');
+                await this.storage.set('phone-image-novelai-site', site);
+                await this.storage.set(site === 'public' ? 'phone-image-novelai-public-key' : 'phone-image-novelai-key', String(document.getElementById('phone-image-novelai-key')?.value || '').trim());
                 await this.storage.set('phone-image-novelai-url', String(document.getElementById('phone-image-novelai-url')?.value || '').trim());
-                await this.storage.set('phone-image-novelai-queue-url', String(document.getElementById('phone-image-novelai-queue-url')?.value || '').trim());
+                await this.storage.set('phone-image-novelai-public-url', publicUrl);
+                if (site !== 'public') await this.storage.set('phone-image-novelai-queue-url', String(document.getElementById('phone-image-novelai-queue-url')?.value || '').trim());
                 await this.storage.set('phone-image-novelai-model', String(document.getElementById('phone-image-novelai-model')?.value || '').trim() || 'nai-diffusion-4-5-full');
                 await this.storage.set('phone-image-novelai-sampler', String(document.getElementById('phone-image-novelai-sampler')?.value || '').trim() || 'k_euler');
                 await this.storage.set('phone-image-novelai-schedule', String(document.getElementById('phone-image-novelai-schedule')?.value || '').trim() || 'native');
@@ -3336,8 +3549,8 @@ export class SettingsApp {
                     btn.disabled = true;
                     btn.textContent = '测试中...';
                 }
-                const queueUrl = String(document.getElementById('phone-image-novelai-queue-url')?.value || '').trim();
-                setResult(queueUrl ? '正在进入 NAI 共享队列...' : '正在请求 NovelAI...', '#7c3aed');
+                const queueUrl = site === 'public' ? '' : String(document.getElementById('phone-image-novelai-queue-url')?.value || '').trim();
+                setResult(site === 'public' ? '正在请求公益站点...' : (queueUrl ? '正在进入 NAI 共享队列...' : '正在请求 NovelAI...'), '#7c3aed');
                 const result = await imageManager.generate({
                     app: 'honey',
                     provider: 'novelai',
@@ -3368,9 +3581,16 @@ export class SettingsApp {
         });
 
         imageNovelaiSite?.addEventListener('change', async (e) => {
+            if (imageNovelaiKey) {
+                await this.storage.set(currentNovelaiSite === 'public' ? 'phone-image-novelai-public-key' : 'phone-image-novelai-key', String(imageNovelaiKey.value || '').trim());
+            }
             const site = String(e.target.value || 'official').trim() || 'official';
             await this.storage.set('phone-image-novelai-site', site);
-            if (imageNovelaiUrlRow) imageNovelaiUrlRow.style.display = site === 'custom' ? '' : 'none';
+            syncNovelaiSiteFields();
+        });
+
+        document.getElementById('phone-image-novelai-public-url')?.addEventListener('change', async (e) => {
+            await this.storage.set('phone-image-novelai-public-url', String(e.target.value || '').trim());
         });
 
         document.getElementById('phone-image-novelai-url')?.addEventListener('change', async (e) => {
@@ -3498,6 +3718,264 @@ export class SettingsApp {
             await this.storage.set('image_generation_model', nextModel);
         });
 
+        const fillSdSelect = (select, items, selectedValue = '', emptyLabel = '自动', mapper = item => item) => {
+            if (!select) return;
+            const selected = String(selectedValue || '').trim();
+            const values = [];
+            const seen = new Set();
+            (Array.isArray(items) ? items : []).forEach((item) => {
+                const value = String(mapper(item) || '').trim();
+                if (!value || seen.has(value)) return;
+                seen.add(value);
+                values.push(value);
+            });
+            select.innerHTML = '';
+            if (emptyLabel !== null) {
+                const emptyOpt = document.createElement('option');
+                emptyOpt.value = '';
+                emptyOpt.textContent = emptyLabel;
+                select.appendChild(emptyOpt);
+            }
+            values.forEach((value) => {
+                const opt = document.createElement('option');
+                opt.value = value;
+                opt.textContent = value;
+                opt.selected = value === selected;
+                select.appendChild(opt);
+            });
+            if (selected && !values.includes(selected)) {
+                const opt = document.createElement('option');
+                opt.value = selected;
+                opt.textContent = selected;
+                opt.selected = true;
+                select.appendChild(opt);
+            }
+            if (!select.value && selected) select.value = selected;
+        };
+        const fallbackSdSamplers = [
+            'Euler a',
+            'Euler',
+            'LMS',
+            'Heun',
+            'DPM2',
+            'DPM2 a',
+            'DPM++ 2S a',
+            'DPM++ 2M',
+            'DPM++ SDE',
+            'DPM fast',
+            'DPM adaptive',
+            'LMS Karras',
+            'DPM2 Karras',
+            'DPM2 a Karras',
+            'DPM++ 2S a Karras',
+            'DPM++ 2M Karras',
+            'DPM++ SDE Karras',
+            'DDIM',
+            'PLMS'
+        ];
+        const saveSdSettings = async () => {
+            const sdTextFields = [
+                ['phone-image-sd-url', 'http://127.0.0.1:7860'],
+                ['phone-image-sd-auth', ''],
+                ['phone-image-sd-model', ''],
+                ['phone-image-sd-vae', ''],
+                ['phone-image-sd-sampler', 'Euler a'],
+                ['phone-image-sd-scheduler', ''],
+                ['phone-image-sd-upscaler', ''],
+                ['phone-image-sd-lora', '']
+            ];
+            for (const [id, fallback] of sdTextFields) {
+                const input = document.getElementById(id);
+                if (!input) continue;
+                const value = String(input.value || '').trim() || fallback;
+                input.value = value;
+                await this.storage.set(id, value);
+            }
+            const sdNumberFields = [
+                ['phone-image-sd-clip-skip', 0, 0, 12, true],
+                ['phone-image-sd-hires-steps', 0, 0, 80, true],
+                ['phone-image-sd-upscale-factor', 1.5, 1, 4, false],
+                ['phone-image-sd-denoising-strength', 0.45, 0, 1, false]
+            ];
+            for (const [id, fallback, min, max, integer] of sdNumberFields) {
+                const input = document.getElementById(id);
+                if (!input) continue;
+                await this.storage.set(id, clampNumberInput(input, fallback, min, max, integer));
+            }
+            const sdToggles = [
+                'phone-image-sd-hires-fix',
+                'phone-image-sd-restore-faces',
+                'phone-image-sd-adetailer'
+            ];
+            for (const id of sdToggles) {
+                const input = document.getElementById(id);
+                if (!input) continue;
+                await this.storage.set(id, !!input.checked);
+            }
+        };
+
+        [
+            'phone-image-sd-url',
+            'phone-image-sd-auth',
+            'phone-image-sd-model',
+            'phone-image-sd-vae',
+            'phone-image-sd-sampler',
+            'phone-image-sd-scheduler',
+            'phone-image-sd-upscaler',
+            'phone-image-sd-lora'
+        ].forEach((id) => {
+            const input = document.getElementById(id);
+            if (!input) return;
+            input.addEventListener('change', saveSdSettings);
+            input.addEventListener('blur', saveSdSettings);
+        });
+
+        [
+            'phone-image-sd-hires-fix',
+            'phone-image-sd-restore-faces',
+            'phone-image-sd-adetailer'
+        ].forEach((id) => {
+            document.getElementById(id)?.addEventListener('change', saveSdSettings);
+        });
+
+        document.getElementById('phone-image-sd-add-lora')?.addEventListener('click', async () => {
+            const select = document.getElementById('phone-image-sd-lora-select');
+            const textarea = document.getElementById('phone-image-sd-lora');
+            const name = String(select?.value || '').trim();
+            if (!name || !textarea) return;
+            const current = String(textarea.value || '').trim();
+            const nextLine = `<lora:${name}:1>`;
+            if (!current.includes(nextLine)) {
+                textarea.value = current ? `${current}\n${nextLine}` : nextLine;
+            }
+            await saveSdSettings();
+        });
+
+        document.getElementById('phone-image-sd-refresh-models')?.addEventListener('click', async (e) => {
+            const btn = e.currentTarget;
+            const statusEl = document.getElementById('phone-image-sd-models-status');
+            const modelSelect = document.getElementById('phone-image-sd-model');
+            const samplerSelect = document.getElementById('phone-image-sd-sampler');
+            const schedulerSelect = document.getElementById('phone-image-sd-scheduler');
+            const vaeSelect = document.getElementById('phone-image-sd-vae');
+            const upscalerSelect = document.getElementById('phone-image-sd-upscaler');
+            const loraSelect = document.getElementById('phone-image-sd-lora-select');
+            const setStatus = (text, color = '#666') => {
+                if (statusEl) {
+                    statusEl.textContent = text;
+                    statusEl.style.color = color;
+                }
+            };
+            const oldText = btn?.textContent || '连接并刷新 SD 数据';
+            try {
+                await saveSdSettings();
+                const sdUrlValue = String(document.getElementById('phone-image-sd-url')?.value || '').trim() || 'http://127.0.0.1:7860';
+                await this.storage.set('phone-image-sd-url', sdUrlValue);
+                const imageManager = window.VirtualPhone?.imageGenerationManager;
+                if (!imageManager?.fetchSdModels) throw new Error('生图管理器未初始化');
+                if (btn) {
+                    btn.disabled = true;
+                    btn.textContent = '刷新中...';
+                }
+                setStatus('正在读取 SD WebUI 数据...', '#3b82f6');
+                const resources = imageManager.fetchSdResources
+                    ? await imageManager.fetchSdResources(sdUrlValue)
+                    : { models: await imageManager.fetchSdModels(sdUrlValue) };
+                const models = Array.isArray(resources?.models) ? resources.models : [];
+                const savedModel = String(this.storage.get('phone-image-sd-model') || '').trim();
+                const savedSampler = String(this.storage.get('phone-image-sd-sampler') || 'Euler a').trim() || 'Euler a';
+                const savedScheduler = String(this.storage.get('phone-image-sd-scheduler') || '').trim();
+                const savedVae = String(this.storage.get('phone-image-sd-vae') || '').trim();
+                const savedUpscaler = String(this.storage.get('phone-image-sd-upscaler') || '').trim();
+                fillSdSelect(modelSelect, models, savedModel, '不指定模型', model => model?.title || model?.model_name || model?.name || model?.text || model?.value);
+                fillSdSelect(samplerSelect, resources?.samplers?.length ? resources.samplers : fallbackSdSamplers, savedSampler, null);
+                fillSdSelect(schedulerSelect, resources?.schedulers || [], savedScheduler, '自动');
+                fillSdSelect(vaeSelect, resources?.vae || [], savedVae, '自动');
+                fillSdSelect(upscalerSelect, resources?.upscalers || [], savedUpscaler, '自动');
+                fillSdSelect(loraSelect, resources?.loras || [], '', '选择 LoRA');
+                await saveSdSettings();
+                const counts = [
+                    `${models.length} 个模型`,
+                    `${Array.isArray(resources?.samplers) ? resources.samplers.length : 0} 个采样器`,
+                    `${Array.isArray(resources?.loras) ? resources.loras.length : 0} 个 LoRA`
+                ].join('，');
+                let corsHint = '';
+                try {
+                    const sdOrigin = new URL(sdUrlValue).origin;
+                    if (
+                        typeof window !== 'undefined' &&
+                        window.location?.origin &&
+                        sdOrigin !== window.location.origin &&
+                        Array.isArray(resources?.loras) &&
+                        resources.loras.length === 0
+                    ) {
+                        corsHint = ' 如控制台提示 CORS，请给 SD WebUI 启动参数加入 --cors-allow-origins=http://127.0.0.1:8000。';
+                    }
+                } catch (err) {
+                    corsHint = '';
+                }
+                setStatus(`已刷新 SD 数据：${counts}。${corsHint}`, '#0f9f6e');
+            } catch (err) {
+                const message = err?.message || String(err || '刷新失败');
+                setStatus(`刷新失败：${message}`, '#d33');
+                this.phoneShell?.showNotification?.('SD 数据刷新失败', message, '⚠️');
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = oldText;
+                }
+            }
+        });
+
+        document.getElementById('phone-image-test-sd')?.addEventListener('click', async (e) => {
+            const btn = e.currentTarget;
+            const resultEl = document.getElementById('phone-image-test-sd-result');
+            const setResult = (text, color = '#666') => {
+                if (resultEl) {
+                    resultEl.textContent = text;
+                    resultEl.style.color = color;
+                }
+            };
+            const oldText = btn?.textContent || '测试 SD 生图连接';
+            try {
+                await this.storage.set('phone-image-provider', 'sd');
+                await this.storage.set('phone-image-enabled', true);
+                await saveSdSettings();
+                const imageManager = window.VirtualPhone?.imageGenerationManager;
+                if (!imageManager?.generate) throw new Error('生图管理器未初始化');
+                if (btn) {
+                    btn.disabled = true;
+                    btn.textContent = '测试中...';
+                }
+                setResult('正在请求 Stable Diffusion...', '#10b981');
+                const result = await imageManager.generate({
+                    app: 'honey',
+                    provider: 'sd',
+                    prompt: '1girl, solo, anime illustration, live streaming, looking at viewer',
+                    width: 832,
+                    height: 1216,
+                    ignoreEnabled: true
+                });
+                if (!result?.imageUrl && !result?.imageData) throw new Error('SD 未返回图片');
+                const detail = [
+                    result.width && result.height ? `${result.width}x${result.height}` : '',
+                    result.steps ? `${result.steps} steps` : '',
+                    result.sampler || ''
+                ].filter(Boolean).join(' · ');
+                setResult(`SD 连接成功，已收到图片数据${detail ? `，${detail}` : '。'}`, '#0f9f6e');
+                this.phoneShell?.showNotification?.('生图测试', detail ? `SD 连接成功 ${detail}` : 'SD 连接成功', '✓');
+            } catch (err) {
+                const message = err?.message || String(err || '测试失败');
+                setResult(`测试失败：${message}`, '#d33');
+                this.phoneShell?.showNotification?.('SD 生图测试失败', message, '⚠️');
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = oldText;
+                }
+            }
+        });
+
         const imageNumberInputs = [
             ['phone-image-honey-width', 832, 64, 2048, true],
             ['phone-image-honey-height', 1216, 64, 2048, true],
@@ -3510,7 +3988,11 @@ export class SettingsApp {
             ['phone-image-steps', 28, 1, 50, true],
             ['phone-image-scale', 7, 0, 50, false],
             ['phone-image-cfg-rescale', 0, 0, 1, false],
-            ['phone-image-seed', -1, -1, 4294967295, true]
+            ['phone-image-seed', -1, -1, 4294967295, true],
+            ['phone-image-sd-clip-skip', 0, 0, 12, true],
+            ['phone-image-sd-hires-steps', 0, 0, 80, true],
+            ['phone-image-sd-upscale-factor', 1.5, 1, 4, false],
+            ['phone-image-sd-denoising-strength', 0.45, 0, 1, false]
         ];
         const appSizeInputIds = new Set([
             'phone-image-honey-width',

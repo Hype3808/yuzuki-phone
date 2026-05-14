@@ -208,6 +208,7 @@ export class DiaryData {
         next.batchMode = next.batchMode !== false;
 
         this.storage.set('diary_auto_settings', JSON.stringify(next));
+        this._flushChatScopedSettings();
         return next;
     }
 
@@ -1173,5 +1174,21 @@ export class DiaryData {
 
     setAutoLastFloor(floorIndex) {
         this.storage.set('diary_auto_last_floor', floorIndex);
+        this._flushChatScopedSettings();
+    }
+
+    _flushChatScopedSettings() {
+        try {
+            const context = this._getContext();
+            if (context && typeof context.saveChat === 'function') {
+                Promise.resolve(context.saveChat()).catch(e => console.warn('[DiaryData] 立即保存聊天失败:', e));
+                return;
+            }
+            if (typeof window.saveChatDebounced === 'function') {
+                window.saveChatDebounced();
+            }
+        } catch (e) {
+            console.warn('[DiaryData] 触发聊天保存失败:', e);
+        }
     }
 }
