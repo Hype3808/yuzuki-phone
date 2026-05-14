@@ -1444,16 +1444,16 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: clamp(3px, 0.9vw, 5px);
+    gap: clamp(4px, 1.1vw, 6px);
     color: #000000 !important;
     line-height: 1;
-    margin-top: -1px;
+    margin-top: 1px;
 }
 
 #phone-panel-content .phone-screen .home-music-controls .home-music-control {
     position: relative;
-    width: clamp(6px, 1.8vw, 8px);
-    height: clamp(7px, 2vw, 9px);
+    width: clamp(7px, 2vw, 9px);
+    height: clamp(8px, 2.2vw, 10px);
     flex: 0 0 auto;
     color: inherit !important;
     background: transparent !important;
@@ -1467,19 +1467,19 @@
     top: 50%;
     width: 0;
     height: 0;
-    border-top: clamp(2.5px, 0.8vw, 3.5px) solid transparent;
-    border-bottom: clamp(2.5px, 0.8vw, 3.5px) solid transparent;
+    border-top: clamp(3px, 0.9vw, 4px) solid transparent;
+    border-bottom: clamp(3px, 0.9vw, 4px) solid transparent;
     transform: translateY(-50%);
 }
 
 #phone-panel-content .phone-screen .home-music-control-prev::before {
     left: 1px;
-    border-right: clamp(3.5px, 1.05vw, 5px) solid currentColor;
+    border-right: clamp(4px, 1.15vw, 5.5px) solid currentColor;
 }
 
 #phone-panel-content .phone-screen .home-music-control-next::before {
     right: 1px;
-    border-left: clamp(3.5px, 1.05vw, 5px) solid currentColor;
+    border-left: clamp(4px, 1.15vw, 5.5px) solid currentColor;
 }
 
 #phone-panel-content .phone-screen .home-music-control-prev::after,
@@ -1488,7 +1488,7 @@
     position: absolute;
     top: 50%;
     width: 0.8px;
-    height: clamp(6px, 1.7vw, 8px);
+    height: clamp(7px, 1.9vw, 9px);
     background: currentColor;
     border-radius: 1px;
     transform: translateY(-50%);
@@ -1503,8 +1503,8 @@
 }
 
 #phone-panel-content .phone-screen .home-music-controls .home-music-control.home-music-control-pause {
-    width: clamp(7px, 2vw, 9px);
-    height: clamp(6px, 1.7vw, 8px);
+    width: clamp(8px, 2.2vw, 10px);
+    height: clamp(7px, 1.9vw, 9px);
     background:
         linear-gradient(currentColor, currentColor) left 18% center / 22% 100% no-repeat,
         linear-gradient(currentColor, currentColor) right 18% center / 22% 100% no-repeat !important;
