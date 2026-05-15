@@ -1493,6 +1493,50 @@ if (window.GGP_Loaded) {
         }
     }
 
+    async function syncMofoItemFromCurrentChat(itemOrId) {
+        try {
+            const mofoData = await getOrCreateMofoData();
+            if (!mofoData || typeof mofoData.applyTagUpdatesFromText !== 'function') return null;
+
+            const item = (itemOrId && typeof itemOrId === 'object')
+                ? itemOrId
+                : mofoData.getItemById?.(itemOrId);
+            const tagName = String(item?.tagName || item?.name || '').trim();
+            if (!tagName) return item || null;
+
+            const ctx = getContext?.();
+            const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+            if (chat.length === 0) return item || null;
+
+            const escapeRegex = (value) => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const tagRegex = new RegExp(
+                `(?:<|&lt;)\\s*${escapeRegex(tagName)}\\s*(?:>|&gt;)[\\s\\S]*?(?:<|&lt;)\\s*\\/\\s*${escapeRegex(tagName)}\\s*(?:>|&gt;)`,
+                'i'
+            );
+            for (let index = chat.length - 1; index >= 0; index -= 1) {
+                const message = chat[index] || {};
+                const swipeIndex = Number.isInteger(message.swipe_id) ? message.swipe_id : null;
+                const candidates = [];
+                if (swipeIndex !== null && Array.isArray(message.swipes) && typeof message.swipes[swipeIndex] !== 'undefined') {
+                    candidates.push(message.swipes[swipeIndex]);
+                }
+                candidates.push(message.mes, message.content);
+
+                const text = candidates
+                    .map(value => String(value || ''))
+                    .find(value => value && tagRegex.test(value));
+                if (!text) continue;
+
+                mofoData.applyTagUpdatesFromText(text, { source: 'current_chat_preview', messageIndex: index });
+                return mofoData.getItemById?.(item.id) || item;
+            }
+            return item || null;
+        } catch (e) {
+            console.warn('⚠️ [魔坊] 同步当前聊天标签失败:', e);
+            return null;
+        }
+    }
+
     // ==========================================
     //  新增：魔坊动态更新气泡 & 全局速览弹窗
     // ==========================================
@@ -1549,101 +1593,141 @@ if (window.GGP_Loaded) {
                         z-index: 2147483646;
                         pointer-events: none;
                         isolation: isolate;
+                        --mofo-bubble-accent: var(--SmartThemeShadowColor, var(--SmartThemeQuoteColor, #a1aebb));
+                        --mofo-bubble-text: var(--SmartThemeBodyColor, #3f3737);
+                        --mofo-bubble-highlight: var(--SmartThemeBlurTintColor, rgba(255,255,255,0.82));
                     }
                     .mofo-update-bubble {
                         position: fixed;
-                        width: max-content;
-                        min-width: 142px;
-                        max-width: min(78vw, 260px);
-                        min-height: 46px;
-                        padding: 5px 6px;
+                        width: 44px;
+                        height: 44px;
+                        padding: 0;
                         transform: translate(-50%, -50%) scale(0.9);
-                        border-radius: 8px;
+                        border-radius: 50%;
                         display: flex;
-                        align-items: stretch;
-                        justify-content: stretch;
-                        background: linear-gradient(180deg,
-                            rgba(243,248,255,0.84) 0%,
-                            rgba(233,240,252,0.8) 62%,
-                            rgba(214,226,246,0.86) 100%);
-                        backdrop-filter: blur(10px) saturate(118%);
-                        -webkit-backdrop-filter: blur(10px) saturate(118%);
-                        border: 1px solid rgba(255,255,255,0.58);
+                        align-items: center;
+                        justify-content: center;
+                        background:
+                            radial-gradient(150% 150% at 30% 30%, color-mix(in srgb, var(--mofo-bubble-highlight) 32%, transparent), rgba(255,255,255,0.02)),
+                            color-mix(in srgb, var(--mofo-bubble-accent) 10%, transparent);
                         box-shadow:
-                            inset 0 1px 0 rgba(255,255,255,0.65),
-                            0 10px 22px rgba(20,35,70,0.24);
+                            inset 6px 0 12px color-mix(in srgb, var(--mofo-bubble-accent) 30%, rgba(255,255,255,0.2)),
+                            inset -6px 0 12px color-mix(in srgb, var(--mofo-bubble-accent) 18%, rgba(255,255,255,0.18)),
+                            inset 0 -6px 12px color-mix(in srgb, var(--mofo-bubble-accent) 16%, rgba(255,255,255,0.14)),
+                            inset 0 6px 12px color-mix(in srgb, var(--mofo-bubble-highlight) 82%, rgba(255,255,255,0.72)),
+                            0 7px 14px rgba(0,0,0,0.08);
                         box-sizing: border-box;
                         z-index: 2147483646;
                         cursor: pointer;
                         opacity: 0;
                         pointer-events: auto;
                         user-select: none;
-                        transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+                        transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.2s ease, filter 0.2s ease;
                     }
                     .mofo-update-bubble::before {
                         content: '';
                         position: absolute;
-                        inset: 0;
-                        border-radius: inherit;
-                        background: linear-gradient(180deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.06) 100%);
+                        top: 22%;
+                        left: 30%;
+                        width: 8px;
+                        height: 8px;
+                        border-radius: 50%;
+                        background: color-mix(in srgb, var(--mofo-bubble-highlight) 92%, white);
+                        filter: blur(1px);
+                        box-shadow: 0 0 5px rgba(255,255,255,0.5);
                         pointer-events: none;
                     }
                     .mofo-update-bubble::after {
                         content: '';
                         position: absolute;
-                        inset: 0;
-                        border-radius: inherit;
-                        border: 1px solid rgba(132, 156, 194, 0.34);
-                        opacity: 0.7;
+                        top: 38%;
+                        left: 20%;
+                        width: 3px;
+                        height: 3px;
+                        border-radius: 50%;
+                        background: color-mix(in srgb, var(--mofo-bubble-highlight) 80%, white);
+                        filter: blur(0.5px);
                         pointer-events: none;
                     }
                     .mofo-update-bubble.show {
                         transform: translate(-50%, -50%) scale(1);
                         opacity: 1;
-                        animation: mofoRankFloat 2.6s ease-in-out infinite;
+                        animation: mofoBubbleFloat 3s ease-in-out infinite;
                     }
                     .mofo-update-bubble:hover {
                         transform: translate(-50%, -50%) scale(1.025);
                         filter: brightness(1.02);
-                        box-shadow:
-                            inset 0 1px 0 rgba(255,255,255,0.74),
-                            0 14px 28px rgba(20,35,70,0.28);
                     }
                     .mofo-update-bubble:active { transform: translate(-50%, -50%) scale(0.98); }
+                    .mofo-update-bubble.bursting {
+                        pointer-events: none;
+                        animation: mofoBubbleBurst 0.34s ease-out forwards;
+                    }
+                    .mofo-burst-dot {
+                        position: fixed;
+                        width: 6px;
+                        height: 6px;
+                        border-radius: 50%;
+                        background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.95), color-mix(in srgb, var(--mofo-bubble-accent) 26%, rgba(186,232,230,0.28)) 68%, rgba(255,255,255,0));
+                        box-shadow: inset 2px 0 5px rgba(173,216,230,0.45), 0 2px 6px rgba(0,0,0,0.08);
+                        z-index: 2147483646;
+                        pointer-events: none;
+                        animation: mofoBurstDot 0.42s ease-out forwards;
+                    }
                     .mofo-bubble-rank-mini {
                         position: relative;
                         z-index: 1;
                         width: 100%;
-                        border-radius: 7px;
-                        padding: 6px 7px;
-                        background: linear-gradient(145deg, rgba(255,255,255,0.24), rgba(223,234,250,0.2));
-                        border: 1px solid rgba(255,255,255,0.5);
-                        box-shadow: inset 0 1px 0 rgba(255,255,255,0.45);
+                        min-width: 0;
+                        padding: 0 6px;
+                        background: transparent;
+                        border: 0;
+                        box-shadow: none;
+                        box-sizing: border-box;
                     }
                     .mofo-bubble-rank-row {
                         display: flex;
                         justify-content: center;
                         align-items: center;
-                        align-items: center;
                         min-width: 0;
                     }
                     .mofo-bubble-rank-name {
-                        font-size: 11px;
-                        color: #355986;
-                        white-space: nowrap;
+                        font-size: 8px;
+                        line-height: 1.18;
+                        color: var(--mofo-bubble-text);
+                        white-space: normal;
                         overflow: hidden;
-                        text-overflow: ellipsis;
                         text-align: center;
                         font-weight: 700;
+                        letter-spacing: 0;
+                        text-shadow: 0 1px 2px color-mix(in srgb, var(--mofo-bubble-highlight) 70%, transparent);
                         max-width: 100%;
-                        display: inline-flex;
-                        align-items: center;
-                        justify-content: center;
-                        padding: 2px 10px;
-                        background: rgba(255,255,255,0.62);
-                        border: 1px solid rgba(136,168,214,0.52);
-                        border-radius: 999px;
-                        box-shadow: inset 0 1px 0 rgba(255,255,255,0.65);
+                        display: -webkit-box;
+                        -webkit-line-clamp: 2;
+                        -webkit-box-orient: vertical;
+                        overflow-wrap: anywhere;
+                    }
+                    @media (max-width: 640px), (pointer: coarse) {
+                        .mofo-update-bubble {
+                            width: 36px;
+                            height: 36px;
+                        }
+                        .mofo-bubble-rank-mini {
+                            padding: 0 5px;
+                        }
+                        .mofo-bubble-rank-name {
+                            font-size: 7px;
+                            line-height: 1.18;
+                            letter-spacing: 0;
+                        }
+                        .mofo-update-bubble::before {
+                            width: 6px;
+                            height: 6px;
+                        }
+                        .mofo-update-bubble::after {
+                            width: 3px;
+                            height: 3px;
+                        }
                     }
                     #mofo-global-preview-overlay {
                         position: fixed;
@@ -1668,9 +1752,18 @@ if (window.GGP_Loaded) {
                         box-sizing: border-box;
                         animation: mofoPopIn 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
                     }
-                    @keyframes mofoRankFloat {
+                    @keyframes mofoBubbleFloat {
                         0%, 100% { transform: translate(-50%, -50%) scale(1); }
-                        50% { transform: translate(-50%, calc(-50% - 3px)) scale(1.012); }
+                        50% { transform: translate(-50%, calc(-50% - 12px)) scale(1); }
+                    }
+                    @keyframes mofoBubbleBurst {
+                        0% { transform: translate(-50%, -50%) scale(1); opacity: 1; filter: brightness(1); }
+                        45% { transform: translate(-50%, -50%) scale(1.08); opacity: 0.72; filter: brightness(1.2); }
+                        100% { transform: translate(-50%, -50%) scale(0.22); opacity: 0; filter: blur(2px) brightness(1.35); }
+                    }
+                    @keyframes mofoBurstDot {
+                        0% { transform: translate(-50%, -50%) scale(0.7); opacity: 0.95; }
+                        100% { transform: translate(calc(-50% + var(--mofo-burst-x)), calc(-50% + var(--mofo-burst-y))) scale(0.12); opacity: 0; }
                     }
                     @keyframes mofoPopIn { 0% { transform: translate(-50%, -50%) scale(0.94); opacity: 0; } 100% { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
                 `;
@@ -1705,6 +1798,30 @@ if (window.GGP_Loaded) {
             `;
             bubbleRoot.appendChild(bubble);
 
+            const syncBubbleThemeColors = () => {
+                const readPickerColor = (selector) => {
+                    const picker = hostDoc.querySelector(selector);
+                    const raw = String(picker?.getAttribute?.('color') || picker?.value || '').trim();
+                    return raw || '';
+                };
+                const shadowColor = readPickerColor('#shadow-color-picker');
+                const mainTextColor = readPickerColor('#main-text-color-picker');
+                if (shadowColor) bubbleRoot.style.setProperty('--mofo-bubble-accent', shadowColor);
+                if (mainTextColor) bubbleRoot.style.setProperty('--mofo-bubble-text', mainTextColor);
+            };
+            syncBubbleThemeColors();
+            const ThemeMutationObserver = hostWin.MutationObserver || globalThis.MutationObserver;
+            const themeObserver = ThemeMutationObserver ? new ThemeMutationObserver(syncBubbleThemeColors) : null;
+            ['#shadow-color-picker', '#main-text-color-picker'].forEach((selector) => {
+                const picker = hostDoc.querySelector(selector);
+                if (!picker) return;
+                picker.addEventListener?.('change', syncBubbleThemeColors, { signal: bubblePositionController.signal });
+                picker.addEventListener?.('input', syncBubbleThemeColors, { signal: bubblePositionController.signal });
+                themeObserver?.observe(picker, { attributes: true, attributeFilter: ['color', 'value', 'style'] });
+            });
+            themeObserver?.observe(hostDoc.documentElement, { attributes: true, attributeFilter: ['style', 'class'] });
+            bubblePositionController.signal.addEventListener('abort', () => themeObserver?.disconnect(), { once: true });
+
             const positionBubble = () => {
                 if (!bubble.isConnected) {
                     bubblePositionController.abort();
@@ -1717,17 +1834,16 @@ if (window.GGP_Loaded) {
                 const offsetTop = vv?.offsetTop || 0;
                 const pickAnchorRect = () => {
                     const candidates = [
-                        hostDoc.querySelector('#send_textarea'),
                         hostDoc.querySelector('#send_form'),
-                        hostDoc.querySelector('#form_sheld')
+                        hostDoc.querySelector('#form_sheld'),
+                        hostDoc.querySelector('#send_textarea')?.closest?.('#send_form, #form_sheld, form, .send_form, .chat-input-container'),
+                        hostDoc.querySelector('#send_textarea')
                     ].filter(Boolean);
                     let best = null;
                     for (const el of candidates) {
                         const rect = el.getBoundingClientRect?.();
                         if (!rect || rect.width <= 0 || rect.height <= 0) continue;
-                        const inLowerHalf = rect.top >= (viewHeight * 0.45);
-                        if (!inLowerHalf) continue;
-                        if (!best || rect.top > best.top) {
+                        if (!best || rect.bottom > best.bottom) {
                             best = rect;
                         }
                     }
@@ -1735,11 +1851,11 @@ if (window.GGP_Loaded) {
                 };
                 const anchorRect = pickAnchorRect();
                 const hasAnchor = !!anchorRect;
-                const bubbleHalfWidth = Math.max(24, (bubble.offsetWidth || 120) / 2);
-                const bubbleHalfHeight = Math.max(20, (bubble.offsetHeight || 48) / 2);
+                const bubbleHalfWidth = Math.max(18, (bubble.offsetWidth || 44) / 2);
+                const bubbleHalfHeight = Math.max(18, (bubble.offsetHeight || 44) / 2);
 
                 let targetX = offsetLeft + (viewWidth / 2);
-                let targetY = offsetTop + viewHeight - bubbleHalfHeight - 22;
+                let targetY = offsetTop + viewHeight - bubbleHalfHeight - 126;
 
                 if (hasAnchor) {
                     targetX = offsetLeft + anchorRect.left + (anchorRect.width / 2);
@@ -1781,21 +1897,43 @@ if (window.GGP_Loaded) {
                     }
                 }, 220);
             };
+            window.VirtualPhone.hideMofoUpdateBubble = hideBubble;
 
-            // 点击空白处关闭（不自动消失）
-            const closeByOutside = (e) => {
-                const target = e?.target;
-                if (!target) return;
-                if (bubble.contains(target)) return;
-                hideBubble();
-            };
-            hostDoc.addEventListener('pointerdown', closeByOutside, { capture: true, signal: bubbleDismissController.signal });
-            hostDoc.addEventListener('mousedown', closeByOutside, { capture: true, signal: bubbleDismissController.signal });
-            hostDoc.addEventListener('touchstart', closeByOutside, { passive: true, capture: true, signal: bubbleDismissController.signal });
+            const burstBubble = () => new Promise((resolve) => {
+                if (!bubble.isConnected) {
+                    resolve();
+                    return;
+                }
+                const rect = bubble.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+                const vectors = [
+                    [-30, -26], [-9, -36], [18, -32], [34, -10],
+                    [28, 22], [4, 36], [-25, 20], [-38, -2]
+                ];
+                vectors.forEach(([x, y], index) => {
+                    const dot = hostDoc.createElement('span');
+                    dot.className = 'mofo-burst-dot';
+                    const size = 3 + (index % 3) * 1.5;
+                    dot.style.width = `${size}px`;
+                    dot.style.height = `${size}px`;
+                    dot.style.left = `${centerX}px`;
+                    dot.style.top = `${centerY}px`;
+                    dot.style.setProperty('--mofo-burst-x', `${x}px`);
+                    dot.style.setProperty('--mofo-burst-y', `${y}px`);
+                    bubbleRoot.appendChild(dot);
+                    setTimeout(() => dot.remove(), 460);
+                });
+                bubble.classList.add('bursting');
+                setTimeout(() => {
+                    hideBubble();
+                    resolve();
+                }, 330);
+            });
 
             // 3. 点击气泡 -> 打开全屏速览
-            bubble.onclick = () => {
-                hideBubble();
+            bubble.onclick = async () => {
+                await burstBubble();
 
                 // --- 解析模板与CSS ---
                 const htmlTemplate = String(item['html模板'] ?? item.htmlTemplate ?? item.templateHtml ?? '').trim();
@@ -2930,9 +3068,10 @@ if (window.GGP_Loaded) {
                     };
                     menu._stPhoneDispose = closeMenuSafely;
 
-                    const openMofoStandalonePreview = (itemInput) => {
+                    const openMofoStandalonePreview = async (itemInput) => {
                         if (!itemInput) return;
-                        const item = JSON.parse(JSON.stringify(itemInput));
+                        const syncedItem = await syncMofoItemFromCurrentChat(itemInput);
+                        const item = JSON.parse(JSON.stringify(syncedItem || itemInput));
 
                         const hostDoc = (() => {
                             let hostWindow = window;
@@ -6440,6 +6579,7 @@ if (window.GGP_Loaded) {
     function onChatChanged() {
         // 🔄 切换会话时清空自动微博队列，避免旧会话任务串入新会话
         resetAutoWeiboQueue('chat_changed');
+        window.VirtualPhone?.hideMofoUpdateBubble?.();
 
         // 🔥 切换会话时彻底清空微信单例缓存，防止数据串味
         if (window.VirtualPhone) {

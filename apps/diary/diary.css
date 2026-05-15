@@ -1154,6 +1154,51 @@
     border: 1px solid #e0d8cc;
 }
 
+#phone-panel-content .phone-screen .diary-worldbook-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+#phone-panel-content .phone-screen .diary-worldbook-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+#phone-panel-content .phone-screen .diary-worldbook-choice {
+    -webkit-appearance: checkbox !important;
+    appearance: auto !important;
+    opacity: 1 !important;
+    width: 16px;
+    height: 16px;
+    min-width: 16px;
+    min-height: 16px;
+    margin: 2px 0 0;
+    accent-color: #d4a853;
+}
+
+#phone-panel-content .phone-screen .diary-worldbook-text {
+    min-width: 0;
+    display: block;
+}
+
+#phone-panel-content .phone-screen .diary-worldbook-name {
+    display: block;
+    font-size: 13px;
+    color: var(--diary-text-primary) !important;
+}
+
+#phone-panel-content .phone-screen .diary-worldbook-meta {
+    display: block;
+    font-size: 11px;
+    color: var(--diary-text-secondary) !important;
+    opacity: 0.72;
+    margin-top: 2px;
+}
+
 /* ==================== 隐藏滚动条 ==================== */
 .diary-toc-list,
 .diary-page-body,

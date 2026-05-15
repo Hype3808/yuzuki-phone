@@ -130,6 +130,7 @@ export class MofoView {
                         </div>
                         <div style="display:inline-flex; align-items:center; gap:6px;">
                             <span class="mofo-export-btn" data-mofo-id="${this._escapeHtml(safeId)}" title="导出该模板" style="height:20px; border-radius:6px; border:1px solid #b7caea; display:inline-flex; align-items:center; justify-content:center; font-size:10px; color:#315986; background:#f2f7ff; cursor:pointer; padding:0 6px;">导出</span>
+                            <span class="mofo-delete-btn" data-mofo-id="${this._escapeHtml(safeId)}" title="删除该模板" style="height:20px; border-radius:6px; border:1px solid #efb3b3; display:inline-flex; align-items:center; justify-content:center; font-size:10px; color:#a53b3b; background:#fff3f3; cursor:pointer; padding:0 6px;">删</span>
                             <span class="mofo-sort-btn" data-mofo-id="${this._escapeHtml(safeId)}" data-dir="up" title="上移" style="width:18px; height:18px; border-radius:5px; border:1px solid #c9d8f1; display:inline-flex; align-items:center; justify-content:center; font-size:10px; color:#45648f; background:#f4f8ff; ${isFirst ? 'opacity:0.35; pointer-events:none;' : 'cursor:pointer;'}">↑</span>
                             <span class="mofo-sort-btn" data-mofo-id="${this._escapeHtml(safeId)}" data-dir="down" title="下移" style="width:18px; height:18px; border-radius:5px; border:1px solid #c9d8f1; display:inline-flex; align-items:center; justify-content:center; font-size:10px; color:#45648f; background:#f4f8ff; ${isLast ? 'opacity:0.35; pointer-events:none;' : 'cursor:pointer;'}">↓</span>
                         </div>
@@ -360,7 +361,7 @@ export class MofoView {
         currentView.querySelectorAll('.mofo-item-row[data-mofo-id]').forEach(row => {
             bindTap(row, (e) => {
                 if (!this.selectionMode) return;
-                if (e.target?.closest?.('.mofo-export-btn, .mofo-sort-btn')) return;
+                if (e.target?.closest?.('.mofo-export-btn, .mofo-delete-btn, .mofo-sort-btn')) return;
                 toggleSelection(row.getAttribute('data-mofo-id'));
             });
         });
@@ -371,6 +372,22 @@ export class MofoView {
                 if (!id) return;
                 const item = this.app.mofoData.getItemById(id);
                 exportByIds([id], item?.name || 'mofo_template');
+            });
+        });
+
+        currentView.querySelectorAll('.mofo-delete-btn[data-mofo-id]').forEach(btn => {
+            bindTap(btn, () => {
+                const id = String(btn.getAttribute('data-mofo-id') || '').trim();
+                if (!id) return;
+                const item = this.app.mofoData.getItemById(id);
+                const name = item?.name || '该模板';
+                const ok = confirm(`删除魔坊「${name}」？\n会删除条目定义，并清理各会话里的对应运行态数据。`);
+                if (!ok) return;
+                const removed = this.app.mofoData.removeItem(id);
+                if (!removed) return;
+                this.selectedIds.delete(id);
+                notify('删除成功', `已删除「${name}」`, '🗑️');
+                this.render();
             });
         });
 

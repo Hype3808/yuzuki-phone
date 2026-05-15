@@ -4102,13 +4102,16 @@ export class HoneyView {
 
             container.innerHTML = displaySources.map(source => {
                 const checked = (selection.initialized && manager.matchesSelection?.(source, selection.ids)) ? 'checked' : '';
-                const disabledText = source.entries?.length ? '' : '（读取失败或为空）';
+                const activeCount = Number(source.entries?.length || 0);
+                const totalCount = Number(source.totalEntries ?? activeCount);
+                const disabledText = activeCount ? '' : (totalCount > 0 ? '（无开启条目）' : '（读取失败或为空）');
+                const countText = totalCount > activeCount ? `${activeCount}/${totalCount} 条可注入` : `${activeCount} 条`;
                 return `
                     <label class="phone-honey-worldbook-item">
                         <input type="checkbox" class="phone-honey-worldbook-choice" value="${this._escapeHtml(source.id)}" ${checked} style="margin-top: 2px;">
                         <span class="phone-honey-worldbook-text">
                             <span class="phone-honey-worldbook-name">${this._escapeHtml(source.name)}${this._escapeHtml(disabledText)}</span>
-                            <span class="phone-honey-worldbook-meta">${this._escapeHtml(source.sourceLabel || '世界书')} · ${Number(source.entries?.length || 0)} 条</span>
+                            <span class="phone-honey-worldbook-meta">${this._escapeHtml(source.sourceLabel || '世界书')} · ${this._escapeHtml(countText)}</span>
                         </span>
                     </label>
                 `;

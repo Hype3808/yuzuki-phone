@@ -29,6 +29,44 @@ function parseBooleanSetting(value, fallback = false) {
     return fallback;
 }
 
+function isTruthyFlag(value) {
+    if (value === true || value === 1) return true;
+    if (typeof value === 'string') {
+        return ['true', '1', 'yes', 'on', 'enabled', 'checked'].includes(value.trim().toLowerCase());
+    }
+    return false;
+}
+
+function isFalsyFlag(value) {
+    if (value === false || value === 0) return true;
+    if (typeof value === 'string') {
+        return ['false', '0', 'no', 'off', 'disabled', 'unchecked'].includes(value.trim().toLowerCase());
+    }
+    return false;
+}
+
+function isWorldEntryEnabled(entry) {
+    if (typeof entry === 'string') return true;
+    if (!entry || typeof entry !== 'object') return false;
+
+    // SillyTavern world info entries use `disable: true` for the kill switch.
+    // Keep aliases for imported/older schemas so closed entries never leak into phone prompts.
+    if (isTruthyFlag(entry.disable) || isTruthyFlag(entry.disabled)) return false;
+    if (Object.prototype.hasOwnProperty.call(entry, 'enabled') && isFalsyFlag(entry.enabled)) return false;
+    if (Object.prototype.hasOwnProperty.call(entry, 'active') && isFalsyFlag(entry.active)) return false;
+    return true;
+}
+
+function getRawEntries(entries) {
+    if (Array.isArray(entries)) return entries;
+    if (entries && typeof entries === 'object') return Object.values(entries);
+    return [];
+}
+
+function hasWorldEntries(entries) {
+    return getRawEntries(entries).length > 0;
+}
+
 function safeStorageSegment(value) {
     return safeString(value)
         .replace(/[^\w\u4e00-\u9fa5.-]+/g, '_')
@@ -37,11 +75,8 @@ function safeStorageSegment(value) {
 }
 
 function normalizeEntries(entries) {
-    const rawEntries = Array.isArray(entries)
-        ? entries
-        : Object.values(entries || {});
-
-    return rawEntries
+    return getRawEntries(entries)
+        .filter(isWorldEntryEnabled)
         .map((entry) => (typeof entry === 'string' ? { content: entry } : (entry || {})))
         .map((entry, index) => ({
             uid: safeString(entry.uid ?? entry.id ?? index),
@@ -158,7 +193,7 @@ async function fetchWorldInfoByName(name) {
     for (const body of payloads) {
         try {
             const data = normalizeWorldInfoData(await fetchJson(WORLD_INFO_GET_ENDPOINT, body));
-            if (normalizeEntries(data?.entries).length > 0) {
+            if (hasWorldEntries(data?.entries)) {
                 return { ...data, _phoneReadSource: `${WORLD_INFO_GET_ENDPOINT} ${Object.keys(body)[0]}` };
             }
         } catch (error) {
@@ -364,12 +399,12 @@ export class WorldbookManager {
             const worldModule = await this._loadWorldInfoModule();
             if (typeof worldModule?.loadWorldInfo === 'function') {
                 const loaded = normalizeWorldInfoData(await worldModule.loadWorldInfo(name));
-                if (normalizeEntries(loaded?.entries).length > 0) {
+                if (hasWorldEntries(loaded?.entries)) {
                     return { ...loaded, _phoneReadSource: '/scripts/world-info.js loadWorldInfo' };
                 }
 
                 const cached = this._extractWorldInfoModuleData(worldModule);
-                if (normalizeEntries(cached?.entries).length > 0) {
+                if (hasWorldEntries(cached?.entries)) {
                     return { ...cached, _phoneReadSource: '/scripts/world-info.js cache after loadWorldInfo' };
                 }
             }
@@ -377,7 +412,7 @@ export class WorldbookManager {
             const context = await this._getContextWithWorldInfo();
             if (typeof context?.getWorldInfo === 'function') {
                 const direct = normalizeWorldInfoData(await context.getWorldInfo(name));
-                if (normalizeEntries(direct?.entries).length > 0) {
+                if (hasWorldEntries(direct?.entries)) {
                     return { ...direct, _phoneReadSource: 'context.getWorldInfo' };
                 }
             }
@@ -387,13 +422,13 @@ export class WorldbookManager {
             const refreshedContext = await this._getContextWithWorldInfo();
             if (typeof refreshedContext?.getWorldInfo === 'function') {
                 const after = normalizeWorldInfoData(await refreshedContext.getWorldInfo(name));
-                if (normalizeEntries(after?.entries).length > 0) {
+                if (hasWorldEntries(after?.entries)) {
                     return { ...after, _phoneReadSource: 'context.getWorldInfo.afterRefresh' };
                 }
             }
 
             const moduleData = this._extractWorldInfoModuleData(worldModule);
-            return normalizeEntries(moduleData?.entries).length > 0
+            return hasWorldEntries(moduleData?.entries)
                 ? { ...moduleData, _phoneReadSource: 'world-info module cache' }
                 : null;
         } catch (error) {
@@ -412,15 +447,22 @@ export class WorldbookManager {
                 data = await fetchWorldInfoByName(name);
             }
             const entries = normalizeEntries(data?.entries);
+            const rawEntries = getRawEntries(data?.entries);
+            const totalEntries = rawEntries.length;
+            const disabledEntries = rawEntries.filter((entry) => !isWorldEntryEnabled(entry)).length;
             console.info('[WorldbookManager] 世界书读取结果:', {
                 name,
                 source: data?._phoneReadSource || 'unknown',
                 entries: entries.length,
+                totalEntries,
+                disabledEntries,
                 rawEntriesType: Array.isArray(data?.entries) ? 'array' : typeof data?.entries
             });
             return {
                 ...book,
-                entries
+                entries,
+                totalEntries,
+                disabledEntries
             };
         } catch (error) {
             console.warn(`[WorldbookManager] 读取世界书失败: ${name}`, error);
@@ -473,7 +515,9 @@ export class WorldbookManager {
     }
 
     getLegacyEnabledKey(appKey) {
-        return appKey === 'honey' ? 'phone-honey-use-worldbook' : 'wechat-use-worldbook';
+        if (appKey === 'honey') return 'phone-honey-use-worldbook';
+        if (appKey === 'wechat') return 'wechat-use-worldbook';
+        return '';
     }
 
     getEnabled(appKey) {
@@ -493,8 +537,12 @@ export class WorldbookManager {
             return parseBooleanSetting(globalRaw, fallback);
         }
 
-        const legacyRaw = this.storage?.get?.(this.getLegacyEnabledKey(appKey), undefined);
-        return parseBooleanSetting(legacyRaw, fallback);
+        const legacyKey = this.getLegacyEnabledKey(appKey);
+        if (legacyKey) {
+            const legacyRaw = this.storage?.get?.(legacyKey, undefined);
+            return parseBooleanSetting(legacyRaw, fallback);
+        }
+        return fallback;
     }
 
     async setEnabled(appKey, enabled) {

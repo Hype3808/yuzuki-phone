@@ -741,18 +741,23 @@ export class DiaryData {
 
         const promptContent = this._getDiaryPrompt(context);
         const userName = context.name1 || '用户';
-        const charName = context.name2 || '角色';
         const filledPrompt = promptContent
             .replace(/\{\{user\}\}/g, userName)
-            .replace(/\{\{char\}\}/g, charName)
+            .replace(/\{\{char\}\}/g, context.name2 || '角色')
             .replace(/\{\{chatHistory\}\}/g, ''); // 清除占位符，聊天记录已通过消息数组传入
 
-        // 🔥 构建消息数组：系统提示词 + 聊天记录 + 最终指令
+        const worldInfoMessage = await window.VirtualPhone?.worldbookManager?.buildWorldbookMessage?.('diary');
+        const wechatHistoryMessage = await this._buildDiaryWechatOnlineHistoryMessage(context);
+
         const messages = [
-            { role: 'system', content: filledPrompt, isPhoneMessage: true },
-            ...chatMessages,
-            { role: 'user', content: `请根据上述聊天记录，以第一人称写一篇私人日记；如有适合被${charName}用手机留存的瞬间，请按系统规则在日记中插入1-3个照片标签，格式为[图片]（中文照片说明/拍摄原因）（English NAI tags）或[个人图片]（中文照片说明/拍摄原因）（English NAI tags）。`, isPhoneMessage: true }
+            ...(worldInfoMessage ? [worldInfoMessage] : []),
+            ...(wechatHistoryMessage ? [wechatHistoryMessage] : []),
+            ...chatMessages
         ];
+        this._appendDiaryPromptAtMessageEnd(messages, filledPrompt);
+
+        // 🔥 构建消息数组：背景上下文 + 聊天记录 + 末尾日记提示词
+        if (messages.length === 0) throw new Error('消息数组为空');
 
         // 🚀 核心：移交 ApiManager 处理
         const apiManager = window.VirtualPhone?.apiManager;
@@ -770,6 +775,292 @@ export class DiaryData {
 
         // 使用新的多日记解析方法
         return this.parseMultipleDiaries(rawContent);
+    }
+
+    _appendDiaryPromptAtMessageEnd(messages = [], promptContent = '') {
+        const prompt = String(promptContent || '').trim();
+        if (!prompt) return messages;
+
+        const lastMessage = messages[messages.length - 1];
+        if (lastMessage?.role === 'user') {
+            lastMessage.content = `${String(lastMessage.content || '').trim()}\n\n${prompt}`.trim();
+            lastMessage.isPhoneMessage = true;
+            return messages;
+        }
+
+        messages.push({
+            role: 'user',
+            content: prompt,
+            isPhoneMessage: true
+        });
+        return messages;
+    }
+
+    async _buildDiaryWechatOnlineHistoryMessage(context = null) {
+        try {
+            const wechatSource = this._resolveWechatHistorySourceForDiary(context);
+            if (!wechatSource) return null;
+
+            const singleLimit = this._readNonNegativeStorageNumber('wechat-single-chat-limit', 200);
+            const groupLimit = this._readNonNegativeStorageNumber('wechat-group-chat-limit', 200);
+            if (singleLimit <= 0 && groupLimit <= 0) return null;
+
+            const userName = context?.name1 || '用户';
+            const sections = [];
+            const chats = wechatSource.getChatList() || [];
+
+            for (const chat of chats) {
+                if (!chat?.id) continue;
+                const isGroup = chat.type === 'group';
+                const limit = isGroup ? groupLimit : singleLimit;
+                if (limit <= 0) continue;
+
+                const messages = this._sliceWechatMessagesForDiary(wechatSource.getMessages(chat.id) || [], limit);
+                if (messages.length === 0) continue;
+
+                const section = this._formatWechatChatForDiary(chat, messages, userName);
+                if (section) sections.push(section);
+            }
+
+            if (sections.length === 0) return null;
+
+            return {
+                role: 'system',
+                name: 'SYSTEM (微信线上记录)',
+                isPhoneMessage: true,
+                content: [
+                    '【手机微信线上聊天记录】',
+                    '以下是用户手机里已有的微信单聊和微信群聊记录，严格按照时间区分，写日记时可作为经历、关系变化和情绪线索参考。',
+                    '',
+                    sections.join('\n\n')
+                ].join('\n')
+            };
+        } catch (error) {
+            console.warn('[DiaryData] 构建日记微信线上记录失败:', error);
+            return null;
+        }
+    }
+
+    _resolveWechatHistorySourceForDiary(context = null) {
+        const wechatData = window.VirtualPhone?.wechatApp?.wechatData || window.VirtualPhone?.cachedWechatData;
+        if (wechatData && typeof wechatData.getChatList === 'function' && typeof wechatData.getMessages === 'function') {
+            return {
+                getChatList: () => wechatData.getChatList() || [],
+                getMessages: (chatId) => wechatData.getMessages(chatId) || []
+            };
+        }
+
+        const data = this._loadStoredWechatDataForDiary(context);
+        if (!data) return null;
+        const chats = Array.isArray(data.chats) ? data.chats : [];
+        const embeddedMessages = data.messages && typeof data.messages === 'object' ? data.messages : {};
+
+        return {
+            getChatList: () => [...chats].sort((a, b) => Number(b?.timestamp || 0) - Number(a?.timestamp || 0)),
+            getMessages: (chatId) => {
+                const safeChatId = String(chatId || '').trim();
+                if (!safeChatId) return [];
+                if (Array.isArray(embeddedMessages[safeChatId])) return embeddedMessages[safeChatId];
+
+                const keys = this._getWechatMessageStorageKeysForDiary(safeChatId, context);
+                for (const key of keys) {
+                    const raw = this.storage?.get?.(key, false);
+                    const parsed = this._parseMaybeJsonArray(raw);
+                    if (parsed.length > 0) return parsed;
+                }
+                return [];
+            }
+        };
+    }
+
+    _loadStoredWechatDataForDiary(context = null) {
+        const keys = this._isLobbyContextForDiary(context)
+            ? ['phone_wechat_data_lobby_global', 'wechat_data']
+            : ['wechat_data'];
+
+        for (const key of keys) {
+            const raw = this.storage?.get?.(key, false);
+            if (!raw) continue;
+            try {
+                const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+                if (parsed && typeof parsed === 'object') return parsed;
+            } catch (e) {
+                console.warn(`[DiaryData] 读取微信数据失败: ${key}`, e);
+            }
+        }
+        return null;
+    }
+
+    _getWechatMessageStorageKeysForDiary(chatId, context = null) {
+        const safeChatId = String(chatId || '').trim();
+        if (!safeChatId) return [];
+        const keys = [];
+        if (this._isLobbyContextForDiary(context)) keys.push(`phone_wechat_msg_lobby_${safeChatId}`);
+        keys.push(`wechat_msg_${safeChatId}`);
+        return [...new Set(keys)];
+    }
+
+    _isLobbyContextForDiary(context = null) {
+        const ctx = context || this._getContext();
+        const charName = String(ctx?.name2 || '').trim();
+        if (/^SillyTavern System$/i.test(charName)) return true;
+        const chatId = String(ctx?.chatMetadata?.file_name || ctx?.chatId || '').trim();
+        if (chatId) return false;
+        if (charName) return false;
+        return true;
+    }
+
+    _parseMaybeJsonArray(raw) {
+        if (Array.isArray(raw)) return raw;
+        if (typeof raw !== 'string' || raw.trim() === '') return [];
+        try {
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch {
+            return [];
+        }
+    }
+
+    _readNonNegativeStorageNumber(key, fallback = 0) {
+        const parsed = parseInt(this.storage?.get?.(key), 10);
+        if (!Number.isFinite(parsed)) return fallback;
+        return Math.max(0, parsed);
+    }
+
+    _sliceWechatMessagesForDiary(messages = [], limit = 0) {
+        if (!Array.isArray(messages) || limit <= 0) return [];
+
+        let totalLines = 0;
+        let startIdx = messages.length;
+        for (let i = messages.length - 1; i >= 0; i--) {
+            const msg = messages[i];
+            if (msg?.hiddenFromPrompt === true || msg?.isTimeMarker === true || msg?.type === 'time_marker') continue;
+            totalLines += msg?.type === 'call_record' && Array.isArray(msg.transcript)
+                ? msg.transcript.length + 1
+                : 1;
+            startIdx = i;
+            if (totalLines >= limit) break;
+        }
+
+        return messages.slice(startIdx).filter(msg =>
+            msg?.hiddenFromPrompt !== true &&
+            msg?.isTimeMarker !== true &&
+            msg?.type !== 'time_marker'
+        );
+    }
+
+    _formatWechatChatForDiary(chat = {}, messages = [], userName = '用户') {
+        const chatName = String(chat.name || '未命名聊天').trim();
+        const isGroup = chat.type === 'group';
+        let text = `━━━ ${chatName} 的聊天记录 ━━━\n`;
+        let lastDate = '';
+
+        messages.forEach((msg) => {
+            if (msg?.date && msg.date !== lastDate) {
+                text += `--- ${msg.date} ---\n`;
+                lastDate = msg.date;
+            }
+
+            const isUser = msg?.from === 'me';
+            let speaker = isUser ? userName : chatName;
+            if (!isUser && isGroup && msg?.from && msg.from !== 'system') {
+                speaker = String(msg.from || '').trim() || chatName;
+            }
+
+            const timeStr = msg?.time ? `[${msg.time}] ` : '';
+            const quoteStr = msg?.quote ? `「引用 ${msg.quote.sender}: ${msg.quote.content}」` : '';
+            text += `${timeStr}${this._formatWechatMessageLineForDiary(msg, speaker, quoteStr, userName)}\n`;
+        });
+
+        return text.trim();
+    }
+
+    _formatWechatMessageLineForDiary(msg = {}, speaker = '未知', quoteStr = '', userName = '用户') {
+        const safeSpeaker = String(speaker || '未知').trim();
+        const type = String(msg?.type || '').trim();
+
+        if (msg?.from === 'system' || type === 'system') {
+            return `[系统] ${String(msg.content || '').trim()}`;
+        }
+
+        if (type === 'call_record') {
+            const callTypeName = msg.callType === 'video' ? '视频通话' : '语音通话';
+            const statusText = msg.status === 'answered'
+                ? `通话时长 ${msg.duration || '未知'}`
+                : (msg.status === 'rejected' || msg.status === 'declined')
+                    ? '对方已拒绝'
+                    : msg.status === 'cancelled'
+                        ? '已取消'
+                        : '未接听';
+            const transcript = Array.isArray(msg.transcript) && msg.transcript.length > 0
+                ? msg.transcript.map(t => {
+                    const tSpeaker = t?.from === 'me' ? userName : String(t?.from || safeSpeaker || '对方');
+                    return `  [通话记录] ${tSpeaker}: ${String(t?.text || '').trim()}`;
+                }).join('\n')
+                : '';
+            return `[${callTypeName} - ${statusText}]${transcript ? `\n${transcript}` : ''}`;
+        }
+
+        if (type === 'image') {
+            return `${safeSpeaker}: ${quoteStr}${this._formatWechatMediaTextForDiary(msg, '[图片]')}`;
+        }
+
+        if (type === 'image_prompt') {
+            const mediaType = msg.usePersonalReference ? '个人图片' : (msg.mediaType || '图片');
+            const promptText = String(msg.imagePrompt || msg.content || '').trim();
+            return `${safeSpeaker}: ${quoteStr}[${mediaType}]（${promptText || '未提供描述'}）`;
+        }
+
+        if (type === 'transfer') {
+            const status = String(msg.status || '').trim() === 'received' ? '已收款' : '未收款';
+            return `${safeSpeaker}: ${quoteStr}[转账 ¥${msg.amount || ''}]（状态：${status}）`;
+        }
+
+        if (type === 'redpacket') {
+            const status = String(msg.status || '').trim() === 'opened' ? '已领取' : '未领取';
+            return `${safeSpeaker}: ${quoteStr}[红包 ¥${msg.amount || ''}]（状态：${status}）`;
+        }
+
+        if (type === 'location') {
+            const locationText = String(msg.locationText || msg.locationAddress || msg.content || '').trim();
+            return `${safeSpeaker}: ${quoteStr}[定位]（${locationText || '未知位置'}）`;
+        }
+
+        if (type === 'voice') {
+            return `${safeSpeaker}: ${quoteStr}[语音条]（${String(msg.text || msg.content || '').trim() || '未转写'}）`;
+        }
+
+        if (type === 'music_invite' || type === 'music_listen') {
+            const song = String(msg.songName || msg.song || msg.content || '').trim();
+            return `${safeSpeaker}: ${quoteStr}[音乐]（${song || '一起听歌'}）`;
+        }
+
+        return `${safeSpeaker}: ${quoteStr}${this._cleanWechatContentForDiary(msg?.content) || '[空消息]'}`;
+    }
+
+    _formatWechatMediaTextForDiary(msg = {}, fallback = '[图片]') {
+        const candidates = [
+            msg.description,
+            msg.imageDescription,
+            msg.alt,
+            msg.caption,
+            msg.text,
+            msg.content
+        ];
+        for (const value of candidates) {
+            const text = this._cleanWechatContentForDiary(value);
+            if (!text) continue;
+            if (/^(data:image\/|https?:\/\/|\/)/i.test(text)) continue;
+            return text.startsWith('[') ? text : `${fallback}（${text}）`;
+        }
+        return fallback;
+    }
+
+    _cleanWechatContentForDiary(value = '') {
+        return String(value || '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 500);
     }
 
     /**

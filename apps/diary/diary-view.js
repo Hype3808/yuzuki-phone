@@ -683,6 +683,7 @@ export class DiaryView {
         const globalLineHeight = this.app.diaryData.getGlobalLineHeight();
         const globalFontSize = this.app.diaryData.getGlobalFontSize();
         const autoLastFloor = this.app.diaryData.getAutoLastFloor() || 0;
+        const useDiaryWorldbook = window.VirtualPhone?.worldbookManager?.getEnabled?.('diary') ?? true;
 
         const html = `
             <div class="diary-app">
@@ -789,6 +790,35 @@ export class DiaryView {
                             <div class="diary-s-desc" style="opacity: 0.6; margin-top: 4px;">修正此数值可以重置AI的计算起点。如果AI漏记了或重写了，可手动调整该数值。</div>
                         </div>
 
+                        <!-- 生成上下文 -->
+                        <div class="diary-s-section">
+                            <div class="diary-s-section-title">生成上下文</div>
+                            <div class="diary-s-row">
+                                <div style="min-width: 0;">
+                                    <span class="diary-s-label">使用酒馆世界书</span>
+                                    <div class="diary-s-desc" style="margin-top: 4px; margin-bottom: 0;">开启后，手动和自动写日记会注入下方勾选的酒馆世界书；开关与勾选状态跟随当前角色卡。</div>
+                                </div>
+                                <label class="toggle-switch" style="flex: 0 0 auto;">
+                                    <input type="checkbox" id="diary-use-worldbook" ${useDiaryWorldbook ? 'checked' : ''}>
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                            <div class="phone-prompt-fold diary-worldbook-fold" data-default-open="false" style="margin-top: 10px;">
+                                <div class="phone-prompt-fold-header">
+                                    <div class="phone-prompt-fold-main">
+                                        <div class="phone-prompt-fold-title">世界书选择</div>
+                                        <div class="phone-prompt-fold-desc">展开后勾选要注入日记生成的酒馆世界书</div>
+                                    </div>
+                                    <i class="fa-solid fa-chevron-right phone-prompt-fold-arrow"></i>
+                                </div>
+                                <div class="phone-prompt-fold-content">
+                                    <div id="diary-worldbook-list" class="diary-worldbook-list">
+                                        <div class="diary-s-desc" style="padding-top: 8px;">正在读取当前可用世界书...</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- 提示词编辑 -->
                         <div class="diary-s-section">
                             <div class="diary-s-section-title">日记提示词</div>
@@ -824,6 +854,7 @@ export class DiaryView {
     _bindSettingsEvents() {
         this._bindPromptFoldToggles(document.querySelector('.phone-view-current .diary-settings-view') || document);
         this._syncDiaryGenerationStatusUI();
+        this.renderDiaryWorldbookList();
 
         const backBtn = document.getElementById('diary-settings-back');
         if (backBtn) backBtn.onclick = () => {
@@ -1067,6 +1098,12 @@ export class DiaryView {
             };
         }
 
+        document.getElementById('diary-use-worldbook')?.addEventListener('change', async (e) => {
+            const enabled = !!e.target.checked;
+            await window.VirtualPhone?.worldbookManager?.setEnabled?.('diary', enabled);
+            if (enabled) this.renderDiaryWorldbookList();
+        });
+
         const promptSave = document.getElementById('diary-s-prompt-save');
         if (promptSave) promptSave.onclick = () => {
             const textarea = document.getElementById('diary-s-prompt');
@@ -1098,6 +1135,56 @@ export class DiaryView {
         });
 
         // 提示词折叠交互
+    }
+
+    async renderDiaryWorldbookList() {
+        const container = document.getElementById('diary-worldbook-list');
+        const manager = window.VirtualPhone?.worldbookManager;
+        if (!container || !manager) return;
+
+        try {
+            const sources = await manager.listAvailableWorldbooks({ includeEntries: true, force: true });
+            const selection = manager.getSelectionState('diary');
+            if (sources.length === 0) {
+                container.innerHTML = '<div class="diary-s-desc" style="padding: 8px 0;">未读取到酒馆世界书列表。</div>';
+                return;
+            }
+
+            const isSelectedSource = (source) => selection.initialized && manager.matchesSelection?.(source, selection.ids);
+            const displaySources = [...sources].sort((a, b) => {
+                const aSelected = isSelectedSource(a) ? 1 : 0;
+                const bSelected = isSelectedSource(b) ? 1 : 0;
+                return bSelected - aSelected;
+            });
+
+            container.innerHTML = displaySources.map(source => {
+                const checked = (selection.initialized && manager.matchesSelection?.(source, selection.ids)) ? 'checked' : '';
+                const activeCount = Number(source.entries?.length || 0);
+                const totalCount = Number(source.totalEntries ?? activeCount);
+                const disabledText = activeCount ? '' : (totalCount > 0 ? '（无开启条目）' : '（读取失败或为空）');
+                const countText = totalCount > activeCount ? `${activeCount}/${totalCount} 条可注入` : `${activeCount} 条`;
+                return `
+                    <label class="diary-worldbook-item">
+                        <input type="checkbox" class="diary-worldbook-choice" value="${this._escapeAttr(source.id)}" ${checked}>
+                        <span class="diary-worldbook-text">
+                            <span class="diary-worldbook-name">${this._escapeHtml(source.name)}${this._escapeHtml(disabledText)}</span>
+                            <span class="diary-worldbook-meta">${this._escapeHtml(source.sourceLabel || '世界书')} · ${this._escapeHtml(countText)}</span>
+                        </span>
+                    </label>
+                `;
+            }).join('');
+
+            container.querySelectorAll('.diary-worldbook-choice').forEach(input => {
+                input.addEventListener('change', async () => {
+                    const ids = Array.from(container.querySelectorAll('.diary-worldbook-choice:checked')).map(item => item.value);
+                    await manager.setSelection('diary', ids);
+                    this.renderDiaryWorldbookList();
+                });
+            });
+        } catch (error) {
+            console.warn('[Diary] 世界书列表渲染失败:', error);
+            container.innerHTML = '<div class="diary-s-desc" style="color:#d93025; padding: 8px 0;">世界书读取失败，请稍后重试。</div>';
+        }
     }
 
     _getDiaryGenerationState() {
