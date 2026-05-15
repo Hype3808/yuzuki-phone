@@ -49,7 +49,8 @@ const ST_PHONE_CURRENT_UPDATE = {
         '【修复】微博、日记、微信聊天和朋友圈点击生图后会保存到酒馆 /backgrounds/ 本地文件夹并显示在相册中，重新生成、删除消息或清空朋友圈时会同步清理旧图。',
         '【修复】微信、微博、蜜语注入酒馆世界书时，现在只会注入世界书内已开启的条目，已关闭条目不再进入手机提示词。',
         '【修复】修复小手机魔坊列表在移动端删除模板时可能连续触发点击、误删多个模板的问题。',
-        '【修复】修复魔坊编辑保存后可能回退到首次保存内容，导致 HTML/CSS 修改后预览不生效的问题。'
+        '【修复】修复魔坊编辑保存后可能回退到首次保存内容，导致 HTML/CSS 修改后预览不生效的问题。',
+        '【修复】魔坊线下提示词会按当前聊天重新同步状态，删除旧 AI 回复里的魔坊标签后，不再继续注入旧内容。'
     ]
 };
 
@@ -1542,6 +1543,35 @@ if (window.GGP_Loaded) {
         }
     }
 
+    async function rebuildMofoStateFromCurrentChat() {
+        try {
+            const mofoData = await getOrCreateMofoData();
+            if (!mofoData || typeof mofoData.rebuildSessionStateFromTextBlocks !== 'function') return [];
+
+            const ctx = getContext?.();
+            const chat = Array.isArray(ctx?.chat) ? ctx.chat : [];
+            if (chat.length === 0) {
+                mofoData.rebuildSessionStateFromTextBlocks([], { source: 'current_chat_rebuild' });
+                return [];
+            }
+
+            const textBlocks = [];
+            chat.forEach((message) => {
+                if (!message || message.is_user) return;
+                const swipeIndex = Number.isInteger(message.swipe_id) ? message.swipe_id : null;
+                if (swipeIndex !== null && Array.isArray(message.swipes) && typeof message.swipes[swipeIndex] !== 'undefined') {
+                    textBlocks.push(String(message.swipes[swipeIndex] || ''));
+                    return;
+                }
+                textBlocks.push(String(message.mes || message.content || ''));
+            });
+            return mofoData.rebuildSessionStateFromTextBlocks(textBlocks, { source: 'current_chat_rebuild' });
+        } catch (e) {
+            console.warn('⚠️ [魔坊] 重建当前聊天状态失败:', e);
+            return [];
+        }
+    }
+
     // ==========================================
     //  新增：魔坊动态更新气泡 & 全局速览弹窗
     // ==========================================
@@ -2048,6 +2078,7 @@ if (window.GGP_Loaded) {
         try {
             const mofoData = await getOrCreateMofoData();
             if (!mofoData) return '';
+            await rebuildMofoStateFromCurrentChat();
 
             const items = (typeof mofoData.getOfflinePromptItems === 'function')
                 ? mofoData.getOfflinePromptItems()

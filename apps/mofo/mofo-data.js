@@ -1223,6 +1223,41 @@ export class MofoData {
         return updates;
     }
 
+    rebuildSessionStateFromTextBlocks(textBlocks = [], meta = {}) {
+        const list = this._ensureCache();
+        const blocks = (Array.isArray(textBlocks) ? textBlocks : [])
+            .map(text => String(text || ''))
+            .filter(Boolean);
+        if (list.length === 0) return [];
+
+        const sessionMap = this._ensureSessionStateCache();
+        let changed = false;
+        list.forEach(item => {
+            if (!item?.id) return;
+            if (Object.prototype.hasOwnProperty.call(sessionMap, item.id)) {
+                delete sessionMap[item.id];
+                changed = true;
+            }
+        });
+        if (changed) {
+            this._commitSessionState();
+        }
+
+        const updates = [];
+        blocks.forEach((text, index) => {
+            const nextUpdates = this.applyTagUpdatesFromText(text, {
+                source: String(meta.source || 'current_chat_rebuild'),
+                messageIndex: Number.isInteger(meta.messageIndexOffset)
+                    ? meta.messageIndexOffset + index
+                    : index
+            });
+            if (Array.isArray(nextUpdates) && nextUpdates.length > 0) {
+                updates.push(...nextUpdates);
+            }
+        });
+        return updates;
+    }
+
     clearCache() {
         this._cache = null;
         this._sessionStateCache = null;
