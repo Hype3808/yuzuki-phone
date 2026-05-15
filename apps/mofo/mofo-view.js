@@ -380,7 +380,25 @@ export class MofoView {
         });
 
         currentView.querySelectorAll('.mofo-delete-btn[data-mofo-id]').forEach(btn => {
-            bindTap(btn, () => {
+            let startX = 0;
+            let startY = 0;
+            let moved = false;
+            btn.addEventListener('pointerdown', (e) => {
+                startX = Number(e.clientX || 0);
+                startY = Number(e.clientY || 0);
+                moved = false;
+                e.stopPropagation?.();
+            });
+            btn.addEventListener('pointermove', (e) => {
+                if (Math.abs(Number(e.clientX || 0) - startX) > 6 || Math.abs(Number(e.clientY || 0) - startY) > 6) {
+                    moved = true;
+                }
+                e.stopPropagation?.();
+            });
+            btn.addEventListener('pointerup', (e) => {
+                e.preventDefault?.();
+                e.stopPropagation?.();
+                if (moved) return;
                 const id = String(btn.getAttribute('data-mofo-id') || '').trim();
                 if (!id) return;
                 const item = this.app.mofoData.getItemById(id);
@@ -392,6 +410,10 @@ export class MofoView {
                 this.selectedIds.delete(id);
                 notify('删除成功', `已删除「${name}」`, '🗑️');
                 this.render();
+            });
+            btn.addEventListener('click', (e) => {
+                e.preventDefault?.();
+                e.stopPropagation?.();
             });
         });
 
