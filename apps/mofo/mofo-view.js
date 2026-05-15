@@ -165,7 +165,7 @@ export class MofoView {
                         这里支持模板导入/导出与排序。新建、编辑、删除、清理请在外部魔坊面板操作。
                     </div>
                     <div style="display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:8px; margin-bottom:8px;">
-                        <button id="mofo-import-btn" style="height:32px; border:1px solid #6ea0e8; border-radius:8px; background:#eaf3ff; color:#1f4f8c; font-size:12px; font-weight:700; cursor:pointer;">导入模板</button>
+                        <label id="mofo-import-btn" for="mofo-import-input" role="button" tabindex="0" style="height:32px; box-sizing:border-box; border:1px solid #6ea0e8; border-radius:8px; background:#eaf3ff; color:#1f4f8c; font-size:12px; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center;">导入模板</label>
                         <button id="mofo-export-all-btn" style="height:32px; border:1px solid #7fb89f; border-radius:8px; background:#ecfbf3; color:#1c6c44; font-size:12px; font-weight:700; cursor:pointer;">导出全部</button>
                         <button id="mofo-toggle-select-btn" style="height:32px; border:1px solid #b5a4df; border-radius:8px; background:#f4f0ff; color:#59439a; font-size:12px; font-weight:700; cursor:pointer;">
                             ${this.selectionMode ? '完成多选' : '多选导出'}
@@ -182,7 +182,7 @@ export class MofoView {
                         </button>
                     </div>
                     ` : ''}
-                    <input type="file" id="mofo-import-input" accept=".json,application/json,text/plain" multiple style="display:none;">
+                    <input type="file" id="mofo-import-input" accept=".json,application/json,text/plain" multiple style="position:absolute; width:1px; height:1px; opacity:0; overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%);">
                     ${this._buildListHtml(items)}
                 </div>
             </div>
@@ -274,8 +274,12 @@ export class MofoView {
             notify('导出成功', `已导出 ${count} 条模板`, '✅');
         };
 
-        bindTap(currentView.querySelector('#mofo-import-btn'), () => {
-            currentView.querySelector('#mofo-import-input')?.click();
+        const importBtn = currentView.querySelector('#mofo-import-btn');
+        const importInput = currentView.querySelector('#mofo-import-input');
+        importBtn?.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            e.preventDefault();
+            importInput?.click();
         });
 
         bindTap(currentView.querySelector('#mofo-export-all-btn'), () => {
@@ -307,7 +311,7 @@ export class MofoView {
             this.render();
         });
 
-        currentView.querySelector('#mofo-import-input')?.addEventListener('change', async (e) => {
+        importInput?.addEventListener('change', async (e) => {
             const files = Array.from(e?.target?.files || []);
             e.target.value = '';
             if (files.length === 0) return;
