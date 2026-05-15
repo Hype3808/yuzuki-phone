@@ -471,7 +471,7 @@ export class MofoData {
         const name = String(rawItem.name || rawItem.title || '未命名魔坊').trim() || '未命名魔坊';
         const tagName = this._normalizeTagName(rawItem.tagName || rawItem.tag || name, name);
         const cssText = String(rawItem.cssText || rawItem.css || '').trim();
-        const htmlTemplate = String(rawItem['html模板'] ?? rawItem.htmlTemplate ?? rawItem.templateHtml ?? '').trim();
+        const htmlTemplate = String(rawItem.htmlTemplate ?? rawItem.templateHtml ?? rawItem['html模板'] ?? '').trim();
         const promptTemplate = String(rawItem.promptTemplate || rawItem.prompt || '').trim();
         const offlinePromptEnabled = this._parseBoolean(
             rawItem.offlinePromptEnabled ?? rawItem.enableOfflinePrompt ?? rawItem.promptEnabled,
