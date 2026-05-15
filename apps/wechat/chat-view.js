@@ -15,7 +15,6 @@ import { applyPhoneTagFilter } from '../../config/tag-filter.js';
 
 const LOBBY_LINK_CHARACTER_IDS_KEY = 'phone-lobby-link-character-ids';
 const LOBBY_LINK_GROUP_IDS_KEY = 'phone-lobby-link-group-ids';
-
 // 聊天界面视图
 export class ChatView {
     constructor(wechatApp) {
@@ -58,6 +57,25 @@ export class ChatView {
         this._lobbyPersonaCacheMax = 128;
     }
 
+    _readNonNegativeLimit(key, defaultValue = 0, maxValue = 9999) {
+        const storage = window.VirtualPhone?.storage || this.app?.storage;
+        const raw = storage?.get?.(key);
+        if (raw === undefined || raw === null || raw === '') return defaultValue;
+        const parsed = Number.parseInt(raw, 10);
+        if (!Number.isFinite(parsed)) return defaultValue;
+        return Math.max(0, Math.min(maxValue, parsed));
+    }
+
+    _formatRealDateTime(timestamp = Date.now()) {
+        const dateObj = new Date(Number(timestamp || Date.now()));
+        const pad = (value) => String(value).padStart(2, '0');
+        return {
+            date: `${dateObj.getFullYear()}年${pad(dateObj.getMonth() + 1)}月${pad(dateObj.getDate())}日`,
+            time: `${pad(dateObj.getHours())}:${pad(dateObj.getMinutes())}`,
+            timestamp: dateObj.getTime()
+        };
+    }
+
     _safeGetContext() {
         try {
             return (typeof SillyTavern !== 'undefined' && SillyTavern.getContext)
@@ -65,6 +83,15 @@ export class ChatView {
                 : null;
         } catch (e) {
             return null;
+        }
+    }
+
+    _getCurrentTavernChatId() {
+        try {
+            const context = this._safeGetContext();
+            return String(context?.chatMetadata?.file_name || context?.chatId || 'default_chat');
+        } catch (e) {
+            return 'default_chat';
         }
     }
 
@@ -649,15 +676,18 @@ export class ChatView {
         return lines.join('\n');
     }
 
-    // 🔥 判断当前会话是否开启在线模式（per-chat）
+    // 🔥 判断当前会话是否开启手机内 AI 互动（互通模式或线上模式）
     isOnlineMode() {
         const storage = window.VirtualPhone?.storage;
         if (!storage) return false;
-        const key = this.app?.wechatData?.getOnlineModeStorageKey?.(this._safeGetContext?.()) || 'wechat_online_mode';
-        const val = storage.get(key);
-        if (val === true || val === 'true' || val === 1) return true;
-        if (val === false || val === 'false' || val === 0 || val === null || val === undefined) return false;
-        return !!val;
+        const context = this._safeGetContext?.();
+        const interopKey = this.app?.wechatData?.getOnlineModeStorageKey?.(context) || 'wechat_online_mode';
+        const onlineOnlyKey = this.app?.wechatData?.getOnlineOnlyModeStorageKey?.(context) || 'wechat_online_only_mode';
+        const isEnabled = (key) => {
+            const val = storage.get(key);
+            return val === true || val === 'true' || val === 1;
+        };
+        return isEnabled(interopKey) || isEnabled(onlineOnlyKey);
     }
 
     _stripWechatCommentWrapper(text) {
@@ -1691,10 +1721,44 @@ export class ChatView {
     _applyAiReplyTimeline(messageObj, fallbackContent = '', options = {}) {
         if (!messageObj || typeof messageObj !== 'object') return;
 
+        const contentText = String(messageObj.content || fallbackContent || '').trim();
+        if (options?.realTimeMode === true) {
+            let baseTimestamp = Number(this._aiReplyTimestampCursor || options?.baseTimestamp || Date.now());
+            if (!Number.isFinite(baseTimestamp) || baseTimestamp <= 0) baseTimestamp = Date.now();
+
+            let minutesToAdd = contentText.length <= 12 ? 0 : 1;
+            const isFirstInReplyBatch = options?.isFirstInReplyBatch === true;
+            if (isFirstInReplyBatch) {
+                const startedAt = Number(this._aiReplyRequestStartedAt || 0);
+                if (Number.isFinite(startedAt) && startedAt > 0) {
+                    const waitedMs = Math.max(0, Date.now() - startedAt);
+                    if (waitedMs > 60 * 1000) messageObj.forceTimeDivider = true;
+                    minutesToAdd = Math.max(minutesToAdd, Math.max(0, Math.floor(waitedMs / (60 * 1000))));
+                }
+            }
+
+            minutesToAdd += Math.max(0, Number(options?.extraGapMinutes) || 0);
+            let nextTimestamp = baseTimestamp + (Math.max(0, minutesToAdd) * 60 * 1000);
+            nextTimestamp += this._getWechatReplySecondsToAdd(contentText, { isFirstInReplyBatch }) * 1000;
+
+            messageObj.time = this._formatWechatTimeFromTimestamp(nextTimestamp) || messageObj.time;
+            messageObj.date = messageObj.date || this._formatWechatDateFromTimestamp(nextTimestamp);
+            messageObj.weekday = messageObj.weekday || this._getWechatWeekdayFromTimestamp(nextTimestamp, '');
+            messageObj.timestamp = nextTimestamp;
+            messageObj.realTimestamp = Date.now();
+            this._aiReplyTimestampCursor = nextTimestamp;
+            this._aiReplyTimeCursor = {
+                time: messageObj.time,
+                date: messageObj.date,
+                weekday: messageObj.weekday,
+                timestamp: nextTimestamp
+            };
+            return;
+        }
+
         const timeManager = window.VirtualPhone?.timeManager;
         if (!timeManager?.getCurrentStoryTime) return;
 
-        const contentText = String(messageObj.content || fallbackContent || '').trim();
         let cursor = this._aiReplyTimeCursor || timeManager.getCurrentStoryTime();
         if (!cursor?.time || !cursor?.date) {
             cursor = timeManager.getCurrentStoryTime();
@@ -2084,7 +2148,12 @@ renderChatRoom(chat) {
             return;
         }
 
+        const messagesBeforeDelete = this.app.wechatData.getMessages(chatId) || [];
+        const deletedImageUrls = this._collectManagedWechatGeneratedImages(
+            messagesBeforeDelete.filter(msg => ids.includes(String(msg?.id || '').trim()))
+        );
         const deletedCount = this.app.wechatData.deleteMessagesByIds(chatId, ids);
+        this._cleanupWechatGeneratedImages(deletedImageUrls);
         this.messageSelectionMode = false;
         this.messageSelectionChatId = null;
         this.selectedMessageIds.clear();
@@ -2113,7 +2182,10 @@ renderChatRoom(chat) {
             return;
         }
 
+        const startIndex = messages.findIndex(msg => String(msg?.id || '').trim() === String(startMessage.id || '').trim());
+        const deletedImageUrls = this._collectManagedWechatGeneratedImages(startIndex >= 0 ? messages.slice(startIndex) : []);
         const deletedCount = this.app.wechatData.deleteMessagesFromId(chatId, startMessage.id);
+        this._cleanupWechatGeneratedImages(deletedImageUrls);
         this.messageSelectionMode = false;
         this.messageSelectionChatId = null;
         this.selectedMessageIds.clear();
@@ -2920,6 +2992,7 @@ renderChatRoom(chat) {
         const novelAIReferences = await this._buildWechatPersonalImageReferences(message);
         const generationPrompt = this._buildWechatImagePromptWithContactTags(message, promptText);
         const generationId = `wechat_img_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const previousImageUrl = String(message.generatedImageUrl || '').trim();
 
         this.app.wechatData.updateMessageById(chatId, safeMessageId, {
             imageGenStatus: 'loading',
@@ -2940,7 +3013,12 @@ renderChatRoom(chat) {
                 prompt: generationPrompt,
                 novelAIReferences
             });
-            const imageUrl = String(result?.imageUrl || result?.imageData || '').trim();
+            const rawImageUrl = String(result?.imageUrl || result?.imageData || '').trim();
+            const imageUrl = await this._persistWechatGeneratedImage(rawImageUrl, {
+                chatId,
+                messageId: safeMessageId,
+                promptText
+            });
             if (!imageUrl) {
                 throw new Error('接口返回成功，但没有拿到图片地址');
             }
@@ -2958,6 +3036,7 @@ renderChatRoom(chat) {
                 imageGenerationWidth: Number(result?.width || result?.requestedWidth || 0) || '',
                 imageGenerationHeight: Number(result?.height || result?.requestedHeight || 0) || ''
             });
+            this._cleanupReplacedWechatGeneratedImage(previousImageUrl, imageUrl);
             this._refreshVisibleChatMessages(chatId);
         } catch (error) {
             const rawMessage = String(error?.message || '').trim();
@@ -2981,6 +3060,82 @@ renderChatRoom(chat) {
         } finally {
             this._imagePromptGenerationLocks.delete(generationLockKey);
         }
+    }
+
+    async _persistWechatGeneratedImage(imageUrl, { chatId = '', messageId = '', promptText = '' } = {}) {
+        const safeUrl = String(imageUrl || '').trim();
+        if (!safeUrl) return '';
+        if (/^\/backgrounds\/phone_[^?#]+/i.test(safeUrl)) return safeUrl;
+
+        const imageUploader = window.VirtualPhone?.imageManager;
+        if (!imageUploader?.uploadBlob) {
+            throw new Error('图片上传管理器未初始化，无法保存微信生图');
+        }
+
+        const blob = await this._loadGeneratedWechatImageBlob(safeUrl);
+        const seed = `${chatId || 'chat'}_${messageId || 'msg'}_${this._simpleImageHash(promptText || safeUrl).toString(36)}`;
+        const uploadedUrl = await imageUploader.uploadBlob(blob, `wechat_img_${seed}`);
+        const normalized = String(uploadedUrl || '').trim();
+        if (!/^\/backgrounds\/phone_[^?#]+/i.test(normalized)) {
+            throw new Error('微信生图保存失败：未得到有效本地图片路径');
+        }
+        return normalized;
+    }
+
+    async _loadGeneratedWechatImageBlob(imageUrl) {
+        const safeUrl = String(imageUrl || '').trim();
+        if (!safeUrl) throw new Error('生图结果为空');
+        const response = await fetch(safeUrl, { cache: 'no-store' });
+        if (!response.ok) {
+            throw new Error(`读取微信生图失败（HTTP ${response.status}）`);
+        }
+        const blob = await response.blob();
+        if (!blob || !/^image\//i.test(String(blob.type || '')) || blob.size <= 0) {
+            throw new Error('微信生图结果不是有效图片');
+        }
+        return blob;
+    }
+
+    _simpleImageHash(text) {
+        const str = String(text || '');
+        let hash = 2166136261;
+        for (let i = 0; i < str.length; i += 1) {
+            hash ^= str.charCodeAt(i);
+            hash = Math.imul(hash, 16777619);
+        }
+        return hash >>> 0;
+    }
+
+    _getManagedWechatGeneratedImageUrl(message) {
+        const raw = String(message?.generatedImageUrl || '').trim();
+        const match = raw.match(/\/backgrounds\/phone_wechat_img_[^?#\s)）]+/i);
+        return match?.[0] || '';
+    }
+
+    _collectManagedWechatGeneratedImages(messages = []) {
+        const list = Array.isArray(messages) ? messages : [messages];
+        return [...new Set(list
+            .map(msg => this._getManagedWechatGeneratedImageUrl(msg))
+            .filter(Boolean))];
+    }
+
+    _cleanupWechatGeneratedImages(urls = []) {
+        const imageManager = window.VirtualPhone?.imageManager;
+        if (!imageManager?.deleteManagedBackgroundByPath) return;
+        [...new Set((Array.isArray(urls) ? urls : [urls]).map(url => String(url || '').trim()).filter(Boolean))]
+            .forEach((url) => {
+                imageManager.deleteManagedBackgroundByPath(url, {
+                    quiet: true,
+                    skipIfReferenced: true
+                }).catch(() => {});
+            });
+    }
+
+    _cleanupReplacedWechatGeneratedImage(oldUrl, nextUrl) {
+        const oldPath = String(oldUrl || '').trim();
+        const nextPath = String(nextUrl || '').trim();
+        if (!oldPath || oldPath === nextPath || !/^\/backgrounds\/phone_wechat_img_/i.test(oldPath)) return;
+        this._cleanupWechatGeneratedImages([oldPath]);
     }
 
     _openPhoneImageViewer(imageUrl, alt = '') {
@@ -5805,7 +5960,7 @@ renderChatRoom(chat) {
         }
     }
 
-    async sendToAI(message, targetChatId = null) {
+    async sendToAI(message, targetChatId = null, options = {}) {
         if (!this.isOnlineMode()) {
             return false;
         }
@@ -5826,7 +5981,8 @@ renderChatRoom(chat) {
         }
 
         let success = false;
-        const responseBatchId = `wechat_ai_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const isProactive = !!options.proactive;
+        const responseBatchId = `${isProactive ? 'wechat_proactive' : 'wechat_ai'}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         this._resetAiReplyTimeCursor();
         this._aiReplyRequestStartedAt = Date.now();
 
@@ -5901,11 +6057,24 @@ renderChatRoom(chat) {
 
             // 3️⃣ 静默发送给AI
             // 直接调用，因为历史记录和系统提示词全在 buildMessagesArray 里处理了
-            const aiResponse = await this.sendToAIHidden(message, context, null, this.abortController?.signal, savedChatId);
+            const aiResponse = await this.sendToAIHidden(message, context, null, this.abortController?.signal, savedChatId, options);
 
             // 🔥 检查是否已中断
             if (this.abortController?.signal.aborted) {
                 throw new Error('已中断发送');
+            }
+
+            const sourceTavernChatId = String(options?.sourceTavernChatId || '').trim();
+            if (sourceTavernChatId) {
+                const currentTavernChatId = this._getCurrentTavernChatId();
+                if (currentTavernChatId !== sourceTavernChatId) {
+                    console.warn('[微信线上主动触发] 会话已切换，丢弃过期返回结果:', {
+                        sourceTavernChatId,
+                        currentTavernChatId,
+                        targetChatId: savedChatId
+                    });
+                    return false;
+                }
             }
 
             // 5️⃣ 解析AI回复（支持多窗口路由分发）
@@ -6134,7 +6303,7 @@ renderChatRoom(chat) {
                         if (isCurrentChat) {
                             parsedMessages.push(...extractedMsgs);
                         } else {
-                            if (!isGroupChat) {
+                            if (!isGroupChat && !isProactive) {
                                 const allowedCommonGroup = getAllowedSingleChatCommonGroup(targetName);
                                 if (!allowedCommonGroup) {
                                     console.warn('⚠️ [微信单聊] 已丢弃非当前窗口输出:', {
@@ -6281,7 +6450,7 @@ renderChatRoom(chat) {
             Object.keys(backgroundMessages).forEach(chatName => {
                 backgroundMessages[chatName] = expandMixedSpecialList(backgroundMessages[chatName]);
             });
-            if (!isGroupChat) {
+            if (!isGroupChat && !isProactive) {
                 parsedMessages = parsedMessages
                     .map(filterInlineSingleReply)
                     .filter(Boolean)
@@ -6429,7 +6598,9 @@ renderChatRoom(chat) {
 
                     this._applyAiReplyTimeline(m, normalizedTextContent, {
                         isFirstInReplyBatch: bgIndex === 0,
-                        extraGapMinutes: bgShortGapMap.get(bgIndex) || 0
+                        extraGapMinutes: bgShortGapMap.get(bgIndex) || 0,
+                        realTimeMode: isProactive,
+                        baseTimestamp: options?.proactiveMeta?.now || Date.now()
                     });
 
                     const msgData = special
@@ -6547,7 +6718,9 @@ renderChatRoom(chat) {
 
                 this._applyAiReplyTimeline(msg, normalizedTextContent, {
                     isFirstInReplyBatch: msgIndex === 0,
-                    extraGapMinutes: inlineShortGapMap.get(msgIndex) || 0
+                    extraGapMinutes: inlineShortGapMap.get(msgIndex) || 0,
+                    realTimeMode: isProactive,
+                    baseTimestamp: options?.proactiveMeta?.now || Date.now()
                 });
 
                 const msgData = special
@@ -6719,11 +6892,11 @@ renderChatRoom(chat) {
     }
 
     // ✅ 静默调用AI（临时劫持底层配置，强制开启图片发送，由 ApiManager 接管）
-    async sendToAIHidden(prompt, context, callMode = null, signal = null, targetChatId = null) {
+    async sendToAIHidden(prompt, context, callMode = null, signal = null, targetChatId = null, options = {}) {
         if (!context) throw new Error('❌ 无法访问 context');
 
         // 1. 组装手机界面的独特上下文数组 (这里的逻辑不动，完美隔离)
-        const messages = await this.buildMessagesArray(prompt, context, callMode, targetChatId);
+        const messages = await this.buildMessagesArray(prompt, context, callMode, targetChatId, options);
 
         // 🔥 开启图片发送补丁（应对多模态）
         const stSettings = ['openai_settings', 'chat_completion_settings', 'claude_settings', 'maker_settings', 'google_settings'];
@@ -6824,8 +6997,10 @@ renderChatRoom(chat) {
         return dataUrl;
     }
 
-    async buildMessagesArray(prompt, context, callMode = null, targetChatId = null) {
+    async buildMessagesArray(prompt, context, callMode = null, targetChatId = null, options = {}) {
         const messages = [];
+        const isProactive = !!options.proactive;
+        const proactiveMeta = options.proactiveMeta || {};
         const lobbySelection = this._buildLobbySelection(context);
         const lobbyUsers = this._resolveLobbySelectedUsers(lobbySelection);
         const lobbyUserProfiles = await this._resolveLobbySelectedUserProfiles(lobbySelection, context);
@@ -7036,9 +7211,9 @@ renderChatRoom(chat) {
         // ========================================
         // 4️⃣ 酒馆聊天上下文（使用与记忆插件相同的方式读取）
         // ========================================
-        const contextLimit = storage ? (parseInt(storage.get('phone-context-limit')) || 10) : 10;
+        const contextLimit = this._readNonNegativeLimit('phone-context-limit', 10);
 
-        if (context.chat && Array.isArray(context.chat) && context.chat.length > 0) {
+        if (contextLimit > 0 && context.chat && Array.isArray(context.chat) && context.chat.length > 0) {
             const isLobbySystemNoise = (msg, rawContent = '') => {
                 if (!lobbySelection.isLobby) return false;
                 if (msg?.is_user) return false;
@@ -7104,7 +7279,7 @@ renderChatRoom(chat) {
                 .replace(/\s+/g, '')
                 .replace(/[（(][^（）()]*[）)]/g, '')
                 .toLowerCase();
-            const groupChatLimit = parseInt(storage?.get('wechat-group-chat-limit')) || 200;
+            const groupChatLimit = this._readNonNegativeLimit('wechat-group-chat-limit', 200);
             const currentChatName = targetChat?.name || charName;
             const currentChatKey = normalizeCommonGroupName(currentChatName);
             const relatedGroupChats = allChats.filter((chat) => {
@@ -7129,7 +7304,7 @@ renderChatRoom(chat) {
             if (relatedGroupChats.length > 0) {
                 relatedContextStr += '【补充上下文：共同群聊参考】\n';
 
-                relatedGroupChats.forEach(c => {
+                if (groupChatLimit > 0) relatedGroupChats.forEach(c => {
                     const msgs = this.app.wechatData.getMessages(c.id).slice(-groupChatLimit);
                     if (msgs.length > 0) {
                         relatedContextStr += `--- 共同群聊参考：${c.name} ---\n`;
@@ -7241,6 +7416,23 @@ renderChatRoom(chat) {
             });
         }
 
+        if (isProactive && !callMode) {
+            const proactiveRules = this._buildOnlineProactiveRules({
+                userName,
+                targetChat,
+                customEmojiList,
+                proactiveMeta
+            });
+            if (proactiveRules) {
+                messages.push({
+                    role: 'system',
+                    content: proactiveRules,
+                    name: 'SYSTEM (微信线上主动触发规则)',
+                    isPhoneMessage: true
+                });
+            }
+        }
+
         // ========================================
         // 6️⃣ 当前微信聊天记录 / 通话记录
         // ========================================
@@ -7248,30 +7440,33 @@ renderChatRoom(chat) {
 
         // 🔥 根据聊天类型动态读取限制条数（isGroupChat 和 storage 已在上方声明）
         const wechatLimit = isGroupChat
-            ? (parseInt(storage?.get('wechat-group-chat-limit')) || 200)
-            : (parseInt(storage?.get('wechat-single-chat-limit')) || 200);
+            ? this._readNonNegativeLimit('wechat-group-chat-limit', 200)
+            : this._readNonNegativeLimit('wechat-single-chat-limit', 200);
 
         // 🔥 展开 call_record 的 transcript 后按交互条数截取
         // 逆序遍历，展开 call_record 内部行数，直到总交互次数达到 wechatLimit
-        let totalLines = 0;
-        let startIdx = wechatMessages.length;
-        for (let i = wechatMessages.length - 1; i >= 0; i--) {
-            const msg = wechatMessages[i];
-            if (msg?.hiddenFromPrompt === true || msg?.isTimeMarker === true || msg?.type === 'time_marker') {
-                continue;
-            }
-            if (msg.type === 'call_record' && msg.transcript && msg.transcript.length > 0) {
-                totalLines += msg.transcript.length + 1; // transcript 行数 + 通话记录本身
-            } else {
-                totalLines += 1;
-            }
-            if (totalLines >= wechatLimit) {
+        let recentWechatMessages = [];
+        if (wechatLimit > 0) {
+            let totalLines = 0;
+            let startIdx = wechatMessages.length;
+            for (let i = wechatMessages.length - 1; i >= 0; i--) {
+                const msg = wechatMessages[i];
+                if (msg?.hiddenFromPrompt === true || msg?.isTimeMarker === true || msg?.type === 'time_marker') {
+                    continue;
+                }
+                if (msg.type === 'call_record' && msg.transcript && msg.transcript.length > 0) {
+                    totalLines += msg.transcript.length + 1; // transcript 行数 + 通话记录本身
+                } else {
+                    totalLines += 1;
+                }
+                if (totalLines >= wechatLimit) {
+                    startIdx = i;
+                    break;
+                }
                 startIdx = i;
-                break;
             }
-            startIdx = i;
+            recentWechatMessages = wechatMessages.slice(startIdx);
         }
-        const recentWechatMessages = wechatMessages.slice(startIdx);
         const aiImageDataCache = new Map();
         const aiImageNotes = [];
         const aiImageTokenIds = [];
@@ -7283,31 +7478,28 @@ renderChatRoom(chat) {
             : '';
 
         const timeManager = window.VirtualPhone?.timeManager;
-        const currentTime = timeManager?.getCurrentStoryTime?.()?.time || '21:30';
+        const realTimeInfo = this._formatRealDateTime(proactiveMeta.now || Date.now());
+        const currentTime = isProactive
+            ? realTimeInfo.time
+            : (timeManager?.getCurrentStoryTime?.()?.time || '21:30');
 
-        // 先统一构建微信聊天历史（文本 + 图片 + 通话记录），通话模式也复用这段上下文
-        let wechatTranscript = '';
-        if (recentWechatMessages.length > 0) {
-            wechatTranscript = '【📱 手机微信已有消息】\n';
-            wechatTranscript += `⏰ 当前时间：${currentTime}\n`;
-            wechatTranscript += `以下是用户手机已经存在的微信消息记录。使用微信时，请严格遵守当前微信模式规则，并严格执行【微信线下模式】关于历史消息不可重复生成的约束，不得重复已有聊天记录内容。\n`;
-            wechatTranscript += `\n`;
-            wechatTranscript += `━━━ ${targetChat.name} 的聊天记录 ━━━\n`;
-
+        const appendWechatChatTranscript = async (chat, messagesForChat) => {
+            let text = `━━━ ${chat.name} 的聊天记录 ━━━\n`;
             let lastDate = null;
+            const chatIsGroup = chat?.type === 'group';
 
-            for (const msg of recentWechatMessages) {
+            for (const msg of messagesForChat) {
                 if (msg?.hiddenFromPrompt === true || msg?.isTimeMarker === true || msg?.type === 'time_marker') {
                     continue;
                 }
                 const isUser = msg.from === 'me';
-                let speaker = isUser ? userName : targetChat.name;
-                if (!isUser && isGroupChat && msg.from && msg.from !== 'system') {
+                let speaker = isUser ? userName : chat.name;
+                if (!isUser && chatIsGroup && msg.from && msg.from !== 'system') {
                     speaker = msg.from;
                 }
 
                 if (msg.date && msg.date !== lastDate) {
-                    wechatTranscript += `--- ${msg.date} ---\n`;
+                    text += `--- ${msg.date} ---\n`;
                     lastDate = msg.date;
                 }
 
@@ -7315,7 +7507,7 @@ renderChatRoom(chat) {
                 const quoteStr = msg.quote ? `「引用 ${msg.quote.sender}: ${msg.quote.content}」` : '';
 
                 if (msg.from === 'system' || msg.type === 'system') {
-                    wechatTranscript += `${timeStr}[系统] ${msg.content || ''}\n`;
+                    text += `${timeStr}[系统] ${msg.content || ''}\n`;
                 } else if (msg.type === 'call_record') {
                     const callTypeName = msg.callType === 'video' ? '视频通话' : '语音通话';
                     const statusText = msg.status === 'answered'
@@ -7325,16 +7517,16 @@ renderChatRoom(chat) {
                             : msg.status === 'cancelled'
                                 ? '已取消'
                                 : '未接听';
-                    wechatTranscript += `${timeStr}[${callTypeName} - ${statusText}]\n`;
+                    text += `${timeStr}[${callTypeName} - ${statusText}]\n`;
                     if (msg.transcript && msg.transcript.length > 0) {
                         msg.transcript.forEach(t => {
                             const tSpeaker = t.from === 'me' ? userName : t.from;
-                            wechatTranscript += `  [通话记录] ${tSpeaker}: ${t.text}\n`;
+                            text += `  [通话记录] ${tSpeaker}: ${t.text}\n`;
                         });
                     }
                 } else if (msg.type === 'image') {
                     const resolvedImageData = await this._resolveWechatImageForAi(msg.content, aiImageDataCache);
-                    const imageText = this._formatMessageContentForPrompt(msg, targetChat) || '[图片]';
+                    const imageText = this._formatMessageContentForPrompt(msg, chat) || '[图片]';
                     if (resolvedImageData && resolvedImageData.startsWith('data:image')) {
                         const imgId = `__ST_PHONE_IMAGE_${Date.now()}_${Math.random().toString(36).substr(2, 5)}__`;
                         if (!window.VirtualPhone._pendingImages) {
@@ -7346,32 +7538,61 @@ renderChatRoom(chat) {
                         };
                         aiImageTokenIds.push(imgId);
                         aiImageNotes.push(`${timeStr}${speaker}: ${quoteStr}${imageText} ${imgId}`);
-                        wechatTranscript += `${timeStr}${speaker}: ${quoteStr}${imageText}\n`;
+                        text += `${timeStr}${speaker}: ${quoteStr}${imageText}\n`;
                     } else {
-                        wechatTranscript += `${timeStr}${speaker}: ${quoteStr}${imageText}\n`;
+                        text += `${timeStr}${speaker}: ${quoteStr}${imageText}\n`;
                     }
                 } else if (msg.type === 'image_prompt') {
                     // 🔥 修复：将 [图片/视频] 标签原样包裹回去
                     const mediaType = msg.usePersonalReference ? '个人图片' : (msg.mediaType || '图片');
                     const promptText = msg.imagePrompt || msg.content || '';
-                    wechatTranscript += `${timeStr}${speaker}: ${quoteStr}[${mediaType}]（${promptText}）\n`;
+                    text += `${timeStr}${speaker}: ${quoteStr}[${mediaType}]（${promptText}）\n`;
                 } else if (msg.type === 'transfer') {
                     // 🔥 修复：直接将转账状态贴在文字后面
                     const status = String(msg.status || '').trim() === 'received' ? '已收款' : '未收款';
-                    wechatTranscript += `${timeStr}${speaker}: ${quoteStr}[转账 ¥${msg.amount}]（状态：${status}）\n`;
+                    text += `${timeStr}${speaker}: ${quoteStr}[转账 ¥${msg.amount}]（状态：${status}）\n`;
                 } else if (msg.type === 'redpacket') {
                     // 🔥 修复：直接将红包状态贴在文字后面
                     const status = String(msg.status || '').trim() === 'opened' ? '已领取' : '未领取';
-                    wechatTranscript += `${timeStr}${speaker}: ${quoteStr}[红包 ¥${msg.amount}]（状态：${status}）\n`;
+                    text += `${timeStr}${speaker}: ${quoteStr}[红包 ¥${msg.amount}]（状态：${status}）\n`;
                 } else if (msg.type === 'location') {
                     const locationText = String(msg.locationText || msg.locationAddress || msg.content || '').trim();
-                    wechatTranscript += `${timeStr}${speaker}: ${quoteStr}[定位]（${locationText || '未知位置'}）\n`;
+                    text += `${timeStr}${speaker}: ${quoteStr}[定位]（${locationText || '未知位置'}）\n`;
                 } else {
-                    const text = this._formatMessageContentForPrompt(msg, targetChat);
-                    wechatTranscript += `${timeStr}${speaker}: ${quoteStr}${text || ''}\n`;
+                    const lineText = this._formatMessageContentForPrompt(msg, chat);
+                    text += `${timeStr}${speaker}: ${quoteStr}${lineText || ''}\n`;
                 }
             }
-            wechatTranscript = wechatTranscript.trim();
+            return text.trim();
+        };
+
+        // 先统一构建微信聊天历史（文本 + 图片 + 通话记录），通话模式也复用这段上下文
+        let wechatTranscript = '';
+        if (isProactive && !callMode) {
+            const transcriptSections = [];
+            const allWechatChats = this.app.wechatData.getChatList();
+            for (const chat of allWechatChats) {
+                const limit = chat?.type === 'group'
+                    ? this._readNonNegativeLimit('wechat-group-chat-limit', 200)
+                    : this._readNonNegativeLimit('wechat-single-chat-limit', 200);
+                if (limit <= 0) continue;
+                const chatMessages = this.app.wechatData.getMessages(chat.id).slice(-limit);
+                if (chatMessages.length === 0) continue;
+                const section = await appendWechatChatTranscript(chat, chatMessages);
+                if (section) transcriptSections.push(section);
+            }
+            if (transcriptSections.length > 0) {
+                wechatTranscript = '【📱 手机微信已有消息】\n';
+                wechatTranscript += `⏰ 当前时间：${currentTime}\n`;
+                wechatTranscript += `以下是用户手机已经存在的微信消息记录。使用微信时，请严格遵守当前微信模式规则，不得重复已有聊天记录内容。\n\n`;
+                wechatTranscript += transcriptSections.join('\n\n');
+            }
+        } else if (recentWechatMessages.length > 0) {
+            wechatTranscript = '【📱 手机微信已有消息】\n';
+            wechatTranscript += `⏰ 当前时间：${currentTime}\n`;
+            wechatTranscript += `以下是用户手机已经存在的微信消息记录。使用微信时，请严格遵守当前微信模式规则，并严格执行【微信线下模式】关于历史消息不可重复生成的约束，不得重复已有聊天记录内容。\n`;
+            wechatTranscript += `\n`;
+            wechatTranscript += await appendWechatChatTranscript(targetChat, recentWechatMessages);
         }
 
         // 🔥 通话模式：将通话规则、当前微信聊天历史、本次通话输入分开注入
@@ -7470,7 +7691,9 @@ renderChatRoom(chat) {
         else if (callMode === 'voice') currentModeName = isGroupChat ? '微信群语音通话' : '微信语音通话';
         else if (isGroupChat) currentModeName = '微信群聊';
 
-        let finalUserContent = `现在你处于${currentModeName}的模式，请根据以上所有信息，遵守回复格式，自然承接用户的消息进行回复。`;
+        let finalUserContent = isProactive
+            ? `现在你处于微信线上主动触发模式。现实时间到点后，微信好友或微信群需要主动联系${userName}。请根据以上所有信息、微信单聊规则和微信群聊规则，主动生成新的线上微信消息。`
+            : `现在你处于${currentModeName}的模式，请根据以上所有信息，遵守回复格式，自然承接用户的消息进行回复。`;
         if (!callMode) {
             if (isGroupChat) {
                 finalUserContent += '\n群聊场景下，通话前后的发言仍需使用“发送者: 内容”格式，且发送者必须是群成员。';
@@ -7478,10 +7701,23 @@ renderChatRoom(chat) {
 
             const latestUserInput = String(prompt || '').trim();
             if (latestUserInput) {
-                finalUserContent += `\n\n【用户最新输入】\n${userName}: ${latestUserInput}`;
+                finalUserContent += isProactive
+                    ? `\n\n【线上主动触发背景】\n${latestUserInput}`
+                    : `\n\n【用户最新输入】\n${userName}: ${latestUserInput}`;
             }
             finalUserContent += '\n\n【本轮约束】';
-            if (!isGroupChat) {
+            if (isProactive) {
+                const elapsedMinutes = Math.max(0, Number.parseInt(proactiveMeta.elapsedMinutes, 10) || 0);
+                const intervalMinutes = Math.max(1, Number.parseInt(proactiveMeta.intervalMinutes, 10) || 1);
+                finalUserContent += `\n- 【现实时间】当前现实时间为 ${realTimeInfo.date} ${realTimeInfo.time}；距离上次线上主动触发约 ${elapsedMinutes} 分钟，用户设置的触发间隔为 ${intervalMinutes} 分钟。`;
+                finalUserContent += '\n- 本轮不是用户刚刚发消息，而是线上模式按现实时间自动触发；你必须让合适的微信好友或微信群主动联系用户。';
+                finalUserContent += '\n- 必须只输出一个 <wechat>...</wechat> 标签，禁止返回空，禁止解释，禁止输出标签外文字。';
+                finalUserContent += '\n- 必须同时审视【手机微信已有消息】里的单聊窗口和群聊窗口；可以选择一个最合理的单聊、一个最合理的群聊，或在同一个 <wechat> 中输出多个合理窗口。';
+                finalUserContent += '\n- 窗口名必须来自已有微信聊天记录窗口，且格式沿用现有微信线上单聊/群聊规则。';
+                finalUserContent += `\n- 所有新增消息都必须是发给手机主人“${userName}”的线上微信消息；禁止替${userName}发言。`;
+                finalUserContent += '\n- 单聊窗口继续遵守微信单聊模式；群聊窗口继续遵守微信群聊模式，群内发送者必须来自该群成员白名单。';
+                finalUserContent += '\n- 消息时间必须按当前现实时间或当前窗口最后一条已存在消息之后自然推进。';
+            } else if (!isGroupChat) {
                 finalUserContent += `\n- 【方向锁定】当前微信单聊窗口是“${targetChat?.name || charName}”；手机主人/用户本人是“${userName}”。你只能扮演“${targetChat?.name || charName}”给“${userName}”发新增微信消息。`;
                 finalUserContent += `\n- 即使角色卡主角、酒馆 assistant 或正文叙事视角不是“${targetChat?.name || charName}”，当前微信单聊也必须以“${targetChat?.name || charName}”的身份和口吻回复；角色卡和正文只作为背景参考。`;
                 finalUserContent += `\n- 【用户最新输入】是“${userName}”刚刚发出的消息，只能作为被回复的内容；禁止把“${userName}”当成聊天对象、联系人、窗口名或回复发送者，禁止输出“${userName}:”、用户:、玩家:。`;
@@ -7489,7 +7725,9 @@ renderChatRoom(chat) {
                 finalUserContent += '\n- 微信消息内容必须是角色真实打进聊天框里的文字；禁止写动作、环境、神态、心理、写字过程、语气说明，禁止出现“顿了顿/指尖悬停/又补了一条/语气里”等叙事句。';
                 finalUserContent += '\n- 正文/酒馆上下文是当前现实剧情状态的依据；如果正文显示双方已经线下面对面、同处一地、正在现实互动，你必须承认这个状态，必要时用 [转线下] 结束当前单聊微信，而不是把现实剧情当作不存在。';
             }
-            finalUserContent += '\n- 只输出当前微信窗口的新增回复；不得重复“手机微信已有消息”中已经存在的微信消息，也不得把正文里刚发生的对白原样复读成微信消息。';
+            finalUserContent += isProactive
+                ? '\n- 只输出新的主动微信消息；不得重复任何已有微信消息，也不得把正文里刚发生的对白原样复读成微信消息。'
+                : '\n- 只输出当前微信窗口的新增回复；不得重复“手机微信已有消息”中已经存在的微信消息，也不得把正文里刚发生的对白原样复读成微信消息。';
             finalUserContent += '\n- 可以基于正文最新事件、情绪、地点变化作出自然回应，但回复必须是新的微信内容。';
             finalUserContent += '\n- 消息时间必须承接当前窗口最后一条已存在消息的时间并向后推进。';
         }
@@ -7510,6 +7748,61 @@ renderChatRoom(chat) {
         });
 
         return messages;
+    }
+
+    _buildOnlineProactiveRules({ userName = '用户', targetChat = null, customEmojiList = '', proactiveMeta = {} } = {}) {
+        const promptManager = window.VirtualPhone?.promptManager;
+        const realTimeInfo = this._formatRealDateTime(proactiveMeta.now || Date.now());
+        const chats = this.app.wechatData.getChatList();
+        const contacts = this.app.wechatData.getContacts?.() || [];
+        const contactNames = contacts.map(c => String(c?.name || '').trim()).filter(Boolean);
+        const wechatContactsList = contactNames.length > 0 ? contactNames.join('、') : '暂无好友';
+
+        const normalizePrompt = (text, replacements = {}) => {
+            let out = String(text || '').trim();
+            Object.entries(replacements).forEach(([key, value]) => {
+                out = out.replace(new RegExp(`\\{\\{${this._escapeRegExp(key)}\\}\\}`, 'g'), String(value ?? ''));
+            });
+            return out.trim();
+        };
+
+        let singlePrompt = '';
+        let groupPrompt = '';
+        try {
+            const sampleSingle = chats.find(chat => chat?.type !== 'group') || targetChat || {};
+            const sampleGroup = chats.find(chat => chat?.type === 'group') || {};
+            const groupMembers = sampleGroup?.type === 'group'
+                ? this._collectGroupParticipantsForFilter(sampleGroup, this._safeGetContext()).join('、')
+                : '请参考【手机微信已有消息】中各群聊窗口的群成员白名单';
+            singlePrompt = normalizePrompt(promptManager?.getPromptForFeature?.('wechat', 'online') || '', {
+                chatName: sampleSingle?.name || '候选微信好友',
+                commonGroupNames: '按【手机微信已有消息】判断',
+                commonGroupList: '按【手机微信已有消息】判断',
+                customEmojiList
+            });
+            groupPrompt = normalizePrompt(promptManager?.getPromptForFeature?.('wechat', 'groupChat') || '', {
+                groupName: sampleGroup?.name || '候选微信群',
+                groupMembers,
+                wechatContacts: wechatContactsList,
+                chatName: '好友完整微信名',
+                customEmojiList
+            });
+        } catch (e) {
+            console.warn('⚠️ 构建微信线上主动触发规则失败:', e);
+        }
+
+        const elapsedMinutes = Math.max(0, Number.parseInt(proactiveMeta.elapsedMinutes, 10) || 0);
+        const intervalMinutes = Math.max(1, Number.parseInt(proactiveMeta.intervalMinutes, 10) || 1);
+
+        return [
+            '【微信线上主动触发】',
+            `当前现实时间：${realTimeInfo.date} ${realTimeInfo.time}`,
+            `距离上次线上主动触发约 ${elapsedMinutes} 分钟；用户设置的自动触发间隔为 ${intervalMinutes} 分钟。`,
+            '这是线上模式按现实时间自动触发，不是用户主动发消息。你必须复用下方微信线上单聊和微信群聊规则，输出标准 <wechat> 标签，让合适的好友或群聊主动联系用户。',
+            '',
+            singlePrompt ? `【复用：微信线上单聊提示词】\n${singlePrompt}` : '',
+            groupPrompt ? `【复用：微信群聊提示词】\n${groupPrompt}` : ''
+        ].filter(Boolean).join('\n\n');
     }
 
     async handleMoreAction(action) {
@@ -8660,7 +8953,11 @@ renderChatRoom(chat) {
     // 🗑️ 删除消息
     deleteMessage(messageIndex) {
         // 直接删除，不需要确认（因为已经是长按操作了）
-        this.app.wechatData.deleteMessage(this.app.currentChat.id, messageIndex);
+        const chatId = this.app.currentChat.id;
+        const messages = this.app.wechatData.getMessages(chatId) || [];
+        const deletedImageUrls = this._collectManagedWechatGeneratedImages(messages[messageIndex]);
+        this.app.wechatData.deleteMessage(chatId, messageIndex);
+        this._cleanupWechatGeneratedImages(deletedImageUrls);
 
         // 🔥 局部刷新：只更新消息列表，不重绘整个界面
         this._refreshCurrentChatMessages({ keepScroll: true });

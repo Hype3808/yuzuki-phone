@@ -16,6 +16,7 @@ export class ImageUploadManager {
         this.storage = storage; // PhoneStorage 实例，存到酒馆 extensionSettings
         this.storageKey = 'phone_image_paths'; // 存储键名（只保存路径字符串，极小）
         this.oldLocalKey = 'st_virtual_phone_local_images'; // 旧版 localStorage 键名
+        this.albumDeletedKey = 'phone_album_deleted_paths';
 
         // 内存缓存（路径字符串，不再是 base64）
         this.cache = this._loadCache();
@@ -125,6 +126,8 @@ export class ImageUploadManager {
         const filename = options.filename || await this._buildManagedFilename(blob, prefix);
         const finalUrl = `/backgrounds/${filename}`;
         if (await this._backgroundExists(finalUrl)) {
+            await this._unmarkAlbumDeletedPath(finalUrl);
+            await this._recordUploadedBackground(finalUrl, prefix);
             return finalUrl;
         }
 
@@ -297,6 +300,7 @@ export class ImageUploadManager {
         if (!path || !/^\/backgrounds\/phone_[^?#]+/i.test(path)) return;
 
         try {
+            await this._unmarkAlbumDeletedPath(path);
             const raw = this.storage.get('phone_album_upload_index', '[]');
             const list = Array.isArray(raw) ? raw : JSON.parse(raw || '[]');
             const normalizedList = Array.isArray(list) ? list : [];
@@ -313,6 +317,57 @@ export class ImageUploadManager {
         } catch (e) {
             console.warn('[ImageUpload] 记录相册上传索引失败:', e);
         }
+    }
+
+    _readAlbumDeletedSet() {
+        try {
+            const raw = this.storage.get(this.albumDeletedKey, '[]');
+            const list = Array.isArray(raw) ? raw : JSON.parse(raw || '[]');
+            return new Set((Array.isArray(list) ? list : [])
+                .map(item => this._normalizeBackgroundPath(item))
+                .filter(Boolean));
+        } catch (e) {
+            return new Set();
+        }
+    }
+
+    async _markAlbumDeletedPath(pathLike) {
+        const path = this._normalizeBackgroundPath(pathLike);
+        if (!path || !/^\/backgrounds\/phone_[^?#]+/i.test(path)) return;
+        const deleted = this._readAlbumDeletedSet();
+        deleted.add(path);
+        await this.storage.set(this.albumDeletedKey, JSON.stringify(Array.from(deleted).slice(-500)));
+    }
+
+    async _unmarkAlbumDeletedPath(pathLike) {
+        const path = this._normalizeBackgroundPath(pathLike);
+        if (!path) return;
+        const deleted = this._readAlbumDeletedSet();
+        if (!deleted.delete(path)) return;
+        await this.storage.set(this.albumDeletedKey, JSON.stringify(Array.from(deleted).slice(-500)));
+    }
+
+    async _removeAlbumUploadIndexPath(pathLike) {
+        const target = this._normalizeBackgroundPath(pathLike);
+        if (!target) return;
+        try {
+            const raw = this.storage.get('phone_album_upload_index', '[]');
+            const list = Array.isArray(raw) ? raw : JSON.parse(raw || '[]');
+            if (!Array.isArray(list)) return;
+            const next = list.filter(item => this._normalizeBackgroundPath(item?.path || item) !== target);
+            if (next.length === list.length) return;
+            await this.storage.set('phone_album_upload_index', JSON.stringify(next));
+        } catch (e) {
+            console.warn('[ImageUpload] 清理相册上传索引失败:', e);
+        }
+    }
+
+    async markManagedBackgroundDeleted(pathLike) {
+        await this._markAlbumDeletedPath(pathLike);
+        await this._removeAlbumUploadIndexPath(pathLike);
+        window.dispatchEvent(new CustomEvent('phone:albumImageDeleted', {
+            detail: { path: this._normalizeBackgroundPath(pathLike) }
+        }));
     }
 
     // ========================================
@@ -511,6 +566,13 @@ export class ImageUploadManager {
         }
         if (!success && options.quiet !== true) {
             console.warn('[ImageUpload] 删除旧文件失败:', filename);
+        }
+        if (success) {
+            await this._markAlbumDeletedPath(pathLike);
+            await this._removeAlbumUploadIndexPath(pathLike);
+            window.dispatchEvent(new CustomEvent('phone:albumImageDeleted', {
+                detail: { path: this._normalizeBackgroundPath(pathLike), filename }
+            }));
         }
 
         return { attempted: true, success, filename };

@@ -28,10 +28,28 @@ const PHONE_SHELL_SCALE_DEFAULT = 100;
 const LOBBY_LINK_CHARACTER_IDS_KEY = 'phone-lobby-link-character-ids';
 const LOBBY_LINK_GROUP_IDS_KEY = 'phone-lobby-link-group-ids';
 
+const WECHAT_OFFLINE_INJECTION_TOGGLE_KEYS = [
+    'offline-wechat-prompt-enabled',
+    'offline-single-chat-enabled',
+    'offline-group-chat-enabled'
+];
+const WECHAT_ONLINE_PROACTIVE_ENABLED_KEY = 'wechat_online_proactive_enabled';
+const WECHAT_ONLINE_PROACTIVE_INTERVAL_KEY = 'wechat_online_proactive_interval_minutes';
+const LOBBY_WECHAT_ONLINE_PROACTIVE_ENABLED_KEY = 'phone_lobby_wechat_online_proactive_enabled';
+const LOBBY_WECHAT_ONLINE_PROACTIVE_INTERVAL_KEY = 'phone_lobby_wechat_online_proactive_interval_minutes';
+
 function normalizePhoneShellScalePercent(value) {
     const raw = Number.parseFloat(value);
     if (!Number.isFinite(raw)) return PHONE_SHELL_SCALE_DEFAULT;
     return Math.max(PHONE_SHELL_SCALE_MIN, Math.min(PHONE_SHELL_SCALE_MAX, Math.round(raw)));
+}
+
+function readNonNegativeStorageNumber(storage, key, defaultValue = 0, maxValue = 9999) {
+    const raw = storage?.get?.(key);
+    if (raw === undefined || raw === null || raw === '') return defaultValue;
+    const parsed = Number.parseInt(raw, 10);
+    if (!Number.isFinite(parsed)) return defaultValue;
+    return Math.max(0, Math.min(maxValue, parsed));
 }
 
 function applyPhoneShellScale(value) {
@@ -114,6 +132,37 @@ export class SettingsApp {
         if (chatId) return false;
         if (charName) return false;
         return true;
+    }
+
+    _getWechatInteropModeStorageKey(context = null) {
+        return this._isLobbyMode(context) ? 'phone_lobby_wechat_online_mode' : 'wechat_online_mode';
+    }
+
+    _getWechatOnlineOnlyModeStorageKey(context = null) {
+        return this._isLobbyMode(context) ? 'phone_lobby_wechat_online_only_mode' : 'wechat_online_only_mode';
+    }
+
+    _getWechatOnlineProactiveEnabledStorageKey(context = null) {
+        return this._isLobbyMode(context) ? LOBBY_WECHAT_ONLINE_PROACTIVE_ENABLED_KEY : WECHAT_ONLINE_PROACTIVE_ENABLED_KEY;
+    }
+
+    _getWechatOnlineProactiveIntervalStorageKey(context = null) {
+        return this._isLobbyMode(context) ? LOBBY_WECHAT_ONLINE_PROACTIVE_INTERVAL_KEY : WECHAT_ONLINE_PROACTIVE_INTERVAL_KEY;
+    }
+
+    _isStorageTruthy(key) {
+        const raw = this.storage?.get?.(key);
+        return raw === true || raw === 'true' || raw === 1;
+    }
+
+    async _disableWechatOfflineInjectionToggles() {
+        for (const key of WECHAT_OFFLINE_INJECTION_TOGGLE_KEYS) {
+            await this.storage.set(key, false);
+        }
+    }
+
+    _isWechatOnlineOnlyModeEnabled(context = null) {
+        return this._isStorageTruthy(this._getWechatOnlineOnlyModeStorageKey(context || this.storage.getContext?.()));
     }
 
     _parseIdList(raw) {
@@ -512,6 +561,14 @@ export class SettingsApp {
             return '未识别角色';
         })();
         const charBlockLabel = isLobbyMode ? '当前环境' : '角色名称';
+        const wechatInteropModeKey = this._getWechatInteropModeStorageKey(context);
+        const wechatOnlineOnlyModeKey = this._getWechatOnlineOnlyModeStorageKey(context);
+        const wechatOnlineProactiveEnabledKey = this._getWechatOnlineProactiveEnabledStorageKey(context);
+        const wechatOnlineProactiveIntervalKey = this._getWechatOnlineProactiveIntervalStorageKey(context);
+        const isWechatInteropMode = this._isStorageTruthy(wechatInteropModeKey);
+        const isWechatOnlineOnlyMode = this._isStorageTruthy(wechatOnlineOnlyModeKey) && !isWechatInteropMode;
+        const isWechatOnlineProactiveEnabled = this._isStorageTruthy(wechatOnlineProactiveEnabledKey);
+        const wechatOnlineProactiveInterval = readNonNegativeStorageNumber(this.storage, wechatOnlineProactiveIntervalKey, 10, 9999) || 10;
         const currentTtsProvider = this._getCurrentMainTtsProvider();
         const currentTtsDefaults = this._getTtsProviderDefaults(currentTtsProvider);
         const currentTtsUrl = this._getTtsProviderValue(currentTtsProvider, 'url', 'phone-tts-url') || currentTtsDefaults.url || '';
@@ -1037,13 +1094,51 @@ export class SettingsApp {
 
                             <div class="setting-item setting-toggle">
                                 <div>
-                                    <div class="setting-label">在线模式</div>
-                                    <div class="setting-desc">启用后可通过手机与AI互动（按会话独立设置）</div>
+                                    <div class="setting-label">互通模式</div>
+                                    <div class="setting-desc">手机主动互动与酒馆正文微信线下注入互通（按会话独立设置）</div>
                                 </div>
                                 <label class="toggle-switch">
-                                    <input type="checkbox" id="setting-online-mode" ${this.storage.get(isLobbyMode ? 'phone_lobby_wechat_online_mode' : 'wechat_online_mode') ? 'checked' : ''}>
+                                    <input type="checkbox" id="setting-wechat-interop-mode" ${isWechatInteropMode ? 'checked' : ''}>
                                     <span class="toggle-slider"></span>
                                 </label>
+                            </div>
+
+                            <div class="setting-item setting-toggle" style="margin-top: 10px;">
+                                <div>
+                                    <div class="setting-label">线上模式</div>
+                                    <div class="setting-desc">启用手机内线上聊天；可选定时主动触发，开启后会关闭微信线下注入相关开关</div>
+                                </div>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="setting-wechat-online-only-mode" ${isWechatOnlineOnlyMode ? 'checked' : ''}>
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+
+                            <div class="setting-item setting-toggle" style="margin-top: 10px;">
+                                <div>
+                                    <div class="setting-label">线上主动触发</div>
+                                    <div class="setting-desc">线上模式开启后，按现实时间自动请求微信好友或群聊主动发消息</div>
+                                </div>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="setting-wechat-online-proactive-enabled" ${isWechatOnlineProactiveEnabled ? 'checked' : ''}>
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+
+                            <div class="setting-item" style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px;">
+                                <div>
+                                    <div class="setting-label">主动触发间隔（分钟）</div>
+                                    <div class="setting-desc">API 忙时会顺延，空闲后再触发</div>
+                                </div>
+                                <input type="number" id="setting-wechat-online-proactive-interval" min="1" max="9999"
+                                       value="${wechatOnlineProactiveInterval}"
+                                       style="width: 68px; height: 32px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; text-align: center; font-size: 14px; background: #fafafa;">
+                            </div>
+
+                            <div class="setting-item setting-button" style="margin-top: 10px;">
+                                <button id="setting-wechat-online-proactive-test" class="setting-btn" style="width: 100%; padding: 8px 12px; font-size: 12px; background: rgba(255,255,255,0.9); backdrop-filter: blur(10px); border: 1px solid rgba(7,193,96,0.25); color: #0b8f52; border-radius: 8px;">
+                                    <i class="fa-solid fa-paper-plane"></i> 立即测试线上主动触发
+                                </button>
                             </div>
 
                              <div class="setting-item setting-toggle" style="margin-top: 10px;">
@@ -1065,7 +1160,7 @@ export class SettingsApp {
 
                             <div class="setting-info">
                                 <strong>使用说明：</strong><br>
-                                1. 开启"在线模式"<br>
+                                1. 开启"互通模式"或"线上模式"<br>
                                 2. 在对应APP设置中配置各功能提示词<br>
                                 3. 在手机APP中发送消息，AI会自动回复
                             </div>
@@ -1083,22 +1178,22 @@ export class SettingsApp {
 
                             <div class="setting-item" style="display: flex; align-items: center; justify-content: space-between;">
                                 <span style="font-size: 14px; color: #000;">正文上下文楼层</span>
-                                <input type="number" id="phone-context-limit" min="1" max="9999"
-                                       value="${this.storage.get('phone-context-limit') || 20}"
+                                <input type="number" id="phone-context-limit" min="0" max="9999"
+                                       value="${readNonNegativeStorageNumber(this.storage, 'phone-context-limit', 20)}"
                                        style="width: 55px; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; text-align: center; font-size: 14px; background: #fafafa;">
                             </div>
 
                             <div class="setting-item" style="display: flex; align-items: center; justify-content: space-between;">
                                 <span style="font-size: 14px; color: #000;">单聊上下文条数</span>
-                                <input type="number" id="wechat-single-chat-limit" min="1" max="9999"
-                                       value="${this.storage.get('wechat-single-chat-limit') || 200}"
+                                <input type="number" id="wechat-single-chat-limit" min="0" max="9999"
+                                       value="${readNonNegativeStorageNumber(this.storage, 'wechat-single-chat-limit', 200)}"
                                        style="width: 55px; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; text-align: center; font-size: 14px; background: #fafafa;">
                             </div>
 
                             <div class="setting-item" style="display: flex; align-items: center; justify-content: space-between;">
                                 <span style="font-size: 14px; color: #000;">群聊上下文条数</span>
-                                <input type="number" id="wechat-group-chat-limit" min="1" max="9999"
-                                       value="${this.storage.get('wechat-group-chat-limit') || 200}"
+                                <input type="number" id="wechat-group-chat-limit" min="0" max="9999"
+                                       value="${readNonNegativeStorageNumber(this.storage, 'wechat-group-chat-limit', 200)}"
                                        style="width: 55px; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; text-align: center; font-size: 14px; background: #fafafa;">
                             </div>
 
@@ -1110,7 +1205,7 @@ export class SettingsApp {
                                     <div class="setting-desc">关闭后，只是不再把微信线下规则提示词注入酒馆正文；聊天记录注入仍按下方开关控制</div>
                                 </div>
                                 <label class="toggle-switch">
-                                    <input type="checkbox" id="offline-wechat-prompt-enabled" ${(this.storage.get('offline-wechat-prompt-enabled') !== false && this.storage.get('offline-wechat-prompt-enabled') !== 'false') ? 'checked' : ''}>
+                                    <input type="checkbox" id="offline-wechat-prompt-enabled" ${(!isWechatOnlineOnlyMode && this.storage.get('offline-wechat-prompt-enabled') !== false && this.storage.get('offline-wechat-prompt-enabled') !== 'false') ? 'checked' : ''} ${isWechatOnlineOnlyMode ? 'disabled' : ''}>
                                     <span class="toggle-slider"></span>
                                 </label>
                             </div>
@@ -1121,7 +1216,7 @@ export class SettingsApp {
                                     <div class="setting-desc">关闭后，所有微信单聊记录都不会注入酒馆正文</div>
                                 </div>
                                 <label class="toggle-switch">
-                                    <input type="checkbox" id="offline-single-chat-enabled" ${(this.storage.get('offline-single-chat-enabled') !== false && this.storage.get('offline-single-chat-enabled') !== 'false') ? 'checked' : ''}>
+                                    <input type="checkbox" id="offline-single-chat-enabled" ${(!isWechatOnlineOnlyMode && this.storage.get('offline-single-chat-enabled') !== false && this.storage.get('offline-single-chat-enabled') !== 'false') ? 'checked' : ''} ${isWechatOnlineOnlyMode ? 'disabled' : ''}>
                                     <span class="toggle-slider"></span>
                                 </label>
                             </div>
@@ -1142,7 +1237,7 @@ export class SettingsApp {
                                     <div class="setting-desc">关闭后，所有微信群聊记录都不会注入酒馆正文</div>
                                 </div>
                                 <label class="toggle-switch">
-                                    <input type="checkbox" id="offline-group-chat-enabled" ${(this.storage.get('offline-group-chat-enabled') !== false && this.storage.get('offline-group-chat-enabled') !== 'false') ? 'checked' : ''}>
+                                    <input type="checkbox" id="offline-group-chat-enabled" ${(!isWechatOnlineOnlyMode && this.storage.get('offline-group-chat-enabled') !== false && this.storage.get('offline-group-chat-enabled') !== 'false') ? 'checked' : ''} ${isWechatOnlineOnlyMode ? 'disabled' : ''}>
                                     <span class="toggle-slider"></span>
                                 </label>
                             </div>
@@ -3209,12 +3304,89 @@ export class SettingsApp {
             this.render();
         });
         
-        // 在线模式切换（会话模式用会话键；大厅模式用全局键）
-        document.getElementById('setting-online-mode')?.addEventListener('change', (e) => {
-            const onlineModeKey = this._isLobbyMode(this.storage.getContext())
-                ? 'phone_lobby_wechat_online_mode'
-                : 'wechat_online_mode';
-            this.storage.set(onlineModeKey, e.target.checked);
+        // 互通模式切换（会话模式用会话键；大厅模式用全局键）
+        document.getElementById('setting-wechat-interop-mode')?.addEventListener('change', async (e) => {
+            const context = this.storage.getContext();
+            const interopModeKey = this._getWechatInteropModeStorageKey(context);
+            const onlineOnlyModeKey = this._getWechatOnlineOnlyModeStorageKey(context);
+            const proactiveEnabledKey = this._getWechatOnlineProactiveEnabledStorageKey(context);
+            const enabled = !!e.target.checked;
+            await this.storage.set(interopModeKey, enabled);
+            if (enabled) {
+                await this.storage.set(onlineOnlyModeKey, false);
+                await this.storage.set(proactiveEnabledKey, false);
+                await window.VirtualPhone?.resetWechatOnlineProactiveSessionTimer?.('switch_to_interop');
+                const onlineOnlyToggle = document.getElementById('setting-wechat-online-only-mode');
+                if (onlineOnlyToggle) onlineOnlyToggle.checked = false;
+                const proactiveToggle = document.getElementById('setting-wechat-online-proactive-enabled');
+                if (proactiveToggle) proactiveToggle.checked = false;
+                WECHAT_OFFLINE_INJECTION_TOGGLE_KEYS.forEach((key) => {
+                    const toggle = document.getElementById(key);
+                    if (toggle) toggle.disabled = false;
+                });
+            }
+        });
+
+        // 线上模式切换：与互通模式互斥，并强制关闭微信线下注入开关
+        document.getElementById('setting-wechat-online-only-mode')?.addEventListener('change', async (e) => {
+            const context = this.storage.getContext();
+            const interopModeKey = this._getWechatInteropModeStorageKey(context);
+            const onlineOnlyModeKey = this._getWechatOnlineOnlyModeStorageKey(context);
+            const proactiveEnabledKey = this._getWechatOnlineProactiveEnabledStorageKey(context);
+            const enabled = !!e.target.checked;
+            await this.storage.set(onlineOnlyModeKey, enabled);
+            if (enabled) {
+                await this.storage.set(interopModeKey, false);
+                await window.VirtualPhone?.resetWechatOnlineProactiveSessionTimer?.('switch_to_online');
+                const interopToggle = document.getElementById('setting-wechat-interop-mode');
+                if (interopToggle) interopToggle.checked = false;
+
+                await this._disableWechatOfflineInjectionToggles();
+                WECHAT_OFFLINE_INJECTION_TOGGLE_KEYS.forEach((key) => {
+                    const toggle = document.getElementById(key);
+                    if (toggle) {
+                        toggle.checked = false;
+                        toggle.disabled = true;
+                    }
+                });
+            } else {
+                await this.storage.set(proactiveEnabledKey, false);
+                await window.VirtualPhone?.resetWechatOnlineProactiveSessionTimer?.('online_off');
+                const proactiveToggle = document.getElementById('setting-wechat-online-proactive-enabled');
+                if (proactiveToggle) proactiveToggle.checked = false;
+                WECHAT_OFFLINE_INJECTION_TOGGLE_KEYS.forEach((key) => {
+                    const toggle = document.getElementById(key);
+                    if (toggle) toggle.disabled = false;
+                });
+            }
+        });
+
+        document.getElementById('setting-wechat-online-proactive-enabled')?.addEventListener('change', async (e) => {
+            const context = this.storage.getContext();
+            if (!this._isStorageTruthy(this._getWechatOnlineOnlyModeStorageKey(context))) {
+                e.target.checked = false;
+                this.phoneShell?.showNotification?.('线上主动触发', '请先开启线上模式', '⚠️');
+                return;
+            }
+            const key = this._getWechatOnlineProactiveEnabledStorageKey(context);
+            await this.storage.set(key, !!e.target.checked);
+        });
+
+        document.getElementById('setting-wechat-online-proactive-interval')?.addEventListener('change', async (e) => {
+            const limit = Number.parseInt(e.target.value, 10) || 10;
+            const validLimit = Math.max(1, Math.min(9999, limit));
+            e.target.value = validLimit;
+            const key = this._getWechatOnlineProactiveIntervalStorageKey(this.storage.getContext());
+            await this.storage.set(key, validLimit);
+        });
+
+        document.getElementById('setting-wechat-online-proactive-test')?.addEventListener('click', async () => {
+            const runner = window.VirtualPhone?.triggerWechatOnlineProactive;
+            if (typeof runner !== 'function') {
+                this.phoneShell?.showNotification?.('线上主动触发', '调度器尚未初始化', '⚠️');
+                return;
+            }
+            await runner({ force: true, reason: 'settings_test' });
         });
 
         // 快捷回复按钮开关
@@ -3277,35 +3449,45 @@ export class SettingsApp {
 
         // 🔥 上下文楼层限制设置
         document.getElementById('phone-context-limit')?.addEventListener('change', async (e) => {
-            const limit = parseInt(e.target.value) || 10;
+            const limit = Number.parseInt(e.target.value, 10);
             // 🔥 放开上限限制，支持纯手机聊天玩法
-            const validLimit = Math.max(1, Math.min(9999, limit));
+            const validLimit = Math.max(0, Math.min(9999, Number.isFinite(limit) ? limit : 20));
             e.target.value = validLimit;
             await this.storage.set('phone-context-limit', validLimit);
         });
 
         // 🔥 单聊记录发送条数设置
         document.getElementById('wechat-single-chat-limit')?.addEventListener('change', async (e) => {
-            const limit = parseInt(e.target.value) || 200;
-            const validLimit = Math.max(1, Math.min(9999, limit));
+            const limit = Number.parseInt(e.target.value, 10);
+            const validLimit = Math.max(0, Math.min(9999, Number.isFinite(limit) ? limit : 200));
             e.target.value = validLimit;
             await this.storage.set('wechat-single-chat-limit', validLimit);
         });
 
         // 🔥 群聊记录发送条数设置
         document.getElementById('wechat-group-chat-limit')?.addEventListener('change', async (e) => {
-            const limit = parseInt(e.target.value) || 200;
-            const validLimit = Math.max(1, Math.min(9999, limit));
+            const limit = Number.parseInt(e.target.value, 10);
+            const validLimit = Math.max(0, Math.min(9999, Number.isFinite(limit) ? limit : 200));
             e.target.value = validLimit;
             await this.storage.set('wechat-group-chat-limit', validLimit);
         });
 
         // 🔥 线下单聊发送条数设置
         document.getElementById('offline-single-chat-enabled')?.addEventListener('change', async (e) => {
+            if (this._isWechatOnlineOnlyModeEnabled()) {
+                e.target.checked = false;
+                await this.storage.set('offline-single-chat-enabled', false);
+                return;
+            }
             await this.storage.set('offline-single-chat-enabled', !!e.target.checked);
         });
 
         document.getElementById('offline-wechat-prompt-enabled')?.addEventListener('change', async (e) => {
+            if (this._isWechatOnlineOnlyModeEnabled()) {
+                e.target.checked = false;
+                await this.storage.set('offline-wechat-prompt-enabled', false);
+                return;
+            }
             await this.storage.set('offline-wechat-prompt-enabled', !!e.target.checked);
         });
 
@@ -3318,6 +3500,11 @@ export class SettingsApp {
 
         // 🔥 线下群聊发送条数设置
         document.getElementById('offline-group-chat-enabled')?.addEventListener('change', async (e) => {
+            if (this._isWechatOnlineOnlyModeEnabled()) {
+                e.target.checked = false;
+                await this.storage.set('offline-group-chat-enabled', false);
+                return;
+            }
             await this.storage.set('offline-group-chat-enabled', !!e.target.checked);
         });
 
@@ -5359,6 +5546,13 @@ export class SettingsApp {
                 if (timeManager && timeManager.setTime) {
                     // 🔥 传递星期
                     timeManager.setTime(extractedTime.time, extractedTime.date, extractedTime.weekday, { force: true });
+                    const effectiveTime = timeManager.getCurrentStoryTime?.();
+                    const extractedTimestamp = timeManager.parseTimeToTimestamp?.(extractedTime);
+                    const effectiveTimestamp = timeManager.parseTimeToTimestamp?.(effectiveTime);
+                    const isEffectiveTimeLater = Number.isFinite(extractedTimestamp)
+                        && Number.isFinite(effectiveTimestamp)
+                        && effectiveTimestamp > extractedTimestamp;
+
                     this.updatePhoneTimeDisplay();
 
                     // 🔥 同步更新状态栏时间
@@ -5374,7 +5568,20 @@ export class SettingsApp {
                     }
 
                     // 🔥 通知中显示星期
-                    alert(`✅ 时间已同步：${extractedTime.date} ${extractedTime.weekday} ${extractedTime.time}`);
+                    if (isEffectiveTimeLater) {
+                        const effectiveText = effectiveTime
+                            ? `${effectiveTime.date || '未知'} ${effectiveTime.weekday || ''} ${effectiveTime.time || '未知'}`.trim()
+                            : '未知';
+                        alert(
+                            '⚠️ 手机时间未回退\n\n' +
+                            `正文时间：${extractedTime.date} ${extractedTime.weekday} ${extractedTime.time}\n` +
+                            `当前手机时间：${effectiveText}\n\n` +
+                            '系统会取正文时间和手机最新消息时间中的较晚值。' +
+                            '如需改回正文时间，请删除小手机里更晚时间的微信聊天记录后再同步。'
+                        );
+                    } else {
+                        alert(`✅ 时间已同步：${extractedTime.date} ${extractedTime.weekday} ${extractedTime.time}`);
+                    }
                 } else {
                     alert('❌ 时间管理器未初始化');
                 }

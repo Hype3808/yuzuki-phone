@@ -87,13 +87,16 @@ export class DiaryData {
 
     async setPageBg(entryId, base64) {
         const settings = this.getSettings();
+        const oldUrl = String(settings[`bg_${entryId}`] || '').trim();
+        let nextUrl = '';
         if (base64) {
-            const url = await this._uploadImageToServer(base64, `page_${entryId}`);
-            settings[`bg_${entryId}`] = url;
+            nextUrl = await this._uploadImageToServer(base64, `page_${entryId}`);
+            settings[`bg_${entryId}`] = nextUrl;
         } else {
             delete settings[`bg_${entryId}`];
         }
         this.saveSettings();
+        this._cleanupReplacedDiaryImage(oldUrl, nextUrl);
     }
 
     getGlobalBg() {
@@ -102,13 +105,16 @@ export class DiaryData {
     }
 
     async setGlobalBg(base64) {
+        const oldUrl = String(this.storage.get('global_diary_bg_global') || '').trim();
+        let nextUrl = '';
         if (base64) {
-            const url = await this._uploadImageToServer(base64, 'global');
+            nextUrl = await this._uploadImageToServer(base64, 'global');
             // 使用 storage.set 会存入酒馆服务器的 settings.json 中，突破浏览器限制
-            this.storage.set('global_diary_bg_global', url);
+            this.storage.set('global_diary_bg_global', nextUrl);
         } else {
             this.storage.remove('global_diary_bg_global');
         }
+        this._cleanupReplacedDiaryImage(oldUrl, nextUrl);
     }
 
     getCoverBg() {
@@ -116,12 +122,15 @@ export class DiaryData {
     }
 
     async setCoverBg(base64) {
+        const oldUrl = String(this.storage.get('global_diary_bg_cover') || '').trim();
+        let nextUrl = '';
         if (base64) {
-            const url = await this._uploadImageToServer(base64, 'cover');
-            this.storage.set('global_diary_bg_cover', url);
+            nextUrl = await this._uploadImageToServer(base64, 'cover');
+            this.storage.set('global_diary_bg_cover', nextUrl);
         } else {
             this.storage.remove('global_diary_bg_cover');
         }
+        this._cleanupReplacedDiaryImage(oldUrl, nextUrl);
     }
 
     getTocBg() {
@@ -129,12 +138,15 @@ export class DiaryData {
     }
 
     async setTocBg(base64) {
+        const oldUrl = String(this.storage.get('global_diary_bg_toc') || '').trim();
+        let nextUrl = '';
         if (base64) {
-            const url = await this._uploadImageToServer(base64, 'toc');
-            this.storage.set('global_diary_bg_toc', url);
+            nextUrl = await this._uploadImageToServer(base64, 'toc');
+            this.storage.set('global_diary_bg_toc', nextUrl);
         } else {
             this.storage.remove('global_diary_bg_toc');
         }
+        this._cleanupReplacedDiaryImage(oldUrl, nextUrl);
     }
 
     // ==================== 行间距 ====================
@@ -258,12 +270,18 @@ export class DiaryData {
         const entries = this.getEntries();
         const idx = entries.findIndex(e => e.id === entryId);
         if (idx !== -1) {
+            const entry = entries[idx];
+            const managedImages = [
+                ...this._collectManagedDiaryImagesFromEntry(entry),
+                this.getPageBg(entryId)
+            ];
             entries.splice(idx, 1);
             this.saveEntries();
             const settings = this.getSettings();
             delete settings[`bg_${entryId}`];
             delete settings[`lh_${entryId}`];
             this.saveSettings();
+            this._cleanupManagedDiaryImages(managedImages);
             return true;
         }
         return false;
@@ -278,6 +296,11 @@ export class DiaryData {
         if (ids.size === 0) return 0;
 
         const entries = this.getEntries();
+        const deletedEntries = entries.filter(entry => ids.has(String(entry?.id || '')));
+        const managedImages = deletedEntries.flatMap(entry => [
+            ...this._collectManagedDiaryImagesFromEntry(entry),
+            this.getPageBg(entry?.id)
+        ]);
         const before = entries.length;
         this._entries = entries.filter(entry => !ids.has(String(entry?.id || '')));
         const deletedCount = before - this._entries.length;
@@ -290,17 +313,26 @@ export class DiaryData {
             delete settings[`lh_${entryId}`];
         });
         this.saveSettings();
+        this._cleanupManagedDiaryImages(managedImages);
         return deletedCount;
     }
 
     clearAllEntries() {
+        const entries = this.getEntries();
+        const settings = this.getSettings();
+        const managedImages = [
+            ...entries.flatMap(entry => this._collectManagedDiaryImagesFromEntry(entry)),
+            ...Object.entries(settings)
+                .filter(([key]) => String(key || '').startsWith('bg_'))
+                .map(([, value]) => value)
+        ];
         this._entries = [];
         this.saveEntries();
         // 清除所有日记相关的设置（背景、行高等）
-        const settings = this.getSettings();
         const keysToDelete = Object.keys(settings).filter(k => k.startsWith('bg_') || k.startsWith('lh_'));
         keysToDelete.forEach(k => delete settings[k]);
         this.saveSettings();
+        this._cleanupManagedDiaryImages(managedImages);
     }
 
     getEntry(entryId) {
@@ -442,6 +474,7 @@ export class DiaryData {
         }
 
         const generationId = `diary_img_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const previousImageUrl = String(photo.imageUrl || '').trim();
         this.updateEntryPhoto(entryId, photoId, {
             status: 'loading',
             generationId,
@@ -464,7 +497,7 @@ export class DiaryData {
             const latest = this.getEntry(entryId)?.photos?.find(item => String(item?.id || '') === String(photoId));
             if (String(latest?.generationId || '') !== generationId) return latest;
 
-            return this.updateEntryPhoto(entryId, photoId, {
+            const updated = this.updateEntryPhoto(entryId, photoId, {
                 status: 'done',
                 imageUrl: storedImageUrl,
                 error: '',
@@ -474,6 +507,8 @@ export class DiaryData {
                 imageGenerationWidth: Number(result?.width || result?.requestedWidth || 0) || '',
                 imageGenerationHeight: Number(result?.height || result?.requestedHeight || 0) || ''
             });
+            this._cleanupReplacedDiaryImage(previousImageUrl, storedImageUrl);
+            return updated;
         } catch (err) {
             const message = String(err?.message || err || '未知错误').trim();
             this.updateEntryPhoto(entryId, photoId, {
@@ -487,13 +522,57 @@ export class DiaryData {
     async _persistDiaryGeneratedImage(imageUrl, prefix = 'diary_photo') {
         const safeUrl = String(imageUrl || '').trim();
         if (!safeUrl) return '';
-        if (!safeUrl.startsWith('data:image/')) return safeUrl;
+        if (/^\/backgrounds\/phone_[^?#]+/i.test(safeUrl)) return safeUrl;
 
         const uploader = window.VirtualPhone?.imageManager;
-        if (!uploader || typeof uploader.uploadDataUrl !== 'function') {
+        if (!uploader?.uploadBlob) {
             throw new Error('图片上传管理器未初始化，无法保存日记照片');
         }
-        return uploader.uploadDataUrl(safeUrl, prefix, { allowBase64Fallback: false });
+        const response = await fetch(safeUrl, { cache: 'no-store' });
+        if (!response.ok) throw new Error(`读取日记照片失败（HTTP ${response.status}）`);
+        const blob = await response.blob();
+        if (!blob || !/^image\//i.test(String(blob.type || '')) || blob.size <= 0) {
+            throw new Error('日记照片结果不是有效图片');
+        }
+        return uploader.uploadBlob(blob, prefix);
+    }
+
+    _normalizeManagedDiaryImagePath(pathLike) {
+        const raw = String(pathLike || '').trim();
+        if (!raw) return '';
+        let value = raw.split('?')[0].split('#')[0];
+        try {
+            if (/^https?:\/\//i.test(value)) value = new URL(value).pathname;
+        } catch (e) { }
+        return /^\/backgrounds\/phone_diary_/i.test(value) ? value : '';
+    }
+
+    _collectManagedDiaryImagesFromEntry(entry) {
+        const photos = Array.isArray(entry?.photos) ? entry.photos : [];
+        return [...new Set(photos
+            .map(photo => this._normalizeManagedDiaryImagePath(photo?.imageUrl))
+            .filter(Boolean))];
+    }
+
+    _cleanupManagedDiaryImages(paths = []) {
+        const imageManager = window.VirtualPhone?.imageManager;
+        if (!imageManager?.deleteManagedBackgroundByPath) return;
+        [...new Set((Array.isArray(paths) ? paths : [paths])
+            .map(path => this._normalizeManagedDiaryImagePath(path))
+            .filter(Boolean))]
+            .forEach((path) => {
+                imageManager.deleteManagedBackgroundByPath(path, {
+                    quiet: true,
+                    skipIfReferenced: true
+                }).catch(() => {});
+            });
+    }
+
+    _cleanupReplacedDiaryImage(oldUrl, nextUrl) {
+        const oldPath = this._normalizeManagedDiaryImagePath(oldUrl);
+        const nextPath = this._normalizeManagedDiaryImagePath(nextUrl);
+        if (!oldPath || oldPath === nextPath) return;
+        this._cleanupManagedDiaryImages([oldPath]);
     }
 
     async _getWechatDataForDiaryPhotos() {

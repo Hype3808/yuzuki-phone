@@ -776,6 +776,7 @@ export class MomentsView {
             imageManager.storage = imageStorage;
         }
 
+        const previousImageUrl = this._getManagedMomentGeneratedImageUrl(moment, index);
         if (clearPreviousImage && Array.isArray(moment.images)) {
             moment.images[index] = `[图片]${promptText}`;
         }
@@ -795,7 +796,12 @@ export class MomentsView {
                 app: 'wechat',
                 prompt: promptText
             });
-            const imageUrl = String(result?.imageUrl || result?.imageData || '').trim();
+            const rawImageUrl = String(result?.imageUrl || result?.imageData || '').trim();
+            const imageUrl = await this._persistMomentGeneratedImage(rawImageUrl, {
+                momentId,
+                index,
+                promptText
+            });
             if (!imageUrl) throw new Error('生图成功但未返回图片URL');
 
             const latestMoment = this._getMomentById(momentId) || moment;
@@ -812,6 +818,7 @@ export class MomentsView {
                 imageGenerationHeight: Number(result?.height || result?.requestedHeight || 0) || ''
             });
             await this.app.wechatData.saveData();
+            this._cleanupReplacedMomentGeneratedImage(previousImageUrl, imageUrl);
             this._refreshMomentImageUI(momentId);
             this.app.phoneShell.showNotification('成功', '朋友圈配图生成完成', '✅');
         } catch (error) {
@@ -828,6 +835,71 @@ export class MomentsView {
             this._refreshMomentImageUI(momentId);
             this.app.phoneShell.showNotification('生图失败', friendlyMessage, '❌');
         }
+    }
+
+    async _persistMomentGeneratedImage(imageUrl, { momentId = '', index = 0, promptText = '' } = {}) {
+        const safeUrl = String(imageUrl || '').trim();
+        if (!safeUrl) return '';
+        if (/^\/backgrounds\/phone_[^?#]+/i.test(safeUrl)) return safeUrl;
+
+        const imageUploader = window.VirtualPhone?.imageManager;
+        if (!imageUploader?.uploadBlob) {
+            throw new Error('图片上传管理器未初始化，无法保存朋友圈生图');
+        }
+
+        const blob = await this._loadGeneratedMomentImageBlob(safeUrl);
+        const seed = `${momentId || 'moment'}_${index}_${this._simpleImageHash(promptText || safeUrl).toString(36)}`;
+        const uploadedUrl = await imageUploader.uploadBlob(blob, `moment_img_${seed}`);
+        const normalized = String(uploadedUrl || '').trim();
+        if (!/^\/backgrounds\/phone_[^?#]+/i.test(normalized)) {
+            throw new Error('朋友圈生图保存失败：未得到有效本地图片路径');
+        }
+        return normalized;
+    }
+
+    async _loadGeneratedMomentImageBlob(imageUrl) {
+        const safeUrl = String(imageUrl || '').trim();
+        if (!safeUrl) throw new Error('生图结果为空');
+        const response = await fetch(safeUrl, { cache: 'no-store' });
+        if (!response.ok) {
+            throw new Error(`读取朋友圈生图失败（HTTP ${response.status}）`);
+        }
+        const blob = await response.blob();
+        if (!blob || !/^image\//i.test(String(blob.type || '')) || blob.size <= 0) {
+            throw new Error('朋友圈生图结果不是有效图片');
+        }
+        return blob;
+    }
+
+    _simpleImageHash(text) {
+        const str = String(text || '');
+        let hash = 2166136261;
+        for (let i = 0; i < str.length; i += 1) {
+            hash ^= str.charCodeAt(i);
+            hash = Math.imul(hash, 16777619);
+        }
+        return hash >>> 0;
+    }
+
+    _getManagedMomentGeneratedImageUrl(moment, index) {
+        const candidates = [
+            Array.isArray(moment?.images) ? moment.images[index] : '',
+            this._getMomentImageState(moment, index)?.generatedImageUrl
+        ];
+        for (const item of candidates) {
+            const parsed = this._parseMomentImageItem(item);
+            const raw = String(parsed?.realUrl || item || '').trim();
+            const match = raw.match(/\/backgrounds\/phone_moment_img_[^?#\s)）]+/i);
+            if (match?.[0]) return match[0];
+        }
+        return '';
+    }
+
+    _cleanupReplacedMomentGeneratedImage(oldUrl, nextUrl = '') {
+        const oldPath = String(oldUrl || '').trim();
+        const nextPath = String(nextUrl || '').trim();
+        if (!oldPath || oldPath === nextPath || !/^\/backgrounds\/phone_moment_img_/i.test(oldPath)) return;
+        this._cleanupManagedMomentImages([oldPath]);
     }
 
     // 显示操作弹窗

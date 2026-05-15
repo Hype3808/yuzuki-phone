@@ -1017,32 +1017,52 @@ export class HoneyView {
             || (activeTopicTitle && currentSceneTopicTitle && activeTopicTitle === currentSceneTopicTitle);
 
         if (!isSameTopic) {
-            const cached = this.app.honeyData?.getTopicScene?.(activeTopicKey || activeTopicTitle, activeTopicTitle);
-            if (cached && typeof cached === 'object') {
-                this.currentSceneData = { ...cached, _topicTitle: activeTopicTitle, _topicKey: activeTopicKey };
-            } else {
-                const lastScene = this.app.honeyData?.getLastSceneData?.();
-                const lastSceneTitle = String(lastScene?._topicTitle || lastScene?.title || '').trim();
-                const lastSceneKey = String(lastScene?._topicKey || '').trim();
-                const canRestoreLastScene = lastScene && typeof lastScene === 'object'
-                    && ((activeTopicKey && lastSceneKey && activeTopicKey === lastSceneKey)
-                        || (activeTopicTitle && lastSceneTitle && activeTopicTitle === lastSceneTitle));
-                this.currentSceneData = canRestoreLastScene
-                    ? { ...lastScene, _topicTitle: activeTopicTitle, _topicKey: activeTopicKey || lastSceneKey }
-                    : this._buildBaseScene(topic || this._getFallbackTopic(), activeTopicTitle, activeTopicKey);
-                this.currentSceneData.title = activeTopicTitle;
-                if (!canRestoreLastScene) {
-                    this.currentSceneData.description = this._getRecommendRefreshHintText();
-                    this.currentSceneData.comments = [];
-                    this.currentSceneData.lastUserComment = '';
-                    this.currentSceneData.userChats = [];
-                    this.currentSceneData.promptTurns = [];
-                    this.currentSceneData.gifts = [];
-                    this.currentSceneData.audienceGiftTotals = {};
-                    this.currentSceneData.leaderboard = [];
-                    this.currentSceneData.userGiftRank = null;
-                }
+            const hasCurrentLiveState = this.currentPage === 'live'
+                && this.currentSceneData
+                && typeof this.currentSceneData === 'object'
+                && (
+                    this._hasMeaningfulSceneDescription(this.currentSceneData.description)
+                    || (Array.isArray(this.currentSceneData.comments) && this.currentSceneData.comments.length > 0)
+                    || (Array.isArray(this.currentSceneData.userChats) && this.currentSceneData.userChats.length > 0)
+                    || (Array.isArray(this.currentSceneData.promptTurns) && this.currentSceneData.promptTurns.length > 0)
+                    || (Array.isArray(this.currentSceneData.gifts) && this.currentSceneData.gifts.length > 0)
+                    || (this.currentSceneData.audienceGiftTotals && typeof this.currentSceneData.audienceGiftTotals === 'object' && Object.keys(this.currentSceneData.audienceGiftTotals).length > 0)
+                );
+            if (hasCurrentLiveState) {
+                this.currentSceneData = {
+                    ...this.currentSceneData,
+                    _topicTitle: currentSceneTopicTitle || activeTopicTitle,
+                    _topicKey: currentSceneTopicKey || activeTopicKey
+                };
                 this._persistCurrentScene();
+            } else {
+                const cached = this.app.honeyData?.getTopicScene?.(activeTopicKey || activeTopicTitle, activeTopicTitle);
+                if (cached && typeof cached === 'object') {
+                    this.currentSceneData = { ...cached, _topicTitle: activeTopicTitle, _topicKey: activeTopicKey };
+                } else {
+                    const lastScene = this.app.honeyData?.getLastSceneData?.();
+                    const lastSceneTitle = String(lastScene?._topicTitle || lastScene?.title || '').trim();
+                    const lastSceneKey = String(lastScene?._topicKey || '').trim();
+                    const canRestoreLastScene = lastScene && typeof lastScene === 'object'
+                        && ((activeTopicKey && lastSceneKey && activeTopicKey === lastSceneKey)
+                            || (activeTopicTitle && lastSceneTitle && activeTopicTitle === lastSceneTitle));
+                    this.currentSceneData = canRestoreLastScene
+                        ? { ...lastScene, _topicTitle: activeTopicTitle, _topicKey: activeTopicKey || lastSceneKey }
+                        : this._buildBaseScene(topic || this._getFallbackTopic(), activeTopicTitle, activeTopicKey);
+                    this.currentSceneData.title = activeTopicTitle;
+                    if (!canRestoreLastScene) {
+                        this.currentSceneData.description = this._getRecommendRefreshHintText();
+                        this.currentSceneData.comments = [];
+                        this.currentSceneData.lastUserComment = '';
+                        this.currentSceneData.userChats = [];
+                        this.currentSceneData.promptTurns = [];
+                        this.currentSceneData.gifts = [];
+                        this.currentSceneData.audienceGiftTotals = {};
+                        this.currentSceneData.leaderboard = [];
+                        this.currentSceneData.userGiftRank = null;
+                    }
+                    this._persistCurrentScene();
+                }
             }
         }
 
@@ -5907,14 +5927,6 @@ export class HoneyView {
         const handleFocus = () => {
             if (window.innerWidth <= 500) {
                 document.body.classList.add('phone-input-active');
-                
-                // 🔥 延迟 300 毫秒等键盘完全升起后，呼叫浏览器原生 API，强制把输入框推入可视区域
-                setTimeout(() => {
-                    const bottomBar = liveRoot.querySelector('.honey-live-bottom');
-                    if (bottomBar) {
-                        bottomBar.scrollIntoView({ block: 'end', inline: 'nearest' });
-                    }
-                }, 300);
             }
         };
 
@@ -7336,6 +7348,8 @@ export class HoneyView {
         const safeKey = String(topicKey || source._topicKey || this._resolveTopicKey(source, safeTitle)).trim();
         const safeCollabCost = Math.max(0, Number.parseInt(String(source.collabCost ?? 0), 10) || 0);
         const safeAudienceGiftTotals = this._getSceneAudienceGiftTotals(source);
+        const safeTag = String(source.tag || source.category || source.recommendCategory || source.heat || '').trim();
+        const safeCategory = String(source.category || source.recommendCategory || source.tag || '').trim();
         const safeUserGiftRank = (source?.userGiftRank && typeof source.userGiftRank === 'object')
             ? {
                 rank: Math.max(1, Number.parseInt(String(source.userGiftRank.rank || 0), 10) || 1),
@@ -7348,6 +7362,9 @@ export class HoneyView {
         return {
             host: source.host || '神秘主播',
             title: source.title || safeTitle || '直播间',
+            tag: safeTag,
+            category: safeCategory,
+            recommendCategory: String(source.recommendCategory || source.category || source.tag || '').trim(),
             viewers: source.viewers || '0',
             playCount: source.playCount || '0',
             fans: source.fans || '0',
@@ -7451,6 +7468,9 @@ export class HoneyView {
                     _topicKey: this.recommendTopics[idx]._topicKey || topicKey,
                     _topicTitle: scene._topicTitle || topicTitle,
                     title: scene.title || this.recommendTopics[idx].title,
+                    tag: scene.tag || this.recommendTopics[idx].tag,
+                    category: scene.category || this.recommendTopics[idx].category,
+                    recommendCategory: scene.recommendCategory || this.recommendTopics[idx].recommendCategory,
                     host: scene.host || this.recommendTopics[idx].host,
                     viewers: scene.viewers || this.recommendTopics[idx].viewers,
                     playCount: scene.playCount || this.recommendTopics[idx].playCount,
@@ -7871,6 +7891,13 @@ export class HoneyView {
             if (!String(nextScene?.intro || '').trim() && previousIntro) {
                 nextScene.intro = previousIntro;
             }
+            ['tag', 'category', 'recommendCategory'].forEach((key) => {
+                const nextValue = String(nextScene?.[key] || '').trim();
+                const previousValue = String(workingScene?.[key] || baseScene?.[key] || '').trim();
+                if (!nextValue && previousValue) {
+                    nextScene[key] = previousValue;
+                }
+            });
             const mergedAudienceGiftTotals = {
                 ...this._getSceneAudienceGiftTotals(workingScene),
                 ...this._getSceneAudienceGiftTotals(nextScene)
@@ -7938,6 +7965,9 @@ export class HoneyView {
                     ...(this.selectedTopic || {}),
                     title: topicTitle,
                     _topicKey: topicKey,
+                    tag: this.currentSceneData.tag,
+                    category: this.currentSceneData.category,
+                    recommendCategory: this.currentSceneData.recommendCategory,
                     host: this.currentSceneData.host,
                     viewers: this.currentSceneData.viewers,
                     fans: this.currentSceneData.fans,
@@ -7998,6 +8028,8 @@ export class HoneyView {
             title: '直播间',
             heat: '',
             tag: '',
+            category: '',
+            recommendCategory: '',
             host: '神秘主播',
             viewers: '0',
             playCount: '0',

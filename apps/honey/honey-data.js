@@ -549,6 +549,10 @@ export class HoneyData {
         const fans = this._sanitizeInlineText(currentScene?.fans || '', 20);
         const collab = this._sanitizeInlineText(currentScene?.collab || '', 24);
         const intro = this._sanitizeInlineText(currentScene?.intro || '', 240);
+        const liveTag = this._sanitizeInlineText(
+            currentScene?.tag || currentScene?.category || currentScene?.recommendCategory || currentScene?.heat || '',
+            40
+        );
         const favorability = this._clampFavorability(currentScene?.favorability, null);
         const leaderboard = (Array.isArray(currentScene?.leaderboard) ? currentScene.leaderboard : [])
             .map((item, idx) => {
@@ -610,6 +614,7 @@ export class HoneyData {
         }
         if (host) lines.push(`主播：${host}${hostFollowState ? `（${hostFollowState}）` : ''}`);
         if (title) lines.push(`标题：${title}`);
+        if (liveTag) lines.push(`标签：${liveTag}`);
         if (viewers || fans) lines.push(`状态：在线人数:${viewers || '0'} 粉丝:${fans || '0'}`);
         if (collab) lines.push(`联播：${collab}`);
         if (collabInfo?.name) {
@@ -2623,7 +2628,7 @@ export class HoneyData {
 
         if (typeof value === 'string') {
             const safe = value.trim();
-            if (/^\/backgrounds\/honey_nai_/i.test(safe)) out.add(safe);
+            if (/^\/backgrounds\/(?:phone_)?honey_nai_/i.test(safe)) out.add(safe);
             return out;
         }
 
@@ -2636,7 +2641,7 @@ export class HoneyData {
 
         ['naiImageUrl', 'generatedImageUrl', 'imageUrl'].forEach((key) => {
             const safe = String(value?.[key] || '').trim();
-            if (/^\/backgrounds\/honey_nai_/i.test(safe)) out.add(safe);
+            if (/^\/backgrounds\/(?:phone_)?honey_nai_/i.test(safe)) out.add(safe);
         });
 
         Object.values(value).forEach(item => this._collectHoneyGeneratedImageUrlsFromValue(item, out, depth + 1));

@@ -5219,7 +5219,14 @@ export class WechatApp {
 <div style="background: #e3f2fd; border-radius: 12px; padding: 15px; margin: 15px;">
     <div style="font-size: 14px; color: #1976d2;">
         <i class="fa-solid fa-info-circle"></i> 
-        在线模式状态：${window.VirtualPhone?.storage?.get(this.wechatData.getOnlineModeStorageKey?.() || 'wechat_online_mode') ? '✅ 已开启' : '❌ 未开启'}
+        互动模式状态：${(() => {
+            const storage = window.VirtualPhone?.storage;
+            if (!storage) return '❌ 未开启';
+            const isOn = (value) => value === true || value === 'true' || value === 1;
+            const interopOn = storage.get(this.wechatData.getOnlineModeStorageKey?.() || 'wechat_online_mode');
+            const onlineOnlyOn = storage.get(this.wechatData.getOnlineOnlyModeStorageKey?.() || 'wechat_online_only_mode');
+            return (isOn(interopOn) || isOn(onlineOnlyOn)) ? '✅ 已开启' : '❌ 未开启';
+        })()}
         <div style="font-size: 12px; margin-top: 5px; color: #666;">
             如需修改，请前往手机"设置"APP（每个会话独立设置）
         </div>
@@ -6068,8 +6075,11 @@ export class WechatApp {
                 if (action === 'moments') {
                     const ok = confirm('确定清理微信朋友圈吗？\n\n将清空所有朋友圈动态与互动记录。');
                     if (!ok) return;
-                    const momentsCount = this.wechatData.getMoments().length;
+                    const moments = this.wechatData.getMoments();
+                    const momentsCount = moments.length;
+                    const managedImageUrls = moments.flatMap(moment => this.momentsView?._collectMomentManagedImageUrls?.(moment) || []);
                     this.wechatData.clearMomentsData();
+                    this.momentsView?._cleanupManagedMomentImages?.(managedImageUrls);
                     closeModal();
                     this.phoneShell.showNotification('已清理', `朋友圈已清空（${momentsCount} 条）`, '✅');
                     return;

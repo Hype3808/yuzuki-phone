@@ -387,6 +387,10 @@ export class WechatData {
         return this._isLobbyMode(context) ? 'phone_lobby_wechat_online_mode' : 'wechat_online_mode';
     }
 
+    getOnlineOnlyModeStorageKey(context = null) {
+        return this._isLobbyMode(context) ? 'phone_lobby_wechat_online_only_mode' : 'wechat_online_only_mode';
+    }
+
     _parseIdList(raw) {
         if (!raw) return { hasStored: false, list: [] };
         try {

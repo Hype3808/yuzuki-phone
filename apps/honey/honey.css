@@ -4065,12 +4065,12 @@
     border-color: rgba(255, 216, 232, 0.95) !important;
 }
 
-/* 🔥 终极输入法防遮挡补偿：当输入法弹起时，强行给底部垫高 24px */
+/* 蜜语直播输入栏固定在手机底部，聚焦时不额外垫高，避免底片跳动 */
 body.phone-input-active .honey-page-live .honey-live-bottom {
-    padding-bottom: 24px !important;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)) !important;
 }
 
-/* 用户直播页额外保留安全区，避免移动端键盘弹起时输入框被底部遮挡 */
+/* 用户直播页同样保持固定高度，避免点击输入框后底栏上浮 */
 body.phone-input-active .honey-page-live.is-user-live .honey-live-bottom {
-    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px)) !important;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)) !important;
 }

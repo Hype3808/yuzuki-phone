@@ -20,12 +20,14 @@ export class WeiboData {
         this._profileKey = 'weibo_profile';
         this._globalBeautifyKey = 'global_weibo_beautify';
         this._userPostsKey = 'weibo_user_posts';
+        this._likedRecommendPostsKey = 'weibo_liked_recommend_posts';
+        this._likedHotSearchIndexKey = 'weibo_liked_hot_search_index';
         this._beautifyFields = ['avatar', 'banner', 'avatarFrameCss'];
 
         // API调用队列（防并发）
         this._apiQueue = Promise.resolve();
         this._apiRunning = false;
-        this._aiTimeoutMs = 120000;
+        this._aiTimeoutMs = 240000;
 
         // 缓存
         this._recommendCache = null;
@@ -198,6 +200,271 @@ export class WeiboData {
         const targetId = String(postId || '').trim();
         if (!targetId) return Array.isArray(posts) ? [...posts] : [];
         return (Array.isArray(posts) ? posts : []).filter(item => String(item?.id || '').trim() !== targetId);
+    }
+
+    _getCurrentLikeUserName() {
+        const context = this._getContext();
+        return String(context?.name1 || '我').trim() || '我';
+    }
+
+    _isPostLikedByCurrentUser(post) {
+        const userName = this._getCurrentLikeUserName();
+        const likeList = Array.isArray(post?.likeList) ? post.likeList : [];
+        return !!userName && likeList.includes(userName);
+    }
+
+    _getCurrentUserLikedPosts(posts) {
+        return (Array.isArray(posts) ? posts : []).filter(post => this._isPostLikedByCurrentUser(post));
+    }
+
+    _parseWeiboRelativeTimeToMinutes(timeText) {
+        const text = String(timeText || '').trim();
+        if (!text || text === '刚刚') return 0;
+
+        const minuteMatch = text.match(/(\d+)\s*分钟/);
+        if (minuteMatch) return Math.max(0, parseInt(minuteMatch[1], 10) || 0);
+
+        const hourMatch = text.match(/(\d+)\s*小时/);
+        if (hourMatch) return Math.max(0, (parseInt(hourMatch[1], 10) || 0) * 60);
+
+        const dayMatch = text.match(/(\d+)\s*天/);
+        if (dayMatch) return Math.max(0, (parseInt(dayMatch[1], 10) || 0) * 24 * 60);
+
+        const weekMatch = text.match(/(\d+)\s*(?:周|星期)/);
+        if (weekMatch) return Math.max(0, (parseInt(weekMatch[1], 10) || 0) * 7 * 24 * 60);
+
+        return 0;
+    }
+
+    _formatWeiboRelativeTimeFromMinutes(minutes) {
+        const totalMinutes = Math.max(0, Math.floor(Number(minutes) || 0));
+        if (totalMinutes < 1) return '刚刚';
+        if (totalMinutes < 60) return `${totalMinutes}分钟前`;
+        if (totalMinutes < 24 * 60) return `${Math.floor(totalMinutes / 60)}小时前`;
+        return `${Math.floor(totalMinutes / (24 * 60))}天前`;
+    }
+
+    _ensurePreservedTimeAnchor(post) {
+        if (!post || typeof post !== 'object') return post;
+        const now = Date.now();
+        const originalTime = String(post.originalTime || post.time || '').trim();
+        const baseMinutes = Number.isFinite(post.preservedBaseMinutes)
+            ? Math.max(0, Math.floor(post.preservedBaseMinutes))
+            : this._parseWeiboRelativeTimeToMinutes(originalTime);
+        const preservedAt = Number.isFinite(post.preservedAt)
+            ? post.preservedAt
+            : now;
+        return {
+            ...post,
+            originalTime,
+            preservedAt,
+            preservedBaseMinutes: baseMinutes
+        };
+    }
+
+    _updatePreservedPostDisplayTime(post) {
+        if (!post || typeof post !== 'object') return post;
+        const anchored = this._ensurePreservedTimeAnchor(post);
+        const elapsedMinutes = Math.max(0, Math.floor((Date.now() - anchored.preservedAt) / 60000));
+        return {
+            ...anchored,
+            time: this._formatWeiboRelativeTimeFromMinutes((anchored.preservedBaseMinutes || 0) + elapsedMinutes),
+            repushedAt: Date.now()
+        };
+    }
+
+    _mergeGeneratedPostsWithPreservedLikes(newPosts, oldPosts) {
+        const generated = Array.isArray(newPosts) ? [...newPosts] : [];
+        const existingIds = new Set(generated.map(post => String(post?.id || '').trim()).filter(Boolean));
+        const preservedById = new Map();
+        this._getCurrentUserLikedPosts(oldPosts).forEach(post => {
+            const id = String(post?.id || '').trim();
+            if (!id || existingIds.has(id)) return;
+            preservedById.set(id, this._updatePreservedPostDisplayTime(post));
+        });
+        const preserved = Array.from(preservedById.values());
+        return [...generated, ...preserved];
+    }
+
+    _hasCurrentUserLikedPosts(posts) {
+        return this._getCurrentUserLikedPosts(posts).length > 0;
+    }
+
+    _getLikedRecommendPosts() {
+        const saved = this._readJSON(this._likedRecommendPostsKey, []) || [];
+        return Array.isArray(saved) ? saved : [];
+    }
+
+    _saveLikedRecommendPosts(posts) {
+        const normalized = [];
+        const seen = new Set();
+        (Array.isArray(posts) ? posts : []).forEach((post) => {
+            const id = String(post?.id || '').trim();
+            if (!id || seen.has(id) || !this._isPostLikedByCurrentUser(post)) return;
+            seen.add(id);
+            normalized.push(post);
+        });
+        this.storage.set(this._likedRecommendPostsKey, JSON.stringify(normalized));
+    }
+
+    _syncLikedRecommendPost(post) {
+        const id = String(post?.id || '').trim();
+        if (!id) return;
+
+        const rows = this._getLikedRecommendPosts().filter(item => String(item?.id || '').trim() !== id);
+        if (this._isPostLikedByCurrentUser(post)) {
+            const anchored = this._ensurePreservedTimeAnchor(post);
+            rows.push({
+                ...anchored,
+                likedAt: Date.now()
+            });
+        }
+        this._saveLikedRecommendPosts(rows);
+    }
+
+    _getStoredLikedRecommendPosts() {
+        return this._getLikedRecommendPosts().filter(post => this._isPostLikedByCurrentUser(post));
+    }
+
+    _mergeRecommendPostsWithAllPreservedLikes(newPosts, oldPosts) {
+        const base = this._mergeGeneratedPostsWithPreservedLikes(newPosts, [
+            ...(Array.isArray(oldPosts) ? oldPosts : []),
+            ...this._getStoredLikedRecommendPosts()
+        ]);
+        const currentLiked = base.filter(post => this._isPostLikedByCurrentUser(post));
+        this._saveLikedRecommendPosts(currentLiked);
+        return base;
+    }
+
+    _getLikedHotSearchIndex() {
+        const saved = this._readJSON(this._likedHotSearchIndexKey, []) || [];
+        return Array.isArray(saved) ? saved : [];
+    }
+
+    _saveLikedHotSearchIndex(rows) {
+        const normalized = [];
+        const seen = new Set();
+        (Array.isArray(rows) ? rows : []).forEach((item) => {
+            const title = String(item?.title || '').trim();
+            if (!title || seen.has(title)) return;
+            seen.add(title);
+            normalized.push({
+                ...item,
+                title
+            });
+        });
+        this.storage.set(this._likedHotSearchIndexKey, JSON.stringify(normalized));
+    }
+
+    _getHotSearchMeta(title) {
+        const safeTitle = String(title || '').trim();
+        if (!safeTitle) return null;
+        const current = this.getHotSearches().find(item => String(item?.title || '').trim() === safeTitle);
+        return current || { title: safeTitle, tag: null };
+    }
+
+    _syncLikedHotSearchIndex(title, detail = null) {
+        const safeTitle = String(title || '').trim();
+        if (!safeTitle) return;
+
+        const liveDetail = detail || this.getHotSearchDetail(safeTitle);
+        const rows = this._getLikedHotSearchIndex();
+        const nextRows = rows.filter(item => String(item?.title || '').trim() !== safeTitle);
+
+        if (this._hasCurrentUserLikedPosts(liveDetail?.posts)) {
+            const meta = this._getHotSearchMeta(safeTitle) || { title: safeTitle, tag: null };
+            nextRows.push({
+                ...meta,
+                title: safeTitle,
+                likedAt: Date.now()
+            });
+        }
+
+        this._saveLikedHotSearchIndex(nextRows);
+    }
+
+    _getStoredLikedHotSearchEntries() {
+        const entries = [];
+        const seen = new Set();
+        const pushTitle = (title, fallbackMeta = null) => {
+            const safeTitle = String(title || '').trim();
+            if (!safeTitle || seen.has(safeTitle)) return;
+            const detail = this.getHotSearchDetail(safeTitle);
+            const likedPosts = this._getCurrentUserLikedPosts(detail?.posts);
+            if (likedPosts.length === 0) return;
+            const nextDetail = {
+                ...(detail || {}),
+                title: safeTitle,
+                posts: this._mergeGeneratedPostsWithPreservedLikes([], likedPosts),
+                generatedAt: Date.now()
+            };
+            this.saveHotSearchDetail(safeTitle, nextDetail);
+            seen.add(safeTitle);
+            entries.push({
+                ...(fallbackMeta || this._getHotSearchMeta(safeTitle) || {}),
+                title: safeTitle
+            });
+        };
+
+        this._getLikedHotSearchIndex().forEach(item => pushTitle(item?.title, item));
+
+        try {
+            const chatStore = this.storage?._getChatMetadataStore?.();
+            Object.entries(chatStore || {}).forEach(([key, value]) => {
+                if (!String(key || '').startsWith('weibo_hot_detail_')) return;
+                let detail = value;
+                if (typeof detail === 'string') {
+                    try {
+                        detail = JSON.parse(detail);
+                    } catch (e) {
+                        detail = null;
+                    }
+                }
+                const title = String(detail?.title || '').trim();
+                if (!title || seen.has(title)) return;
+                const likedPosts = this._getCurrentUserLikedPosts(detail?.posts);
+                if (likedPosts.length === 0) return;
+                const nextDetail = {
+                    ...(detail || {}),
+                    title,
+                    posts: this._mergeGeneratedPostsWithPreservedLikes([], likedPosts),
+                    generatedAt: Date.now()
+                };
+                this.saveHotSearchDetail(title, nextDetail);
+                seen.add(title);
+                entries.push({
+                    ...(this._getHotSearchMeta(title) || {}),
+                    title
+                });
+            });
+        } catch (e) {
+            console.warn('[Weibo] 扫描已点赞热搜详情失败:', e);
+        }
+
+        if (entries.length > 0) {
+            this._saveLikedHotSearchIndex(entries);
+        }
+        return entries;
+    }
+
+    _mergeHotSearchesWithPreservedLikedDetails(newSearches) {
+        const merged = Array.isArray(newSearches) ? [...newSearches] : [];
+        const titleSet = new Set(merged.map(item => String(item?.title || '').trim()).filter(Boolean));
+        const oldSearches = [
+            ...this.getHotSearches(),
+            ...this._getStoredLikedHotSearchEntries()
+        ];
+
+        oldSearches.forEach((item) => {
+            const title = String(item?.title || '').trim();
+            if (!title || titleSet.has(title)) return;
+            const detail = this.getHotSearchDetail(title);
+            if (!this._hasCurrentUserLikedPosts(detail?.posts)) return;
+            merged.push(item);
+            titleSet.add(title);
+        });
+
+        return merged;
     }
 
     _syncUserPostMirror(post) {
@@ -709,12 +976,14 @@ export class WeiboData {
                 if (!post.commentList) post.commentList = [];
             });
 
-            // 覆盖推荐流；用户自己的微博单独保存在 myPosts 存储中
-            this.saveRecommendPosts(parsed.posts);
+            const oldRecommendPosts = this.getRecommendPosts();
+            // 刷新只替换未被用户点赞的旧推荐微博；用户点过赞的微博保留在新内容后面。
+            this.saveRecommendPosts(this._mergeRecommendPostsWithAllPreservedLikes(parsed.posts, oldRecommendPosts));
             const newHotSearches = Array.isArray(parsed.hotSearches) ? parsed.hotSearches : [];
             if (newHotSearches.length > 0) {
-                this.cleanupOldHotSearchDetails(newHotSearches);
-                this.saveHotSearches(newHotSearches);
+                const mergedHotSearches = this._mergeHotSearchesWithPreservedLikedDetails(newHotSearches);
+                this.cleanupOldHotSearchDetails(mergedHotSearches);
+                this.saveHotSearches(mergedHotSearches);
             } else {
                 // 解析失败保护：不要把已有热搜清空
                 console.warn('⚠️ [Weibo] 推荐刷新未解析到热搜，保留现有热搜列表');
@@ -749,10 +1018,13 @@ export class WeiboData {
                 if (!post.commentList) post.commentList = [];
             });
 
+            const existing = this.getHotSearchDetail(title);
+            const mergedPosts = this._mergeGeneratedPostsWithPreservedLikes(parsed.posts, existing?.posts);
+
             // 缓存到对应热搜
             const detailData = {
                 title: title,
-                posts: parsed.posts,
+                posts: mergedPosts,
                 generatedAt: Date.now()
             };
             this.saveHotSearchDetail(title, detailData);
@@ -1102,6 +1374,7 @@ export class WeiboData {
         if (index === -1) {
             post.likeList.push(userName);
             post.likes = (post.likes || 0) + 1;
+            Object.assign(post, this._ensurePreservedTimeAnchor(post));
         } else {
             post.likeList.splice(index, 1);
             post.likes = Math.max(0, (post.likes || 0) - 1);
@@ -1112,6 +1385,7 @@ export class WeiboData {
             this._syncUserPostMirror(post);
         } else {
             this.saveRecommendPosts(posts);
+            this._syncLikedRecommendPost(post);
             if (post?.isUserPost) this._syncUserPostMirror(post);
         }
         return post;
@@ -1133,12 +1407,14 @@ export class WeiboData {
         if (index === -1) {
             post.likeList.push(userName);
             post.likes = (post.likes || 0) + 1;
+            Object.assign(post, this._ensurePreservedTimeAnchor(post));
         } else {
             post.likeList.splice(index, 1);
             post.likes = Math.max(0, (post.likes || 0) - 1);
         }
 
         this.saveHotSearchDetail(title, detail);
+        this._syncLikedHotSearchIndex(title, detail);
         return post;
     }
 
@@ -1354,6 +1630,12 @@ export class WeiboData {
         // 🔥 提取要删除的微博中的图片列表，返回给前端去清理服务器文件
         const deletedPost = posts[idx];
         const imagesToDelete = Array.isArray(deletedPost.images) ? [...deletedPost.images] : [];
+        if (Array.isArray(deletedPost.imageGenerationStates)) {
+            deletedPost.imageGenerationStates.forEach((state) => {
+                const generatedImageUrl = String(state?.generatedImageUrl || '').trim();
+                if (generatedImageUrl) imagesToDelete.push(generatedImageUrl);
+            });
+        }
 
         posts.splice(idx, 1);
         this.saveUserPosts(posts);

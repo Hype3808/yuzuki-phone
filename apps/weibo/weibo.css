@@ -631,18 +631,33 @@
 }
 
 .weibo-comment-send {
-    background: #ff8200;
-    color: #fff;
+    background: transparent !important;
+    color: #ff8200 !important;
     border: none;
     width: 24px;
     height: 24px;
-    border-radius: 50%;
+    border-radius: 0;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    font-size: 10px;
+    font-size: 15px;
     flex-shrink: 0;
+    box-shadow: none;
+}
+
+#fixed-comment-send,
+#fixed-comment-send i,
+.weibo-comment-send,
+.weibo-comment-send i,
+.weibo-send-plane-icon {
+    color: #ff8200 !important;
+}
+
+#fixed-comment-send,
+.weibo-comment-send {
+    background: transparent !important;
+    box-shadow: none !important;
 }
 
 /* ========================================

@@ -25,24 +25,26 @@ const ST_PHONE_UPDATE_LOG_URLS = [
     'https://raw.githubusercontent.com/gaigai315/yuzuki-phone/main/update-log.json',
     'https://raw.githubusercontent.com/gaigai315/yuzuki-phone/master/update-log.json'
 ];
+const ST_PHONE_LOCAL_UPDATE_LOG_URL = new URL('./update-log.json', import.meta.url).href;
+const WECHAT_ONLINE_PROACTIVE_ENABLED_KEY = 'wechat_online_proactive_enabled';
+const WECHAT_ONLINE_PROACTIVE_INTERVAL_KEY = 'wechat_online_proactive_interval_minutes';
+const WECHAT_ONLINE_PROACTIVE_LAST_AT_KEY = 'wechat_online_proactive_last_trigger_at';
+const WECHAT_ONLINE_PROACTIVE_PENDING_KEY = 'wechat_online_proactive_pending_at';
+const LOBBY_WECHAT_ONLINE_PROACTIVE_ENABLED_KEY = 'phone_lobby_wechat_online_proactive_enabled';
+const LOBBY_WECHAT_ONLINE_PROACTIVE_INTERVAL_KEY = 'phone_lobby_wechat_online_proactive_interval_minutes';
+const LOBBY_WECHAT_ONLINE_PROACTIVE_LAST_AT_KEY = 'phone_lobby_wechat_online_proactive_last_trigger_at';
+const LOBBY_WECHAT_ONLINE_PROACTIVE_PENDING_KEY = 'phone_lobby_wechat_online_proactive_pending_at';
 const ST_PHONE_CURRENT_UPDATE = {
     version: ST_PHONE_VERSION,
-    date: '2026-05-14',
+    date: '2026-05-15',
     items: [
         '【必做】更新后请在设置中执行一次【一键恢复默认提示词】，以同步最新全局提示词。',
-        '【新增】日记支持照片功能：可输出[图片]（中文说明）（English tags）和[个人图片]（中文说明）（English tags），日记页会渲染为拍立得照片并复用微信生图配置。',
-        '【新增】魔坊新增论坛、书信附加模板，支持剧情论坛页与古风信笺展示。',
-        '【新增】微博新增搜索功能。',
-        '【新增】音乐支持邀请好友一起听歌，并支持 AI 在微信单聊中主动分享一起听歌。',
-        '【新增】NovelAI 支持公益站调用，在生图设置中将接口站点切换为公益站并填写公益站地址即可使用。',
-        '【新增】生图支持本地 Stable Diffusion WebUI，可在生图设置中填写本地 SD 地址并拉取模型、采样器、VAE 和 LoRA。',
-        '【修复】日记生成状态在返回页面后仍会保持显示，避免后台生成中状态丢失。',
-        '【修复】微博推荐刷新和评论生成在网络波动或返回内容截断时会正确退出，避免一直卡在正在生成中。',
-        '【修复】设置联动页面滚动、日记目录勾选闪烁和部分触摸滚动区域体验问题。',
-        '【修复】修复部分 CSS 渲染问题。',
-        '【优化】自定义 APP 图标上传支持 SVG 透明图，上传后会保留透明底。',
-        '【优化】日记默认提示词替换为沉浸式内心独白版本，并加入照片标签和 Markdown 删除线规则。',
-        '【优化】魔坊预览支持横向滑动，优化信笺等附加模板展示体验。'
+        '【新增】设置页新增微信互通模式与线上模式互斥开关；线上模式启用后并会关闭微信线下提示词、单聊记录和群聊记录注入。',
+        '【新增】微信线上模式支持当前会话按现实时间定时主动触发，可设置触发间隔，并在 API 忙碌时顺延到空闲后执行。',
+        '【优化】从正文同步手机时间时，若手机最新微信消息时间晚于正文时间，会提示系统取最晚值，并引导删除更晚的手机聊天记录后再同步。',
+        '【优化】微博推荐页与热搜详情支持保留用户已点赞的旧微博内容，多轮刷新不会清理，并会按现实经过时间更新微博发布时间显示。',
+        '【修复】微博、日记、微信聊天和朋友圈点击生图后会保存到酒馆 /backgrounds/ 本地文件夹并显示在相册中，重新生成、删除消息或清空朋友圈时会同步清理旧图。',
+        '【修复】修复部分 CSS 渲染问题。'
     ]
 };
 
@@ -1272,6 +1274,26 @@ if (window.GGP_Loaded) {
         };
     }
 
+    async function fetchLocalUpdateNotes(version = ST_PHONE_VERSION, cacheBust = Date.now()) {
+        if (!window.fetch) return getKnownUpdateNotes(version);
+        try {
+            const resp = await fetch(`${ST_PHONE_LOCAL_UPDATE_LOG_URL}?_=${cacheBust}`, { cache: 'no-store' });
+            if (!resp.ok) return getKnownUpdateNotes(version);
+            const log = await resp.json();
+            const entry = log?.versions?.[version];
+            if (entry && Array.isArray(entry.items) && entry.items.length) {
+                return {
+                    version: String(version || ST_PHONE_VERSION),
+                    date: String(entry.date || ''),
+                    items: entry.items.map(item => String(item || '')).filter(Boolean)
+                };
+            }
+        } catch (_e) {
+            // 本地更新日志读取失败时使用内置兜底文案，避免影响插件启动。
+        }
+        return getKnownUpdateNotes(version);
+    }
+
     function showPhoneUpdateModal(mode, updateInfo, options = {}) {
         const data = updateInfo || getKnownUpdateNotes();
         const version = String(data.version || ST_PHONE_VERSION);
@@ -1348,7 +1370,8 @@ if (window.GGP_Loaded) {
         if (!storage?.get || !storage?.set) return;
         const seenVersion = String(storage.get('phone-update-announcement-seen-version') || '');
         if (seenVersion === ST_PHONE_VERSION) return false;
-        showPhoneUpdateModal('local', ST_PHONE_CURRENT_UPDATE, {
+        const notes = await fetchLocalUpdateNotes(ST_PHONE_VERSION);
+        showPhoneUpdateModal('local', notes, {
             rememberKey: 'phone-update-announcement-seen-version',
             onClose: options.onClose
         });
@@ -4054,6 +4077,56 @@ if (window.GGP_Loaded) {
         }
     }
 
+    function isWechatOnlineOnlyModeEnabled() {
+        try {
+            const ctx = getContext();
+            const isLobby = isLobbyModeContext(ctx);
+            const raw = storage?.get?.(isLobby ? 'phone_lobby_wechat_online_only_mode' : 'wechat_online_only_mode');
+            const isOn = (raw) => raw === true || raw === 'true' || raw === 1;
+            return isOn(raw);
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function isLobbyModeContext(ctx = null) {
+        try {
+            const context = ctx || getContext();
+            const charName = String(context?.name2 || '').trim();
+            if (/^SillyTavern System$/i.test(charName)) return true;
+            const chatId = String(context?.chatMetadata?.file_name || context?.chatId || '').trim();
+            if (chatId) return false;
+            if (charName) return false;
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function getWechatOnlineProactiveKeys(ctx = null) {
+        const isLobby = isLobbyModeContext(ctx);
+        return {
+            enabled: isLobby ? LOBBY_WECHAT_ONLINE_PROACTIVE_ENABLED_KEY : WECHAT_ONLINE_PROACTIVE_ENABLED_KEY,
+            interval: isLobby ? LOBBY_WECHAT_ONLINE_PROACTIVE_INTERVAL_KEY : WECHAT_ONLINE_PROACTIVE_INTERVAL_KEY,
+            lastAt: isLobby ? LOBBY_WECHAT_ONLINE_PROACTIVE_LAST_AT_KEY : WECHAT_ONLINE_PROACTIVE_LAST_AT_KEY,
+            pendingAt: isLobby ? LOBBY_WECHAT_ONLINE_PROACTIVE_PENDING_KEY : WECHAT_ONLINE_PROACTIVE_PENDING_KEY
+        };
+    }
+
+    function resetWechatOnlineProactiveSessionTimer(reason = 'reset') {
+        try {
+            const keys = getWechatOnlineProactiveKeys(getContext());
+            storage?.set?.(keys.lastAt, Date.now());
+            storage?.set?.(keys.pendingAt, 0);
+            if (window.VirtualPhone) {
+                window.VirtualPhone._wechatOnlineProactiveSessionKey = getCurrentChatIdForQueue();
+            }
+            console.log(`[Wechat][OnlineProactive] 重置当前会话倒计时: ${reason}`);
+        } catch (e) {
+            console.warn('[Wechat][OnlineProactive] 重置倒计时失败:', e);
+        }
+    }
+
     function isTavernPrimaryGenerationBusy() {
         try {
             const ctx = getContext();
@@ -4085,6 +4158,155 @@ if (window.GGP_Loaded) {
         }
 
         return false;
+    }
+
+    async function ensureWechatAppForBackground() {
+        try {
+            const module = await import('./apps/wechat/wechat-app.js');
+            if (!window.VirtualPhone) window.VirtualPhone = {};
+            if (!window.VirtualPhone.wechatApp) {
+                window.VirtualPhone.wechatApp = new module.WechatApp(phoneShell, storage);
+            }
+            if (window.VirtualPhone.cachedWechatData) {
+                window.VirtualPhone.wechatApp.wechatData = window.VirtualPhone.cachedWechatData;
+            } else if (window.VirtualPhone.wechatApp.wechatData) {
+                window.VirtualPhone.cachedWechatData = window.VirtualPhone.wechatApp.wechatData;
+            }
+            return window.VirtualPhone.wechatApp;
+        } catch (e) {
+            console.warn('[Wechat][OnlineProactive] 微信模块初始化失败:', e);
+            return null;
+        }
+    }
+
+    function getWechatOnlineProactiveIntervalMs(keys = getWechatOnlineProactiveKeys()) {
+        const raw = storage?.get?.(keys.interval);
+        const minutes = Math.max(1, Math.min(9999, parseInt(raw, 10) || 10));
+        return minutes * 60 * 1000;
+    }
+
+    function getWechatOnlineProactiveLastAt(keys = getWechatOnlineProactiveKeys()) {
+        const raw = parseInt(storage?.get?.(keys.lastAt), 10);
+        return Number.isFinite(raw) && raw > 0 ? raw : 0;
+    }
+
+    function isWechatOnlineProactiveEnabled(keys = getWechatOnlineProactiveKeys()) {
+        const raw = storage?.get?.(keys.enabled);
+        return raw === true || raw === 'true' || raw === 1;
+    }
+
+    function isPhoneApiBusy() {
+        const apiManager = window.VirtualPhone?.apiManager;
+        return !!(apiManager?.isBusy?.() || (apiManager?.getActiveRequestCount?.() > 0));
+    }
+
+    function syncWechatHomeBadge() {
+        try {
+            const wechatData = window.VirtualPhone?.wechatApp?.wechatData || window.VirtualPhone?.cachedWechatData;
+            const apps = window.VirtualPhone?.home?.apps;
+            if (!wechatData || !Array.isArray(apps)) return;
+            const wechatAppIcon = apps.find(a => a.id === 'wechat');
+            if (!wechatAppIcon) return;
+            const chatList = wechatData.getChatList?.() || [];
+            wechatAppIcon.badge = chatList.reduce((sum, c) => sum + (parseInt(c?.unread, 10) || 0), 0);
+            window.dispatchEvent(new CustomEvent('phone:updateGlobalBadge'));
+        } catch (e) {
+            // ignore
+        }
+    }
+
+    async function triggerWechatOnlineProactive(options = {}) {
+        const force = !!options.force;
+        const now = Date.now();
+        const ctx = getContext();
+        const proactiveKeys = getWechatOnlineProactiveKeys(ctx);
+        const currentSessionKey = getCurrentChatIdForQueue();
+        if (!force && window.VirtualPhone?._wechatOnlineProactiveSessionKey !== currentSessionKey) {
+            resetWechatOnlineProactiveSessionTimer('session_enter');
+            return false;
+        }
+        if (!isWechatOnlineOnlyModeEnabled()) {
+            if (force) window.VirtualPhone?.wechatApp?.phoneShell?.showNotification?.('线上主动触发', '请先开启线上模式', '⚠️');
+            return false;
+        }
+        if (!force) {
+            if (!isWechatOnlineProactiveEnabled(proactiveKeys)) return false;
+        }
+
+        const intervalMs = getWechatOnlineProactiveIntervalMs(proactiveKeys);
+        const intervalMinutes = Math.max(1, Math.round(intervalMs / 60000));
+        const lastAt = getWechatOnlineProactiveLastAt(proactiveKeys);
+        const pendingAt = parseInt(storage?.get?.(proactiveKeys.pendingAt), 10) || 0;
+        const elapsed = lastAt > 0 ? now - lastAt : intervalMs;
+        const isDue = force || pendingAt > 0 || elapsed >= intervalMs;
+        if (!isDue) return false;
+
+        if (isPhoneApiBusy() || isTavernPrimaryGenerationBusy()) {
+            if (!pendingAt) storage?.set?.(proactiveKeys.pendingAt, now);
+            return false;
+        }
+
+        const wechatApp = await ensureWechatAppForBackground();
+        const chatView = wechatApp?.chatView;
+        const wechatData = wechatApp?.wechatData;
+        if (!chatView || !wechatData) return false;
+
+        const chats = wechatData.getChatList?.() || [];
+        const targetChat = chats[0];
+        if (!targetChat?.id) {
+            if (force) wechatApp.phoneShell?.showNotification?.('线上主动触发', '暂无微信会话可触发', '⚠️');
+            return false;
+        }
+
+        const pendingBase = pendingAt || now;
+        const elapsedMinutes = Math.max(0, Math.round((now - (lastAt || (now - intervalMs))) / 60000));
+        const prompt = [
+            '线上模式现实时间自动触发。',
+            `当前现实时间：${new Date(now).toLocaleString('zh-CN', { hour12: false })}`,
+            `距离上次主动触发约 ${elapsedMinutes} 分钟。`,
+            pendingAt ? `本次曾因 API 忙碌顺延，原到点时间：${new Date(pendingBase).toLocaleString('zh-CN', { hour12: false })}` : '',
+            '请按现有微信线上单聊和微信群聊规则，让合适的微信好友或群聊主动联系用户。'
+        ].filter(Boolean).join('\n');
+
+        storage?.set?.(proactiveKeys.pendingAt, 0);
+        const ok = await chatView.sendToAI(prompt, targetChat.id, {
+            proactive: true,
+            sourceTavernChatId: currentSessionKey,
+            proactiveMeta: {
+                now,
+                elapsedMinutes,
+                intervalMinutes,
+                reason: options.reason || 'timer'
+            }
+        });
+
+        if (getCurrentChatIdForQueue() !== currentSessionKey) {
+            console.warn('[Wechat][OnlineProactive] 会话已切换，主动触发结果已丢弃');
+            return false;
+        }
+
+        if (ok) {
+            storage?.set?.(proactiveKeys.lastAt, now);
+            syncWechatHomeBadge();
+            if (force) wechatApp.phoneShell?.showNotification?.('线上主动触发', '已完成一次主动触发', '✅');
+            return true;
+        }
+
+        storage?.set?.(proactiveKeys.pendingAt, Date.now());
+        return false;
+    }
+
+    function startWechatOnlineProactiveScheduler() {
+        if (window.VirtualPhone?._wechatOnlineProactiveTimer) {
+            clearInterval(window.VirtualPhone._wechatOnlineProactiveTimer);
+        }
+        const tick = () => {
+            triggerWechatOnlineProactive({ reason: 'timer' }).catch(e => {
+                console.warn('[Wechat][OnlineProactive] 调度异常:', e);
+            });
+        };
+        window.VirtualPhone._wechatOnlineProactiveTimer = setInterval(tick, 30000);
+        setTimeout(tick, 3000);
     }
 
     async function runAutoWeiboQueueWorker() {
@@ -6271,6 +6493,7 @@ if (window.GGP_Loaded) {
         // 这样聊天时提示词能正常注入，不需要先打开手机面板
         loadTimeManager();
         loadPromptManager();
+        resetWechatOnlineProactiveSessionTimer('chat_changed');
 
         // 🎵 如果 musicApp 不存在但新会话开启了悬浮窗，需要创建
         if (!window.VirtualPhone?.musicApp && storage?.get('music_show_floating', false)) {
@@ -6419,15 +6642,17 @@ if (window.GGP_Loaded) {
                 mofoApp: null,
                 cachedMofoData: null,
                 notify: showUnifiedPhoneNotification,
-                showCurrentUpdateInfo: () => showPhoneUpdateModal('local', ST_PHONE_CURRENT_UPDATE, {
+                showCurrentUpdateInfo: async () => showPhoneUpdateModal('local', await fetchLocalUpdateNotes(ST_PHONE_VERSION), {
                     primaryText: '知道了'
                 }),
                 triggerWechatIncomingCall: triggerWechatIncomingCall,
+                resetWechatOnlineProactiveSessionTimer: (reason = 'manual') => resetWechatOnlineProactiveSessionTimer(reason),
                 loadTimeManager: loadTimeManager,
                 loadPromptManager: loadPromptManager,
                 _parseMusicCard: parseMusicCard,
                 _scheduleAutoWeiboIfDue: scheduleAutoWeiboIfDue,
                 _suppressAutoWeiboTrigger: suppressAutoWeiboTrigger,
+                triggerWechatOnlineProactive: (options = {}) => triggerWechatOnlineProactive(options),
                 _autoWeiboQueue: [],
                 _autoWeiboQueuedKeys: new Set(),
                 _autoWeiboRunningKeys: new Set(),
@@ -6462,6 +6687,7 @@ if (window.GGP_Loaded) {
                     createTopPanel();
                     createInlineReplyButton();
                     schedulePhoneUpdateNotices();
+                    startWechatOnlineProactiveScheduler();
 
                     // 🎵 悬浮窗初始化：若开启了全局悬浮窗，懒加载音乐模块并创建
                     try {
@@ -7135,14 +7361,13 @@ if (window.GGP_Loaded) {
                             const wechatOfflineChats = [];
                             const storage = window.VirtualPhone.storage;
                             const isPhoneEnabled = isPhoneFeatureEnabled();
-                            const wechatOnlineRaw = storage
-                                ? (storage.get('phone_lobby_wechat_online_mode') ?? storage.get('wechat_online_mode'))
-                                : false;
-                            const isWechatOnlineEnabled = (
-                                wechatOnlineRaw === true ||
-                                wechatOnlineRaw === 'true' ||
-                                wechatOnlineRaw === 1
-                            );
+                            const isStorageToggleOn = (key) => {
+                                if (!storage) return false;
+                                const raw = storage.get(key);
+                                return raw === true || raw === 'true' || raw === 1;
+                            };
+                            const isWechatInteropEnabled = isStorageToggleOn('phone_lobby_wechat_online_mode')
+                                || isStorageToggleOn('wechat_online_mode');
 
                             // 🔥 手机休眠或功能关闭时：不注入任何手机上下文，但必须强制清洗掉占位符！
                             if (!isPhoneEnabled) {
@@ -7181,8 +7406,8 @@ if (window.GGP_Loaded) {
                                 console.warn('[手机插件] 幽灵数据斩断保护异常:', e);
                             }
 
-                            // 🔥 核心修改：仅在微信在线模式开启时，才收集并注入微信线下上下文
-                            if (storage && isPhoneEnabled && isWechatOnlineEnabled) {
+                            // 🔥 仅在微信互通模式开启时，才收集并注入微信线下上下文
+                            if (storage && isPhoneEnabled && isWechatInteropEnabled) {
                                 try {
                                     let userAliasNotice = '';
                                     // 🔥 性能优化：优先从内存中读取已有的 wechatApp 实例，避免全量 JSON.parse
@@ -7597,10 +7822,10 @@ if (window.GGP_Loaded) {
                                         }
                                     }
 
-                                    // 2️⃣ 添加微信线下模式提示词（如果启用且在线模式开启）
+                                    // 2️⃣ 添加微信线下模式提示词（如果启用且互通模式开启）
                                     const wechatOfflinePromptRaw = storage.get('offline-wechat-prompt-enabled');
                                     const includeWechatOfflinePrompt = wechatOfflinePromptRaw !== false && wechatOfflinePromptRaw !== 'false';
-                                    if (isWechatOnlineEnabled && includeWechatOfflinePrompt && promptManager?.getPromptForFeature) {
+                                    if (isWechatInteropEnabled && includeWechatOfflinePrompt && promptManager?.getPromptForFeature) {
                                         try {
                                             let wechatPrompt = promptManager.getPromptForFeature('wechat', 'offline');
                                             if (wechatPrompt) {
@@ -7703,7 +7928,7 @@ if (window.GGP_Loaded) {
                                     }
 
                                     // 3️⃣ 添加微信聊天记录（按会话窗口分组显示，含日期）
-                                    if (isWechatOnlineEnabled && wechatOfflineChats.length > 0) {
+                                    if (isWechatInteropEnabled && wechatOfflineChats.length > 0) {
                                         phoneHistoryContent += `【手机微信已有消息】\n`;
                                         phoneHistoryContent += `以下是用户手机已经存在的微信消息记录。使用微信时，请严格遵守【微信线下模式】的全部规则，不得重复生成以下已经存在的历史微信消息记录。\n\n`;
 

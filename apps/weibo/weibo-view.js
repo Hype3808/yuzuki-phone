@@ -744,14 +744,14 @@ export class WeiboView {
                     padding: 8px 12px;
                     display: flex;
                     align-items: center;
-                    gap: 10px;
+                    gap: 4px;
                     z-index: 100;
                     box-sizing: border-box;
                 ">
-                    <div style="flex: 1; position: relative;">
+                    <div style="flex: 1; min-width: 0;">
                         <input type="text" id="fixed-comment-input" placeholder="写评论..." style="
                             width: 100%;
-                            padding: 8px 36px 8px 16px;
+                            padding: 8px 14px;
                             border: 1px solid #e0e0e0;
                             border-radius: 20px;
                             font-size: 13px;
@@ -759,25 +759,23 @@ export class WeiboView {
                             box-sizing: border-box;
                             background: #fff;
                         ">
-                        <button id="fixed-comment-send" style="
-                            position: absolute;
-                            right: 4px;
-                            top: 50%;
-                            transform: translateY(-50%);
-                            background: #ff8200;
-                            color: #fff;
-                            border: none;
-                            border-radius: 50%;
-                            width: 28px;
-                            height: 28px;
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                            cursor: pointer;
-                        ">
-                            <i class="fa-solid fa-paper-plane" style="font-size: 12px;"></i>
-                        </button>
                     </div>
+                    <button id="fixed-comment-send" style="
+                        background: transparent;
+                        color: #ff8200 !important;
+                        border: none;
+                        border-radius: 0;
+                        width: 32px;
+                        height: 32px;
+                        min-width: 32px;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        cursor: pointer;
+                        box-shadow: none;
+                    ">
+                        <i class="fa-solid fa-paper-plane weibo-send-plane-icon" style="font-size: 18px; color: #ff8200 !important;"></i>
+                    </button>
                 </div>
             </div>
         `;
@@ -1748,7 +1746,7 @@ export class WeiboView {
         inputBox.className = 'weibo-inline-comment-box';
         inputBox.innerHTML = `
             <input type="text" class="weibo-comment-input" placeholder="${replyTo ? `回复 ${replyTo}` : '写评论...'}" autofocus>
-            <button class="weibo-comment-send"><i class="fa-solid fa-paper-plane"></i></button>
+            <button class="weibo-comment-send"><i class="fa-solid fa-paper-plane weibo-send-plane-icon"></i></button>
         `;
         postEl.appendChild(inputBox);
 
@@ -1974,9 +1972,20 @@ export class WeiboView {
             
             // 必须开启在线模式才触发
             const storage = window.VirtualPhone?.storage;
-            const onlineEnabled = storage
-                ? (storage.get('phone_lobby_wechat_online_mode') ?? storage.get('wechat_online_mode'))
-                : false;
+            const onlineEnabled = !!storage && (
+                storage.get('phone_lobby_wechat_online_mode') === true ||
+                storage.get('phone_lobby_wechat_online_mode') === 'true' ||
+                storage.get('phone_lobby_wechat_online_mode') === 1 ||
+                storage.get('wechat_online_mode') === true ||
+                storage.get('wechat_online_mode') === 'true' ||
+                storage.get('wechat_online_mode') === 1 ||
+                storage.get('phone_lobby_wechat_online_only_mode') === true ||
+                storage.get('phone_lobby_wechat_online_only_mode') === 'true' ||
+                storage.get('phone_lobby_wechat_online_only_mode') === 1 ||
+                storage.get('wechat_online_only_mode') === true ||
+                storage.get('wechat_online_only_mode') === 'true' ||
+                storage.get('wechat_online_only_mode') === 1
+            );
             if (!storage || !onlineEnabled) {
                 return; 
             }
@@ -2490,6 +2499,7 @@ export class WeiboView {
         }
 
         const pendingTag = safeMediaType === '视频' ? '[视频]' : '[图片]';
+        const previousImageUrl = this._getManagedWeiboGeneratedImageUrl(post, index);
         if (clearPreviousImage && Array.isArray(post.images)) {
             post.images[index] = `${pendingTag}${promptText}`;
         }
@@ -2513,7 +2523,12 @@ export class WeiboView {
                 app: 'weibo',
                 prompt: promptText
             });
-            const imageUrl = String(result?.imageUrl || result?.imageData || '').trim();
+            const rawImageUrl = String(result?.imageUrl || result?.imageData || '').trim();
+            const imageUrl = await this._persistWeiboGeneratedImage(rawImageUrl, {
+                postId,
+                index,
+                promptText
+            });
             if (!imageUrl) throw new Error('生图成功但未返回图片URL');
 
             // 替换原有的图片数组中的 prompt 为真实 URL，保留图片/视频前缀。
@@ -2532,6 +2547,7 @@ export class WeiboView {
             });
 
             this._persistPostMediaTarget(posts, source, post);
+            this._cleanupReplacedWeiboGeneratedImage(previousImageUrl, imageUrl);
             this._refreshPostMediaUI(postId);
             this.app.phoneShell.showNotification('成功', '配图生成完成', '✅');
         } catch (error) {
@@ -2549,6 +2565,72 @@ export class WeiboView {
             this._refreshPostMediaUI(postId);
             this.app.phoneShell.showNotification('生图失败', friendlyMessage, '❌');
         }
+    }
+
+    _getManagedWeiboGeneratedImageUrl(post, index) {
+        const candidates = [
+            Array.isArray(post?.images) ? post.images[index] : '',
+            this._getWeiboPostImageState(post, index)?.generatedImageUrl
+        ];
+        for (const item of candidates) {
+            const media = this._parseWeiboMediaItem(item);
+            const raw = String(media.realUrl || item || '').trim();
+            const match = raw.match(/(?:^\[[^\]]+\]\s*)?(\/backgrounds\/phone_weibo_img_[^?#\s)）]+)/i);
+            if (match?.[1]) return match[1];
+        }
+        return '';
+    }
+
+    _cleanupReplacedWeiboGeneratedImage(oldUrl, nextUrl) {
+        const oldPath = String(oldUrl || '').trim();
+        const nextPath = String(nextUrl || '').trim();
+        if (!oldPath || oldPath === nextPath || !/^\/backgrounds\/phone_weibo_img_/i.test(oldPath)) return;
+        const cleanupTask = window.VirtualPhone?.imageManager?.deleteManagedBackgroundByPath?.(oldPath, { quiet: true });
+        cleanupTask?.catch?.(() => { });
+    }
+
+    async _persistWeiboGeneratedImage(imageUrl, { postId = '', index = 0, promptText = '' } = {}) {
+        const safeUrl = String(imageUrl || '').trim();
+        if (!safeUrl) return '';
+        if (/^\/backgrounds\/phone_[^?#]+/i.test(safeUrl)) return safeUrl;
+
+        const imageUploader = window.VirtualPhone?.imageManager;
+        if (!imageUploader?.uploadBlob) {
+            throw new Error('图片上传管理器未初始化，无法保存微博生图');
+        }
+
+        const blob = await this._loadGeneratedImageBlob(safeUrl);
+        const seed = `${postId || 'post'}_${index}_${this._simpleHash(promptText || safeUrl).toString(36)}`;
+        const uploadedUrl = await imageUploader.uploadBlob(blob, `weibo_img_${seed}`);
+        const normalized = String(uploadedUrl || '').trim();
+        if (!/^\/backgrounds\/phone_[^?#]+/i.test(normalized)) {
+            throw new Error('微博生图保存失败：未得到有效本地图片路径');
+        }
+        return normalized;
+    }
+
+    async _loadGeneratedImageBlob(imageUrl) {
+        const safeUrl = String(imageUrl || '').trim();
+        if (!safeUrl) throw new Error('生图结果为空');
+        const response = await fetch(safeUrl, { cache: 'no-store' });
+        if (!response.ok) {
+            throw new Error(`读取微博生图失败（HTTP ${response.status}）`);
+        }
+        const blob = await response.blob();
+        if (!blob || !/^image\//i.test(String(blob.type || '')) || blob.size <= 0) {
+            throw new Error('微博生图结果不是有效图片');
+        }
+        return blob;
+    }
+
+    _simpleHash(text) {
+        const str = String(text || '');
+        let hash = 2166136261;
+        for (let i = 0; i < str.length; i += 1) {
+            hash ^= str.charCodeAt(i);
+            hash = Math.imul(hash, 16777619);
+        }
+        return hash >>> 0;
     }
 
     refreshCurrentTabContent() {
@@ -3438,7 +3520,9 @@ export class WeiboView {
                 // 静默处理进度
             }, { searchQuery });
             if (oldRecommendImages.length > 0) {
-                await this._deleteServerImages(oldRecommendImages);
+                const currentImageSet = new Set(this._collectManagedWeiboImages(this.app.weiboData.getRecommendPosts()));
+                const staleImages = oldRecommendImages.filter(url => !currentImageSet.has(url));
+                await this._deleteServerImages(staleImages);
             }
             this._recommendRefreshStatus = 'success';
 
@@ -3812,6 +3896,9 @@ export class WeiboView {
             return;
         }
         this.app.weiboData.saveRecommendPosts(posts);
+        if (post?.isUserPost) {
+            this.app.weiboData._syncUserPostMirror(post);
+        }
     }
 
     _refreshPostMediaUI(postId) {
@@ -4044,6 +4131,7 @@ export class WeiboView {
 
     async _deleteServerImages(images) {
         if (!Array.isArray(images) || images.length === 0) return;
+        const imageManager = window.VirtualPhone?.imageManager;
         const buildDeleteHeaders = async () => {
             const headers = typeof window.getRequestHeaders === 'function' ? window.getRequestHeaders() : {};
             delete headers['Content-Type'];
@@ -4068,6 +4156,17 @@ export class WeiboView {
             const filename = decodeURIComponent(rawUrl.replace('/backgrounds/', '').split('?')[0]);
             // 严谨校验：只删手机微博发的图片
             if (!filename.startsWith('phone_weibo_img_')) continue;
+            if (imageManager?.deleteManagedBackgroundByPath) {
+                try {
+                    const result = await imageManager.deleteManagedBackgroundByPath(`/backgrounds/${filename}`, { quiet: true });
+                    if (result?.success) {
+                        console.log(`[Weibo] 物理清理成功: ${filename}`);
+                        continue;
+                    }
+                } catch (e) {
+                    // 回退到旧删除接口
+                }
+            }
             const headers = await buildDeleteHeaders();
 
             // 暴力兼容所有版本酒馆的删除接口格式
@@ -4082,6 +4181,7 @@ export class WeiboView {
                 try {
                     const resp = await request();
                     if (resp?.ok) {
+                        await imageManager?.markManagedBackgroundDeleted?.(`/backgrounds/${filename}`);
                         console.log(`[Weibo] 物理清理成功: ${filename}`);
                         break;
                     }

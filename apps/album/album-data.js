@@ -63,6 +63,7 @@ export class AlbumData {
 
         await this.cleanupReferences(normalized);
         await this._markDeleted(normalized);
+        await this._removeUploadIndexPath(normalized);
 
         return {
             success: true,
@@ -70,6 +71,14 @@ export class AlbumData {
             attempted: !!deleteResult.attempted,
             message: deleteResult.success ? '图片已删除' : '图片记录已删除'
         };
+    }
+
+    async markMissingImage(pathLike) {
+        const normalized = this.normalizePath(pathLike);
+        if (!normalized || !this.isManagedImagePath(normalized)) return false;
+        await this._markDeleted(normalized);
+        await this._removeUploadIndexPath(normalized);
+        return true;
     }
 
     async cleanupReferences(pathLike) {
@@ -331,5 +340,18 @@ export class AlbumData {
         if (!normalized) return;
         deleted.add(normalized);
         await this.storage?.set?.(this.deletedKey, JSON.stringify(Array.from(deleted).slice(-500)));
+    }
+
+    async _removeUploadIndexPath(pathLike) {
+        const target = this.normalizePath(pathLike);
+        if (!target) return;
+        try {
+            const raw = this.storage?.get?.('phone_album_upload_index', '[]');
+            const list = Array.isArray(raw) ? raw : JSON.parse(raw || '[]');
+            if (!Array.isArray(list)) return;
+            const next = list.filter(item => this.normalizePath(item?.path || item) !== target);
+            if (next.length === list.length) return;
+            await this.storage?.set?.('phone_album_upload_index', JSON.stringify(next));
+        } catch (e) { }
     }
 }

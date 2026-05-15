@@ -16,6 +16,7 @@ export class AlbumApp {
         this.albumView = new AlbumView(this);
 
         window.addEventListener('phone:swipeBack', (e) => this.handleSwipeBack(e));
+        window.addEventListener('phone:albumImageDeleted', () => this.refreshIfVisible());
     }
 
     render() {
@@ -32,5 +33,11 @@ export class AlbumApp {
         }
 
         window.dispatchEvent(new CustomEvent('phone:goHome'));
+    }
+
+    refreshIfVisible() {
+        const domCurrentView = document.querySelector('.phone-view-current');
+        if (!domCurrentView?.querySelector?.('.album-app')) return;
+        this.albumView.render();
     }
 }

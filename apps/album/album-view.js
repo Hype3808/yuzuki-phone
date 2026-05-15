@@ -13,6 +13,7 @@ export class AlbumView {
         this.previewOpen = false;
         this.selectionMode = false;
         this.selectedPaths = new Set();
+        this._missingImagePaths = new Set();
     }
 
     loadCSS() {
@@ -137,10 +138,27 @@ export class AlbumView {
             });
         });
         document.querySelectorAll('.album-tile img').forEach(img => {
-            img.addEventListener('error', () => {
+            img.addEventListener('error', async () => {
                 img.closest('.album-tile')?.classList.add('is-broken');
+                const index = Number.parseInt(img.closest('.album-tile')?.dataset?.index || '', 10);
+                const image = Number.isFinite(index) ? this.images[index] : null;
+                await this.handleMissingImage(image);
             }, { once: true });
         });
+    }
+
+    async handleMissingImage(image) {
+        if (!image?.path || this._missingImagePaths.has(image.path)) return;
+        this._missingImagePaths.add(image.path);
+        try {
+            const changed = await this.app.albumData.markMissingImage?.(image.path);
+            if (changed) {
+                this.selectedPaths.delete(image.path);
+                requestAnimationFrame(() => this.render());
+            }
+        } catch (e) {
+            console.warn('清理失效相册图片失败:', image.path, e);
+        }
     }
 
     toggleSelected(index) {
