@@ -201,10 +201,41 @@ export class MofoData {
         return String(value);
     }
 
+    _compactShortLetterStateForRender(template, state = {}) {
+        const source = String(template || '');
+        const safeState = (state && typeof state === 'object') ? state : {};
+        if (!source.includes('letter-mofo')) return safeState;
+
+        const hasLetterFields = ['p1', 'p2', 'p3', 'p4', 'p5'].some(key =>
+            Object.prototype.hasOwnProperty.call(safeState, key)
+        );
+        if (!hasLetterFields) return safeState;
+
+        const parts = ['p1', 'p2', 'p3', 'p4', 'p5']
+            .map(key => this._templateValueToString(safeState[key]).trim());
+        const overflowParts = parts.slice(3).filter(Boolean);
+        if (overflowParts.length === 0) return safeState;
+
+        const visibleLength = parts.join('').replace(/\s+/g, '').length;
+        const singlePageLimit = Number(safeState.singlePageLimit || safeState.单页字数上限 || 150);
+        if (visibleLength > singlePageLimit) return safeState;
+
+        const nextState = { ...safeState };
+        nextState.p1 = parts[0];
+        nextState.p2 = parts[1];
+        nextState.p3 = parts.slice(2).filter(Boolean).join('');
+        nextState.p4 = '';
+        nextState.p5 = '';
+        return nextState;
+    }
+
     renderTemplate(template, state = {}) {
         const source = String(template || '');
         if (!source) return '';
-        const safeState = (state && typeof state === 'object') ? state : {};
+        const safeState = this._compactShortLetterStateForRender(
+            source,
+            (state && typeof state === 'object') ? state : {}
+        );
         return source.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (_match, expr) => {
             const rawValue = this._resolveTemplatePathValue(safeState, expr);
             return this._templateValueToString(rawValue);
