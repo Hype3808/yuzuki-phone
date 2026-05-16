@@ -2289,12 +2289,12 @@ export class SettingsApp {
 
                 <div class="setting-item" id="phone-image-openai-public-url-row" style="${openaiSite === 'public' ? '' : 'display: none;'}">
                     <div class="setting-label">公益站点真实 Base URL</div>
-                    <div class="setting-desc">填写真实 GPT 公益站地址；手机端如需中转，也仍然填真实地址到这里。</div>
+                    <div class="setting-desc">填写真实 GPT 公益站纯域名，不要带 /v1 或 /v1/images/generations。</div>
                     <input type="text" id="phone-image-openai-public-url"
                            value="${this._escapeHtml(openaiPublicUrl)}"
                            placeholder="例如：https://imagegen.mukyu.me"
                            style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
-                    <div class="setting-desc" style="margin-top: 8px;">手机本地中转 URL 可选。Termux 运行 workers/openai-image-local-relay.cjs 后填 http://127.0.0.1:8787；留空则直连真实公益站。</div>
+                    <div class="setting-desc" style="margin-top: 8px;">仅移动端 Termux 使用本地中转时填写。电脑端留空；Termux 运行 imgrelay 后填 http://127.0.0.1:8787。</div>
                     <input type="text" id="phone-image-openai-public-relay-url"
                            value="${this._escapeHtml(openaiPublicRelayUrl)}"
                            placeholder="例如：http://127.0.0.1:8787"

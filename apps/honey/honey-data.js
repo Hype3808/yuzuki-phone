@@ -205,7 +205,7 @@ export class HoneyData {
                 .replace(/^\s*[\[【（(]+/, '')
                 .replace(/[\]】）)]+\s*$/, '')
                 .replace(/^\s*(?:NAI|NovelAI)\s*(?:英文\s*)?(?:tag\s*)?(?:提示词|prompt)?\s*[:：]?\s*/i, '')
-                .replace(/^\s*画面\s*[:：]\s*/i, '')
+                .replace(/^\s*[\[【]?\s*画面\s*[\]】]?\s*[:：]\s*/i, '')
                 .trim();
             cleaned = cleaned
                 .replace(/\s*(?:供前端调用|其他推荐内容|好友申请|联播|榜单|打赏记录|直播剧情描写|评论区)[\s\S]*$/i, '')
@@ -216,10 +216,11 @@ export class HoneyData {
         };
 
         [
+            /(?:^|\n)\s*[\[【]?\s*画面\s*[\]】]?\s*[:：]\s*[\[【]\s*(?:NAI|NovelAI)\s*(?:英文\s*)?(?:tag\s*)?(?:提示词|prompt)?\s*[\]】]\s*([^\n]+)/ig,
             /\[\s*(?:NAI|NovelAI)\s*(?:英文\s*)?(?:tag\s*)?(?:提示词|prompt)\s*[:：]\s*([^\]\n]+)/ig,
             /(?:NAI|NovelAI)\s*(?:英文\s*)?(?:tag\s*)?(?:提示词|prompt)\s*[:：]\s*([^\]\n]+)/ig,
-            /(?:^|\n)\s*画面\s*[:：]\s*\[\s*(?:NAI|NovelAI)\s*(?:英文\s*)?(?:tag\s*)?(?:提示词|prompt)\s*[:：]\s*([^\]\n]+)/ig,
-            /(?:^|\n)\s*画面\s*[:：]\s*([^\n]+)/ig
+            /(?:^|\n)\s*[\[【]?\s*画面\s*[\]】]?\s*[:：]\s*\[\s*(?:NAI|NovelAI)\s*(?:英文\s*)?(?:tag\s*)?(?:提示词|prompt)?\s*[:：]?\s*([^\]\n]+)/ig,
+            /(?:^|\n)\s*[\[【]?\s*画面\s*[\]】]?\s*[:：]\s*([^\n]+)/ig
         ].forEach((pattern) => {
             for (const match of text.matchAll(pattern)) {
                 push(match?.[1] || '');
@@ -3058,7 +3059,7 @@ export class HoneyData {
         let collab = '无';
         let collabCost = 0;
 
-        const sectionEndPattern = /(?:^|\n)\s*(?:在线人数|在线|粉丝数|粉丝|画面|榜单|打赏记录(?:（[^）]*）|\([^\)]*\))?|评论区|直播剧情描写|剧情面板|直播实况|好友申请|互动记录)\s*[：:]/i;
+        const sectionEndPattern = /(?:^|\n)\s*(?:在线人数|在线|粉丝数|粉丝|[\[【]?\s*画面\s*[\]】]?|榜单|打赏记录(?:（[^）]*）|\([^\)]*\))?|评论区|直播剧情描写|剧情面板|直播实况|好友申请|互动记录)\s*[：:]/i;
         const explicitCollabValues = Array.from(text.matchAll(/联播\s*(?:[（(]\s*金币\s*[：:]\s*(\d+)\s*[)）])?\s*[：:]\s*([^\]】\n]+)/ig))
             .map(match => ({
                 name: String(match?.[2] || '').trim(),
@@ -3073,17 +3074,17 @@ export class HoneyData {
             }
         }
         const leaderboardSection = this._extractSectionByPatternPairs(text, [
-            { start: /(?:^|\n)\s*榜单\s*[：:]\s*/i, end: /(?:^|\n)\s*(?:画面|打赏记录(?:（[^）]*）|\([^\)]*\))?|评论区|直播剧情描写|剧情面板|直播实况|好友申请)\s*[：:]/i }
+            { start: /(?:^|\n)\s*榜单\s*[：:]\s*/i, end: /(?:^|\n)\s*(?:[\[【]?\s*画面\s*[\]】]?|打赏记录(?:（[^）]*）|\([^\)]*\))?|评论区|直播剧情描写|剧情面板|直播实况|好友申请)\s*[：:]/i }
         ]);
         const giftsSection = this._extractSectionByPatternPairs(text, [
-            { start: /(?:^|\n)\s*(?:\[\s*打赏记录\s*\]|打赏记录)(?:（[^）]*）|\([^\)]*\))?\s*[：:]?\s*(?:\n|$)?/i, end: /(?:^|\n)\s*(?:画面|\[\s*评论区\s*\]|评论区|\[\s*直播剧情描写\s*\]|直播剧情描写|剧情面板|直播实况|好友申请)\s*[：:]?/i }
+            { start: /(?:^|\n)\s*(?:\[\s*打赏记录\s*\]|打赏记录)(?:（[^）]*）|\([^\)]*\))?\s*[：:]?\s*(?:\n|$)?/i, end: /(?:^|\n)\s*(?:[\[【]?\s*画面\s*[\]】]?|\[\s*评论区\s*\]|评论区|\[\s*直播剧情描写\s*\]|直播剧情描写|剧情面板|直播实况|好友申请)\s*[：:]?/i }
         ]);
         const commentsSection = this._extractSectionByPatternPairs(text, [
             { start: /(?:^|\n)\s*(?:\[\s*评论区\s*\]|评论区)\s*[：:]?\s*(?:\n|$)?/i, end: /(?:^|\n)\s*(?:\[\s*直播剧情描写\s*\]|直播剧情描写|剧情面板|直播实况|好友申请)\s*[：:]?/i }
         ]);
         const storySection = this._extractSectionByPatternPairs(text, [
-            { start: /(?:^|\n)\s*(?:\[\s*直播剧情描写\s*\]|直播剧情描写|剧情面板|直播实况)\s*[：:]?\s*(?:\n|$)?/i, end: /(?:^|\n)\s*(?:好友申请|互动记录)\s*[：:]?/i },
-            { start: /(?:^|\n)\s*(?:\[\s*直播剧情描写\s*\]|直播剧情描写|剧情面板|直播实况)\s*(?:\n|$)/i, end: /(?:^|\n)\s*(?:好友申请|互动记录)\s*[：:]?/i }
+            { start: /(?:^|\n)\s*(?:\[\s*直播剧情描写\s*\]|直播剧情描写|剧情面板|直播实况)\s*[：:]?\s*(?:\n|$)?/i, end: /(?:^|\n)\s*(?:[\[【]?\s*画面\s*[\]】]?|好友申请|互动记录)\s*[：:]?/i },
+            { start: /(?:^|\n)\s*(?:\[\s*直播剧情描写\s*\]|直播剧情描写|剧情面板|直播实况)\s*(?:\n|$)/i, end: /(?:^|\n)\s*(?:[\[【]?\s*画面\s*[\]】]?|好友申请|互动记录)\s*[：:]?/i }
         ]);
         const friendRequestSection = this._extractSectionByPatternPairs(text, [
             { start: /(?:^|\n)\s*好友申请\s*[：:]\s*/i, end: /(?:^|\n)\s*互动记录\s*[：:]/i },
@@ -3671,7 +3672,7 @@ export class HoneyData {
         const leaderboardSection = this._extractSectionByPatternPairs(liveSection, [
             {
                 start: /(?:^|\n)\s*(?:榜单|打榜榜单)\s*[：:]\s*/i,
-                end: /(?:^|\n)\s*(?:\[\s*打赏记录\s*\]|打赏记录|\[\s*直播剧情描写\s*\]|直播剧情描写|\[\s*评论区\s*\]|评论区)\s*(?:[：:]|\]|\n|$)/i
+                end: /(?:^|\n)\s*(?:[\[【]?\s*画面\s*[\]】]?|\[\s*打赏记录\s*\]|打赏记录|\[\s*直播剧情描写\s*\]|直播剧情描写|\[\s*评论区\s*\]|评论区)\s*(?:[：:]|\]|\n|$)/i
             }
         ]);
         if (leaderboardSection) {
@@ -3687,11 +3688,11 @@ export class HoneyData {
         const giftsSection = this._extractSectionByPatternPairs(liveSection, [
             {
                 start: /(?:^|\n)\s*\[\s*打赏记录\s*\]\s*[：:]?\s*(?:\n|$)?/i,
-                end: /(?:^|\n)\s*(?:\[\s*(?:直播剧情描写|评论区)\s*\]\s*[：:]?|直播剧情描写\s*[：:]|评论区\s*[：:]|\[\s*评论区\s*\]\s*[：:]?)\s*/i
+                end: /(?:^|\n)\s*(?:[\[【]?\s*画面\s*[\]】]?\s*[：:]?|\[\s*(?:直播剧情描写|评论区)\s*\]\s*[：:]?|直播剧情描写\s*[：:]|评论区\s*[：:]|\[\s*评论区\s*\]\s*[：:]?)\s*/i
             },
             {
                 start: /(?:^|\n)\s*打赏记录\s*[：:]\s*/i,
-                end: /(?:^|\n)\s*(?:\[\s*(?:直播剧情描写|评论区)\s*\]\s*[：:]?|直播剧情描写\s*[：:]|评论区\s*[：:]|\[\s*评论区\s*\]\s*[：:]?)\s*/i
+                end: /(?:^|\n)\s*(?:[\[【]?\s*画面\s*[\]】]?\s*[：:]?|\[\s*(?:直播剧情描写|评论区)\s*\]\s*[：:]?|直播剧情描写\s*[：:]|评论区\s*[：:]|\[\s*评论区\s*\]\s*[：:]?)\s*/i
             }
         ]);
         if (giftsSection) {
@@ -3704,8 +3705,8 @@ export class HoneyData {
         const commentHeaderPattern = /(?:^|\n)\s*(?:\[\s*评论区\s*\]\s*[：:]?[^\n]*|评论区\s*[：:][^\n]*)(?:\n|$)/i;
 
         const storySection = this._extractSectionByPatternPairs(liveSection, [
-            { start: /(?:^|\n)\s*\[\s*直播剧情描写\s*\]\s*[：:]?\s*(?:\n|$)?/i, end: commentHeaderPattern },
-            { start: /(?:^|\n)\s*直播剧情描写\s*[：:]\s*/i, end: commentHeaderPattern }
+            { start: /(?:^|\n)\s*\[\s*直播剧情描写\s*\]\s*[：:]?\s*(?:\n|$)?/i, end: /(?:^|\n)\s*(?:[\[【]?\s*画面\s*[\]】]?\s*[：:]?|\[\s*评论区\s*\]|评论区\s*[：:])/i },
+            { start: /(?:^|\n)\s*直播剧情描写\s*[：:]\s*/i, end: /(?:^|\n)\s*(?:[\[【]?\s*画面\s*[\]】]?\s*[：:]?|\[\s*评论区\s*\]|评论区\s*[：:])/i }
         ]);
         if (storySection) {
             const cleanedStory = storySection
@@ -3804,7 +3805,7 @@ export class HoneyData {
 
         if (/^\s*(?:\(|（).*(?:\)|）)\s*$/.test(text)) return '';
         if (/^(?:---+|===+)$/.test(text)) return '';
-        if (/^(?:互动区|打赏记录|直播剧情描写|画面|简介|主播|标题|在线人数|粉丝)[：:]/.test(text)) return '';
+        if (/^(?:互动区|打赏记录|直播剧情描写|[\[【]?\s*画面\s*[\]】]?|简介|主播|标题|在线人数|粉丝)[：:]/.test(text)) return '';
         if (/^\[\s*评论区\s*\]/i.test(text)) return '';
         if (/^\[\s*(?:联播请求|其他直播间请求联播)\s*[：:]/i.test(text)) return '';
         if (/^(?:生成|不少于|至少)\d*条/.test(text)) return '';
@@ -4000,7 +4001,7 @@ export class HoneyData {
                 else if (/^(主播昵称|主播)$/i.test(field)) mapped.host = val;
                 else if (/^(在线人数|在线)$/i.test(field)) mapped.viewers = val;
                 else if (/^(tag|标签)$/i.test(field)) mapped.tag = val;
-                else if (/^(画面|NAI英文tag提示词|NAI提示词|NovelAI提示词|imagePrompt)$/i.test(field)) mapped.naiPrompt = this._extractNaiPrompt(val);
+                else if (/^(?:[\[【]?\s*画面\s*[\]】]?|NAI英文tag提示词|NAI提示词|NovelAI提示词|imagePrompt)$/i.test(field)) mapped.naiPrompt = this._extractNaiPrompt(val);
             });
 
             const hostFromDash = body.match(/(?:主播昵称|主播)\s*[：:]?\s*([^－—\-|]+)\s*(?:(?:[-－—|])|$)/i);
