@@ -8,6 +8,24 @@ Run in Termux or a local Node environment:
 node workers/openai-image-local-relay.js
 ```
 
+Easier Termux setup:
+
+```bash
+bash workers/install-termux-imgrelay.sh
+```
+
+After installing, start the relay from any Termux directory:
+
+```bash
+imgrelay
+```
+
+If `imgrelay` is not found immediately after installing, restart Termux or run:
+
+```bash
+source ~/.profile
+```
+
 Default behavior:
 
 - Listens on `http://127.0.0.1:8787`
