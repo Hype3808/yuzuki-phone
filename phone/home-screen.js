@@ -142,6 +142,22 @@ export class HomeScreen {
         return null;
     }
 
+    _buildCustomIconStyle(iconUrl, { fit = 'contain' } = {}) {
+        const safeUrl = String(iconUrl || '').trim();
+        if (!safeUrl) return '';
+        const escapedUrl = safeUrl
+            .replace(/\\/g, '/')
+            .replace(/'/g, "\\'")
+            .replace(/\)/g, '\\)');
+        return [
+            `background-image: url('${escapedUrl}')`,
+            `background-size: ${fit}`,
+            'background-position: center',
+            'background-repeat: no-repeat',
+            'background-color: transparent'
+        ].join('; ') + ';';
+    }
+
     _getCustomAppNames() {
         try {
             const raw = window.VirtualPhone?.storage?.get?.('phone-app-custom-names');
@@ -163,7 +179,7 @@ export class HomeScreen {
         if (!app) return '';
         const customIcon = this._getCustomIcon(app.id);
         if (customIcon) {
-            return `<span class="${className} custom-icon" style="background-image:url('${customIcon}');"></span>`;
+            return `<span class="${className} custom-icon" style="${this._buildCustomIconStyle(customIcon)}"></span>`;
         }
         return `<span class="${className}" style="--app-color:${app.color};">${this._escapeHtml(app.icon)}</span>`;
     }
@@ -220,7 +236,7 @@ export class HomeScreen {
         if (!app) return '';
         const customIcon = this._getCustomIcon(app.id);
         const iconStyle = customIcon
-            ? `background-image:url('${customIcon}');`
+            ? this._buildCustomIconStyle(customIcon)
             : `background:${app.color};`;
         const iconContent = customIcon ? '' : this._escapeHtml(app.icon);
         const customClass = customIcon ? 'custom-icon' : '';
@@ -248,7 +264,7 @@ export class HomeScreen {
         if (!app) return '';
         const customIcon = this._getCustomIcon(app.id);
         const iconStyle = customIcon
-            ? `background-image:url('${customIcon}');`
+            ? this._buildCustomIconStyle(customIcon)
             : `background:${app.color};`;
         const iconContent = customIcon ? '' : this._escapeHtml(app.icon);
         const customClass = customIcon ? 'custom-icon' : '';
@@ -388,7 +404,7 @@ export class HomeScreen {
             const customIcon = this._getCustomIcon(app.id);
 
             const iconStyle = customIcon
-                ? `background-image: url('${customIcon}'); background-size: contain; background-position: center; background-repeat: no-repeat;`
+                ? this._buildCustomIconStyle(customIcon)
                 : '';
 
             const customClass = customIcon ? 'custom-icon' : '';
@@ -417,7 +433,7 @@ export class HomeScreen {
         
         // 如果有自定义图标，用背景图；否则用emoji
         const iconStyle = customIcon
-            ? `background-image: url('${customIcon}'); background-size: contain; background-position: center; background-repeat: no-repeat;`
+            ? this._buildCustomIconStyle(customIcon)
             : '';
 
         const iconContent = customIcon ? '' : `<span class="app-icon-emoji yzp-home-app-icon-emoji">${app.icon}</span>`;
