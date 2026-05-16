@@ -11,6 +11,7 @@ const { URL } = require('url');
 
 const DEFAULT_PORT = 8787;
 const MAX_BODY_BYTES = 20 * 1024 * 1024;
+const CORS_ALLOW_HEADERS = 'Authorization,Content-Type,Accept,X-OpenAI-Image-Relay-Target';
 
 const port = readPort(process.env.PORT || process.env.OPENAI_IMAGE_RELAY_PORT, DEFAULT_PORT);
 const host = String(process.env.HOST || process.env.OPENAI_IMAGE_RELAY_HOST || '127.0.0.1').trim() || '127.0.0.1';
@@ -63,7 +64,7 @@ const server = http.createServer(async (req, res) => {
         const responseHeaders = {
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-            'Access-Control-Allow-Headers': 'Authorization,Content-Type,Accept',
+            'Access-Control-Allow-Headers': CORS_ALLOW_HEADERS,
             'Cache-Control': 'no-store'
         };
         const contentType = response.headers.get('content-type');
@@ -137,7 +138,7 @@ function isAllowedRoute(method, pathname) {
 function setCorsHeaders(res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Authorization,Content-Type,Accept');
+    res.setHeader('Access-Control-Allow-Headers', CORS_ALLOW_HEADERS);
     res.setHeader('Access-Control-Max-Age', '86400');
 }
 
