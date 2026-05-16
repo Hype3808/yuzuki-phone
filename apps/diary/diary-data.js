@@ -530,11 +530,33 @@ export class DiaryData {
         }
         const response = await fetch(safeUrl, { cache: 'no-store' });
         if (!response.ok) throw new Error(`读取日记照片失败（HTTP ${response.status}）`);
-        const blob = await response.blob();
-        if (!blob || !/^image\//i.test(String(blob.type || '')) || blob.size <= 0) {
+        const contentType = String(response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+        const arrayBuffer = await response.arrayBuffer();
+        if (!arrayBuffer || arrayBuffer.byteLength <= 0) {
             throw new Error('日记照片结果不是有效图片');
         }
+        const bytes = new Uint8Array(arrayBuffer);
+        const mime = /^image\//i.test(contentType)
+            ? contentType
+            : this._detectGeneratedDiaryImageMime(bytes);
+        if (!mime) throw new Error('日记照片结果不是有效图片');
+        const blob = new Blob([arrayBuffer], { type: mime });
         return uploader.uploadBlob(blob, prefix);
+    }
+
+    _detectGeneratedDiaryImageMime(bytes) {
+        if (!bytes || bytes.length < 4) return '';
+        if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'image/png';
+        if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
+        if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) return 'image/gif';
+        if (
+            bytes.length >= 12 &&
+            bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+            bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50
+        ) {
+            return 'image/webp';
+        }
+        return '';
     }
 
     _normalizeManagedDiaryImagePath(pathLike) {
