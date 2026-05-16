@@ -158,6 +158,12 @@ export class HomeScreen {
         ].join('; ') + ';';
     }
 
+    _renderCustomIconImage(iconUrl, className = 'home-custom-icon-img') {
+        const safeUrl = String(iconUrl || '').trim();
+        if (!safeUrl) return '';
+        return `<img class="${className}" src="${this._escapeHtml(safeUrl)}" alt="" loading="eager" decoding="sync" draggable="false">`;
+    }
+
     _getCustomAppNames() {
         try {
             const raw = window.VirtualPhone?.storage?.get?.('phone-app-custom-names');
@@ -433,10 +439,12 @@ export class HomeScreen {
         
         // 如果有自定义图标，用背景图；否则用emoji
         const iconStyle = customIcon
-            ? this._buildCustomIconStyle(customIcon)
+            ? ''
             : '';
 
-        const iconContent = customIcon ? '' : `<span class="app-icon-emoji yzp-home-app-icon-emoji">${app.icon}</span>`;
+        const iconContent = customIcon
+            ? this._renderCustomIconImage(customIcon, 'home-custom-icon-img yzp-home-custom-icon-img')
+            : `<span class="app-icon-emoji yzp-home-app-icon-emoji">${app.icon}</span>`;
 
         // 自定义图标添加特殊class，用于移除默认背景效果
         const customClass = customIcon ? 'custom-icon' : '';

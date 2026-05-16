@@ -1890,6 +1890,22 @@
     display: none !important;
 }
 
+#phone-panel-content .phone-screen .home-custom-icon-img {
+    display: block !important;
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain !important;
+    object-position: center !important;
+    border: 0 !important;
+    border-radius: inherit !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    filter: none !important;
+    opacity: 1 !important;
+    pointer-events: none !important;
+    -webkit-user-drag: none;
+}
+
 #phone-panel-content .phone-screen .app-icon-emoji {
     /* 🔥 使用相对尺寸自适应 */
     font-size: min(24px, 6.5vw, 3vh);
