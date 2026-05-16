@@ -1518,6 +1518,47 @@ export class ChatView {
         return text.trim();
     }
 
+    _formatPersonalImageTagRows(rows = []) {
+        const normalized = (Array.isArray(rows) ? rows : [])
+            .map((item) => {
+                const name = String(item?.name || '').trim();
+                const tags = String(item?.tags || '')
+                    .split(/[,，\n]+/)
+                    .map(tag => tag.trim())
+                    .filter(Boolean)
+                    .join(', ');
+                return name && tags ? `${name}：${tags}` : '';
+            })
+            .filter(Boolean);
+        return normalized.length > 0 ? normalized.join('\n') : '暂无';
+    }
+
+    _buildWechatPersonalImageTagInfo({ targetChat = null, isGroupChat = false } = {}) {
+        const contacts = this.app?.wechatData?.getContacts?.() || [];
+        if (!Array.isArray(contacts) || contacts.length === 0) return '暂无';
+
+        if (isGroupChat) {
+            const participants = this._collectGroupParticipantsForFilter(targetChat || this.app.currentChat, this._safeGetContext());
+            const participantKeys = new Set(participants.map(name => this._normalizeLookupName(name)).filter(Boolean));
+            return this._formatPersonalImageTagRows(contacts
+                .filter(contact => participantKeys.has(this._normalizeLookupName(contact?.name)))
+                .map(contact => ({
+                    name: contact?.name,
+                    tags: contact?.naiPromptTags || contact?.imageTags
+                })));
+        }
+
+        const chatName = String(targetChat?.name || '').trim();
+        const contactId = String(targetChat?.contactId || '').trim();
+        const contact = (contactId ? this.app.wechatData?.getContact?.(contactId) : null)
+            || this.app.wechatData?.findContactByNameLoose?.(chatName, { includeChats: false })
+            || contacts.find(item => this._normalizeLookupName(item?.name) === this._normalizeLookupName(chatName));
+        return this._formatPersonalImageTagRows(contact ? [{
+            name: contact.name || chatName,
+            tags: contact.naiPromptTags || contact.imageTags
+        }] : []);
+    }
+
     _renderGroupCallParticipantsStrip(chat = null) {
         const targetChat = chat || this.app.currentChat;
         if (!targetChat || targetChat.type !== 'group') return '';
@@ -3017,7 +3058,8 @@ renderChatRoom(chat) {
             const imageUrl = await this._persistWechatGeneratedImage(rawImageUrl, {
                 chatId,
                 messageId: safeMessageId,
-                promptText
+                promptText,
+                generationId
             });
             if (!imageUrl) {
                 throw new Error('接口返回成功，但没有拿到图片地址');
@@ -3062,7 +3104,7 @@ renderChatRoom(chat) {
         }
     }
 
-    async _persistWechatGeneratedImage(imageUrl, { chatId = '', messageId = '', promptText = '' } = {}) {
+    async _persistWechatGeneratedImage(imageUrl, { chatId = '', messageId = '', promptText = '', generationId = '' } = {}) {
         const safeUrl = String(imageUrl || '').trim();
         if (!safeUrl) return '';
         if (/^\/backgrounds\/phone_[^?#]+/i.test(safeUrl)) return safeUrl;
@@ -3073,7 +3115,8 @@ renderChatRoom(chat) {
         }
 
         const blob = await this._loadGeneratedWechatImageBlob(safeUrl);
-        const seed = `${chatId || 'chat'}_${messageId || 'msg'}_${this._simpleImageHash(promptText || safeUrl).toString(36)}`;
+        const uniquePart = String(generationId || Date.now()).replace(/[^a-zA-Z0-9_-]/g, '_');
+        const seed = `${chatId || 'chat'}_${messageId || 'msg'}_${this._simpleImageHash(promptText || safeUrl).toString(36)}_${uniquePart}`;
         const uploadedUrl = await imageUploader.uploadBlob(blob, `wechat_img_${seed}`);
         const normalized = String(uploadedUrl || '').trim();
         if (!/^\/backgrounds\/phone_[^?#]+/i.test(normalized)) {
@@ -7375,6 +7418,7 @@ renderChatRoom(chat) {
             ? myCustomEmojis.map(e => String(e?.description || e?.name || '').trim()).filter(Boolean)
             : [];
         const customEmojiList = customEmojiNames.length > 0 ? customEmojiNames.join('、') : '暂无可用自定义表情包';
+        const personalImageTagInfo = this._buildWechatPersonalImageTagInfo({ targetChat, isGroupChat });
         let systemPrompt = '';
         const overrideReplacements = {
             user: userName,
@@ -7382,7 +7426,8 @@ renderChatRoom(chat) {
             char: targetChat?.name || charName,
             groupName,
             groupMembers,
-            customEmojiList
+            customEmojiList,
+            personalImageTagInfo
         };
         const onlineOverridePrompt = this._getOnlineOverridePrompt(promptManager, overrideReplacements);
         if (onlineOverridePrompt) {
@@ -7412,7 +7457,8 @@ renderChatRoom(chat) {
                         .replace(/\{\{chatName\}\}/g, '好友完整微信名')
                         .replace(/\{\{groupMembers\}\}/g, groupMembers)
                         .replace(/\{\{wechatContacts\}\}/g, wechatContactsList)
-                        .replace(/\{\{customEmojiList\}\}/g, customEmojiList);
+                        .replace(/\{\{customEmojiList\}\}/g, customEmojiList)
+                        .replace(/\{\{personalImageTagInfo\}\}/g, personalImageTagInfo);
                 } else if (promptManager?.getPromptForFeature) {
                     // 单聊模式
                     systemPrompt = promptManager.getPromptForFeature('wechat', 'online') || '';
@@ -7422,7 +7468,8 @@ renderChatRoom(chat) {
                         .replace(/\{\{chatName\}\}/g, chatName)
                         .replace(/\{\{commonGroupNames\}\}/g, commonGroupNamesForSingleChat.length > 0 ? commonGroupNamesForSingleChat.join('、') : '无')
                         .replace(/\{\{commonGroupList\}\}/g, commonGroupListForSingleChat || '无')
-                        .replace(/\{\{customEmojiList\}\}/g, customEmojiList);
+                        .replace(/\{\{customEmojiList\}\}/g, customEmojiList)
+                        .replace(/\{\{personalImageTagInfo\}\}/g, personalImageTagInfo);
                 }
             } catch (e) {
                 console.warn('⚠️ 获取微信聊天提示词失败:', e);
@@ -7779,6 +7826,10 @@ renderChatRoom(chat) {
         const contacts = this.app.wechatData.getContacts?.() || [];
         const contactNames = contacts.map(c => String(c?.name || '').trim()).filter(Boolean);
         const wechatContactsList = contactNames.length > 0 ? contactNames.join('、') : '暂无好友';
+        const allPersonalImageTagInfo = this._formatPersonalImageTagRows(contacts.map(contact => ({
+            name: contact?.name,
+            tags: contact?.naiPromptTags || contact?.imageTags
+        })));
 
         const normalizePrompt = (text, replacements = {}) => {
             let out = String(text || '').trim();
@@ -7800,14 +7851,18 @@ renderChatRoom(chat) {
                 chatName: sampleSingle?.name || '候选微信好友',
                 commonGroupNames: '按【手机微信已有消息】判断',
                 commonGroupList: '按【手机微信已有消息】判断',
-                customEmojiList
+                customEmojiList,
+                personalImageTagInfo: this._buildWechatPersonalImageTagInfo({ targetChat: sampleSingle, isGroupChat: false })
             });
             groupPrompt = normalizePrompt(promptManager?.getPromptForFeature?.('wechat', 'groupChat') || '', {
                 groupName: sampleGroup?.name || '候选微信群',
                 groupMembers,
                 wechatContacts: wechatContactsList,
                 chatName: '好友完整微信名',
-                customEmojiList
+                customEmojiList,
+                personalImageTagInfo: sampleGroup?.type === 'group'
+                    ? this._buildWechatPersonalImageTagInfo({ targetChat: sampleGroup, isGroupChat: true })
+                    : allPersonalImageTagInfo
             });
         } catch (e) {
             console.warn('⚠️ 构建微信线上主动触发规则失败:', e);

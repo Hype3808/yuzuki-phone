@@ -788,11 +788,13 @@ export class MomentsView {
         }
         const novelAIReferences = await this._buildMomentPersonalImageReferences(moment, index);
         const generationPrompt = this._buildMomentImagePromptWithContactTags(moment, index, promptText);
+        const generationId = `moment_img_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
         this._setMomentImageState(moment, index, {
             status: 'loading',
             error: '',
             prompt: promptText,
+            generationId,
             mediaType,
             usePersonalReference,
             generatedImageUrl: '',
@@ -811,7 +813,8 @@ export class MomentsView {
             const imageUrl = await this._persistMomentGeneratedImage(rawImageUrl, {
                 momentId,
                 index,
-                promptText
+                promptText,
+                generationId
             });
             if (!imageUrl) throw new Error('生图成功但未返回图片URL');
 
@@ -852,7 +855,7 @@ export class MomentsView {
         }
     }
 
-    async _persistMomentGeneratedImage(imageUrl, { momentId = '', index = 0, promptText = '' } = {}) {
+    async _persistMomentGeneratedImage(imageUrl, { momentId = '', index = 0, promptText = '', generationId = '' } = {}) {
         const safeUrl = String(imageUrl || '').trim();
         if (!safeUrl) return '';
         if (/^\/backgrounds\/phone_[^?#]+/i.test(safeUrl)) return safeUrl;
@@ -863,7 +866,8 @@ export class MomentsView {
         }
 
         const blob = await this._loadGeneratedMomentImageBlob(safeUrl);
-        const seed = `${momentId || 'moment'}_${index}_${this._simpleImageHash(promptText || safeUrl).toString(36)}`;
+        const uniquePart = String(generationId || Date.now()).replace(/[^a-zA-Z0-9_-]/g, '_');
+        const seed = `${momentId || 'moment'}_${index}_${this._simpleImageHash(promptText || safeUrl).toString(36)}_${uniquePart}`;
         const uploadedUrl = await imageUploader.uploadBlob(blob, `moment_img_${seed}`);
         const normalized = String(uploadedUrl || '').trim();
         if (!/^\/backgrounds\/phone_[^?#]+/i.test(normalized)) {
@@ -1600,6 +1604,21 @@ ${replyTo ? `- 回复对象：${replyTo}` : ''}
         return normalized;
     }
 
+    _formatMomentPersonalImageTagInfo(contacts = []) {
+        const rows = (Array.isArray(contacts) ? contacts : [])
+            .map((contact) => {
+                const name = String(contact?.name || '').trim();
+                const tags = String(contact?.naiPromptTags || contact?.imageTags || '')
+                    .split(/[,，\n]+/)
+                    .map(tag => tag.trim())
+                    .filter(Boolean)
+                    .join(', ');
+                return name && tags ? `${name}：${tags}` : '';
+            })
+            .filter(Boolean);
+        return rows.length > 0 ? rows.join('\n') : '暂无';
+    }
+
     // 从AI加载朋友圈
     async loadMomentsFromAI() {
         if (this.isLoading) return;
@@ -1659,6 +1678,8 @@ ${memoryLines.slice(0, 10).join('\n')}
                 if (hasReferenceImage) imageNotes.push('已设置个人形象参考图');
                 return `${name}(${relation}${imageNotes.length ? `；${imageNotes.join('；')}` : ''})`;
             }).join('、');
+            const personalImageTagInfo = this._formatMomentPersonalImageTagInfo(contacts);
+            momentsPrompt = String(momentsPrompt || '').replace(/\{\{personalImageTagInfo\}\}/g, personalImageTagInfo);
 
             // 构建完整提示词
             const prompt = `【朋友圈生成任务】
@@ -1681,7 +1702,7 @@ ${contactsInfo}
 6. 要参考最近的剧情对话，体现角色当前的状态
 7. 如果朋友圈需要配图，images 数组只能写 [图片]（English NovelAI tags） 或 [个人图片]（English NovelAI tags）。
 8. [个人图片] 只用于画面包含发布者本人脸、自拍、全身照、试衣照、生活照等自身形象；风景、食物、宠物、截图、物品、别人或无人物画面必须用 [图片]。
-9. 括号内只能写英文逗号分隔的 NAI 生图 tag，不要写中文、解释或完整句子；如果联系人信息里有专属生图Tag，生成该联系人 [个人图片] 时必须体现其外观设定。
+9. 括号内只能写英文逗号分隔的 NAI 生图 tag，不要写中文、解释或完整句子。
 
 输出格式（只返回JSON）：
 \`\`\`json

@@ -234,7 +234,10 @@ export class HoneyView {
         const blob = await blobResp.blob();
         if (!blob || blob.size <= 0) throw new Error('生成图片为空，无法保存');
         const safeHost = `h${this._simpleHash(String(hostName || 'live')).toString(36)}`;
-        const safeSeed = String(seed || '').replace(/[^\w-]+/g, '').slice(0, 24);
+        const uniqueSeed = seed === '' || seed == null || String(seed) === '-1'
+            ? `gen_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+            : seed;
+        const safeSeed = String(uniqueSeed).replace(/[^\w-]+/g, '').slice(0, 48);
         const uploadedUrl = await window.VirtualPhone?.imageManager?.uploadBlob?.(blob, `honey_nai_${safeHost}_${safeSeed}`);
         if (!uploadedUrl) throw new Error('图片上传管理器未初始化');
         if (oldImageUrl && oldImageUrl !== uploadedUrl && this._isManagedBackgroundUrl(oldImageUrl)) {

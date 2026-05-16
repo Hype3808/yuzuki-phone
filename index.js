@@ -8014,6 +8014,7 @@ if (window.GGP_Loaded) {
                                                 let wechatContactsList = '';
                                                 let wechatFriendsList = '';
                                                 let wechatGroupsList = '';
+                                                let personalImageTagInfo = '暂无';
                                                 try {
                                                     let wechatDataParsed = null;
                                                     if (window.VirtualPhone?.wechatApp?.wechatData?.data) {
@@ -8029,9 +8030,19 @@ if (window.GGP_Loaded) {
 
                                                     if (wechatDataParsed) {
                                                         const contactNames = [];
+                                                        const personalImageTagRows = [];
                                                         const groupItems = [];
                                                         const contacts = wechatDataParsed.contacts || [];
-                                                        contacts.forEach(c => { if (c.name) contactNames.push(c.name); });
+                                                        contacts.forEach(c => {
+                                                            if (c.name) contactNames.push(c.name);
+                                                            const name = String(c?.name || '').trim();
+                                                            const tags = String(c?.naiPromptTags || c?.imageTags || '')
+                                                                .split(/[,，\n]+/)
+                                                                .map(tag => tag.trim())
+                                                                .filter(Boolean)
+                                                                .join(', ');
+                                                            if (name && tags) personalImageTagRows.push(`${name}：${tags}`);
+                                                        });
                                                         const chats = wechatDataParsed.chats || [];
                                                         chats.forEach(chat => {
                                                             if (chat.type === 'group' && chat.name) {
@@ -8049,16 +8060,19 @@ if (window.GGP_Loaded) {
                                                         if (contactNames.length > 0) parts.push(`好友：${wechatFriendsList}`);
                                                         if (groupItems.length > 0) parts.push(`群聊：${wechatGroupsList}`);
                                                         wechatContactsList = parts.join('；') || '暂无联系人';
+                                                        personalImageTagInfo = personalImageTagRows.length > 0 ? personalImageTagRows.join('\n') : '暂无';
                                                     } else {
                                                         wechatContactsList = '暂无联系人';
                                                         wechatFriendsList = '暂无好友';
                                                         wechatGroupsList = '暂无群聊';
+                                                        personalImageTagInfo = '暂无';
                                                     }
                                                 } catch (e) {
                                                     console.warn('⚠️ 获取微信联系人列表失败:', e);
                                                     wechatContactsList = '暂无联系人';
                                                     wechatFriendsList = '暂无好友';
                                                     wechatGroupsList = '暂无群聊';
+                                                    personalImageTagInfo = '暂无';
                                                 }
 
                                                 wechatPrompt = wechatPrompt
@@ -8068,7 +8082,8 @@ if (window.GGP_Loaded) {
                                                     .replace(/\{\{STORY_TIME\+1\}\}/g, nextMinute)
                                                     .replace(/\{\{wechatFriends\}\}/g, wechatFriendsList)
                                                     .replace(/\{\{wechatGroups\}\}/g, wechatGroupsList)
-                                                    .replace(/\{\{wechatContacts\}\}/g, wechatContactsList);
+                                                    .replace(/\{\{wechatContacts\}\}/g, wechatContactsList)
+                                                    .replace(/\{\{personalImageTagInfo\}\}/g, personalImageTagInfo);
                                                 phoneRulesContent += `【微信线下模式】\n${wechatPrompt}\n\n`;
                                             }
                                         } catch (e) {

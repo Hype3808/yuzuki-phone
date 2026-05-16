@@ -2500,6 +2500,7 @@ export class WeiboView {
 
         const pendingTag = safeMediaType === '视频' ? '[视频]' : '[图片]';
         const previousImageUrl = this._getManagedWeiboGeneratedImageUrl(post, index);
+        const generationId = `weibo_img_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         if (clearPreviousImage && Array.isArray(post.images)) {
             post.images[index] = `${pendingTag}${promptText}`;
         }
@@ -2508,6 +2509,7 @@ export class WeiboView {
             status: 'loading',
             error: '',
             prompt: promptText,
+            generationId,
             mediaType: safeMediaType,
             generatedImageUrl: '',
             imageModel: '',
@@ -2527,7 +2529,8 @@ export class WeiboView {
             const imageUrl = await this._persistWeiboGeneratedImage(rawImageUrl, {
                 postId,
                 index,
-                promptText
+                promptText,
+                generationId
             });
             if (!imageUrl) throw new Error('生图成功但未返回图片URL');
 
@@ -2589,7 +2592,7 @@ export class WeiboView {
         cleanupTask?.catch?.(() => { });
     }
 
-    async _persistWeiboGeneratedImage(imageUrl, { postId = '', index = 0, promptText = '' } = {}) {
+    async _persistWeiboGeneratedImage(imageUrl, { postId = '', index = 0, promptText = '', generationId = '' } = {}) {
         const safeUrl = String(imageUrl || '').trim();
         if (!safeUrl) return '';
         if (/^\/backgrounds\/phone_[^?#]+/i.test(safeUrl)) return safeUrl;
@@ -2600,7 +2603,8 @@ export class WeiboView {
         }
 
         const blob = await this._loadGeneratedImageBlob(safeUrl);
-        const seed = `${postId || 'post'}_${index}_${this._simpleHash(promptText || safeUrl).toString(36)}`;
+        const uniquePart = String(generationId || Date.now()).replace(/[^a-zA-Z0-9_-]/g, '_');
+        const seed = `${postId || 'post'}_${index}_${this._simpleHash(promptText || safeUrl).toString(36)}_${uniquePart}`;
         const uploadedUrl = await imageUploader.uploadBlob(blob, `weibo_img_${seed}`);
         const normalized = String(uploadedUrl || '').trim();
         if (!/^\/backgrounds\/phone_[^?#]+/i.test(normalized)) {

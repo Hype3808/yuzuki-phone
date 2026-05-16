@@ -492,7 +492,7 @@ export class DiaryData {
             });
             const imageUrl = String(result?.imageUrl || result?.imageData || '').trim();
             if (!imageUrl) throw new Error('接口返回成功，但没有拿到图片地址');
-            const storedImageUrl = await this._persistDiaryGeneratedImage(imageUrl, `diary_photo_${entryId}`);
+            const storedImageUrl = await this._persistDiaryGeneratedImage(imageUrl, `diary_photo_${entryId}_${photoId}_${generationId}`);
 
             const latest = this.getEntry(entryId)?.photos?.find(item => String(item?.id || '') === String(photoId));
             if (String(latest?.generationId || '') !== generationId) return latest;
@@ -621,6 +621,23 @@ export class DiaryData {
         return contacts.find(contact => wechatData?._isSameLookupName?.(contact.name, charName))
             || contacts.find(contact => String(contact?.name || '').trim() === charName)
             || null;
+    }
+
+    async _buildDiaryPersonalImageTagInfo(context = null) {
+        const wechatData = await this._getWechatDataForDiaryPhotos();
+        const contacts = wechatData?.getContacts?.() || [];
+        const rows = (Array.isArray(contacts) ? contacts : [])
+            .map((contact) => {
+                const name = String(contact?.name || '').trim();
+                const tags = String(contact?.naiPromptTags || contact?.imageTags || '')
+                    .split(/[,，\n]+/)
+                    .map(tag => tag.trim())
+                    .filter(Boolean)
+                    .join(', ');
+                return name && tags ? `${name}：${tags}` : '';
+            })
+            .filter(Boolean);
+        return rows.length > 0 ? rows.join('\n') : '暂无';
     }
 
     async _buildDiaryImagePrompt(photo = {}) {
@@ -763,9 +780,11 @@ export class DiaryData {
 
         const promptContent = this._getDiaryPrompt(context);
         const userName = context.name1 || '用户';
+        const personalImageTagInfo = await this._buildDiaryPersonalImageTagInfo(context);
         const filledPrompt = promptContent
             .replace(/\{\{user\}\}/g, userName)
             .replace(/\{\{char\}\}/g, context.name2 || '角色')
+            .replace(/\{\{personalImageTagInfo\}\}/g, personalImageTagInfo)
             .replace(/\{\{chatHistory\}\}/g, ''); // 清除占位符，聊天记录已通过消息数组传入
 
         const worldInfoMessage = await window.VirtualPhone?.worldbookManager?.buildWorldbookMessage?.('diary');

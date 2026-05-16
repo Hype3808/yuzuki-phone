@@ -107,6 +107,56 @@ export class HoneyData {
         return String(text || '').trim();
     }
 
+    _formatPersonalImageTagRows(rows = []) {
+        const normalized = (Array.isArray(rows) ? rows : [])
+            .map((item) => {
+                const name = this._sanitizeInlineText(item?.name || '', 40);
+                const tags = String(item?.tags || '')
+                    .split(/[,，\n]+/)
+                    .map(tag => tag.trim())
+                    .filter(Boolean)
+                    .join(', ');
+                return name && tags ? `${name}：${tags}` : '';
+            })
+            .filter(Boolean);
+        return normalized.length > 0 ? normalized.join('\n') : '暂无';
+    }
+
+    _resolveWechatContactForHoneyHost(hostName = '') {
+        const safeHostName = this._stripFollowStateSuffix(hostName || '');
+        if (!safeHostName) return null;
+        try {
+            const wechatData = this._getWechatDataBridge?.();
+            const contacts = wechatData?.getContacts?.() || [];
+            if (!Array.isArray(contacts) || contacts.length === 0) return null;
+            return wechatData.getContactByName?.(safeHostName)
+                || contacts.find(item => this._normalizeHostNameKey(item?.name || '') === this._normalizeHostNameKey(safeHostName))
+                || null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    _buildHoneyPersonalImageTagInfo(hostName = '') {
+        const rows = [];
+        const safeHostName = this._stripFollowStateSuffix(hostName || '');
+        const contact = this._resolveWechatContactForHoneyHost(safeHostName);
+        if (contact) {
+            rows.push({
+                name: contact.name || safeHostName,
+                tags: contact.naiPromptTags || contact.imageTags
+            });
+        }
+        const followedHost = this.getFollowedHostByName?.(safeHostName);
+        if (followedHost) {
+            rows.push({
+                name: followedHost.name || safeHostName,
+                tags: followedHost.naiPromptTags || followedHost.imageTags || followedHost.naiTags
+            });
+        }
+        return this._formatPersonalImageTagRows(rows);
+    }
+
     _sanitizeInlineText(value, maxLen = 260) {
         return String(value || '')
             .replace(/<[^>]*>/g, ' ')
@@ -3115,6 +3165,7 @@ export class HoneyData {
         const prompt = promptManager?.getPromptForFeature('honey', 'userLive') || '';
         const overridePrompt = this._getHoneyOverridePrompt(promptManager);
         const profile = this.getHoneyUserProfile();
+        const personalImageTagInfo = this._buildHoneyPersonalImageTagInfo(profile.nickname);
         const runtimeContext = this._buildLiveRuntimeContext(options);
         const friends = this.getHoneyFriends();
         const pendingRequests = this.getHoneyFriendRequests();
@@ -3144,7 +3195,8 @@ export class HoneyData {
         messages.push(
             {
                 role: 'system',
-                content: String(prompt || '').trim() || '你是蜜语用户开播引擎，只返回 <Honey> 结构。',
+                content: (String(prompt || '').trim() || '你是蜜语用户开播引擎，只返回 <Honey> 结构。')
+                    .replace(/\{\{personalImageTagInfo\}\}/g, personalImageTagInfo),
                 isPhoneMessage: true
             },
             {
@@ -3323,6 +3375,8 @@ export class HoneyData {
         const mode = String(options?.requestMode || '').trim(); // recommend | from_scratch | continue
         const safeTopic = String(options?.topic || '').trim();
         const safeHost = this._sanitizeInlineText(this._stripFollowStateSuffix(options?.currentScene?.host || ''), 40);
+        const personalImageTagInfo = this._buildHoneyPersonalImageTagInfo(safeHost);
+        systemPrompt = systemPrompt.replace(/\{\{personalImageTagInfo\}\}/g, personalImageTagInfo);
         const isWechatLinkedHost = this._isWechatLinkedHoneyHost(safeHost);
         const wechatLinkedCharacterContext = isWechatLinkedHost
             ? this._buildWechatLinkedCharacterContext(safeHost)
