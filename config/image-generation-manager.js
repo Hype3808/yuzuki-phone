@@ -803,28 +803,135 @@ export class ImageGenerationManager {
         }).catch((err) => console.warn('[NovelAI Queue] 完成队列任务失败:', err));
     }
 
-    _extractBase64Image(payload) {
-        const candidates = [
-            payload?.image,
-            payload?.imageData,
-            payload?.data,
-            payload?.output,
-            payload?.images?.[0],
-            payload?.result?.image,
-            payload?.result?.images?.[0]
-        ];
-        for (const item of candidates) {
-            if (!item) continue;
-            if (typeof item === 'string') {
-                if (item.startsWith('data:image/')) return item;
-                if (/^[A-Za-z0-9+/=\s]+$/.test(item.slice(0, 120))) return `data:image/png;base64,${item.replace(/\s+/g, '')}`;
-            }
-            if (typeof item === 'object') {
-                const nested = this._extractBase64Image(item);
-                if (nested) return nested;
-            }
+    _normalizeImageResultString(value, { allowUrl = true } = {}) {
+        const text = String(value || '').trim();
+        if (!text) return '';
+        if (/^data:image\/[a-z0-9.+-]+;base64,/i.test(text)) return text;
+        if (allowUrl && /^(?:https?:|blob:|\/backgrounds\/)/i.test(text)) return text;
+        const compact = text.replace(/\s+/g, '');
+        if (compact.length >= 80 && /^[A-Za-z0-9+/]+={0,2}$/.test(compact)) {
+            return `data:image/png;base64,${compact}`;
         }
         return '';
+    }
+
+    _extractImageResult(payload, options = {}) {
+        if (!payload) return '';
+        if (typeof payload === 'string') {
+            return this._normalizeImageResultString(payload, options);
+        }
+        if (Array.isArray(payload)) {
+            for (const item of payload) {
+                const nested = this._extractImageResult(item, options);
+                if (nested) return nested;
+            }
+            return '';
+        }
+        if (typeof payload !== 'object') return '';
+
+        const directCandidates = [
+            payload.b64_json,
+            payload.b64,
+            payload.base64,
+            payload.image_base64,
+            payload.imageBase64,
+            payload.dataUrl,
+            payload.data_url,
+            payload.image_url,
+            payload.imageUrl,
+            payload.url,
+            payload.image,
+            payload.imageData
+        ];
+        for (const item of directCandidates) {
+            const normalized = this._extractImageResult(item, options);
+            if (normalized) return normalized;
+        }
+
+        const nestedCandidates = [
+            payload.data,
+            payload.images,
+            payload.artifacts,
+            payload.output,
+            payload.outputs,
+            payload.result,
+            payload.results,
+            payload.response
+        ];
+        for (const item of nestedCandidates) {
+            const nested = this._extractImageResult(item, options);
+            if (nested) return nested;
+        }
+        return '';
+    }
+
+    _extractBase64Image(payload) {
+        return this._extractImageResult(payload, { allowUrl: true });
+    }
+
+    _detectImageMime(bytes, fallback = '') {
+        if (!bytes || bytes.length < 4) return fallback || '';
+        if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'image/png';
+        if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
+        if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) return 'image/gif';
+        if (
+            bytes.length >= 12 &&
+            bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+            bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50
+        ) {
+            return 'image/webp';
+        }
+        return fallback || '';
+    }
+
+    _tryParseJsonBytes(bytes) {
+        try {
+            const text = new TextDecoder('utf-8').decode(bytes || new Uint8Array());
+            return text ? JSON.parse(text) : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    _getBytesPreview(bytes, limit = 180) {
+        try {
+            return new TextDecoder('utf-8').decode((bytes || new Uint8Array()).slice(0, limit)).trim();
+        } catch (e) {
+            return '';
+        }
+    }
+
+    async _readNovelAIImageResponse(response) {
+        const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+        const arrayBuffer = await response.arrayBuffer();
+        if (!arrayBuffer || arrayBuffer.byteLength <= 0) throw new Error('NovelAI 返回空图片数据');
+        const bytes = new Uint8Array(arrayBuffer);
+
+        const parsedJson = contentType.includes('application/json') || contentType.includes('+json')
+            ? this._tryParseJsonBytes(bytes)
+            : null;
+        if (parsedJson) {
+            return this._extractBase64Image(parsedJson);
+        }
+
+        const isZip = bytes[0] === 0x50 && bytes[1] === 0x4b;
+        if (isZip) {
+            return await this._readZipImageBytes(bytes, arrayBuffer);
+        }
+
+        const mime = this._detectImageMime(bytes, contentType.startsWith('image/') ? contentType.split(';')[0] : '');
+        if (mime) {
+            return await this._blobToDataUrl(new Blob([bytes], { type: mime }));
+        }
+
+        const fallbackJson = this._tryParseJsonBytes(bytes);
+        if (fallbackJson) {
+            const imageData = this._extractBase64Image(fallbackJson);
+            if (imageData) return imageData;
+        }
+
+        const preview = this._getBytesPreview(bytes);
+        throw new Error(`NovelAI 返回的不是图片数据${preview ? `: ${preview.slice(0, 120)}` : ''}`);
     }
 
     async _readZipImage(response) {
@@ -834,10 +941,14 @@ export class ImageGenerationManager {
         const bytes = new Uint8Array(arrayBuffer);
         const isZip = bytes[0] === 0x50 && bytes[1] === 0x4b;
         if (!isZip) {
-            const mime = blob.type && blob.type.startsWith('image/') ? blob.type : 'image/png';
-            return await this._blobToDataUrl(new Blob([blob], { type: mime }));
+            const mime = this._detectImageMime(bytes, blob.type && blob.type.startsWith('image/') ? blob.type : '');
+            if (!mime) throw new Error('NovelAI 返回的不是图片数据');
+            return await this._blobToDataUrl(new Blob([bytes], { type: mime }));
         }
+        return this._readZipImageBytes(bytes, arrayBuffer);
+    }
 
+    async _readZipImageBytes(bytes, arrayBuffer) {
         if (window.JSZip) {
             const zip = await window.JSZip.loadAsync(arrayBuffer);
             const imageFile = Object.values(zip.files)
@@ -1303,60 +1414,11 @@ export class ImageGenerationManager {
     }
 
     _extractSdImage(payload) {
-        const candidates = [
-            ...(Array.isArray(payload?.images) ? payload.images : []),
-            payload?.image,
-            payload?.data,
-            payload?.output,
-            payload?.result?.image,
-            ...(Array.isArray(payload?.result?.images) ? payload.result.images : [])
-        ];
-        for (const item of candidates) {
-            if (!item) continue;
-            if (typeof item === 'string') {
-                const text = item.trim();
-                if (text.startsWith('data:image/')) return text;
-                if (/^[A-Za-z0-9+/=\s]+$/.test(text.slice(0, 120))) {
-                    return `data:image/png;base64,${text.replace(/\s+/g, '')}`;
-                }
-            } else if (typeof item === 'object') {
-                const nested = this._extractSdImage(item);
-                if (nested) return nested;
-            }
-        }
-        return '';
+        return this._extractImageResult(payload, { allowUrl: true });
     }
 
     _extractOpenAIImage(payload) {
-        const candidates = [
-            payload?.data?.[0]?.b64_json,
-            payload?.data?.[0]?.url,
-            payload?.images?.[0]?.url,
-            payload?.images?.[0]?.b64_json,
-            payload?.image_url,
-            payload?.imageUrl,
-            payload?.url,
-            payload?.image,
-            payload?.result?.image,
-            payload?.result?.url,
-            payload?.result?.images?.[0]?.url,
-            payload?.result?.images?.[0]?.b64_json
-        ];
-        for (const item of candidates) {
-            if (!item) continue;
-            if (typeof item === 'string') {
-                const text = item.trim();
-                if (text.startsWith('data:image/')) return text;
-                if (/^https?:\/\//i.test(text)) return text;
-                if (/^[A-Za-z0-9+/=\s]+$/.test(text.slice(0, 120))) {
-                    return `data:image/png;base64,${text.replace(/\s+/g, '')}`;
-                }
-            } else if (typeof item === 'object') {
-                const nested = this._extractOpenAIImage(item);
-                if (nested) return nested;
-            }
-        }
-        return '';
+        return this._extractImageResult(payload, { allowUrl: true });
     }
 
     _resolveOpenAIEndpoint(config) {
@@ -1696,14 +1758,7 @@ export class ImageGenerationManager {
                 throw new Error(`NovelAI 请求失败 (${response.status})${hint}${text ? `: ${text.slice(0, 180)}` : ''}`);
             }
 
-            const contentType = String(response.headers.get('content-type') || '').toLowerCase();
-            let imageData = '';
-            if (contentType.includes('application/json')) {
-                const payload = await response.json();
-                imageData = this._extractBase64Image(payload);
-            } else {
-                imageData = await this._readZipImage(response);
-            }
+            const imageData = await this._readNovelAIImageResponse(response);
             if (!imageData) throw new Error('NovelAI 未返回可用图片');
             const imageInfo = await this._waitForImageDecode(imageData).catch((err) => {
                 throw new Error(`NovelAI 返回图片不可用: ${err?.message || err}`);
