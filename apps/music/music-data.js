@@ -276,14 +276,15 @@ export class MusicData {
         const playlist = this.getActiveList();
         if (index < 0 || index >= playlist.length) return;
 
-        const wasPlaying = this.isPlaying;
         // 递增代次号，使之前的 play() 调用自动失效
         const generation = ++this._playGeneration;
         this._playLock = true;
         this._userPaused = false;
         this.currentIndex = index;
-        // 先停旧歌并立即刷新UI，给“上一曲/下一曲”即时反馈
+        // 先停旧歌并清空旧 src，避免新歌加载失败时继续播放上一首。
         this.audioPlayer.pause();
+        this.audioPlayer.removeAttribute('src');
+        this.audioPlayer.load();
         this.isPlaying = false;
         this._notifyStateChange();
 
@@ -308,7 +309,7 @@ export class MusicData {
                 if (result && result.url) {
                     song.url = result.url;
                     song.name = result.name || song.name;
-                    song.artist = result.artist || song.artist || artist || '未知';
+                    song.artist = result.artist || song.artist || '未知';
                     song.pic = result.pic;
                     song.id = result.id || song.id || null;
                     song.urlSource = result.urlSource || song.urlSource || null;
@@ -337,10 +338,7 @@ export class MusicData {
             this._prefetchNeighbors(index, listType);
         } catch (e) {
             if (generation === this._playGeneration) {
-                // 如果切歌失败且之前本来在播，尝试恢复上一状态的可用资源
-                if (wasPlaying && this.audioPlayer.src) {
-                    this.audioPlayer.play().catch(() => {});
-                }
+                console.warn(`🎵 [音乐] 播放失败: ${song?.name || ''}`, e);
                 this.isPlaying = false;
                 this._playLock = false;
                 this._notifyStateChange();
@@ -365,19 +363,6 @@ export class MusicData {
         console.log(`🎵 [音乐] 正在为 "${song.name}" 自动搜索新链接...`);
 
         try {
-            // 🔥 新增：毫秒级试听检测函数
-            const checkFullSong = (url) => new Promise(resolve => {
-                const a = new Audio();
-                a.muted = true;
-                const timer = setTimeout(() => resolve(true), 2500); 
-                a.onloadedmetadata = () => {
-                    clearTimeout(timer);
-                    resolve(a.duration > 45); 
-                };
-                a.onerror = () => { clearTimeout(timer); resolve(false); };
-                a.src = url;
-            });
-
             const searchQuery = encodeURIComponent(`${song.name} ${song.artist}`);
             const searchRes = await fetch(`https://api.vkeys.cn/v2/music/netease?word=${searchQuery}`);
             const searchJson = await searchRes.json();
@@ -401,7 +386,7 @@ export class MusicData {
                         let newUrl = urlData[0].url.replace('http://', 'https://');
 
                         // 🔥 新增：检测修复到的新版本是不是坑人的30秒试听
-                        const isFull = await checkFullSong(newUrl);
+                        const isFull = await this._checkPlayableSongUrl(newUrl);
                         if (!isFull) {
                             console.warn(`🎵 [音乐] 修复找到的新版本仍是30秒试听，继续寻找下一个...`);
                             continue;
@@ -620,19 +605,6 @@ export class MusicData {
 
     async _fetchSongUrl(name, artist) {
         try {
-            // 🔥 新增：毫秒级试听检测函数 (时长小于45秒视为VIP试听版)
-            const checkFullSong = (url) => new Promise(resolve => {
-                const a = new Audio();
-                a.muted = true;
-                const timer = setTimeout(() => resolve(true), 2500); // 2.5秒超时放行，防止网络卡死
-                a.onloadedmetadata = () => {
-                    clearTimeout(timer);
-                    resolve(a.duration > 45); // 完整歌曲肯定大于45秒
-                };
-                a.onerror = () => { clearTimeout(timer); resolve(false); };
-                a.src = url;
-            });
-
             const searchQuery = encodeURIComponent(name + ' ' + artist);
 
             // 1. 使用 vkeys API 搜索（支持CORS）
@@ -653,7 +625,7 @@ export class MusicData {
             }
 
             // 2. 遍历搜索结果，尝试获取可用的播放URL
-            for (const candidate of searchData.slice(0, 5)) {
+            for (const candidate of searchData.slice(0, 15)) {
                 const songId = candidate.id;
                 if (!songId) continue;
 
@@ -695,7 +667,7 @@ export class MusicData {
                     }
                     
                     // 🔥 新增：快速验毒，如果是30秒试听版，直接抛弃并搜寻下一个！
-                    const isFull = await checkFullSong(url);
+                    const isFull = await this._checkPlayableSongUrl(url);
                     if (!isFull) {
                         console.warn(`🎵 [音乐] 发现30秒试听VIP片段，自动跳过此版本: ${name} (ID: ${songId})`);
                         continue; // 直接进入下一轮循环，尝试下一个 candidate
@@ -744,6 +716,9 @@ export class MusicData {
                 metingUrl = metingUrl.replace('http://', 'https://');
             }
 
+            const isPlayable = await this._checkPlayableSongUrl(metingUrl);
+            if (!isPlayable) return;
+
             song.url = metingUrl;
             song.urlSource = 'meting';
             song.pic = metingData[0].pic || song.pic;
@@ -752,6 +727,40 @@ export class MusicData {
         } catch (e) {
             console.warn(`🎵 [音乐] 切换同源歌词音频失败: ${song.name}`, e);
         }
+    }
+
+    _checkPlayableSongUrl(url) {
+        return new Promise(resolve => {
+            const safeUrl = String(url || '').trim();
+            if (!safeUrl) {
+                resolve(false);
+                return;
+            }
+            const audio = new Audio();
+            audio.preload = 'metadata';
+            audio.muted = true;
+            const cleanup = () => {
+                clearTimeout(timer);
+                audio.onloadedmetadata = null;
+                audio.onerror = null;
+                audio.removeAttribute('src');
+                audio.load();
+            };
+            const timer = setTimeout(() => {
+                cleanup();
+                resolve(true);
+            }, 2500);
+            audio.onloadedmetadata = () => {
+                const duration = Number(audio.duration);
+                cleanup();
+                resolve(!Number.isFinite(duration) || duration > 45);
+            };
+            audio.onerror = () => {
+                cleanup();
+                resolve(false);
+            };
+            audio.src = safeUrl;
+        });
     }
 
     async _ensureLyrics(song, listType = this.activeListType, generation = this._playGeneration) {

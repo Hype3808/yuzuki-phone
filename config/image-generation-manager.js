@@ -411,6 +411,7 @@ export class ImageGenerationManager {
             openaiSite,
             openaiCustomUrl: String(overrides.openaiCustomUrl || this._get('phone-image-openai-url', '')).trim(),
             openaiPublicUrl: String(overrides.openaiPublicUrl || this._get('phone-image-openai-public-url', '')).trim(),
+            openaiPublicRelayUrl: String(overrides.openaiPublicRelayUrl || this._get('phone-image-openai-public-relay-url', '')).trim(),
             openaiQuality: String(overrides.openaiQuality || this._get('phone-image-openai-quality', 'auto')).trim() || 'auto',
             sdUrl: this._normalizeSdBaseUrl(overrides.sdUrl || this._get('phone-image-sd-url', 'http://127.0.0.1:7860')),
             sdAuth: String(overrides.sdAuth || this._get('phone-image-sd-auth', '')).trim(),
@@ -1440,6 +1441,27 @@ export class ImageGenerationManager {
         return generationEndpoint.replace(/\/(?:images\/generations|images\/edits|images\/variations)$/i, '/models');
     }
 
+    _resolveOpenAIRelayEndpoint(config, endpoint) {
+        if (String(config.openaiSite || '').trim() !== 'public') return endpoint;
+        const relayBaseUrl = this._normalizeApiBaseUrl(config.openaiPublicRelayUrl);
+        if (!relayBaseUrl) return endpoint;
+        const relayPath = /\/models$/i.test(endpoint) ? '/v1/models' : '/v1/images/generations';
+        if (/\/v1\/models$/i.test(relayBaseUrl) || /\/v1\/images\/generations$/i.test(relayBaseUrl)) return relayBaseUrl;
+        if (/\/v1$/i.test(relayBaseUrl)) return `${relayBaseUrl}${relayPath.replace(/^\/v1/i, '')}`;
+        return `${relayBaseUrl}${relayPath}`;
+    }
+
+    _buildOpenAIHeaders(config, extra = {}) {
+        const headers = {
+            ...extra,
+            Authorization: `Bearer ${config.apiKey}`
+        };
+        if (String(config.openaiSite || '').trim() === 'public' && String(config.openaiPublicRelayUrl || '').trim()) {
+            headers['X-OpenAI-Image-Relay-Target'] = this._normalizeApiBaseUrl(config.openaiPublicUrl);
+        }
+        return headers;
+    }
+
     _normalizeOpenAIModelItems(payload) {
         const source = Array.isArray(payload)
             ? payload
@@ -1484,13 +1506,13 @@ export class ImageGenerationManager {
             provider: 'openai'
         };
         if (!String(config.apiKey || '').trim()) throw new Error('请先填写 GPT 生图 API Key');
-        const endpoint = this._resolveOpenAIModelsEndpoint(config);
+        const targetEndpoint = this._resolveOpenAIModelsEndpoint(config);
+        const endpoint = this._resolveOpenAIRelayEndpoint(config, targetEndpoint);
         const response = await fetch(endpoint, {
             method: 'GET',
-            headers: {
-                Authorization: `Bearer ${config.apiKey}`,
+            headers: this._buildOpenAIHeaders(config, {
                 Accept: 'application/json'
-            },
+            }),
             signal: overrides.signal
         });
         const text = await response.text();
@@ -1505,7 +1527,8 @@ export class ImageGenerationManager {
             .filter((item) => this._rankOpenAIImageModel(item) < 100)
             .sort((a, b) => this._rankOpenAIImageModel(a) - this._rankOpenAIImageModel(b) || a.id.localeCompare(b.id));
         return {
-            endpoint,
+            endpoint: targetEndpoint,
+            relayEndpoint: endpoint !== targetEndpoint ? endpoint : '',
             models: imageModels.length ? imageModels : allModels,
             allModels,
             filtered: imageModels.length > 0
@@ -1837,7 +1860,8 @@ export class ImageGenerationManager {
         const height = Number(options.height || config.height);
         const model = String(config.model || 'gpt-image-2').trim() || 'gpt-image-2';
         const requestedSize = this._getOpenAIImageSize(model, width, height);
-        const endpoint = this._resolveOpenAIEndpoint(config);
+        const targetEndpoint = this._resolveOpenAIEndpoint(config);
+        const endpoint = this._resolveOpenAIRelayEndpoint(config, targetEndpoint);
         const payload = {
             model,
             prompt: this._joinPrompt([config.fixedPrompt, prompt, config.fixedPromptEnd], '\n'),
@@ -1857,10 +1881,9 @@ export class ImageGenerationManager {
         try {
             response = await fetch(endpoint, {
                 method: 'POST',
-                headers: {
-                    Authorization: `Bearer ${config.apiKey}`,
+                headers: this._buildOpenAIHeaders(config, {
                     'Content-Type': 'application/json'
-                },
+                }),
                 body: JSON.stringify(payload),
                 signal: options.signal
             });
@@ -1870,7 +1893,10 @@ export class ImageGenerationManager {
                 const siteLabel = config.openaiSite === 'public'
                     ? 'GPT 公益站'
                     : (config.openaiSite === 'custom' ? 'GPT 自定义站点' : 'OpenAI 官方站点');
-                throw new Error(`${siteLabel} 请求被浏览器拦截或网络失败。若控制台提示 CORS，说明该站点没有给当前页面返回 Access-Control-Allow-Origin；测试短提示词成功但微信生图失败时，通常是实际提示词触发了站点错误响应，而错误响应未带 CORS。请让公益站开启 CORS，或换支持浏览器跨域的中转站。`);
+                const relayHint = config.openaiSite === 'public'
+                    ? '手机端可在 Termux 运行 workers/openai-image-local-relay.js，并把 GPT 公益站 Base URL 填为 http://127.0.0.1:8787。'
+                    : '请让站点开启 CORS，或换支持浏览器跨域的中转站。';
+                throw new Error(`${siteLabel} 请求被浏览器拦截或网络失败。若控制台提示 CORS，说明该站点没有给当前页面返回 Access-Control-Allow-Origin。${relayHint}`);
             }
             throw err;
         }

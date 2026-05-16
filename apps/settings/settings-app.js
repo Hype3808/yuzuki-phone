@@ -2032,6 +2032,7 @@ export class SettingsApp {
         const openaiSite = String(this.storage.get('phone-image-openai-site') || 'official').trim() || 'official';
         const openaiUrl = String(this.storage.get('phone-image-openai-url') || '').trim();
         const openaiPublicUrl = String(this.storage.get('phone-image-openai-public-url') || '').trim();
+        const openaiPublicRelayUrl = String(this.storage.get('phone-image-openai-public-relay-url') || '').trim();
         const openaiQuality = String(this.storage.get('phone-image-openai-quality') || 'auto').trim() || 'auto';
         const sampler = String(this.storage.get('phone-image-novelai-sampler') || 'k_euler').trim() || 'k_euler';
         const schedule = String(this.storage.get('phone-image-novelai-schedule') || 'native').trim() || 'native';
@@ -2287,11 +2288,16 @@ export class SettingsApp {
                 </div>
 
                 <div class="setting-item" id="phone-image-openai-public-url-row" style="${openaiSite === 'public' ? '' : 'display: none;'}">
-                    <div class="setting-label">公益站点 Base URL</div>
-                    <div class="setting-desc">填写 New API 或 OpenAI 兼容中转站地址；可填 Base URL，也可填完整 /v1/images/generations。</div>
+                    <div class="setting-label">公益站点真实 Base URL</div>
+                    <div class="setting-desc">填写真实 GPT 公益站地址；手机端如需中转，也仍然填真实地址到这里。</div>
                     <input type="text" id="phone-image-openai-public-url"
                            value="${this._escapeHtml(openaiPublicUrl)}"
-                           placeholder="例如：https://your-new-api.example.com"
+                           placeholder="例如：https://imagegen.mukyu.me"
+                           style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                    <div class="setting-desc" style="margin-top: 8px;">手机本地中转 URL 可选。Termux 运行 workers/openai-image-local-relay.js 后填 http://127.0.0.1:8787；留空则直连真实公益站。</div>
+                    <input type="text" id="phone-image-openai-public-relay-url"
+                           value="${this._escapeHtml(openaiPublicRelayUrl)}"
+                           placeholder="例如：http://127.0.0.1:8787"
                            style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
                 </div>
 
@@ -3668,6 +3674,7 @@ export class SettingsApp {
         const imageOpenaiKeyLabel = document.getElementById('phone-image-openai-key-label');
         const imageOpenaiPublicUrlRow = document.getElementById('phone-image-openai-public-url-row');
         const imageOpenaiUrlRow = document.getElementById('phone-image-openai-url-row');
+        const imageOpenaiPublicRelayUrl = document.getElementById('phone-image-openai-public-relay-url');
         const imageOpenaiModel = document.getElementById('phone-image-openai-model');
         const imageOpenaiModelPreset = document.getElementById('phone-image-openai-model-preset');
         const imageOpenaiQuality = document.getElementById('phone-image-openai-quality');
@@ -3901,12 +3908,14 @@ export class SettingsApp {
                 await this.storage.set('phone-image-enabled', true);
                 const site = String(document.getElementById('phone-image-openai-site')?.value || 'official').trim() || 'official';
                 const publicUrl = String(document.getElementById('phone-image-openai-public-url')?.value || '').trim();
+                const publicRelayUrl = String(document.getElementById('phone-image-openai-public-relay-url')?.value || '').trim();
                 const customUrl = String(document.getElementById('phone-image-openai-url')?.value || '').trim();
                 if (site === 'public' && !publicUrl) throw new Error('请先填写 GPT 公益站点 Base URL');
                 if (site === 'custom' && !customUrl) throw new Error('请先填写 GPT 自定义 Base URL');
                 await this.storage.set('phone-image-openai-site', site);
                 await this.storage.set(site === 'public' ? 'phone-image-openai-public-key' : 'phone-image-openai-key', String(document.getElementById('phone-image-openai-key')?.value || '').trim());
                 await this.storage.set('phone-image-openai-public-url', publicUrl);
+                await this.storage.set('phone-image-openai-public-relay-url', publicRelayUrl);
                 await this.storage.set('phone-image-openai-url', customUrl);
                 await this.storage.set('phone-image-openai-model', String(document.getElementById('phone-image-openai-model')?.value || '').trim() || 'gpt-image-2');
                 await this.storage.set('phone-image-openai-quality', String(document.getElementById('phone-image-openai-quality')?.value || 'auto').trim() || 'auto');
@@ -3983,6 +3992,10 @@ export class SettingsApp {
             await this.storage.set('phone-image-openai-public-url', String(e.target.value || '').trim());
         });
 
+        imageOpenaiPublicRelayUrl?.addEventListener('change', async (e) => {
+            await this.storage.set('phone-image-openai-public-relay-url', String(e.target.value || '').trim());
+        });
+
         document.getElementById('phone-image-openai-url')?.addEventListener('change', async (e) => {
             await this.storage.set('phone-image-openai-url', String(e.target.value || '').trim());
         });
@@ -4015,6 +4028,7 @@ export class SettingsApp {
                 if (!imageManager?.fetchOpenAIModels) throw new Error('生图管理器未初始化或版本过旧');
                 const site = String(document.getElementById('phone-image-openai-site')?.value || 'official').trim() || 'official';
                 const publicUrl = String(document.getElementById('phone-image-openai-public-url')?.value || '').trim();
+                const publicRelayUrl = String(document.getElementById('phone-image-openai-public-relay-url')?.value || '').trim();
                 const customUrl = String(document.getElementById('phone-image-openai-url')?.value || '').trim();
                 const apiKey = String(document.getElementById('phone-image-openai-key')?.value || '').trim();
                 if (site === 'public' && !publicUrl) throw new Error('请先填写 GPT 公益站点 Base URL');
@@ -4024,6 +4038,7 @@ export class SettingsApp {
                 await this.storage.set('phone-image-openai-site', site);
                 await this.storage.set(site === 'public' ? 'phone-image-openai-public-key' : 'phone-image-openai-key', apiKey);
                 await this.storage.set('phone-image-openai-public-url', publicUrl);
+                await this.storage.set('phone-image-openai-public-relay-url', publicRelayUrl);
                 await this.storage.set('phone-image-openai-url', customUrl);
 
                 if (btn) {
@@ -4034,6 +4049,7 @@ export class SettingsApp {
                 const data = await imageManager.fetchOpenAIModels({
                     openaiSite: site,
                     openaiPublicUrl: publicUrl,
+                    openaiPublicRelayUrl: publicRelayUrl,
                     openaiCustomUrl: customUrl,
                     apiKey
                 });
