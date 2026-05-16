@@ -2008,8 +2008,11 @@ export class SettingsApp {
         const enabled = this.storage.get('phone-image-enabled') === true || this.storage.get('phone-image-enabled') === 'true';
         const novelaiKey = String(this.storage.get('phone-image-novelai-key') || '').trim();
         const novelaiPublicKey = String(this.storage.get('phone-image-novelai-public-key') || '').trim();
+        const openaiKey = String(this.storage.get('phone-image-openai-key') || '').trim();
+        const openaiPublicKey = String(this.storage.get('phone-image-openai-public-key') || '').trim();
         const siliconflowKey = String(this.storage.get('phone-image-siliconflow-key') || this.storage.get('siliconflow_api_key') || '').trim();
         const novelaiModel = String(this.storage.get('phone-image-novelai-model') || 'nai-diffusion-4-5-full').trim();
+        const openaiModel = String(this.storage.get('phone-image-openai-model') || 'gpt-image-2').trim();
         const siliconflowModel = String(this.storage.get('phone-image-siliconflow-model') || this.storage.get('image_generation_model') || 'Kwai-Kolors/Kolors').trim();
         const sdUrl = String(this.storage.get('phone-image-sd-url') || 'http://127.0.0.1:7860').trim();
         const sdModel = String(this.storage.get('phone-image-sd-model') || '').trim();
@@ -2026,6 +2029,10 @@ export class SettingsApp {
         const novelaiUrl = String(this.storage.get('phone-image-novelai-url') || '').trim();
         const novelaiPublicUrl = String(this.storage.get('phone-image-novelai-public-url') || '').trim();
         const novelaiQueueUrl = String(this.storage.get('phone-image-novelai-queue-url') || '').trim();
+        const openaiSite = String(this.storage.get('phone-image-openai-site') || 'official').trim() || 'official';
+        const openaiUrl = String(this.storage.get('phone-image-openai-url') || '').trim();
+        const openaiPublicUrl = String(this.storage.get('phone-image-openai-public-url') || '').trim();
+        const openaiQuality = String(this.storage.get('phone-image-openai-quality') || 'auto').trim() || 'auto';
         const sampler = String(this.storage.get('phone-image-novelai-sampler') || 'k_euler').trim() || 'k_euler';
         const schedule = String(this.storage.get('phone-image-novelai-schedule') || 'native').trim() || 'native';
         const novelaiSamplers = [
@@ -2112,6 +2119,7 @@ export class SettingsApp {
             return `<option value="${safeId}" ${preset.id === activeImagePromptPresetId ? 'selected' : ''}>${safeName}</option>`;
         }).join('');
         const novelaiDisplay = provider === 'novelai' ? '' : 'display: none;';
+        const openaiDisplay = provider === 'openai' ? '' : 'display: none;';
         const siliconflowDisplay = provider === 'siliconflow' ? '' : 'display: none;';
         const sdDisplay = provider === 'sd' ? '' : 'display: none;';
 
@@ -2135,6 +2143,7 @@ export class SettingsApp {
                         <span style="font-size: 14px; color: #000;">生图供应商</span>
                         <select id="phone-image-provider" style="width: 150px; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa;">
                             <option value="novelai" ${provider === 'novelai' ? 'selected' : ''}>NovelAI / NAI</option>
+                            <option value="openai" ${provider === 'openai' ? 'selected' : ''}>GPT / OpenAI兼容</option>
                             <option value="sd" ${provider === 'sd' ? 'selected' : ''}>本地 SD</option>
                             <option value="siliconflow" ${provider === 'siliconflow' ? 'selected' : ''}>硅基流动</option>
                         </select>
@@ -2242,6 +2251,89 @@ export class SettingsApp {
                             ${novelaiSchedules.map(([value, label]) => `<option value="${value}" ${scheduleValue === value ? 'selected' : ''}>${label}</option>`).join('')}
                         </select>
                     </div>
+                </div>
+            </div>
+
+            <div class="setting-section" id="phone-image-openai-section" style="${openaiDisplay}">
+                <div class="setting-section-title">🤖 GPT / OpenAI兼容</div>
+
+                <div class="setting-item" style="display: flex; align-items: center; justify-content: space-between;">
+                    <span id="phone-image-openai-key-label" style="font-size: 14px; color: #000;">${openaiSite === 'public' ? '公益站 Key' : 'API Key'}</span>
+                    <div style="display: flex; align-items: center; width: 150px; height: 30px; border: 1px solid #e0e0e0; border-radius: 8px; background: #fafafa; overflow: hidden;">
+                        <input type="password" id="phone-image-openai-key"
+                               value="${this._escapeHtml(openaiSite === 'public' ? openaiPublicKey : openaiKey)}"
+                               placeholder="${openaiSite === 'public' ? '公益站 API Key' : 'OpenAI API Key'}"
+                               style="flex: 1; min-width: 0; height: 100%; padding: 0 4px 0 8px; border: none; outline: none; font-size: 12px; background: transparent;">
+                        <button type="button" class="phone-password-toggle" data-toggle-password-target="phone-image-openai-key" aria-label="显示或隐藏 API Key" style="width: 30px; height: 100%; border: none; background: transparent; color: #777; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;">
+                            <i class="fa-solid fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="setting-item">
+                    <button id="phone-image-test-openai" class="phone-image-test-btn" style="width: 100%; height: 34px; border: none; border-radius: 8px; background: #111827 !important; color: #fff !important; font-size: 13px; font-weight: 600; cursor: pointer;">
+                        测试 GPT 生图连接
+                    </button>
+                    <div class="setting-desc" id="phone-image-test-openai-result" style="margin-top: 6px;">使用 OpenAI 兼容 /v1/images/generations 生成一张测试图。</div>
+                </div>
+
+                <div class="setting-item" style="display: flex; align-items: center; justify-content: space-between;">
+                    <span style="font-size: 14px; color: #000;">接口站点</span>
+                    <select id="phone-image-openai-site" style="width: 150px; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa;">
+                        <option value="official" ${openaiSite === 'official' ? 'selected' : ''}>官方站点</option>
+                        <option value="public" ${openaiSite === 'public' ? 'selected' : ''}>公益站点</option>
+                        <option value="custom" ${openaiSite === 'custom' ? 'selected' : ''}>自定义地址</option>
+                    </select>
+                </div>
+
+                <div class="setting-item" id="phone-image-openai-public-url-row" style="${openaiSite === 'public' ? '' : 'display: none;'}">
+                    <div class="setting-label">公益站点 Base URL</div>
+                    <div class="setting-desc">填写 New API 或 OpenAI 兼容中转站地址；可填 Base URL，也可填完整 /v1/images/generations。</div>
+                    <input type="text" id="phone-image-openai-public-url"
+                           value="${this._escapeHtml(openaiPublicUrl)}"
+                           placeholder="例如：https://your-new-api.example.com"
+                           style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                </div>
+
+                <div class="setting-item" id="phone-image-openai-url-row" style="${openaiSite === 'custom' ? '' : 'display: none;'}">
+                    <div class="setting-label">自定义 Base URL</div>
+                    <div class="setting-desc">可填 Base URL，也可填完整 /v1/images/generations。</div>
+                    <input type="text" id="phone-image-openai-url"
+                           value="${this._escapeHtml(openaiUrl)}"
+                           placeholder="例如：https://api.openai.com"
+                           style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                </div>
+
+                <div class="setting-item">
+                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                        <span style="font-size: 14px; color: #000;">模型</span>
+                        <select id="phone-image-openai-model-preset" style="width: 150px; height: 30px; padding: 0 6px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 11px; background: #fafafa;">
+                            <option value="">-- 快速选择 --</option>
+                            <option value="gpt-image-2">gpt-image-2</option>
+                            <option value="gpt-image-1.5">gpt-image-1.5</option>
+                            <option value="gpt-image-1">gpt-image-1</option>
+                            <option value="gpt-image-1-mini">gpt-image-1-mini</option>
+                            <option value="dall-e-3">dall-e-3</option>
+                        </select>
+                    </div>
+                    <input type="text" id="phone-image-openai-model"
+                           value="${this._escapeHtml(openaiModel)}"
+                           placeholder="gpt-image-2"
+                           style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                    <button type="button" id="phone-image-openai-fetch-models" style="width: 100%; height: 30px; margin-top: 6px; border: none; border-radius: 8px; background: #2563eb !important; color: #fff !important; font-size: 12px; font-weight: 600; cursor: pointer;">
+                        拉取 GPT 生图模型
+                    </button>
+                    <div class="setting-desc" id="phone-image-openai-models-result" style="margin-top: 6px;">从当前站点的 /v1/models 拉取可用模型。</div>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-label">质量</div>
+                    <select id="phone-image-openai-quality" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                        <option value="auto" ${openaiQuality === 'auto' ? 'selected' : ''}>auto</option>
+                        <option value="low" ${openaiQuality === 'low' ? 'selected' : ''}>low</option>
+                        <option value="medium" ${openaiQuality === 'medium' ? 'selected' : ''}>medium</option>
+                        <option value="high" ${openaiQuality === 'high' ? 'selected' : ''}>high</option>
+                    </select>
                 </div>
             </div>
 
@@ -2464,7 +2556,7 @@ export class SettingsApp {
 
                 <div class="setting-item">
                     <div class="setting-label">提示词设定</div>
-                    <div class="setting-desc">先选择 App 大类，再为该 App 保存多套前置、后置、负面提示词。</div>
+                    <div class="setting-desc">先选择 App 大类，再为该 App 保存多套前置、后置、负面提示词；日记照片生图目前复用微信这一组。</div>
                     <select id="phone-image-prompt-app-select" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
                         ${imagePromptAppOptions}
                     </select>
@@ -2485,19 +2577,19 @@ export class SettingsApp {
 
                 <div class="setting-item">
                     <div class="setting-label">固定前置提示词</div>
-                    <div class="setting-desc">只对当前选择的 App 生效。画师串可放这里。</div>
+                    <div class="setting-desc">只对当前选择的 App 生效；日记跟随微信。画师串可放这里。</div>
                     <textarea id="phone-image-fixed-prompt" style="width: 100%; min-height: 58px; padding: 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; resize: vertical; margin-top: 6px;">${fixedPrompt}</textarea>
                 </div>
 
                 <div class="setting-item">
                     <div class="setting-label">固定后置提示词</div>
-                    <div class="setting-desc">只对当前选择的 App 生效，会拼在 AI 本轮提示词后面。</div>
+                    <div class="setting-desc">只对当前选择的 App 生效；日记跟随微信，会拼在 AI 本轮提示词后面。</div>
                     <textarea id="phone-image-fixed-prompt-end" style="width: 100%; min-height: 58px; padding: 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; resize: vertical; margin-top: 6px;">${fixedPromptEnd}</textarea>
                 </div>
 
                 <div class="setting-item">
                     <div class="setting-label">负面提示词</div>
-                    <div class="setting-desc">只对当前选择的 App 生效，例如 low quality、bad hands、text、watermark。</div>
+                    <div class="setting-desc">只对当前选择的 App 生效；日记跟随微信，例如 low quality、bad hands、text、watermark。</div>
                     <textarea id="phone-image-negative-prompt" style="width: 100%; min-height: 70px; padding: 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; resize: vertical; margin-top: 6px;">${negativePrompt}</textarea>
                 </div>
             </div>
@@ -3560,6 +3652,7 @@ export class SettingsApp {
         const imageEnabled = document.getElementById('phone-image-enabled');
         const imageProvider = document.getElementById('phone-image-provider');
         const imageNovelaiSection = document.getElementById('phone-image-novelai-section');
+        const imageOpenaiSection = document.getElementById('phone-image-openai-section');
         const imageSiliconflowSection = document.getElementById('phone-image-siliconflow-section');
         const imageSdSection = document.getElementById('phone-image-sd-section');
         const imageNovelaiSite = document.getElementById('phone-image-novelai-site');
@@ -3570,6 +3663,14 @@ export class SettingsApp {
         const imageNovelaiUrlRow = document.getElementById('phone-image-novelai-url-row');
         const imageNovelaiModel = document.getElementById('phone-image-novelai-model');
         const imageNovelaiModelPreset = document.getElementById('phone-image-novelai-model-preset');
+        const imageOpenaiSite = document.getElementById('phone-image-openai-site');
+        const imageOpenaiKey = document.getElementById('phone-image-openai-key');
+        const imageOpenaiKeyLabel = document.getElementById('phone-image-openai-key-label');
+        const imageOpenaiPublicUrlRow = document.getElementById('phone-image-openai-public-url-row');
+        const imageOpenaiUrlRow = document.getElementById('phone-image-openai-url-row');
+        const imageOpenaiModel = document.getElementById('phone-image-openai-model');
+        const imageOpenaiModelPreset = document.getElementById('phone-image-openai-model-preset');
+        const imageOpenaiQuality = document.getElementById('phone-image-openai-quality');
         const imagePromptAppSelect = document.getElementById('phone-image-prompt-app-select');
         const imagePromptPresetSelect = document.getElementById('phone-image-prompt-preset-select');
         const imagePromptPresetName = document.getElementById('phone-image-prompt-preset-name');
@@ -3582,6 +3683,7 @@ export class SettingsApp {
         const setImageProviderVisibility = () => {
             const provider = String(imageProvider?.value || 'novelai').trim() || 'novelai';
             if (imageNovelaiSection) imageNovelaiSection.style.display = provider === 'novelai' ? '' : 'none';
+            if (imageOpenaiSection) imageOpenaiSection.style.display = provider === 'openai' ? '' : 'none';
             if (imageSiliconflowSection) imageSiliconflowSection.style.display = provider === 'siliconflow' ? '' : 'none';
             if (imageSdSection) imageSdSection.style.display = provider === 'sd' ? '' : 'none';
         };
@@ -3597,6 +3699,18 @@ export class SettingsApp {
                 imageNovelaiKey.value = String(this.storage.get(site === 'public' ? 'phone-image-novelai-public-key' : 'phone-image-novelai-key') || '').trim();
             }
             currentNovelaiSite = site;
+        };
+        let currentOpenaiSite = String(imageOpenaiSite?.value || this.storage.get('phone-image-openai-site') || 'official').trim() || 'official';
+        const syncOpenaiSiteFields = () => {
+            const site = String(imageOpenaiSite?.value || 'official').trim() || 'official';
+            if (imageOpenaiPublicUrlRow) imageOpenaiPublicUrlRow.style.display = site === 'public' ? '' : 'none';
+            if (imageOpenaiUrlRow) imageOpenaiUrlRow.style.display = site === 'custom' ? '' : 'none';
+            if (imageOpenaiKeyLabel) imageOpenaiKeyLabel.textContent = site === 'public' ? '公益站 Key' : 'API Key';
+            if (imageOpenaiKey) {
+                imageOpenaiKey.placeholder = site === 'public' ? '公益站 API Key' : 'OpenAI API Key';
+                imageOpenaiKey.value = String(this.storage.get(site === 'public' ? 'phone-image-openai-public-key' : 'phone-image-openai-key') || '').trim();
+            }
+            currentOpenaiSite = site;
         };
         const clampNumberInput = (input, fallback, min, max, integer = false) => {
             if (!input) return fallback;
@@ -3686,6 +3800,11 @@ export class SettingsApp {
             await this.storage.set(site === 'public' ? 'phone-image-novelai-public-key' : 'phone-image-novelai-key', String(e.target.value || '').trim());
         });
 
+        imageOpenaiKey?.addEventListener('change', async (e) => {
+            const site = String(imageOpenaiSite?.value || currentOpenaiSite || 'official').trim() || 'official';
+            await this.storage.set(site === 'public' ? 'phone-image-openai-public-key' : 'phone-image-openai-key', String(e.target.value || '').trim());
+        });
+
         document.querySelectorAll('[data-toggle-password-target]').forEach((button) => {
             button.addEventListener('click', () => {
                 const targetId = String(button.dataset.togglePasswordTarget || '').trim();
@@ -3767,6 +3886,69 @@ export class SettingsApp {
             }
         });
 
+        document.getElementById('phone-image-test-openai')?.addEventListener('click', async (e) => {
+            const btn = e.currentTarget;
+            const resultEl = document.getElementById('phone-image-test-openai-result');
+            const setResult = (text, color = '#666') => {
+                if (resultEl) {
+                    resultEl.textContent = text;
+                    resultEl.style.color = color;
+                }
+            };
+            const oldText = btn?.textContent || '测试 GPT 生图连接';
+            try {
+                await this.storage.set('phone-image-provider', 'openai');
+                await this.storage.set('phone-image-enabled', true);
+                const site = String(document.getElementById('phone-image-openai-site')?.value || 'official').trim() || 'official';
+                const publicUrl = String(document.getElementById('phone-image-openai-public-url')?.value || '').trim();
+                const customUrl = String(document.getElementById('phone-image-openai-url')?.value || '').trim();
+                if (site === 'public' && !publicUrl) throw new Error('请先填写 GPT 公益站点 Base URL');
+                if (site === 'custom' && !customUrl) throw new Error('请先填写 GPT 自定义 Base URL');
+                await this.storage.set('phone-image-openai-site', site);
+                await this.storage.set(site === 'public' ? 'phone-image-openai-public-key' : 'phone-image-openai-key', String(document.getElementById('phone-image-openai-key')?.value || '').trim());
+                await this.storage.set('phone-image-openai-public-url', publicUrl);
+                await this.storage.set('phone-image-openai-url', customUrl);
+                await this.storage.set('phone-image-openai-model', String(document.getElementById('phone-image-openai-model')?.value || '').trim() || 'gpt-image-2');
+                await this.storage.set('phone-image-openai-quality', String(document.getElementById('phone-image-openai-quality')?.value || 'auto').trim() || 'auto');
+
+                const imageManager = window.VirtualPhone?.imageGenerationManager;
+                if (!imageManager?.generate) throw new Error('生图管理器未初始化');
+                if (btn) {
+                    btn.disabled = true;
+                    btn.textContent = '测试中...';
+                }
+                setResult(site === 'official' ? '正在请求 OpenAI 官方站点...' : '正在请求 GPT 兼容站点...', '#111827');
+                const result = await imageManager.generate({
+                    app: 'wechat',
+                    provider: 'openai',
+                    prompt: 'anime illustration, cute smartphone chat selfie sticker, soft light, clean background',
+                    width: 1024,
+                    height: 1024,
+                    fixedPrompt: String(document.getElementById('phone-image-fixed-prompt')?.value || '').trim(),
+                    fixedPromptEnd: String(document.getElementById('phone-image-fixed-prompt-end')?.value || '').trim(),
+                    negativePrompt: String(document.getElementById('phone-image-negative-prompt')?.value || '').trim(),
+                    ignoreEnabled: true
+                });
+                if (!result?.imageUrl && !result?.imageData) throw new Error('GPT 生图未返回图片');
+                const detail = [
+                    result.width && result.height ? `${result.width}x${result.height}` : '',
+                    result.quality ? `quality ${result.quality}` : '',
+                    result.model || ''
+                ].filter(Boolean).join(' · ');
+                setResult(`GPT 生图连接成功，已收到图片数据${detail ? `：${detail}` : '。'}`, '#0f9f6e');
+                this.phoneShell?.showNotification?.('生图测试', detail ? `GPT 连接成功 ${detail}` : 'GPT 连接成功', '✓');
+            } catch (err) {
+                const message = err?.message || String(err || '测试失败');
+                setResult(`测试失败：${message}`, '#d33');
+                this.phoneShell?.showNotification?.('GPT 生图测试失败', message, '⚠️');
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = oldText;
+                }
+            }
+        });
+
         imageNovelaiSite?.addEventListener('change', async (e) => {
             if (imageNovelaiKey) {
                 await this.storage.set(currentNovelaiSite === 'public' ? 'phone-image-novelai-public-key' : 'phone-image-novelai-key', String(imageNovelaiKey.value || '').trim());
@@ -3774,6 +3956,15 @@ export class SettingsApp {
             const site = String(e.target.value || 'official').trim() || 'official';
             await this.storage.set('phone-image-novelai-site', site);
             syncNovelaiSiteFields();
+        });
+
+        imageOpenaiSite?.addEventListener('change', async (e) => {
+            if (imageOpenaiKey) {
+                await this.storage.set(currentOpenaiSite === 'public' ? 'phone-image-openai-public-key' : 'phone-image-openai-key', String(imageOpenaiKey.value || '').trim());
+            }
+            const site = String(e.target.value || 'official').trim() || 'official';
+            await this.storage.set('phone-image-openai-site', site);
+            syncOpenaiSiteFields();
         });
 
         document.getElementById('phone-image-novelai-public-url')?.addEventListener('change', async (e) => {
@@ -3786,6 +3977,106 @@ export class SettingsApp {
 
         document.getElementById('phone-image-novelai-queue-url')?.addEventListener('change', async (e) => {
             await this.storage.set('phone-image-novelai-queue-url', String(e.target.value || '').trim());
+        });
+
+        document.getElementById('phone-image-openai-public-url')?.addEventListener('change', async (e) => {
+            await this.storage.set('phone-image-openai-public-url', String(e.target.value || '').trim());
+        });
+
+        document.getElementById('phone-image-openai-url')?.addEventListener('change', async (e) => {
+            await this.storage.set('phone-image-openai-url', String(e.target.value || '').trim());
+        });
+
+        imageOpenaiModelPreset?.addEventListener('change', async (e) => {
+            const model = String(e.target.value || '').trim();
+            if (!model || !imageOpenaiModel) return;
+            imageOpenaiModel.value = model;
+            await this.storage.set('phone-image-openai-model', model);
+        });
+
+        imageOpenaiModel?.addEventListener('change', async (e) => {
+            const model = String(e.target.value || '').trim() || 'gpt-image-2';
+            e.target.value = model;
+            await this.storage.set('phone-image-openai-model', model);
+        });
+
+        document.getElementById('phone-image-openai-fetch-models')?.addEventListener('click', async (e) => {
+            const btn = e.currentTarget;
+            const resultEl = document.getElementById('phone-image-openai-models-result');
+            const setResult = (text, color = '#666') => {
+                if (resultEl) {
+                    resultEl.textContent = text;
+                    resultEl.style.color = color;
+                }
+            };
+            const oldText = btn?.textContent || '拉取 GPT 生图模型';
+            try {
+                const imageManager = window.VirtualPhone?.imageGenerationManager;
+                if (!imageManager?.fetchOpenAIModels) throw new Error('生图管理器未初始化或版本过旧');
+                const site = String(document.getElementById('phone-image-openai-site')?.value || 'official').trim() || 'official';
+                const publicUrl = String(document.getElementById('phone-image-openai-public-url')?.value || '').trim();
+                const customUrl = String(document.getElementById('phone-image-openai-url')?.value || '').trim();
+                const apiKey = String(document.getElementById('phone-image-openai-key')?.value || '').trim();
+                if (site === 'public' && !publicUrl) throw new Error('请先填写 GPT 公益站点 Base URL');
+                if (site === 'custom' && !customUrl) throw new Error('请先填写 GPT 自定义 Base URL');
+                if (!apiKey) throw new Error('请先填写 GPT 生图 API Key');
+
+                await this.storage.set('phone-image-openai-site', site);
+                await this.storage.set(site === 'public' ? 'phone-image-openai-public-key' : 'phone-image-openai-key', apiKey);
+                await this.storage.set('phone-image-openai-public-url', publicUrl);
+                await this.storage.set('phone-image-openai-url', customUrl);
+
+                if (btn) {
+                    btn.disabled = true;
+                    btn.textContent = '拉取中...';
+                }
+                setResult('正在请求 /v1/models...', '#2563eb');
+                const data = await imageManager.fetchOpenAIModels({
+                    openaiSite: site,
+                    openaiPublicUrl: publicUrl,
+                    openaiCustomUrl: customUrl,
+                    apiKey
+                });
+                const models = Array.isArray(data?.models) ? data.models : [];
+                if (!models.length) throw new Error('模型列表为空');
+
+                if (imageOpenaiModelPreset) {
+                    imageOpenaiModelPreset.innerHTML = '<option value="">-- 快速选择 --</option>';
+                    models.forEach((model) => {
+                        const id = String(model?.id || model || '').trim();
+                        if (!id) return;
+                        const opt = document.createElement('option');
+                        opt.value = id;
+                        opt.textContent = id;
+                        imageOpenaiModelPreset.appendChild(opt);
+                    });
+                }
+                const currentModel = String(imageOpenaiModel?.value || '').trim();
+                const firstModel = String(models[0]?.id || models[0] || '').trim();
+                const modelIds = models.map(item => String(item?.id || item || '').trim()).filter(Boolean);
+                const nextModel = modelIds.includes(currentModel) ? currentModel : firstModel;
+                if (nextModel && imageOpenaiModel) {
+                    imageOpenaiModel.value = nextModel;
+                    await this.storage.set('phone-image-openai-model', nextModel);
+                    if (imageOpenaiModelPreset) imageOpenaiModelPreset.value = nextModel;
+                }
+                setResult(`已拉取 ${models.length} 个${data?.filtered ? '生图' : ''}模型${nextModel ? `，当前选择 ${nextModel}` : '。'}`, '#0f9f6e');
+            } catch (err) {
+                const message = err?.message || String(err || '拉取失败');
+                setResult(`拉取失败：${message}`, '#d33');
+                this.phoneShell?.showNotification?.('GPT 模型拉取失败', message, '⚠️');
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = oldText;
+                }
+            }
+        });
+
+        imageOpenaiQuality?.addEventListener('change', async (e) => {
+            const value = String(e.target.value || 'auto').trim() || 'auto';
+            e.target.value = value;
+            await this.storage.set('phone-image-openai-quality', value);
         });
 
         imageNovelaiModelPreset?.addEventListener('change', async (e) => {

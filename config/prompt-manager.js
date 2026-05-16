@@ -650,8 +650,10 @@ from:林晓雨: 在呢
 - 可以有多人参与同一条朋友圈的互动
 
 图片处理：
-- 如果无法生成真实图片，用[图片描述]格式表示
-- 例如：["[夕阳照片]", "[自拍]", "[美食照片]"]`,
+- 如果需要配图，images 数组只能写 [图片]（English NovelAI tags） 或 [个人图片]（English NovelAI tags）。
+- [图片] 用于风景、食物、宠物、截图、物品、别人或无人物画面；[个人图片] 用于包含发布者本人脸、自拍、全身照、试衣照、生活照等自身形象的画面。
+- 括号内只能写英文逗号分隔 NAI 生图 tag，不要写中文、解释或完整句子；如果联系人编辑信息里有专属生图Tag，生成该联系人 [个人图片] 时必须体现其外观设定。
+- 例如：["[图片]（sunset sky, city street, warm light, phone photo, anime illustration）", "[个人图片]（1girl, selfie, casual outfit, bedroom mirror, phone photo, anime illustration）"]`,
         order: 3
     },
 

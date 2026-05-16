@@ -626,7 +626,8 @@ export class MomentsView {
     _parseMomentImageItem(rawValue) {
         const imageStr = String(rawValue || '').trim();
         let body = imageStr;
-        const taggedMatch = imageStr.match(/^\[(图片|视频)\]\s*([\s\S]*)$/);
+        const taggedMatch = imageStr.match(/^\[(个人图片|图片|视频)\]\s*([\s\S]*)$/);
+        const mediaType = taggedMatch ? String(taggedMatch[1] || '').trim() : '图片';
         if (taggedMatch) body = String(taggedMatch[2] || '').trim();
         const unwrappedBody = body.replace(/^[（(]\s*|\s*[)）]$/g, '').trim();
         const directUrl = this._isDirectMomentImageUrl(body)
@@ -644,7 +645,9 @@ export class MomentsView {
         return {
             realUrl: directUrl,
             isDirectImage: !!directUrl,
-            promptText: promptText.trim()
+            promptText: promptText.trim(),
+            mediaType,
+            usePersonalReference: mediaType === '个人图片'
         };
     }
 
@@ -777,14 +780,21 @@ export class MomentsView {
         }
 
         const previousImageUrl = this._getManagedMomentGeneratedImageUrl(moment, index);
+        const parsedImage = this._parseMomentImageItem(Array.isArray(moment.images) ? moment.images[index] : '');
+        const mediaType = parsedImage.mediaType || '图片';
+        const usePersonalReference = parsedImage.usePersonalReference === true;
         if (clearPreviousImage && Array.isArray(moment.images)) {
-            moment.images[index] = `[图片]${promptText}`;
+            moment.images[index] = `[${mediaType}]${promptText}`;
         }
+        const novelAIReferences = await this._buildMomentPersonalImageReferences(moment, index);
+        const generationPrompt = this._buildMomentImagePromptWithContactTags(moment, index, promptText);
 
         this._setMomentImageState(moment, index, {
             status: 'loading',
             error: '',
             prompt: promptText,
+            mediaType,
+            usePersonalReference,
             generatedImageUrl: '',
             imageProvider: String(imageStorage?.get?.('phone-image-provider') || '').trim()
         });
@@ -794,7 +804,8 @@ export class MomentsView {
         try {
             const result = await imageManager.generate({
                 app: 'wechat',
-                prompt: promptText
+                prompt: generationPrompt,
+                novelAIReferences
             });
             const rawImageUrl = String(result?.imageUrl || result?.imageData || '').trim();
             const imageUrl = await this._persistMomentGeneratedImage(rawImageUrl, {
@@ -806,11 +817,13 @@ export class MomentsView {
 
             const latestMoment = this._getMomentById(momentId) || moment;
             if (!Array.isArray(latestMoment.images)) latestMoment.images = [];
-            latestMoment.images[index] = `[图片]${imageUrl}`;
+            latestMoment.images[index] = `[${mediaType}]${imageUrl}`;
             this._setMomentImageState(latestMoment, index, {
                 status: 'done',
                 error: '',
                 prompt: promptText,
+                mediaType,
+                usePersonalReference,
                 generatedImageUrl: imageUrl,
                 imageModel: String(result?.model || '').trim(),
                 imageProvider: String(result?.provider || '').trim(),
@@ -828,6 +841,8 @@ export class MomentsView {
                 status: 'failed',
                 error: friendlyMessage,
                 prompt: promptText,
+                mediaType,
+                usePersonalReference,
                 generatedImageUrl: '',
                 imageProvider: String(imageStorage?.get?.('phone-image-provider') || '').trim()
             });
@@ -900,6 +915,80 @@ export class MomentsView {
         const nextPath = String(nextUrl || '').trim();
         if (!oldPath || oldPath === nextPath || !/^\/backgrounds\/phone_moment_img_/i.test(oldPath)) return;
         this._cleanupManagedMomentImages([oldPath]);
+    }
+
+    async _imageUrlToMomentReferenceDataUrl(url) {
+        const safeUrl = String(url || '').trim();
+        if (!safeUrl) return '';
+        if (safeUrl.startsWith('data:image/')) return safeUrl;
+        const response = await fetch(safeUrl, {
+            credentials: 'include',
+            cache: 'no-store'
+        });
+        if (!response.ok) {
+            throw new Error(`个人形象参考图读取失败 (${response.status})`);
+        }
+        const blob = await response.blob();
+        const dataUrl = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ''));
+            reader.onerror = () => reject(reader.error || new Error('个人形象参考图读取失败'));
+            reader.readAsDataURL(blob);
+        });
+        if (!dataUrl.startsWith('data:image/')) return '';
+        return dataUrl;
+    }
+
+    _resolveMomentPersonalReferenceContact(moment = null, index = 0) {
+        const parsed = this._parseMomentImageItem(Array.isArray(moment?.images) ? moment.images[index] : '');
+        const state = this._getMomentImageState(moment, index);
+        const usePersonalReference = parsed.usePersonalReference === true
+            || state?.usePersonalReference === true
+            || String(state?.mediaType || '').trim() === '个人图片';
+        if (!usePersonalReference || parsed.mediaType === '视频') return null;
+
+        const senderName = String(moment?.name || '').trim();
+        if (!senderName) return null;
+        const userName = String(this.app?.wechatData?.getUserInfo?.()?.name || '').trim();
+        if (userName && senderName === userName) return null;
+
+        const contacts = this.app?.wechatData?.getContacts?.() || [];
+        return contacts.find(contact => this.app.wechatData._isSameLookupName?.(contact.name, senderName))
+            || contacts.find(contact => String(contact?.name || '').trim() === senderName)
+            || null;
+    }
+
+    _buildMomentImagePromptWithContactTags(moment = null, index = 0, promptText = '') {
+        const basePrompt = String(promptText || '').trim();
+        const contact = this._resolveMomentPersonalReferenceContact(moment, index);
+        const contactTags = String(contact?.naiPromptTags || contact?.imageTags || '')
+            .split(',')
+            .map(tag => tag.trim())
+            .filter(Boolean)
+            .join(', ');
+        if (!contactTags) return basePrompt;
+        if (!basePrompt) return contactTags;
+        return `${contactTags}, ${basePrompt}`;
+    }
+
+    async _buildMomentPersonalImageReferences(moment = null, index = 0) {
+        const contact = this._resolveMomentPersonalReferenceContact(moment, index);
+        if (!contact) return [];
+        const referenceImage = String(contact.naiReferenceImage || contact.referenceImage || '').trim();
+        if (!referenceImage || contact.naiReferenceEnabled === false || contact.naiReferenceEnabled === 'false') return [];
+        try {
+            const image = await this._imageUrlToMomentReferenceDataUrl(referenceImage);
+            if (!image) return [];
+            const rawStrength = Number(contact.naiReferenceStrength ?? 0.7);
+            const strength = Math.max(0, Math.min(1, Number.isFinite(rawStrength) ? rawStrength : 0.7));
+            const rawInfo = Number(contact.naiReferenceInformationExtracted ?? 1);
+            const informationExtracted = Math.max(0, Math.min(1, Number.isFinite(rawInfo) ? rawInfo : 1));
+            return [{ image, strength, informationExtracted }];
+        } catch (err) {
+            console.warn('[Moments NAI] 个人形象参考图读取失败，已跳过:', err);
+            this.app?.phoneShell?.showNotification?.('朋友圈', '个人形象参考图读取失败，本次将不使用参考图', '⚠️');
+            return [];
+        }
     }
 
     // 显示操作弹窗
@@ -1536,7 +1625,18 @@ ${memoryLines.slice(0, 10).join('\n')}
             }
 
             // 构建联系人信息
-            const contactsInfo = contacts.map(c => `${c.name}(${c.relation || '好友'})`).join('、');
+            const contactsInfo = contacts.map(c => {
+                const name = String(c?.name || '').trim();
+                const relation = String(c?.relation || '好友').trim() || '好友';
+                const naiTags = String(c?.naiPromptTags || c?.imageTags || '').trim();
+                const hasReferenceImage = !!String(c?.naiReferenceImage || c?.referenceImage || '').trim()
+                    && c?.naiReferenceEnabled !== false
+                    && c?.naiReferenceEnabled !== 'false';
+                const imageNotes = [];
+                if (naiTags) imageNotes.push(`专属生图Tag: ${naiTags}`);
+                if (hasReferenceImage) imageNotes.push('已设置个人形象参考图');
+                return `${name}(${relation}${imageNotes.length ? `；${imageNotes.join('；')}` : ''})`;
+            }).join('、');
 
             // 构建完整提示词
             const prompt = `【朋友圈生成任务】
@@ -1557,6 +1657,9 @@ ${contactsInfo}
 4. 时间要在当前剧情时间之前（几分钟到几小时前）
 5. 朋友圈内容要反映角色的日常生活、情感状态或与剧情相关的事件
 6. 要参考最近的剧情对话，体现角色当前的状态
+7. 如果朋友圈需要配图，images 数组只能写 [图片]（English NovelAI tags） 或 [个人图片]（English NovelAI tags）。
+8. [个人图片] 只用于画面包含发布者本人脸、自拍、全身照、试衣照、生活照等自身形象；风景、食物、宠物、截图、物品、别人或无人物画面必须用 [图片]。
+9. 括号内只能写英文逗号分隔的 NAI 生图 tag，不要写中文、解释或完整句子；如果联系人信息里有专属生图Tag，生成该联系人 [个人图片] 时必须体现其外观设定。
 
 输出格式（只返回JSON）：
 \`\`\`json
@@ -1566,7 +1669,7 @@ ${contactsInfo}
       "name": "联系人名字",
       "avatar": "表情符号",
       "text": "朋友圈文字内容",
-      "images": ["[图片描述]"],
+      "images": ["[图片]（English NovelAI tags）"],
       "time": "几分钟前/几小时前",
       "likeList": ["点赞的人名"],
       "commentList": [

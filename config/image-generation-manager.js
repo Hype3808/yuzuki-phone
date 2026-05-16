@@ -54,6 +54,15 @@ export class ImageGenerationManager {
         return baseUrl;
     }
 
+    _normalizeApiBaseUrl(value, fallback = '') {
+        let baseUrl = String(value || fallback || '').trim().replace(/\/+$/, '');
+        if (!baseUrl) return '';
+        if (!/^https?:\/\/.+/i.test(baseUrl)) {
+            baseUrl = `https://${baseUrl.replace(/^\/+/, '')}`;
+        }
+        return baseUrl;
+    }
+
     _normalizeSdAuth(value) {
         const auth = String(value || '').trim();
         if (!auth) return '';
@@ -386,15 +395,23 @@ export class ImageGenerationManager {
             : rawSteps;
 
         const site = String(overrides.site || this._get('phone-image-novelai-site', 'official')).trim() || 'official';
-        const apiKey = provider === 'novelai' && site === 'public'
-            ? String(overrides.apiKey || this._get('phone-image-novelai-public-key', '') || '').trim()
-            : String(overrides.apiKey || this._get(`phone-image-${provider}-key`, '') || (provider === 'siliconflow' ? legacySiliconflowKey : '')).trim();
+        const openaiSite = String(overrides.openaiSite || this._get('phone-image-openai-site', 'official')).trim() || 'official';
+        let apiKey = String(overrides.apiKey || this._get(`phone-image-${provider}-key`, '') || (provider === 'siliconflow' ? legacySiliconflowKey : '')).trim();
+        if (provider === 'novelai' && site === 'public') {
+            apiKey = String(overrides.apiKey || this._get('phone-image-novelai-public-key', '') || '').trim();
+        } else if (provider === 'openai' && openaiSite === 'public') {
+            apiKey = String(overrides.apiKey || this._get('phone-image-openai-public-key', '') || '').trim();
+        }
 
         return {
             enabled: overrides.enabled ?? this._getBool('phone-image-enabled', false),
             provider,
             apiKey,
             site,
+            openaiSite,
+            openaiCustomUrl: String(overrides.openaiCustomUrl || this._get('phone-image-openai-url', '')).trim(),
+            openaiPublicUrl: String(overrides.openaiPublicUrl || this._get('phone-image-openai-public-url', '')).trim(),
+            openaiQuality: String(overrides.openaiQuality || this._get('phone-image-openai-quality', 'auto')).trim() || 'auto',
             sdUrl: this._normalizeSdBaseUrl(overrides.sdUrl || this._get('phone-image-sd-url', 'http://127.0.0.1:7860')),
             sdAuth: String(overrides.sdAuth || this._get('phone-image-sd-auth', '')).trim(),
             sdVae: String(overrides.sdVae || this._get('phone-image-sd-vae', '')).trim(),
@@ -412,7 +429,7 @@ export class ImageGenerationManager {
             publicKey: String(overrides.publicKey || this._get('phone-image-novelai-public-key', '')).trim(),
             publicUrl: String(overrides.publicUrl || this._get('phone-image-novelai-public-url', '')).trim(),
             queueUrl: site === 'public' ? '' : String(overrides.queueUrl || this._get('phone-image-novelai-queue-url', '')).trim(),
-            model: String(overrides.model || this._get(`phone-image-${provider}-model`, '') || (provider === 'novelai' ? 'nai-diffusion-4-5-full' : (provider === 'siliconflow' ? legacySiliconflowModel || 'Kwai-Kolors/Kolors' : ''))).trim(),
+            model: String(overrides.model || this._get(`phone-image-${provider}-model`, '') || (provider === 'novelai' ? 'nai-diffusion-4-5-full' : (provider === 'siliconflow' ? legacySiliconflowModel || 'Kwai-Kolors/Kolors' : (provider === 'openai' ? 'gpt-image-2' : '')))).trim(),
             sampler: provider === 'sd'
                 ? String(overrides.sampler || this._get('phone-image-sd-sampler', 'Euler a')).trim() || 'Euler a'
                 : this._normalizeNovelAISampler(overrides.sampler || this._get('phone-image-novelai-sampler', 'k_euler')),
@@ -441,6 +458,9 @@ export class ImageGenerationManager {
         }
         if (config.provider === 'sd') {
             return this._generateStableDiffusion(options, config);
+        }
+        if (config.provider === 'openai') {
+            return this._generateOpenAIImage(options, config);
         }
         if (config.provider === 'novelai') {
             const novelAIOptions = await this._prepareNovelAIOptions(options);
@@ -1307,6 +1327,158 @@ export class ImageGenerationManager {
         return '';
     }
 
+    _extractOpenAIImage(payload) {
+        const candidates = [
+            payload?.data?.[0]?.b64_json,
+            payload?.data?.[0]?.url,
+            payload?.images?.[0]?.url,
+            payload?.images?.[0]?.b64_json,
+            payload?.image_url,
+            payload?.imageUrl,
+            payload?.url,
+            payload?.image,
+            payload?.result?.image,
+            payload?.result?.url,
+            payload?.result?.images?.[0]?.url,
+            payload?.result?.images?.[0]?.b64_json
+        ];
+        for (const item of candidates) {
+            if (!item) continue;
+            if (typeof item === 'string') {
+                const text = item.trim();
+                if (text.startsWith('data:image/')) return text;
+                if (/^https?:\/\//i.test(text)) return text;
+                if (/^[A-Za-z0-9+/=\s]+$/.test(text.slice(0, 120))) {
+                    return `data:image/png;base64,${text.replace(/\s+/g, '')}`;
+                }
+            } else if (typeof item === 'object') {
+                const nested = this._extractOpenAIImage(item);
+                if (nested) return nested;
+            }
+        }
+        return '';
+    }
+
+    _resolveOpenAIEndpoint(config) {
+        const site = String(config.openaiSite || 'official').trim() || 'official';
+        const baseUrl = site === 'public'
+            ? this._normalizeApiBaseUrl(config.openaiPublicUrl)
+            : (site === 'custom'
+                ? this._normalizeApiBaseUrl(config.openaiCustomUrl)
+                : 'https://api.openai.com');
+        if (!baseUrl) throw new Error(site === 'public' ? '请先填写 GPT 公益站点 Base URL' : '请先填写 GPT 自定义 Base URL');
+        if (/\/(?:v1\/)?images\/generations$/i.test(baseUrl)) return baseUrl;
+        if (/\/images$/i.test(baseUrl)) return `${baseUrl}/generations`;
+        if (/\/v1$/i.test(baseUrl)) return `${baseUrl}/images/generations`;
+        return `${baseUrl}/v1/images/generations`;
+    }
+
+    _resolveOpenAIModelsEndpoint(config) {
+        const generationEndpoint = this._resolveOpenAIEndpoint(config);
+        return generationEndpoint.replace(/\/(?:images\/generations|images\/edits|images\/variations)$/i, '/models');
+    }
+
+    _normalizeOpenAIModelItems(payload) {
+        const source = Array.isArray(payload)
+            ? payload
+            : (Array.isArray(payload?.data)
+                ? payload.data
+                : (Array.isArray(payload?.models)
+                    ? payload.models
+                    : (Array.isArray(payload?.result) ? payload.result : [])));
+        const seen = new Set();
+        return source
+            .map((item) => {
+                const id = typeof item === 'string'
+                    ? item
+                    : String(item?.id || item?.model || item?.name || '').trim();
+                if (!id || seen.has(id)) return null;
+                seen.add(id);
+                const name = typeof item === 'string'
+                    ? item
+                    : String(item?.display_name || item?.displayName || item?.name || item?.id || id).trim();
+                return { id, name: name || id };
+            })
+            .filter(Boolean);
+    }
+
+    _rankOpenAIImageModel(model) {
+        const id = String(model?.id || '').toLowerCase();
+        if (!id) return 999;
+        if (id === 'gpt-image-2') return 0;
+        if (/^gpt-image-2(?:-|$)/.test(id)) return 1;
+        if (id === 'gpt-image-1.5') return 2;
+        if (/^gpt-image-1\.5(?:-|$)/.test(id)) return 3;
+        if (id === 'gpt-image-1') return 4;
+        if (id === 'gpt-image-1-mini') return 5;
+        if (/image|dall-e|flux|kolors|stable|sdxl|midjourney|mj/i.test(id)) return 20;
+        return 100;
+    }
+
+    async fetchOpenAIModels(overrides = {}) {
+        const config = {
+            ...this.getConfig({ ...overrides, provider: 'openai' }),
+            ...overrides,
+            provider: 'openai'
+        };
+        if (!String(config.apiKey || '').trim()) throw new Error('请先填写 GPT 生图 API Key');
+        const endpoint = this._resolveOpenAIModelsEndpoint(config);
+        const response = await fetch(endpoint, {
+            method: 'GET',
+            headers: {
+                Authorization: `Bearer ${config.apiKey}`,
+                Accept: 'application/json'
+            },
+            signal: overrides.signal
+        });
+        const text = await response.text();
+        let payload = null;
+        try { payload = text ? JSON.parse(text) : null; } catch (e) { payload = null; }
+        if (!response.ok) {
+            const msg = payload?.error?.message || payload?.message || payload?.error || text || '';
+            throw new Error(`GPT 模型列表拉取失败 (${response.status})${msg ? `: ${String(msg).slice(0, 180)}` : ''}`);
+        }
+        const allModels = this._normalizeOpenAIModelItems(payload);
+        const imageModels = allModels
+            .filter((item) => this._rankOpenAIImageModel(item) < 100)
+            .sort((a, b) => this._rankOpenAIImageModel(a) - this._rankOpenAIImageModel(b) || a.id.localeCompare(b.id));
+        return {
+            endpoint,
+            models: imageModels.length ? imageModels : allModels,
+            allModels,
+            filtered: imageModels.length > 0
+        };
+    }
+
+    _getOpenAIImageSize(model, width, height) {
+        const modelName = String(model || '').trim().toLowerCase();
+        const w = Number(width) || 1024;
+        const h = Number(height) || 1024;
+        const ratio = w / Math.max(1, h);
+        if (/^dall-e-3$/i.test(modelName)) {
+            if (ratio > 1.2) return '1792x1024';
+            if (ratio < 0.8) return '1024x1792';
+            return '1024x1024';
+        }
+        if (/^dall-e-2$/i.test(modelName)) {
+            return '1024x1024';
+        }
+        if (ratio > 1.2) return '1536x1024';
+        if (ratio < 0.8) return '1024x1536';
+        return '1024x1024';
+    }
+
+    _normalizeOpenAIImageQuality(model, quality) {
+        const modelName = String(model || '').trim().toLowerCase();
+        const value = String(quality || 'auto').trim().toLowerCase();
+        if (!value || value === 'auto') return '';
+        if (modelName === 'dall-e-3') {
+            return value === 'high' ? 'hd' : 'standard';
+        }
+        if (modelName === 'dall-e-2') return '';
+        return ['low', 'medium', 'high'].includes(value) ? value : '';
+    }
+
     _normalizeSdLoraPrompt(value) {
         return String(value || '')
             .split(/[\n,，]+/)
@@ -1598,6 +1770,79 @@ export class ImageGenerationManager {
             scale: Number(options.scale ?? config.scale),
             imageData: imageUrl,
             imageUrl
+        };
+    }
+
+    async _generateOpenAIImage(options, config) {
+        const prompt = String(options.prompt || '').trim();
+        if (!prompt) throw new Error('缺少生图提示词');
+        if (!String(config.apiKey || '').trim()) throw new Error('请先填写 GPT 生图 API Key');
+
+        const width = Number(options.width || config.width);
+        const height = Number(options.height || config.height);
+        const model = String(config.model || 'gpt-image-2').trim() || 'gpt-image-2';
+        const requestedSize = this._getOpenAIImageSize(model, width, height);
+        const endpoint = this._resolveOpenAIEndpoint(config);
+        const payload = {
+            model,
+            prompt: this._joinPrompt([config.fixedPrompt, prompt, config.fixedPromptEnd], '\n'),
+            size: requestedSize,
+            n: 1
+        };
+        const normalizedQuality = this._normalizeOpenAIImageQuality(model, config.openaiQuality);
+        if (normalizedQuality) {
+            payload.quality = normalizedQuality;
+        }
+        const negativePrompt = this._joinPrompt([config.negativePrompt, options.negativePrompt]);
+        if (negativePrompt) {
+            payload.prompt = `${payload.prompt}\n\nAvoid: ${negativePrompt}`;
+        }
+
+        let response = null;
+        try {
+            response = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${config.apiKey}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload),
+                signal: options.signal
+            });
+        } catch (err) {
+            const message = String(err?.message || err || '').trim();
+            if (/failed to fetch|networkerror|load failed/i.test(message)) {
+                const siteLabel = config.openaiSite === 'public'
+                    ? 'GPT 公益站'
+                    : (config.openaiSite === 'custom' ? 'GPT 自定义站点' : 'OpenAI 官方站点');
+                throw new Error(`${siteLabel} 请求被浏览器拦截或网络失败。若控制台提示 CORS，说明该站点没有给当前页面返回 Access-Control-Allow-Origin；测试短提示词成功但微信生图失败时，通常是实际提示词触发了站点错误响应，而错误响应未带 CORS。请让公益站开启 CORS，或换支持浏览器跨域的中转站。`);
+            }
+            throw err;
+        }
+        const text = await response.text();
+        let result = null;
+        try { result = text ? JSON.parse(text) : null; } catch (e) { result = null; }
+        if (!response.ok) {
+            const msg = result?.error?.message || result?.message || result?.error || text || '';
+            throw new Error(`GPT 生图请求失败 (${response.status})${msg ? `: ${String(msg).slice(0, 180)}` : ''}`);
+        }
+        const imageData = this._extractOpenAIImage(result);
+        if (!imageData) throw new Error('GPT 生图未返回可用图片');
+        const imageInfo = imageData.startsWith('data:image/')
+            ? await this._waitForImageDecode(imageData).catch(() => ({ width: 0, height: 0 }))
+            : { width: 0, height: 0 };
+        const [requestedWidth, requestedHeight] = requestedSize.split('x').map(Number);
+        return {
+            provider: 'openai',
+            model,
+            prompt,
+            width: imageInfo.width || requestedWidth || width,
+            height: imageInfo.height || requestedHeight || height,
+            requestedWidth: requestedWidth || width,
+            requestedHeight: requestedHeight || height,
+            quality: normalizedQuality || config.openaiQuality || 'auto',
+            imageData,
+            imageUrl: imageData
         };
     }
 }

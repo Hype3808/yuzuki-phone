@@ -437,6 +437,12 @@ export class MusicData {
     }
 
     pause() {
+        if (typeof window !== 'undefined'
+            && window._musicSuppressNavigationPauseUntil
+            && Date.now() < window._musicSuppressNavigationPauseUntil) {
+            this._notifyStateChange();
+            return;
+        }
         const wasPlaying = this.isPlaying || !this.audioPlayer.paused;
         this.audioPlayer.pause();
         this.isPlaying = false;

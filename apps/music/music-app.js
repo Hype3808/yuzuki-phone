@@ -27,21 +27,34 @@ export class MusicApp {
         this.musicData.onStateChange = () => this.view.updateDisplay();
         this.musicData.onPlaybackStopped = (reason) => this.endWechatListening(reason);
 
-        // 监听滑动返回
-        window.addEventListener('phone:swipeBack', (e) => this.handleSwipeBack(e));
-        window.addEventListener('phone:goHome', () => this.pauseForNavigation());
+        // 监听滑动返回。使用全局可替换 handler，避免热更新/重复实例留下旧的暂停监听。
+        if (window._musicSwipeBackHandler) {
+            window.removeEventListener('phone:swipeBack', window._musicSwipeBackHandler);
+        }
+        window._musicSwipeBackHandler = (e) => window.VirtualPhone?.musicApp?.handleSwipeBack?.(e);
+        window.addEventListener('phone:swipeBack', window._musicSwipeBackHandler);
+
+        if (window._musicGoHomeHandler) {
+            window.removeEventListener('phone:goHome', window._musicGoHomeHandler);
+        }
+        window._musicGoHomeHandler = () => window.VirtualPhone?.musicApp?.handlePhoneNavigation?.();
+        if (window._musicGoHomeCaptureGuard) {
+            window.removeEventListener('phone:goHome', window._musicGoHomeCaptureGuard, true);
+        }
+        window._musicGoHomeCaptureGuard = () => {
+            window._musicSuppressNavigationPauseUntil = Date.now() + 800;
+        };
+        window.addEventListener('phone:goHome', window._musicGoHomeCaptureGuard, true);
+        window.addEventListener('phone:goHome', window._musicGoHomeHandler);
     }
 
     render() {
         this.view.renderSettings();
     }
 
-    pauseForNavigation() {
-        if (this.musicData?.isPlaying) {
-            this.musicData.pause();
-        } else {
-            this.endWechatListening('navigation');
-        }
+    handlePhoneNavigation() {
+        // App 切换、微信右滑返回或回到桌面都不应中断音乐，也不应结束一起听状态。
+        this.view?.updateDisplay?.();
     }
 
     endWechatListening(reason = '') {
