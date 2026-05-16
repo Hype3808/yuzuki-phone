@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-RELAY_JS="${SCRIPT_DIR}/openai-image-local-relay.js"
+RELAY_JS="${SCRIPT_DIR}/openai-image-local-relay.cjs"
 
 if ! command -v node >/dev/null 2>&1; then
   echo "Node.js is not installed in Termux."

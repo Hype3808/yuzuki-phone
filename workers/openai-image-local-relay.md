@@ -5,7 +5,7 @@ Use this relay when the mobile browser can reach SillyTavern but direct GPT publ
 Run in Termux or a local Node environment:
 
 ```bash
-node workers/openai-image-local-relay.js
+node workers/openai-image-local-relay.cjs
 ```
 
 Easier Termux setup:
@@ -45,13 +45,13 @@ In the phone image settings:
 Optional fallback default target for non-phone clients:
 
 ```bash
-OPENAI_IMAGE_RELAY_TARGET=https://imagegen.mukyu.me OPENAI_IMAGE_RELAY_PORT=8787 node workers/openai-image-local-relay.js
+OPENAI_IMAGE_RELAY_TARGET=https://imagegen.mukyu.me OPENAI_IMAGE_RELAY_PORT=8787 node workers/openai-image-local-relay.cjs
 ```
 
 Optional fallback key for other clients that do not send `Authorization`:
 
 ```bash
-OPENAI_IMAGE_RELAY_KEY=sk-your-key node workers/openai-image-local-relay.js
+OPENAI_IMAGE_RELAY_KEY=sk-your-key node workers/openai-image-local-relay.cjs
 ```
 
 The current phone UI still requires a non-empty GPT public API Key field before sending a request.

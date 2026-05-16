@@ -1894,7 +1894,7 @@ export class ImageGenerationManager {
                     ? 'GPT 公益站'
                     : (config.openaiSite === 'custom' ? 'GPT 自定义站点' : 'OpenAI 官方站点');
                 const relayHint = config.openaiSite === 'public'
-                    ? '手机端可在 Termux 运行 workers/openai-image-local-relay.js，并把 GPT 公益站 Base URL 填为 http://127.0.0.1:8787。'
+                    ? '手机端可在 Termux 运行 workers/openai-image-local-relay.cjs，并把 GPT 公益站 Base URL 填为 http://127.0.0.1:8787。'
                     : '请让站点开启 CORS，或换支持浏览器跨域的中转站。';
                 throw new Error(`${siteLabel} 请求被浏览器拦截或网络失败。若控制台提示 CORS，说明该站点没有给当前页面返回 Access-Control-Allow-Origin。${relayHint}`);
             }
