@@ -26,7 +26,7 @@ export class MusicData {
         this.isPlaying = false;
         this._cardData = null;     // 最新一楼的 <Music> 解析数据
         this.onStateChange = null; // UI更新回调
-        this._failedSongs = new Set(); // 获取失败的歌曲，防止无限重试
+        this._failedSongs = new Map(); // 获取失败的歌曲，短时间内防止无限重试
         this._playLock = false;    // 防止并发播放请求
         this._playGeneration = 0;  // 播放请求代次，用于取消过期请求
         this._userPaused = false;  // 记录用户是否手动按了暂停
@@ -41,11 +41,10 @@ export class MusicData {
             this.isPlaying = false;
             this._playLock = false;
 
-            // 【新增】判断是否为媒体资源加载错误
-            const error = this.audioPlayer.error;
-            if (error && error.code === error.MEDIA_ERR_SRC_NOT_SUPPORTED) { // MEDIA_ERR_SRC_NOT_SUPPORTED 通常对应403/404
-                console.log(`🎵 [音乐] 检测到链接失效，尝试自动修复: ${this.getCurrentSong()?.name}`);
-                // 调用新的修复函数
+            const song = this.getCurrentSong();
+            if (song && this.currentIndex >= 0 && !this._userPaused) {
+                console.log(`🎵 [音乐] 检测到链接不可播放，尝试自动修复: ${song.name}`);
+                this._invalidateSongUrl(song, this.activeListType);
                 this._recoverAndPlay(this.currentIndex);
             } else {
                 this._notifyStateChange();
@@ -294,7 +293,7 @@ export class MusicData {
             // 如果没有URL，先获取
             if (!song.url) {
                 const songKey = `${song.name}|${song.artist}`;
-                if (this._failedSongs.has(songKey)) {
+                if (this._isSongFetchTemporarilyFailed(songKey)) {
                     console.warn(`🎵 [音乐] 跳过已失败的歌曲: ${song.name}`);
                     this.isPlaying = false;
                     this._playLock = false;
@@ -317,7 +316,7 @@ export class MusicData {
                     if (listType === 'favorites') this.saveFavorites();
                     else this.savePlaylist();
                 } else {
-                    this._failedSongs.add(songKey);
+                    this._markSongFetchFailed(songKey);
                     this._playLock = false;
                     this._recoverAndPlay(index);
                     return;
@@ -342,8 +341,21 @@ export class MusicData {
                 this.isPlaying = false;
                 this._playLock = false;
                 this._notifyStateChange();
+                if (song && !this._userPaused && e?.name !== 'NotAllowedError') {
+                    this._invalidateSongUrl(song, listType);
+                    this._recoverAndPlay(index);
+                }
             }
         }
+    }
+
+    _invalidateSongUrl(song, listType = this.activeListType) {
+        if (!song) return;
+        song.url = null;
+        song.urlSource = null;
+        delete song._metingRefreshTried;
+        if (listType === 'favorites') this.saveFavorites();
+        else this.savePlaylist();
     }
 
     async _recoverAndPlay(songIndex) {
@@ -352,13 +364,14 @@ export class MusicData {
 
         const song = playlist[songIndex];
 
-        // 防止对同一首歌无限重试
-        if (song._autoRetried) {
-            console.warn(`🎵 [音乐] 歌曲 "${song.name}" 已尝试修复过，跳过。`);
+        const now = Date.now();
+        if (song._autoRetrying || (song._lastAutoRetryAt && now - song._lastAutoRetryAt < 60000)) {
+            console.warn(`🎵 [音乐] 歌曲 "${song.name}" 正在修复或刚修复失败，暂时跳过。`);
             this._notifyStateChange(); // 更新UI显示错误状态
             return;
         }
-        song._autoRetried = true; // 标记为已尝试修复
+        song._autoRetrying = true;
+        song._lastAutoRetryAt = now;
 
         console.log(`🎵 [音乐] 正在为 "${song.name}" 自动搜索新链接...`);
 
@@ -372,12 +385,8 @@ export class MusicData {
                 return;
             }
 
-            const oldId = song.id; // 记录旧的、已失效的ID
-
             // 遍历新的搜索结果，寻找一个不同的、可用的版本
             for (const candidate of searchJson.data) {
-                if (candidate.id === oldId) continue; // 跳过已知的坏ID
-
                 try {
                     const urlRes = await fetch(`https://api.qijieya.cn/meting/?server=netease&type=song&id=${candidate.id}`);
                     const urlData = await urlRes.json();
@@ -400,7 +409,8 @@ export class MusicData {
                         song.urlSource = 'meting';
                         song.pic = urlData[0].pic || song.pic;
                         song.lrc = await this._fetchLyrics(candidate.id);
-                        delete song._autoRetried; // 成功后移除标记
+                        delete song._autoRetrying;
+                        delete song._lastAutoRetryAt;
                         if (this.activeListType === 'favorites') this.saveFavorites();
                         else this.savePlaylist();
 
@@ -418,6 +428,8 @@ export class MusicData {
 
         } catch (e) {
             console.error('🎵 [音乐] 自动修复过程中发生网络错误:', e);
+        } finally {
+            delete song._autoRetrying;
         }
     }
 
@@ -478,7 +490,7 @@ export class MusicData {
         if (!song || song.url) return;
 
         const songKey = `${listType}:${song.name}|${song.artist}`;
-        if (this._prefetching.has(songKey) || this._failedSongs.has(`${song.name}|${song.artist}`)) return;
+        if (this._prefetching.has(songKey) || this._isSongFetchTemporarilyFailed(`${song.name}|${song.artist}`)) return;
 
         this._prefetching.add(songKey);
         try {
@@ -757,7 +769,7 @@ export class MusicData {
             };
             audio.onerror = () => {
                 cleanup();
-                resolve(false);
+                resolve(true);
             };
             audio.src = safeUrl;
         });
@@ -923,6 +935,20 @@ export class MusicData {
         if (typeof this.onPlaybackStopped === 'function') {
             this.onPlaybackStopped(reason);
         }
+    }
+
+    _isSongFetchTemporarilyFailed(songKey) {
+        const failedAt = Number(this._failedSongs.get(songKey) || 0);
+        if (!failedAt) return false;
+        if (Date.now() - failedAt > 60000) {
+            this._failedSongs.delete(songKey);
+            return false;
+        }
+        return true;
+    }
+
+    _markSongFetchFailed(songKey) {
+        this._failedSongs.set(songKey, Date.now());
     }
 
     clearCache() {

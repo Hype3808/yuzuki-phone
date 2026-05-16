@@ -49,8 +49,7 @@ const server = http.createServer(async (req, res) => {
 
         const body = req.method === 'GET' ? null : await readRequestBody(req);
         const targetBaseUrl = resolveTargetBaseUrl(req);
-        const targetUrl = new URL(requestUrl.pathname.replace(/^\/+/, ''), `${targetBaseUrl}/`);
-        targetUrl.search = requestUrl.search;
+        const targetUrl = buildTargetUrl(targetBaseUrl, requestUrl.pathname, requestUrl.search);
 
         const headers = buildForwardHeaders(req);
         const response = await fetch(targetUrl, {
@@ -127,6 +126,43 @@ function resolveTargetBaseUrl(req) {
         throw new Error('Missing target. Send X-OpenAI-Image-Relay-Target or set OPENAI_IMAGE_RELAY_TARGET.');
     }
     return target;
+}
+
+function buildTargetUrl(targetBaseUrl, relayPathname, search = '') {
+    const targetUrl = new URL(targetBaseUrl);
+    const relayPath = String(relayPathname || '').replace(/\/+$/, '') || '/';
+    const targetPath = targetUrl.pathname.replace(/\/+$/, '');
+
+    if (relayPath === '/v1/models') {
+        targetUrl.pathname = resolveTargetPath(targetPath, '/v1/models');
+    } else if (relayPath === '/v1/images/generations') {
+        targetUrl.pathname = resolveTargetPath(targetPath, '/v1/images/generations');
+    } else {
+        targetUrl.pathname = relayPath;
+    }
+
+    targetUrl.search = search || '';
+    targetUrl.hash = '';
+    return targetUrl;
+}
+
+function resolveTargetPath(targetPath, defaultEndpoint) {
+    const path = targetPath || '';
+    if (!path || path === '/') return defaultEndpoint;
+    if (/\/v1\/models$/i.test(path)) {
+        return defaultEndpoint === '/v1/models'
+            ? path
+            : path.replace(/\/v1\/models$/i, '/v1/images/generations');
+    }
+    if (/\/v1\/images\/generations$/i.test(path)) {
+        return defaultEndpoint === '/v1/images/generations'
+            ? path
+            : path.replace(/\/v1\/images\/generations$/i, '/v1/models');
+    }
+    if (/\/v1$/i.test(path)) {
+        return `${path}${defaultEndpoint.replace(/^\/v1/i, '')}`;
+    }
+    return `${path}${defaultEndpoint}`;
 }
 
 function isAllowedRoute(method, pathname) {
