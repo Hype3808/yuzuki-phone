@@ -2061,6 +2061,7 @@ export class SettingsApp {
         const openaiUrl = String(this.storage.get('phone-image-openai-url') || '').trim();
         const openaiPublicUrl = String(this.storage.get('phone-image-openai-public-url') || '').trim();
         const openaiPublicRelayUrl = String(this.storage.get('phone-image-openai-public-relay-url') || '').trim();
+        const openaiMode = String(this.storage.get('phone-image-openai-mode') || 'images').trim() || 'images';
         const openaiQuality = String(this.storage.get('phone-image-openai-quality') || 'auto').trim() || 'auto';
         const sampler = String(this.storage.get('phone-image-novelai-sampler') || 'k_euler').trim() || 'k_euler';
         const schedule = String(this.storage.get('phone-image-novelai-schedule') || 'native').trim() || 'native';
@@ -2383,6 +2384,15 @@ export class SettingsApp {
                         拉取 GPT 生图模型
                     </button>
                     <div class="setting-desc" id="phone-image-openai-models-result" style="margin-top: 6px;">从当前站点的 /v1/models 拉取可用模型。</div>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-label">接口模式</div>
+                    <div class="setting-desc">New API / sub2api 后台成功路径是 /v1/images/generations 时保持标准模式；只有明确要求走聊天生图时才选聊天接口。</div>
+                    <select id="phone-image-openai-mode" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                        <option value="images" ${openaiMode === 'images' ? 'selected' : ''}>标准图片接口 /images/generations</option>
+                        <option value="chat" ${openaiMode === 'chat' ? 'selected' : ''}>聊天接口 /chat/completions</option>
+                    </select>
                 </div>
 
                 <div class="setting-item">
@@ -4151,6 +4161,7 @@ export class SettingsApp {
                 await this.storage.set('phone-image-openai-public-relay-url', publicRelayUrl);
                 await this.storage.set('phone-image-openai-url', customUrl);
                 await this.storage.set('phone-image-openai-model', String(document.getElementById('phone-image-openai-model')?.value || '').trim() || 'gpt-image-2');
+                await this.storage.set('phone-image-openai-mode', String(document.getElementById('phone-image-openai-mode')?.value || 'images').trim() || 'images');
                 await this.storage.set('phone-image-openai-quality', String(document.getElementById('phone-image-openai-quality')?.value || 'auto').trim() || 'auto');
 
                 const imageManager = window.VirtualPhone?.imageGenerationManager;
@@ -4166,6 +4177,7 @@ export class SettingsApp {
                     prompt: 'anime illustration, cute smartphone chat selfie sticker, soft light, clean background',
                     width: 1024,
                     height: 1024,
+                    openaiMode: String(document.getElementById('phone-image-openai-mode')?.value || 'images').trim() || 'images',
                     fixedPrompt: String(document.getElementById('phone-image-fixed-prompt')?.value || '').trim(),
                     fixedPromptEnd: String(document.getElementById('phone-image-fixed-prompt-end')?.value || '').trim(),
                     negativePrompt: String(document.getElementById('phone-image-negative-prompt')?.value || '').trim(),
@@ -4326,6 +4338,12 @@ export class SettingsApp {
             const value = String(e.target.value || 'auto').trim() || 'auto';
             e.target.value = value;
             await this.storage.set('phone-image-openai-quality', value);
+        });
+
+        document.getElementById('phone-image-openai-mode')?.addEventListener('change', async (e) => {
+            const value = String(e.target.value || 'images').trim() || 'images';
+            e.target.value = value;
+            await this.storage.set('phone-image-openai-mode', value);
         });
 
         imageNovelaiModelPreset?.addEventListener('change', async (e) => {

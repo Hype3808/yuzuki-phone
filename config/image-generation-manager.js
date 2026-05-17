@@ -123,6 +123,22 @@ export class ImageGenerationManager {
         });
     }
 
+    async _stProxyRequest(endpoint, body = {}, options = {}) {
+        const token = await this._getCsrfToken(options.forceRefresh === true);
+        const headers = {
+            'Content-Type': 'application/json',
+            'X-ST-Phone-Internal-API': '1'
+        };
+        if (token) headers['X-CSRF-Token'] = token;
+        return fetch(endpoint, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(body || {}),
+            credentials: 'include',
+            signal: options.signal
+        });
+    }
+
     _normalizeSdListPayload(payload) {
         return Array.isArray(payload)
             ? payload
@@ -412,6 +428,7 @@ export class ImageGenerationManager {
             openaiCustomUrl: String(overrides.openaiCustomUrl || this._get('phone-image-openai-url', '')).trim(),
             openaiPublicUrl: String(overrides.openaiPublicUrl || this._get('phone-image-openai-public-url', '')).trim(),
             openaiPublicRelayUrl: String(overrides.openaiPublicRelayUrl || this._get('phone-image-openai-public-relay-url', '')).trim(),
+            openaiMode: String(overrides.openaiMode || this._get('phone-image-openai-mode', 'images')).trim() || 'images',
             openaiQuality: String(overrides.openaiQuality || this._get('phone-image-openai-quality', 'auto')).trim() || 'auto',
             sdUrl: this._normalizeSdBaseUrl(overrides.sdUrl || this._get('phone-image-sd-url', 'http://127.0.0.1:7860')),
             sdAuth: String(overrides.sdAuth || this._get('phone-image-sd-auth', '')).trim(),
@@ -819,7 +836,29 @@ export class ImageGenerationManager {
     _extractImageResult(payload, options = {}) {
         if (!payload) return '';
         if (typeof payload === 'string') {
-            return this._normalizeImageResultString(payload, options);
+            const direct = this._normalizeImageResultString(payload, options);
+            if (direct) return direct;
+            const trimmed = payload.trim();
+            if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+                try {
+                    const nestedJson = JSON.parse(trimmed);
+                    const nestedImage = this._extractImageResult(nestedJson, options);
+                    if (nestedImage) return nestedImage;
+                } catch {
+                    // 不是完整 JSON 时继续按文本提取图片。
+                }
+            }
+            const markdownMatch = payload.match(/!\[[^\]]*]\(([^)\s]+)\)/);
+            if (markdownMatch) {
+                const markdownImage = this._normalizeImageResultString(markdownMatch[1], options);
+                if (markdownImage) return markdownImage;
+            }
+            const looseMatch = payload.match(/((?:https?:\/\/|\/)[^\s)"']+\.(?:png|jpe?g|webp|gif|bmp|svg)(?:\?[^\s)"']*)?)/i);
+            if (looseMatch) {
+                const looseImage = this._normalizeImageResultString(looseMatch[1], options);
+                if (looseImage) return looseImage;
+            }
+            return '';
         }
         if (Array.isArray(payload)) {
             for (const item of payload) {
@@ -852,9 +891,15 @@ export class ImageGenerationManager {
         const nestedCandidates = [
             payload.data,
             payload.images,
+            payload.media,
+            payload.files,
+            payload.attachments,
             payload.artifacts,
             payload.output,
             payload.outputs,
+            payload.choices,
+            payload.message,
+            payload.content,
             payload.result,
             payload.results,
             payload.response
@@ -1441,6 +1486,20 @@ export class ImageGenerationManager {
         return generationEndpoint.replace(/\/(?:images\/generations|images\/edits|images\/variations)$/i, '/models');
     }
 
+    _resolveOpenAIChatEndpoint(config) {
+        const site = String(config.openaiSite || 'official').trim() || 'official';
+        const baseUrl = site === 'public'
+            ? this._normalizeApiBaseUrl(config.openaiPublicUrl)
+            : (site === 'custom'
+                ? this._normalizeApiBaseUrl(config.openaiCustomUrl)
+                : 'https://api.openai.com');
+        if (!baseUrl) throw new Error(site === 'public' ? '请先填写 GPT 公益站点 Base URL' : '请先填写 GPT 自定义 Base URL');
+        if (/\/(?:v1\/)?chat\/completions$/i.test(baseUrl)) return baseUrl;
+        if (/\/chat$/i.test(baseUrl)) return `${baseUrl}/completions`;
+        if (/\/v1$/i.test(baseUrl)) return `${baseUrl}/chat/completions`;
+        return `${baseUrl}/v1/chat/completions`;
+    }
+
     _resolveOpenAIRelayEndpoint(config, endpoint) {
         if (String(config.openaiSite || '').trim() !== 'public') return endpoint;
         const relayBaseUrl = this._normalizeApiBaseUrl(config.openaiPublicRelayUrl);
@@ -1449,6 +1508,76 @@ export class ImageGenerationManager {
         if (/\/v1\/models$/i.test(relayBaseUrl) || /\/v1\/images\/generations$/i.test(relayBaseUrl)) return relayBaseUrl;
         if (/\/v1$/i.test(relayBaseUrl)) return `${relayBaseUrl}${relayPath.replace(/^\/v1/i, '')}`;
         return `${relayBaseUrl}${relayPath}`;
+    }
+
+    _getOpenAIProxyBaseUrl(endpoint) {
+        return String(endpoint || '').trim().replace(/\/(?:chat\/completions|images\/generations|images\/edits|images\/variations|models)\/?$/i, '').replace(/\/+$/, '');
+    }
+
+    _getOpenAIAuthHeader(config) {
+        const apiKey = String(config.apiKey || '').trim();
+        return apiKey ? (apiKey.startsWith('Bearer ') ? apiKey : `Bearer ${apiKey}`) : '';
+    }
+
+    _buildOpenAIProxyPayload(config, endpoint, extra = {}) {
+        const authHeader = this._getOpenAIAuthHeader(config);
+        const baseUrl = this._getOpenAIProxyBaseUrl(endpoint);
+        const customHeaders = { 'Content-Type': 'application/json' };
+        if (authHeader) customHeaders.Authorization = authHeader;
+        return {
+            chat_completion_source: 'openai',
+            reverse_proxy: baseUrl || endpoint,
+            custom_url: endpoint,
+            proxy_password: String(config.apiKey || '').trim(),
+            custom_include_headers: customHeaders,
+            ...extra
+        };
+    }
+
+    async _fetchOpenAIViaSillyTavernProxy(config, endpoint, payload, options = {}) {
+        const proxyPayload = this._buildOpenAIProxyPayload(config, endpoint, payload);
+        let response = await this._stProxyRequest('/api/backends/chat-completions/generate', proxyPayload, {
+            signal: options.signal
+        });
+        if (!response.ok) {
+            const errText = await response.clone().text().catch(() => '');
+            if (/csrf|forbidden|unauthori[sz]ed|invalid token/i.test(`${response.status} ${errText}`)) {
+                response = await this._stProxyRequest('/api/backends/chat-completions/generate', proxyPayload, {
+                    forceRefresh: true,
+                    signal: options.signal
+                });
+            }
+        }
+        const text = await response.text();
+        let parsed = null;
+        try { parsed = text ? JSON.parse(text) : null; } catch { parsed = null; }
+        if (!response.ok) {
+            const msg = parsed?.error?.message || parsed?.message || parsed?.error || text || '';
+            throw new Error(`酒馆后端代理请求失败 (${response.status})${msg ? `: ${String(msg).slice(0, 240)}` : ''}`);
+        }
+        return parsed || text;
+    }
+
+    async _fetchOpenAIModelsViaSillyTavernProxy(config, targetEndpoint, signal) {
+        const proxyPayload = this._buildOpenAIProxyPayload(config, targetEndpoint);
+        let response = await this._stProxyRequest('/api/backends/chat-completions/status', proxyPayload, { signal });
+        if (!response.ok) {
+            const errText = await response.clone().text().catch(() => '');
+            if (/csrf|forbidden|unauthori[sz]ed|invalid token/i.test(`${response.status} ${errText}`)) {
+                response = await this._stProxyRequest('/api/backends/chat-completions/status', proxyPayload, {
+                    forceRefresh: true,
+                    signal
+                });
+            }
+        }
+        const text = await response.text();
+        let parsed = null;
+        try { parsed = text ? JSON.parse(text) : null; } catch { parsed = null; }
+        if (!response.ok) {
+            const msg = parsed?.error?.message || parsed?.message || parsed?.error || text || '';
+            throw new Error(`酒馆后端代理模型拉取失败 (${response.status})${msg ? `: ${String(msg).slice(0, 240)}` : ''}`);
+        }
+        return parsed;
     }
 
     _buildOpenAIHeaders(config, extra = {}) {
@@ -1508,19 +1637,30 @@ export class ImageGenerationManager {
         if (!String(config.apiKey || '').trim()) throw new Error('请先填写 GPT 生图 API Key');
         const targetEndpoint = this._resolveOpenAIModelsEndpoint(config);
         const endpoint = this._resolveOpenAIRelayEndpoint(config, targetEndpoint);
-        const response = await fetch(endpoint, {
-            method: 'GET',
-            headers: this._buildOpenAIHeaders(config, {
-                Accept: 'application/json'
-            }),
-            signal: overrides.signal
-        });
-        const text = await response.text();
         let payload = null;
-        try { payload = text ? JSON.parse(text) : null; } catch (e) { payload = null; }
-        if (!response.ok) {
-            const msg = payload?.error?.message || payload?.message || payload?.error || text || '';
-            throw new Error(`GPT 模型列表拉取失败 (${response.status})${msg ? `: ${String(msg).slice(0, 180)}` : ''}`);
+        let proxyError = null;
+        if (this._isSillyTavern() && !String(config.openaiPublicRelayUrl || '').trim()) {
+            try {
+                payload = await this._fetchOpenAIModelsViaSillyTavernProxy(config, targetEndpoint, overrides.signal);
+            } catch (err) {
+                proxyError = err;
+            }
+        }
+        if (!payload) {
+            const response = await fetch(endpoint, {
+                method: 'GET',
+                headers: this._buildOpenAIHeaders(config, {
+                    Accept: 'application/json'
+                }),
+                signal: overrides.signal
+            });
+            const text = await response.text();
+            try { payload = text ? JSON.parse(text) : null; } catch (e) { payload = null; }
+            if (!response.ok) {
+                const msg = payload?.error?.message || payload?.message || payload?.error || text || '';
+                const proxyMsg = proxyError ? `后端代理失败: ${proxyError.message}\n` : '';
+                throw new Error(`${proxyMsg}GPT 模型列表拉取失败 (${response.status})${msg ? `: ${String(msg).slice(0, 180)}` : ''}`);
+            }
         }
         const allModels = this._normalizeOpenAIModelItems(payload);
         const imageModels = allModels
@@ -1562,6 +1702,94 @@ export class ImageGenerationManager {
         }
         if (modelName === 'dall-e-2') return '';
         return ['low', 'medium', 'high'].includes(value) ? value : '';
+    }
+
+    _extractOpenAIChatImage(payload) {
+        const direct = this._extractOpenAIImage(payload);
+        if (direct) return direct;
+        const content = payload?.summary
+            || payload?.choices?.[0]?.message?.content
+            || payload?.choices?.[0]?.text
+            || payload?.data?.choices?.[0]?.message?.content
+            || payload?.response
+            || payload?.text
+            || '';
+        return this._extractOpenAIImage(content);
+    }
+
+    _summarizeOpenAIImagePayload(payload) {
+        try {
+            if (payload === null || payload === undefined) return '空响应';
+            if (typeof payload === 'string') return payload.replace(/\s+/g, ' ').slice(0, 300);
+            const content = payload?.summary
+                || payload?.choices?.[0]?.message?.content
+                || payload?.choices?.[0]?.text
+                || payload?.data?.choices?.[0]?.message?.content
+                || payload?.message
+                || payload?.error?.message
+                || payload?.message?.content
+                || payload?.response
+                || payload?.text
+                || '';
+            if (content) return String(content).replace(/\s+/g, ' ').slice(0, 300);
+            return JSON.stringify(payload).replace(/\s+/g, ' ').slice(0, 300);
+        } catch {
+            return '无法解析响应摘要';
+        }
+    }
+
+    async _generateOpenAIChatImage(options, config) {
+        const prompt = String(options.prompt || '').trim();
+        if (!prompt) throw new Error('缺少生图提示词');
+        if (!String(config.apiKey || '').trim()) throw new Error('请先填写 GPT 生图 API Key');
+        if (!this._isSillyTavern()) throw new Error('GPT 聊天接口生图需要在 SillyTavern 内通过酒馆后端代理请求');
+
+        const width = Number(options.width || config.width);
+        const height = Number(options.height || config.height);
+        const model = String(config.model || 'gpt-image-2').trim() || 'gpt-image-2';
+        const requestedSize = this._getOpenAIImageSize(model, width, height);
+        const endpoint = this._resolveOpenAIChatEndpoint(config);
+        const fullPrompt = this._joinPrompt([config.fixedPrompt, prompt, config.fixedPromptEnd], '\n');
+        const negativePrompt = this._joinPrompt([config.negativePrompt, options.negativePrompt]);
+        const userPrompt = [
+            '请根据以下提示词生成一张图片，并且只返回最终图片。',
+            `尺寸：${requestedSize}`,
+            negativePrompt ? `避免：${negativePrompt}` : '',
+            '',
+            fullPrompt
+        ].filter(Boolean).join('\n');
+        const payload = {
+            model,
+            messages: [{ role: 'user', content: userPrompt }],
+            stream: false,
+            temperature: 0.7,
+            max_tokens: 4096,
+            mode: 'chat',
+            instruction_mode: 'chat'
+        };
+        const result = await this._fetchOpenAIViaSillyTavernProxy(config, endpoint, payload, {
+            signal: options.signal
+        });
+        const imageData = this._extractOpenAIChatImage(result);
+        if (!imageData) {
+            throw new Error(`GPT 聊天接口未返回可用图片。返回摘要：${this._summarizeOpenAIImagePayload(result)}`);
+        }
+        const imageInfo = imageData.startsWith('data:image/')
+            ? await this._waitForImageDecode(imageData).catch(() => ({ width: 0, height: 0 }))
+            : { width: 0, height: 0 };
+        const [requestedWidth, requestedHeight] = requestedSize.split('x').map(Number);
+        return {
+            provider: 'openai',
+            model,
+            prompt,
+            width: imageInfo.width || requestedWidth || width,
+            height: imageInfo.height || requestedHeight || height,
+            requestedWidth: requestedWidth || width,
+            requestedHeight: requestedHeight || height,
+            quality: 'chat',
+            imageData,
+            imageUrl: imageData
+        };
     }
 
     _buildOpenAIErrorMessage(status, result, text) {
@@ -1874,6 +2102,9 @@ export class ImageGenerationManager {
         const width = Number(options.width || config.width);
         const height = Number(options.height || config.height);
         const model = String(config.model || 'gpt-image-2').trim() || 'gpt-image-2';
+        if (String(config.openaiMode || '').trim() === 'chat') {
+            return this._generateOpenAIChatImage(options, config);
+        }
         const requestedSize = this._getOpenAIImageSize(model, width, height);
         const targetEndpoint = this._resolveOpenAIEndpoint(config);
         const endpoint = this._resolveOpenAIRelayEndpoint(config, targetEndpoint);
@@ -1893,6 +2124,7 @@ export class ImageGenerationManager {
         }
 
         let response = null;
+        let result = null;
         try {
             response = await fetch(endpoint, {
                 method: 'POST',
@@ -1909,21 +2141,22 @@ export class ImageGenerationManager {
                     ? 'GPT 公益站'
                     : (config.openaiSite === 'custom' ? 'GPT 自定义站点' : 'OpenAI 官方站点');
                 const relayHint = config.openaiSite === 'public'
-                    ? '手机端可在 Termux 运行 imgrelay，并把手机本地中转 URL 填为 http://127.0.0.1:8787；电脑端留空。'
+                    ? '请运行本地 imgrelay，并把 GPT 生图的本地中转 URL 填为 http://127.0.0.1:8787。'
                     : '请让站点开启 CORS，或换支持浏览器跨域的中转站。';
                 throw new Error(`${siteLabel} 请求被浏览器拦截或网络失败。若控制台提示 CORS，说明该站点没有给当前页面返回 Access-Control-Allow-Origin。${relayHint}`);
             }
             throw err;
         }
         const text = await response.text();
-        let result = null;
         try { result = text ? JSON.parse(text) : null; } catch (e) { result = null; }
         if (!response.ok) {
             const msg = this._buildOpenAIErrorMessage(response.status, result, text);
             throw new Error(`GPT 生图请求失败 (${response.status})${msg ? `: ${String(msg).slice(0, 180)}` : ''}`);
         }
-        const imageData = this._extractOpenAIImage(result);
-        if (!imageData) throw new Error('GPT 生图未返回可用图片');
+        let imageData = this._extractOpenAIImage(result);
+        if (!imageData) {
+            throw new Error(`GPT 生图未返回可用图片。返回摘要：${this._summarizeOpenAIImagePayload(result)}`);
+        }
         const imageInfo = imageData.startsWith('data:image/')
             ? await this._waitForImageDecode(imageData).catch(() => ({ width: 0, height: 0 }))
             : { width: 0, height: 0 };
