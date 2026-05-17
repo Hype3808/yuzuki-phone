@@ -1564,6 +1564,21 @@ export class ImageGenerationManager {
         return ['low', 'medium', 'high'].includes(value) ? value : '';
     }
 
+    _buildOpenAIErrorMessage(status, result, text) {
+        const rawText = String(text || '').trim();
+        const parsedMessage = String(result?.error?.message || result?.message || result?.error || '').trim();
+        const isHtmlError = /<html[\s>]|<!doctype\s+html/i.test(rawText);
+        if (status === 524) {
+            return 'GPT 生图上游超时 (524)，通常是公益站或其代理等待官方生图太久。可以稍后重试，或换模型/质量/站点。';
+        }
+        if (status === 502 || status === 503 || status === 504) {
+            return `GPT 生图上游服务暂不可用 (${status})，请稍后重试或检查公益站/中转。`;
+        }
+        if (parsedMessage) return parsedMessage;
+        if (isHtmlError) return `GPT 生图接口返回了 HTML 错误页 (${status})，请检查站点或中转服务。`;
+        return rawText.slice(0, 180);
+    }
+
     _normalizeSdLoraPrompt(value) {
         return String(value || '')
             .split(/[\n,，]+/)
@@ -1904,7 +1919,7 @@ export class ImageGenerationManager {
         let result = null;
         try { result = text ? JSON.parse(text) : null; } catch (e) { result = null; }
         if (!response.ok) {
-            const msg = result?.error?.message || result?.message || result?.error || text || '';
+            const msg = this._buildOpenAIErrorMessage(response.status, result, text);
             throw new Error(`GPT 生图请求失败 (${response.status})${msg ? `: ${String(msg).slice(0, 180)}` : ''}`);
         }
         const imageData = this._extractOpenAIImage(result);

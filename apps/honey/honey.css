@@ -2709,6 +2709,25 @@
     transition: padding-bottom 0.18s ease;
 }
 
+#phone-panel.phone-keyboard-open .honey-page-live .honey-live-bottom,
+body.phone-input-active .honey-page-live .honey-live-bottom {
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow: visible;
+    padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+#phone-panel.phone-keyboard-open .honey-page-live .honey-input-bar,
+body.phone-input-active .honey-page-live .honey-input-bar {
+    flex-shrink: 0;
+    transform: translateY(-2px);
+}
+
+#phone-panel.phone-keyboard-open .honey-page-live .honey-live-room {
+    flex-basis: 24%;
+    min-height: 96px;
+}
+
 .honey-page-live.is-scene-collapsed .honey-live-bottom {
     flex: 0 0 auto;
     padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
@@ -4065,12 +4084,12 @@
     border-color: rgba(255, 216, 232, 0.95) !important;
 }
 
-/* 蜜语直播输入栏固定在手机底部，聚焦时不额外垫高，避免底片跳动 */
+/* 蜜语直播输入栏在移动端软键盘弹起时需要额外避让，避免被系统键盘贴边遮挡 */
 body.phone-input-active .honey-page-live .honey-live-bottom {
-    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)) !important;
+    padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)) !important;
 }
 
-/* 用户直播页同样保持固定高度，避免点击输入框后底栏上浮 */
+/* 用户直播页同样保留底部安全距离 */
 body.phone-input-active .honey-page-live.is-user-live .honey-live-bottom {
-    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)) !important;
+    padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)) !important;
 }

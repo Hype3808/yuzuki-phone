@@ -5044,6 +5044,33 @@ export class HoneyView {
         btn.innerHTML = isFollowed ? '已关注' : '关注';
     }
 
+    _showHoneyImageErrorModal(message = '生成失败', { title = '生图失败' } = {}) {
+        const host = document.querySelector('.phone-view-current .honey-app') ||
+            document.querySelector('.phone-view-current') ||
+            document.querySelector('.phone-body-panel') ||
+            document.body;
+        if (!host) return;
+        host.querySelector('#honey-image-error-modal')?.remove();
+        const overlay = document.createElement('div');
+        overlay.id = 'honey-image-error-modal';
+        overlay.style.cssText = 'position:absolute; inset:0; z-index:2600; background:rgba(0,0,0,0.48); display:flex; align-items:center; justify-content:center; padding:18px; box-sizing:border-box;';
+        overlay.innerHTML = `
+            <div role="dialog" aria-modal="true" style="width:100%; max-width:310px; max-height:76%; background:#fff; color:#171717; border-radius:14px; box-shadow:0 14px 34px rgba(0,0,0,0.28); overflow:hidden; display:flex; flex-direction:column;">
+                <div style="padding:14px 16px 8px; font-size:16px; font-weight:700;">${this._escapeHtml(title)}</div>
+                <div style="padding:0 16px 14px; color:#555; font-size:12px; line-height:1.55; white-space:pre-wrap; word-break:break-word; overflow:auto;">${this._escapeHtml(message)}</div>
+                <div style="padding:10px 14px 14px; border-top:1px solid #eee;">
+                    <button type="button" id="honey-image-error-close" style="width:100%; height:34px; border:none; border-radius:9px; background:#ff4785; color:#fff; font-size:13px; font-weight:700; cursor:pointer;">知道了</button>
+                </div>
+            </div>
+        `;
+        const close = () => overlay.remove();
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) close();
+        });
+        overlay.querySelector('#honey-image-error-close')?.addEventListener('click', close);
+        host.appendChild(overlay);
+    }
+
     _formatFollowDateLabel(dateKey) {
         const raw = String(dateKey || '').trim();
         const chunks = raw.match(/\d+/g) || [];
@@ -7223,6 +7250,7 @@ export class HoneyView {
                 this.render();
             }
             this.app?.phoneShell?.showNotification?.(auto ? '自动生图失败' : '生图失败', message, '❌');
+            this._showHoneyImageErrorModal(message, { title: auto ? '自动生图失败' : '生图失败' });
             return null;
         }
     }
