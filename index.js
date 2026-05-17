@@ -40,9 +40,8 @@ const ST_PHONE_CURRENT_UPDATE = {
     items: [
         '【必做】更新后请在设置中执行一次【一键恢复默认提示词】，以同步最新全局提示词。',
         '【优化】NAI 生图预设升级为完整参数预设，保存和切换时会同步模型、采样器、Schedule、尺寸、Steps、Scale、CFG Rescale 与 Seed。',
-        '【优化】NAI 预设入口移动到 NovelAI 配置区靠上位置，放在 Key 与站点 URL 设置之后，方便按不同模型和参数组合管理预设。',
-        '【兼容】旧版只包含提示词的生图预设仍可继续使用，再次保存后会自动补齐完整 NAI 参数。',
-        '【修复】微信语音条的转文字气泡会清理“语音条转文字内容”等模板前缀，只显示括号内的实际正文。'
+        '【修复】微信语音条的转文字气泡会清理“语音条转文字内容”等模板前缀，只显示括号内的实际正文。',
+        '【新增】NAI 生图预设支持导入和导出，可一次复制分享多套预设并导入到当前 App。'
     ]
 };
 
@@ -7616,7 +7615,7 @@ if (window.GGP_Loaded) {
                                         userAliasNotice = wechatUserName && wechatUserName !== userName
                                             ? `【用户身份别名】酒馆正文中的“${userName}”与小手机微信昵称“${wechatUserName}”是同一个人，均指代{{user}}。解析微信/电话/微博/朋友圈等手机内容时，不要把这两个名字当成两个人。\n\n`
                                             : '';
-                                        const singleLimit = parseInt(storage.get('offline-single-chat-limit')) || 5;
+                                        const singleLimit = parseInt(storage.get('offline-single-chat-limit')) || 30;
                                         const groupLimit = parseInt(storage.get('offline-group-chat-limit')) || 10;
                                         const singleInjectRaw = storage.get('offline-single-chat-enabled');
                                         const groupInjectRaw = storage.get('offline-group-chat-enabled');

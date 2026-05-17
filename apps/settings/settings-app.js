@@ -1227,7 +1227,7 @@ export class SettingsApp {
                                     <div class="setting-desc">控制微信线上单聊记录注入酒馆正文的最近条数，不是蜜语专属</div>
                                 </div>
                                 <input type="number" id="offline-single-chat-limit" min="1" max="9999"
-                                       value="${this.storage.get('offline-single-chat-limit') || 5}"
+                                       value="${this.storage.get('offline-single-chat-limit') || 30}"
                                        style="width: 55px; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; text-align: center; font-size: 14px; background: #fafafa;">
                             </div>
 
@@ -2254,6 +2254,10 @@ export class SettingsApp {
                         <button id="phone-image-prompt-preset-save" class="setting-btn" style="height: 30px; padding: 0 8px; font-size: 12px; background: #07c160; color: #fff; border: none; border-radius: 8px; cursor: pointer;">保存</button>
                         <button id="phone-image-prompt-preset-new" class="setting-btn" style="height: 30px; padding: 0 8px; font-size: 12px; background: #f2f2f2; color: #222; border: 1px solid #d8d8d8; border-radius: 8px; cursor: pointer;">新建</button>
                         <button id="phone-image-prompt-preset-delete" class="setting-btn" style="height: 30px; padding: 0 8px; font-size: 12px; background: #fff; color: #d33; border: 1px solid rgba(211,51,51,0.28); border-radius: 8px; cursor: pointer;">删除</button>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
+                        <button id="phone-image-prompt-preset-export" class="setting-btn" style="height: 30px; padding: 0 8px; font-size: 12px; background: #eef6ff; color: #1d4f91; border: 1px solid #b9d6fb; border-radius: 8px; cursor: pointer;">导出预设</button>
+                        <button id="phone-image-prompt-preset-import" class="setting-btn" style="height: 30px; padding: 0 8px; font-size: 12px; background: #fff7ed; color: #8a4d16; border: 1px solid #f1c38c; border-radius: 8px; cursor: pointer;">导入预设</button>
                     </div>
                 </div>
 
@@ -3605,7 +3609,7 @@ export class SettingsApp {
         });
 
         document.getElementById('offline-single-chat-limit')?.addEventListener('change', async (e) => {
-            const limit = parseInt(e.target.value) || 5;
+            const limit = parseInt(e.target.value) || 30;
             const validLimit = Math.max(1, Math.min(9999, limit));
             e.target.value = validLimit;
             await this.storage.set('offline-single-chat-limit', validLimit);
@@ -3702,6 +3706,8 @@ export class SettingsApp {
         const imagePromptPresetSaveBtn = document.getElementById('phone-image-prompt-preset-save');
         const imagePromptPresetNewBtn = document.getElementById('phone-image-prompt-preset-new');
         const imagePromptPresetDeleteBtn = document.getElementById('phone-image-prompt-preset-delete');
+        const imagePromptPresetExportBtn = document.getElementById('phone-image-prompt-preset-export');
+        const imagePromptPresetImportBtn = document.getElementById('phone-image-prompt-preset-import');
         const setImageProviderVisibility = () => {
             const provider = String(imageProvider?.value || 'novelai').trim() || 'novelai';
             if (imageNovelaiSection) imageNovelaiSection.style.display = provider === 'novelai' ? '' : 'none';
@@ -3844,6 +3850,140 @@ export class SettingsApp {
             });
         };
         const createImagePromptPresetId = () => `preset-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+        const getImagePromptAppName = (appKey) => {
+            const normalizedApp = this._normalizeImagePromptApp(appKey);
+            return this._getImagePromptAppDefs().find(def => def.id === normalizedApp)?.name || normalizedApp;
+        };
+        const buildImagePromptPresetSharePayload = (appKey, presets = []) => ({
+            type: 'yuzuki-phone-nai-presets',
+            version: 1,
+            app: this._normalizeImagePromptApp(appKey),
+            exportedAt: new Date().toISOString(),
+            presets: (Array.isArray(presets) ? presets : []).map(preset => ({
+                name: String(preset?.name || '').trim(),
+                fixedPrompt: String(preset?.fixedPrompt || ''),
+                fixedPromptEnd: String(preset?.fixedPromptEnd || ''),
+                negativePrompt: String(preset?.negativePrompt || ''),
+                novelaiModel: String(preset?.novelaiModel || ''),
+                novelaiSampler: String(preset?.novelaiSampler || ''),
+                novelaiSchedule: String(preset?.novelaiSchedule || ''),
+                honeyWidth: preset?.honeyWidth,
+                honeyHeight: preset?.honeyHeight,
+                wechatWidth: preset?.wechatWidth,
+                wechatHeight: preset?.wechatHeight,
+                weiboWidth: preset?.weiboWidth,
+                weiboHeight: preset?.weiboHeight,
+                width: preset?.width,
+                height: preset?.height,
+                steps: preset?.steps,
+                scale: preset?.scale,
+                cfgRescale: preset?.cfgRescale,
+                seed: preset?.seed
+            })).filter(preset => preset.name)
+        });
+        const normalizeImportedImagePreset = (preset, fallbackName = '') => {
+            const name = String(preset?.name || preset?.title || fallbackName || '').trim();
+            if (!name) return null;
+            return {
+                id: createImagePromptPresetId(),
+                name,
+                fixedPrompt: String(preset?.fixedPrompt || ''),
+                fixedPromptEnd: String(preset?.fixedPromptEnd || ''),
+                negativePrompt: String(preset?.negativePrompt || ''),
+                novelaiModel: String(preset?.novelaiModel || preset?.model || '').trim(),
+                novelaiSampler: String(preset?.novelaiSampler || preset?.sampler || '').trim(),
+                novelaiSchedule: String(preset?.novelaiSchedule || preset?.schedule || '').trim(),
+                honeyWidth: preset?.honeyWidth,
+                honeyHeight: preset?.honeyHeight,
+                wechatWidth: preset?.wechatWidth,
+                wechatHeight: preset?.wechatHeight,
+                weiboWidth: preset?.weiboWidth,
+                weiboHeight: preset?.weiboHeight,
+                width: preset?.width,
+                height: preset?.height,
+                steps: preset?.steps,
+                scale: preset?.scale,
+                cfgRescale: preset?.cfgRescale,
+                seed: preset?.seed,
+                updatedAt: Date.now()
+            };
+        };
+        const parseImagePromptPresetImportText = (rawText = '') => {
+            const text = String(rawText || '').trim();
+            if (!text) return [];
+            let payload = null;
+            try {
+                payload = JSON.parse(text);
+            } catch (err) {
+                throw new Error('导入内容不是有效 JSON');
+            }
+
+            const candidates = Array.isArray(payload)
+                ? payload
+                : (Array.isArray(payload?.presets)
+                    ? payload.presets
+                    : (Array.isArray(payload?.items) ? payload.items : []));
+            return candidates
+                .map((preset, index) => normalizeImportedImagePreset(preset, `导入预设 ${index + 1}`))
+                .filter(Boolean);
+        };
+        const makeUniqueImagePresetName = (name, usedNames) => {
+            const baseName = String(name || '导入预设').trim() || '导入预设';
+            let nextName = baseName;
+            let index = 2;
+            while (usedNames.has(nextName)) {
+                nextName = `${baseName} 导入${index}`;
+                index += 1;
+            }
+            usedNames.add(nextName);
+            return nextName;
+        };
+        const showImagePromptPresetTextModal = ({ title, desc, value = '', mode = 'export', onConfirm = null }) => {
+            document.getElementById('phone-image-preset-share-modal')?.remove();
+            const overlay = document.createElement('div');
+            overlay.id = 'phone-image-preset-share-modal';
+            overlay.style.cssText = 'position:absolute; inset:0; z-index:10020; background:rgba(0,0,0,0.38); display:flex; align-items:center; justify-content:center; padding:14px; box-sizing:border-box;';
+            overlay.innerHTML = `
+                <div style="width:100%; max-width:320px; max-height:82%; background:#fff; border-radius:12px; box-shadow:0 12px 28px rgba(0,0,0,0.22); display:flex; flex-direction:column; overflow:hidden;">
+                    <div style="padding:12px 14px 8px; border-bottom:1px solid #eee;">
+                        <div style="font-size:15px; font-weight:700; color:#111;">${this._escapeHtml(title)}</div>
+                        <div style="font-size:11px; line-height:1.45; color:#666; margin-top:4px;">${this._escapeHtml(desc)}</div>
+                    </div>
+                    <textarea id="phone-image-preset-share-text" spellcheck="false" style="height:240px; min-height:160px; max-height:48vh; width:100%; resize:vertical; border:none; outline:none; padding:10px 12px; box-sizing:border-box; font-size:11px; line-height:1.45; font-family:Consolas, Monaco, monospace; color:#111; background:#fbfbfb; touch-action:pan-y; overscroll-behavior:contain;">${this._escapeHtml(value)}</textarea>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; padding:10px 12px; border-top:1px solid #eee; background:#fff;">
+                        <button type="button" id="phone-image-preset-share-cancel" style="height:32px; border:1px solid #ddd; border-radius:8px; background:#fff; color:#333; font-size:12px; cursor:pointer;">取消</button>
+                        <button type="button" id="phone-image-preset-share-confirm" style="height:32px; border:none; border-radius:8px; background:${mode === 'import' ? '#f59e0b' : '#2563eb'}; color:#fff; font-size:12px; font-weight:700; cursor:pointer;">${mode === 'import' ? '导入' : '复制'}</button>
+                    </div>
+                </div>
+            `;
+            const host = document.querySelector('.phone-view-current') || document.querySelector('.phone-body-panel') || document.body;
+            host.appendChild(overlay);
+            const textarea = overlay.querySelector('#phone-image-preset-share-text');
+            const close = () => overlay.remove();
+            overlay.querySelector('#phone-image-preset-share-cancel')?.addEventListener('click', close);
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) close();
+            });
+            overlay.querySelector('#phone-image-preset-share-confirm')?.addEventListener('click', async () => {
+                try {
+                    if (mode === 'export') {
+                        textarea?.select?.();
+                        await navigator.clipboard?.writeText?.(textarea?.value || '');
+                        this.phoneShell?.showNotification?.('导出预设', 'JSON 已复制', '✅');
+                        close();
+                        return;
+                    }
+                    await onConfirm?.(String(textarea?.value || ''));
+                    close();
+                } catch (err) {
+                    this.phoneShell?.showNotification?.('操作失败', err?.message || String(err || '失败'), '⚠️');
+                }
+            });
+            setTimeout(() => {
+                textarea?.focus?.();
+                if (mode === 'export') textarea?.select?.();
+            }, 30);
+        };
         const refreshImagePromptAppPanel = async (appKey, options = {}) => {
             const normalizedApp = this._normalizeImagePromptApp(appKey);
             const presets = this._getImagePromptPresets(normalizedApp);
@@ -4280,6 +4420,59 @@ export class SettingsApp {
             fillImagePromptPresetSelect(nextPresets, '');
             if (imagePromptPresetName) imagePromptPresetName.value = '';
             this.phoneShell?.showNotification?.('已删除生图设定', target.name, '🗑️');
+        });
+
+        imagePromptPresetExportBtn?.addEventListener('click', async () => {
+            const appKey = getActiveImagePromptApp();
+            const presets = this._getImagePromptPresets(appKey);
+            if (!presets.length) {
+                this.phoneShell?.showNotification?.('导出失败', '当前 App 还没有 NAI 生图预设', '⚠️');
+                return;
+            }
+            const payload = buildImagePromptPresetSharePayload(appKey, presets);
+            showImagePromptPresetTextModal({
+                title: `导出 ${getImagePromptAppName(appKey)} NAI 预设`,
+                desc: `共 ${payload.presets.length} 套。复制后可分享给别人，对方在同一位置导入。`,
+                value: JSON.stringify(payload, null, 2),
+                mode: 'export'
+            });
+        });
+
+        imagePromptPresetImportBtn?.addEventListener('click', async () => {
+            const appKey = getActiveImagePromptApp();
+            showImagePromptPresetTextModal({
+                title: `导入 ${getImagePromptAppName(appKey)} NAI 预设`,
+                desc: '粘贴别人分享的 JSON，可一次导入多套；导入到当前选择的 App，不覆盖已有预设。',
+                value: '',
+                mode: 'import',
+                onConfirm: async (rawText) => {
+                    const imported = parseImagePromptPresetImportText(rawText);
+                    if (!imported.length) throw new Error('没有识别到可导入的预设');
+                    const existing = this._getImagePromptPresets(appKey);
+                    const usedNames = new Set(existing.map(preset => String(preset.name || '').trim()).filter(Boolean));
+                    const nextPresets = [...existing];
+                    imported.forEach((preset) => {
+                        preset.id = createImagePromptPresetId();
+                        preset.name = makeUniqueImagePresetName(preset.name, usedNames);
+                        preset.updatedAt = Date.now();
+                        nextPresets.push(preset);
+                    });
+                    await this._saveImagePromptPresets(appKey, nextPresets);
+                    const activeId = imported[0]?.id || '';
+                    if (activeId) {
+                        await this.storage.set(`phone-image-${appKey}-active-prompt-preset`, activeId);
+                    }
+                    fillImagePromptPresetSelect(nextPresets, activeId);
+                    if (imagePromptPresetSelect) imagePromptPresetSelect.value = activeId;
+                    const activePreset = nextPresets.find(preset => preset.id === activeId) || imported[0];
+                    if (activePreset) {
+                        if (imagePromptPresetName) imagePromptPresetName.value = activePreset.name;
+                        await setImagePromptForm(activePreset);
+                        await applyImageGenerationPresetSettings(activePreset);
+                    }
+                    this.phoneShell?.showNotification?.('导入完成', `已导入 ${imported.length} 套 NAI 预设`, '✅');
+                }
+            });
         });
 
         document.getElementById('siliconflow-api-key')?.addEventListener('change', async (e) => {
