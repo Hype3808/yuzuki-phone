@@ -6149,6 +6149,7 @@ renderChatRoom(chat) {
             // 局部更新发送按钮为“停止”图标
             const sendBtn = document.getElementById('send-btn');
             if (sendBtn) {
+                sendBtn.dataset.mode = 'stop';
                 sendBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6"/></svg>';
                 sendBtn.style.color = '#ff3b30';
             }

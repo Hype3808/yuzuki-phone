@@ -525,8 +525,13 @@ export class DiaryView {
                     return;
                 }
                 const livePhoto = this.app.diaryData.getEntry(this.currentEntryId)?.photos?.find(item => String(item?.id || '') === photoId);
-                if (String(livePhoto?.status || '') === 'loading') return;
-                this._generateDiaryPhoto(photoId);
+                const status = String(livePhoto?.status || '').trim();
+                const imageUrl = String(livePhoto?.imageUrl || '').trim();
+                if (status === 'loading') return;
+                if (status === 'done' && imageUrl) {
+                    const alt = String(livePhoto?.reason || livePhoto?.prompt || '日记照片').trim();
+                    this.app?.phoneShell?.showImageViewer?.(imageUrl, { alt });
+                }
             };
             card.onclick = runAction;
             card.onkeydown = (e) => {
@@ -585,7 +590,7 @@ export class DiaryView {
                 : this._getDiaryFallbackPhotoUrl(entry, photo, index);
             const imageHtml = `<img class="diary-photo-img" src="${this._escapeAttr(displayUrl)}" alt="${prompt || reason || '日记照片'}" loading="lazy">`;
             const statusHtml = status === 'failed'
-                ? `<div class="diary-photo-status diary-photo-status-error">生成失败，点击重试</div>`
+                ? `<div class="diary-photo-status diary-photo-status-error">生成失败，点↻重试</div>`
                 : (status === 'loading'
                     ? `<div class="diary-photo-status">显影中...</div>`
                     : '');

@@ -2031,6 +2031,50 @@ export class SettingsApp {
         await this.storage.set('phone-image-prompt-presets', JSON.stringify(this._normalizeImagePromptPresets(presets)));
     }
 
+    _normalizeOpenAIImagePresets(presets = []) {
+        const seen = new Set();
+        return (Array.isArray(presets) ? presets : []).map((preset) => {
+            const id = String(preset?.id || '').trim();
+            const name = String(preset?.name || '').trim();
+            if (!id || !name || seen.has(id)) return null;
+            seen.add(id);
+            return {
+                id,
+                name,
+                fixedPrompt: String(preset?.fixedPrompt || ''),
+                fixedPromptEnd: String(preset?.fixedPromptEnd || ''),
+                negativePrompt: String(preset?.negativePrompt || ''),
+                openaiModel: String(preset?.openaiModel || preset?.model || '').trim(),
+                openaiMode: String(preset?.openaiMode || 'images').trim() || 'images',
+                openaiQuality: String(preset?.openaiQuality || 'auto').trim() || 'auto',
+                honeyWidth: preset?.honeyWidth,
+                honeyHeight: preset?.honeyHeight,
+                wechatWidth: preset?.wechatWidth,
+                wechatHeight: preset?.wechatHeight,
+                weiboWidth: preset?.weiboWidth,
+                weiboHeight: preset?.weiboHeight,
+                width: preset?.width,
+                height: preset?.height,
+                updatedAt: Number(preset?.updatedAt || 0) || Date.now()
+            };
+        }).filter(Boolean);
+    }
+
+    _getOpenAIImagePresets() {
+        const raw = this.storage.get('phone-image-openai-presets');
+        let presets = [];
+        try {
+            presets = typeof raw === 'string' ? JSON.parse(raw || '[]') : raw;
+        } catch (e) {
+            presets = [];
+        }
+        return this._normalizeOpenAIImagePresets(presets);
+    }
+
+    async _saveOpenAIImagePresets(presets) {
+        await this.storage.set('phone-image-openai-presets', JSON.stringify(this._normalizeOpenAIImagePresets(presets)));
+    }
+
     renderImageGenerationSection() {
         const provider = String(this.storage.get('phone-image-provider') || 'novelai').trim() || 'novelai';
         const enabled = this.storage.get('phone-image-enabled') === true || this.storage.get('phone-image-enabled') === 'true';
@@ -2147,6 +2191,15 @@ export class SettingsApp {
             const safeId = this._escapeHtml(preset.id);
             const safeName = this._escapeHtml(preset.name);
             return `<option value="${safeId}" ${preset.id === activeImagePromptPresetId ? 'selected' : ''}>${safeName}</option>`;
+        }).join('');
+        const openaiImagePresets = this._getOpenAIImagePresets();
+        const activeOpenaiImagePresetId = String(this.storage.get('phone-image-openai-active-preset') || '').trim();
+        const activeOpenaiImagePreset = openaiImagePresets.find(preset => preset.id === activeOpenaiImagePresetId) || null;
+        const activeOpenaiImagePresetName = this._escapeHtml(activeOpenaiImagePreset?.name || '');
+        const openaiImagePresetOptions = openaiImagePresets.map((preset) => {
+            const safeId = this._escapeHtml(preset.id);
+            const safeName = this._escapeHtml(preset.name);
+            return `<option value="${safeId}" ${preset.id === activeOpenaiImagePresetId ? 'selected' : ''}>${safeName}</option>`;
         }).join('');
         const novelaiDisplay = provider === 'novelai' ? '' : 'display: none;';
         const openaiDisplay = provider === 'openai' ? '' : 'display: none;';
@@ -2362,6 +2415,24 @@ export class SettingsApp {
                            value="${this._escapeHtml(openaiUrl)}"
                            placeholder="例如：https://api.openai.com"
                            style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-label">GPT 生图预设</div>
+                    <div class="setting-desc">GPT 单独保存模型、接口模式、质量、尺寸和提示词；不与 NAI 预设混用。</div>
+                    <select id="phone-image-openai-preset-select" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                        <option value="">未选择 GPT 预设</option>
+                        ${openaiImagePresetOptions}
+                    </select>
+                    <input type="text" id="phone-image-openai-preset-name"
+                           value="${activeOpenaiImagePresetName}"
+                           placeholder="预设名称，例如：GPT 方图 / 高清 / 快速"
+                           style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 8px;">
+                        <button id="phone-image-openai-preset-save" class="setting-btn" style="height: 30px; padding: 0 8px; font-size: 12px; background: #07c160; color: #fff; border: none; border-radius: 8px; cursor: pointer;">保存</button>
+                        <button id="phone-image-openai-preset-new" class="setting-btn" style="height: 30px; padding: 0 8px; font-size: 12px; background: #f2f2f2; color: #222; border: 1px solid #d8d8d8; border-radius: 8px; cursor: pointer;">新建</button>
+                        <button id="phone-image-openai-preset-delete" class="setting-btn" style="height: 30px; padding: 0 8px; font-size: 12px; background: #fff; color: #d33; border: 1px solid rgba(211,51,51,0.28); border-radius: 8px; cursor: pointer;">删除</button>
+                    </div>
                 </div>
 
                 <div class="setting-item">
@@ -3720,6 +3791,11 @@ export class SettingsApp {
         const imageOpenaiModel = document.getElementById('phone-image-openai-model');
         const imageOpenaiModelPreset = document.getElementById('phone-image-openai-model-preset');
         const imageOpenaiQuality = document.getElementById('phone-image-openai-quality');
+        const imageOpenaiPresetSelect = document.getElementById('phone-image-openai-preset-select');
+        const imageOpenaiPresetName = document.getElementById('phone-image-openai-preset-name');
+        const imageOpenaiPresetSaveBtn = document.getElementById('phone-image-openai-preset-save');
+        const imageOpenaiPresetNewBtn = document.getElementById('phone-image-openai-preset-new');
+        const imageOpenaiPresetDeleteBtn = document.getElementById('phone-image-openai-preset-delete');
         const imagePromptAppSelect = document.getElementById('phone-image-prompt-app-select');
         const imagePromptPresetSelect = document.getElementById('phone-image-prompt-preset-select');
         const imagePromptPresetName = document.getElementById('phone-image-prompt-preset-name');
@@ -3839,6 +3915,75 @@ export class SettingsApp {
             await setPresetNumber('phone-image-scale', preset.scale, 7, 0, 50, false);
             await setPresetNumber('phone-image-cfg-rescale', preset.cfgRescale, 0, 0, 1, false);
             await setPresetNumber('phone-image-seed', preset.seed, -1, -1, 4294967295, true);
+        };
+        const getOpenAIImagePresetSettings = () => ({
+            fixedPrompt: String(imageFixedPromptInput?.value || '').trim(),
+            fixedPromptEnd: String(imageFixedPromptEndInput?.value || '').trim(),
+            negativePrompt: String(imageNegativePromptInput?.value || '').trim(),
+            openaiModel: String(imageOpenaiModel?.value || '').trim() || 'gpt-image-2',
+            openaiMode: String(document.getElementById('phone-image-openai-mode')?.value || 'images').trim() || 'images',
+            openaiQuality: String(imageOpenaiQuality?.value || 'auto').trim() || 'auto',
+            honeyWidth: readPresetNumber('phone-image-honey-width', 832, 64, 2048, true),
+            honeyHeight: readPresetNumber('phone-image-honey-height', 1216, 64, 2048, true),
+            wechatWidth: readPresetNumber('phone-image-wechat-width', 512, 64, 2048, true),
+            wechatHeight: readPresetNumber('phone-image-wechat-height', 512, 64, 2048, true),
+            weiboWidth: readPresetNumber('phone-image-weibo-width', 1024, 64, 2048, true),
+            weiboHeight: readPresetNumber('phone-image-weibo-height', 1024, 64, 2048, true),
+            width: readPresetNumber('phone-image-width', 832, 64, 2048, true),
+            height: readPresetNumber('phone-image-height', 1216, 64, 2048, true)
+        });
+        const applyOpenAIImagePresetSettings = async (preset) => {
+            if (!preset) return;
+            const appKey = getActiveImagePromptApp();
+            const fixedPromptValue = String(preset.fixedPrompt || '');
+            const fixedPromptEndValue = String(preset.fixedPromptEnd || '');
+            const negativePromptValue = String(preset.negativePrompt || '');
+            if (imageFixedPromptInput) imageFixedPromptInput.value = fixedPromptValue;
+            if (imageFixedPromptEndInput) imageFixedPromptEndInput.value = fixedPromptEndValue;
+            if (imageNegativePromptInput) imageNegativePromptInput.value = negativePromptValue;
+            await saveImagePromptDraft(appKey, {
+                fixedPrompt: fixedPromptValue,
+                fixedPromptEnd: fixedPromptEndValue,
+                negativePrompt: negativePromptValue
+            });
+
+            if (preset.openaiModel) {
+                const model = String(preset.openaiModel || '').trim() || 'gpt-image-2';
+                if (imageOpenaiModel) imageOpenaiModel.value = model;
+                if (imageOpenaiModelPreset) imageOpenaiModelPreset.value = model;
+                await this.storage.set('phone-image-openai-model', model);
+            }
+            if (preset.openaiMode) {
+                const value = String(preset.openaiMode || 'images').trim() || 'images';
+                const input = document.getElementById('phone-image-openai-mode');
+                if (input) input.value = value;
+                await this.storage.set('phone-image-openai-mode', value);
+            }
+            if (preset.openaiQuality) {
+                const value = String(preset.openaiQuality || 'auto').trim() || 'auto';
+                if (imageOpenaiQuality) imageOpenaiQuality.value = value;
+                await this.storage.set('phone-image-openai-quality', value);
+            }
+
+            await setPresetNumber('phone-image-honey-width', preset.honeyWidth, 832, 64, 2048, true);
+            await setPresetNumber('phone-image-honey-height', preset.honeyHeight, 1216, 64, 2048, true);
+            await setPresetNumber('phone-image-wechat-width', preset.wechatWidth, 512, 64, 2048, true);
+            await setPresetNumber('phone-image-wechat-height', preset.wechatHeight, 512, 64, 2048, true);
+            await setPresetNumber('phone-image-weibo-width', preset.weiboWidth, 1024, 64, 2048, true);
+            await setPresetNumber('phone-image-weibo-height', preset.weiboHeight, 1024, 64, 2048, true);
+            await setPresetNumber('phone-image-width', preset.width, 832, 64, 2048, true);
+            await setPresetNumber('phone-image-height', preset.height, 1216, 64, 2048, true);
+        };
+        const fillOpenAIImagePresetSelect = (presets, activeId = '') => {
+            if (!imageOpenaiPresetSelect) return;
+            imageOpenaiPresetSelect.innerHTML = '<option value="">未选择 GPT 预设</option>';
+            presets.forEach((preset) => {
+                const opt = document.createElement('option');
+                opt.value = preset.id;
+                opt.textContent = preset.name;
+                opt.selected = preset.id === activeId;
+                imageOpenaiPresetSelect.appendChild(opt);
+            });
         };
         let currentImagePromptApp = this._normalizeImagePromptApp(this.storage.get('phone-image-active-prompt-app') || imagePromptAppSelect?.value || 'honey');
         const getActiveImagePromptApp = () => this._normalizeImagePromptApp(currentImagePromptApp || imagePromptAppSelect?.value || this.storage.get('phone-image-active-prompt-app') || 'honey');
@@ -4344,6 +4489,80 @@ export class SettingsApp {
             const value = String(e.target.value || 'images').trim() || 'images';
             e.target.value = value;
             await this.storage.set('phone-image-openai-mode', value);
+        });
+
+        imageOpenaiPresetSelect?.addEventListener('change', async (e) => {
+            const presetId = String(e.target.value || '').trim();
+            await this.storage.set('phone-image-openai-active-preset', presetId);
+            const presets = this._getOpenAIImagePresets();
+            const preset = presets.find(item => item.id === presetId);
+            if (!preset) {
+                if (imageOpenaiPresetName) imageOpenaiPresetName.value = '';
+                return;
+            }
+            if (imageOpenaiPresetName) imageOpenaiPresetName.value = preset.name;
+            await applyOpenAIImagePresetSettings(preset);
+            this.phoneShell?.showNotification?.('已切换 GPT 预设', preset.name, '🎨');
+        });
+
+        imageOpenaiPresetSaveBtn?.addEventListener('click', async () => {
+            const name = String(imageOpenaiPresetName?.value || '').trim();
+            if (!name) {
+                this.phoneShell?.showNotification?.('保存失败', '请先填写 GPT 预设名称', '⚠️');
+                imageOpenaiPresetName?.focus?.();
+                return;
+            }
+
+            const now = Date.now();
+            const presets = this._getOpenAIImagePresets();
+            let activeId = String(imageOpenaiPresetSelect?.value || this.storage.get('phone-image-openai-active-preset') || '').trim();
+            let target = presets.find(preset => preset.id === activeId);
+            if (!target) {
+                activeId = createImagePromptPresetId();
+                target = { id: activeId, name, updatedAt: now };
+                presets.push(target);
+            }
+
+            Object.assign(target, getOpenAIImagePresetSettings(), { name, updatedAt: now });
+            await saveImagePromptDraft(getActiveImagePromptApp(), {
+                fixedPrompt: target.fixedPrompt,
+                fixedPromptEnd: target.fixedPromptEnd,
+                negativePrompt: target.negativePrompt
+            });
+            await this._saveOpenAIImagePresets(presets);
+            await this.storage.set('phone-image-openai-active-preset', activeId);
+            fillOpenAIImagePresetSelect(presets, activeId);
+            if (imageOpenaiPresetSelect) imageOpenaiPresetSelect.value = activeId;
+            this.phoneShell?.showNotification?.('已保存 GPT 预设', name, '✅');
+        });
+
+        imageOpenaiPresetNewBtn?.addEventListener('click', async () => {
+            if (imageOpenaiPresetSelect) imageOpenaiPresetSelect.value = '';
+            if (imageOpenaiPresetName) {
+                imageOpenaiPresetName.value = '';
+                imageOpenaiPresetName.focus();
+            }
+            await this.storage.set('phone-image-openai-active-preset', '');
+            this.phoneShell?.showNotification?.('新建 GPT 预设', '填写名称后点击保存', '✏️');
+        });
+
+        imageOpenaiPresetDeleteBtn?.addEventListener('click', async () => {
+            const activeId = String(imageOpenaiPresetSelect?.value || this.storage.get('phone-image-openai-active-preset') || '').trim();
+            if (!activeId) {
+                this.phoneShell?.showNotification?.('删除失败', '请先选择要删除的 GPT 预设', '⚠️');
+                return;
+            }
+            const presets = this._getOpenAIImagePresets();
+            const target = presets.find(preset => preset.id === activeId);
+            if (!target) return;
+            if (!confirm(`删除 GPT 生图预设「${target.name}」？`)) return;
+
+            const nextPresets = presets.filter(preset => preset.id !== activeId);
+            await this._saveOpenAIImagePresets(nextPresets);
+            await this.storage.set('phone-image-openai-active-preset', '');
+            fillOpenAIImagePresetSelect(nextPresets, '');
+            if (imageOpenaiPresetName) imageOpenaiPresetName.value = '';
+            this.phoneShell?.showNotification?.('已删除 GPT 预设', target.name, '🗑️');
         });
 
         imageNovelaiModelPreset?.addEventListener('change', async (e) => {
