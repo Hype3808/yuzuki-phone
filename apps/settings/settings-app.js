@@ -1974,13 +1974,9 @@ export class SettingsApp {
         return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
     }
 
-    _getImagePromptPresets(app = 'honey') {
-        const appKey = this._normalizeImagePromptApp(app);
-        const presetMap = this._getImagePromptPresetMap();
-        const parsed = Array.isArray(presetMap[appKey]) ? presetMap[appKey] : [];
-
+    _normalizeImagePromptPresets(presets = []) {
         const seen = new Set();
-        return parsed.map((preset) => {
+        return (Array.isArray(presets) ? presets : []).map((preset) => {
             const id = String(preset?.id || '').trim();
             const name = String(preset?.name || '').trim();
             if (!id || !name || seen.has(id)) return null;
@@ -2011,11 +2007,28 @@ export class SettingsApp {
         }).filter(Boolean);
     }
 
-    async _saveImagePromptPresets(app, presets) {
-        const appKey = this._normalizeImagePromptApp(app);
+    _getImagePromptPresets(_app = 'honey') {
+        const rawGlobal = this.storage.get('phone-image-prompt-presets');
+        let globalPresets = null;
+        try {
+            globalPresets = typeof rawGlobal === 'string' ? JSON.parse(rawGlobal || '[]') : rawGlobal;
+        } catch (e) {
+            globalPresets = null;
+        }
+        if (Array.isArray(globalPresets)) {
+            return this._normalizeImagePromptPresets(globalPresets);
+        }
+
         const presetMap = this._getImagePromptPresetMap();
-        presetMap[appKey] = Array.isArray(presets) ? presets : [];
-        await this.storage.set('phone-image-prompt-presets-by-app', JSON.stringify(presetMap));
+        const merged = [];
+        this._getImagePromptAppDefs().forEach((def) => {
+            if (Array.isArray(presetMap[def.id])) merged.push(...presetMap[def.id]);
+        });
+        return this._normalizeImagePromptPresets(merged);
+    }
+
+    async _saveImagePromptPresets(app, presets) {
+        await this.storage.set('phone-image-prompt-presets', JSON.stringify(this._normalizeImagePromptPresets(presets)));
     }
 
     renderImageGenerationSection() {
@@ -2238,7 +2251,7 @@ export class SettingsApp {
 
                 <div class="setting-item">
                     <div class="setting-label">NAI 生图预设</div>
-                    <div class="setting-desc">保存当前 App 的提示词，以及模型、采样器、Schedule、尺寸、Steps、Scale、CFG Rescale、Seed。</div>
+                    <div class="setting-desc">预设在蜜语、微信、微博之间共享；每个 App 只单独记住当前选中的预设。</div>
                     <select id="phone-image-prompt-app-select" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
                         ${imagePromptAppOptions}
                     </select>
@@ -4426,12 +4439,12 @@ export class SettingsApp {
             const appKey = getActiveImagePromptApp();
             const presets = this._getImagePromptPresets(appKey);
             if (!presets.length) {
-                this.phoneShell?.showNotification?.('导出失败', '当前 App 还没有 NAI 生图预设', '⚠️');
+                this.phoneShell?.showNotification?.('导出失败', '还没有可导出的共享 NAI 生图预设', '⚠️');
                 return;
             }
             const payload = buildImagePromptPresetSharePayload(appKey, presets);
             showImagePromptPresetTextModal({
-                title: `导出 ${getImagePromptAppName(appKey)} NAI 预设`,
+                title: '导出共享 NAI 预设',
                 desc: `共 ${payload.presets.length} 套。复制后可分享给别人，对方在同一位置导入。`,
                 value: JSON.stringify(payload, null, 2),
                 mode: 'export'
@@ -4441,8 +4454,8 @@ export class SettingsApp {
         imagePromptPresetImportBtn?.addEventListener('click', async () => {
             const appKey = getActiveImagePromptApp();
             showImagePromptPresetTextModal({
-                title: `导入 ${getImagePromptAppName(appKey)} NAI 预设`,
-                desc: '粘贴别人分享的 JSON，可一次导入多套；导入到当前选择的 App，不覆盖已有预设。',
+                title: '导入共享 NAI 预设',
+                desc: '粘贴别人分享的 JSON，可一次导入多套；导入后蜜语、微信、微博都能选择使用，不覆盖已有预设。',
                 value: '',
                 mode: 'import',
                 onConfirm: async (rawText) => {
@@ -4451,14 +4464,16 @@ export class SettingsApp {
                     const existing = this._getImagePromptPresets(appKey);
                     const usedNames = new Set(existing.map(preset => String(preset.name || '').trim()).filter(Boolean));
                     const nextPresets = [...existing];
+                    let firstImportedId = '';
                     imported.forEach((preset) => {
                         preset.id = createImagePromptPresetId();
+                        if (!firstImportedId) firstImportedId = preset.id;
                         preset.name = makeUniqueImagePresetName(preset.name, usedNames);
                         preset.updatedAt = Date.now();
                         nextPresets.push(preset);
                     });
                     await this._saveImagePromptPresets(appKey, nextPresets);
-                    const activeId = imported[0]?.id || '';
+                    const activeId = firstImportedId;
                     if (activeId) {
                         await this.storage.set(`phone-image-${appKey}-active-prompt-preset`, activeId);
                     }

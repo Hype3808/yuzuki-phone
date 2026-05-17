@@ -7904,13 +7904,14 @@ if (window.GGP_Loaded) {
                                                         }
                                                         return;
                                                     } else if (msg.type !== 'text') {
+                                                        const paymentStatus = String(msg.status || '').trim();
                                                         const typeMap = {
                                                             'image_prompt': `[图片]（${String(msg.imagePrompt || msg.content || '待生成图片').trim()}）`,
                                                             'sticker': `[表情包](${String(msg.keyword || msg.content || '表情').trim() || '表情'})`,
                                                             'voice': `[语音 ${msg.duration || '3秒'}]`,
                                                             'video': '[视频通话]',
-                                                            'transfer': `[转账 ¥${msg.amount}]`,
-                                                            'redpacket': `[红包 ¥${msg.amount}]`
+                                                            'transfer': `[转账 ¥${msg.amount}]（状态：${paymentStatus === 'received' ? '已收款' : (paymentStatus === 'refunded' ? '已退回' : '未收款')}）`,
+                                                            'redpacket': `[红包 ¥${msg.amount}]（状态：${paymentStatus === 'opened' ? '已领取' : (paymentStatus === 'refunded' ? '已退回' : '未领取')}）`
                                                         };
                                                         content = typeMap[msg.type] || `[${msg.type}]`;
                                                     }

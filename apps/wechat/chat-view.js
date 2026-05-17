@@ -2325,7 +2325,9 @@ renderChatRoom(chat) {
         }
 
         const { isMe, senderName, senderAvatar } = this._resolveMessageAvatarIdentity(msg, userInfo);
-        const isRedPacketOpened = msg.status === 'opened';
+        const paymentStatus = String(msg.status || '').trim();
+        const isRedPacketOpened = paymentStatus === 'opened';
+        const isPaymentRefunded = paymentStatus === 'refunded';
         const messageId = String(msg?.id || '').trim();
         const isSelectionMode = this._isMessageSelectionActiveForCurrentChat();
         const isSelected = messageId && this.selectedMessageIds.has(messageId);
@@ -2484,8 +2486,10 @@ renderChatRoom(chat) {
                 messageBody += `</div>`;
                 break;
             case 'transfer': {
-                const isTransferOpened = msg.status === 'received';
-                const transferSubtitle = isMe ? '你发起了一笔转账' : (msg.status === 'received' ? '已被接收' : '收到转账');
+                const isTransferOpened = paymentStatus === 'received' || isPaymentRefunded;
+                const transferSubtitle = isPaymentRefunded
+                    ? '已退回'
+                    : (isMe ? '你发起了一笔转账' : (paymentStatus === 'received' ? '已被接收' : '收到转账'));
                 const formattedAmount = parseFloat(msg.amount || 0).toFixed(2);
                 messageBody = `
                 <div class="message-transfer ${isTransferOpened ? 'opened' : ''}" data-msg-id="${msg.id}">
@@ -2530,7 +2534,7 @@ renderChatRoom(chat) {
 
             case 'redpacket':
                 messageBody = `
-                <div class="message-redpacket ${isRedPacketOpened ? 'opened' : ''}" data-msg-id="${msg.id}">
+                <div class="message-redpacket ${(isRedPacketOpened || isPaymentRefunded) ? 'opened' : ''}" data-msg-id="${msg.id}">
                     <div class="rp-main">
                         <div class="rp-icon">
                             <!-- 微信经典红包图标 -->
@@ -2544,7 +2548,7 @@ renderChatRoom(chat) {
                         <div class="rp-content">
                             <div class="rp-title">${msg.wish || '恭喜发财，大吉大利'}</div>
                             <!-- 没被领取时不显示副标题，对齐原生 -->
-                            ${isRedPacketOpened ? `<div class="rp-subtitle">已被领取</div>` : ''}
+                            ${isPaymentRefunded ? `<div class="rp-subtitle">已退回</div>` : (isRedPacketOpened ? `<div class="rp-subtitle">已被领取</div>` : '')}
                         </div>
                     </div>
                     <div class="rp-footer">微信红包</div>
@@ -3493,11 +3497,13 @@ renderChatRoom(chat) {
             return `${msg.from || '对方'}邀请用户一起听${songText}，等待用户接受或拒绝。`;
         }
         if (msg.type === 'transfer') {
-            const status = String(msg.status || '').trim() === 'received' ? '已收款' : '未收款';
+            const rawStatus = String(msg.status || '').trim();
+            const status = rawStatus === 'received' ? '已收款' : (rawStatus === 'refunded' ? '已退回' : '未收款');
             return `[转账 ¥${msg.amount}]（状态：${status}）`;
         }
         if (msg.type === 'redpacket') {
-            const status = String(msg.status || '').trim() === 'opened' ? '已领取' : '未领取';
+            const rawStatus = String(msg.status || '').trim();
+            const status = rawStatus === 'opened' ? '已领取' : (rawStatus === 'refunded' ? '已退回' : '未领取');
             return `[红包 ¥${msg.amount}]（状态：${status}）`;
         }
         return `[${msg.type}]`;
@@ -4211,6 +4217,8 @@ renderChatRoom(chat) {
             if (msg.type === 'transfer') {
                 const status = String(msg.status || '').trim() === 'received'
                     ? (isMe ? '对方已收款' : '你已收款')
+                    : String(msg.status || '').trim() === 'refunded'
+                        ? (isMe ? '已退回给你' : '你已退回')
                     : (isMe ? '待对方收款' : '待你收款');
                 lines.push(`${prefix}转账 ${amountText}｜发送方：${sender}｜状态：${status}`);
                 return;
@@ -4218,6 +4226,8 @@ renderChatRoom(chat) {
 
             const redpacketStatus = String(msg.status || '').trim() === 'opened'
                 ? (isMe ? '已被领取' : '你已领取')
+                : String(msg.status || '').trim() === 'refunded'
+                    ? (isMe ? '已退回给你' : '你已退回')
                 : (isMe ? '待对方领取' : '待你领取');
             lines.push(`${prefix}红包 ${amountText}｜发送方：${sender}｜状态：${redpacketStatus}`);
         });
@@ -4426,6 +4436,19 @@ renderChatRoom(chat) {
     // 🔥 解析AI返回的特殊消息格式（转账/红包/定位/微博新闻/来电）
     parseSpecialMessage(content) {
         if (!content || typeof content !== 'string') return null;
+        const trimmedContent = String(content || '').trim();
+
+        const paymentActionMatch = trimmedContent.match(/^\[(收款|领取红包|退回转账|退回红包)\](?:\s*[（(]\s*([^）)]*)\s*[）)])?$/);
+        if (paymentActionMatch) {
+            const marker = String(paymentActionMatch[1] || '').trim();
+            return {
+                type: 'payment_action',
+                action: marker.includes('退回') ? 'refund' : 'accept',
+                targetType: marker.includes('红包') ? 'redpacket' : 'transfer',
+                note: String(paymentActionMatch[2] || '').trim(),
+                content: `[${marker}]`
+            };
+        }
 
         // 匹配 [微博新闻]...[/微博新闻]
         if (content.includes('[微博新闻]') && content.includes('[/微博新闻]')) {
@@ -4536,7 +4559,7 @@ renderChatRoom(chat) {
         const rawContent = String(message.content || '');
         if (!rawContent.trim()) return [message];
 
-        const inlineSpecialRegex = /\[转账\]\s*(?:[（(]\s*(?:金额[：:]?\s*)?\d+(?:\.\d+)?\s*元?\s*[)）]|[¥￥]\s*\d+(?:\.\d+)?)|\[红包\]\s*(?:[（(]\s*(?:金额[：:]?\s*)?\d+(?:\.\d+)?\s*元?\s*[)）])?|(?:\[\s*定位\s*\]|【\s*定位\s*】)\s*[（(]\s*[^)）]+?\s*[)）]|(?:\[\s*蜜语\s*\]|【\s*蜜语\s*】)\s*(?:[（(]\s*[^）)]*\s*[）)])?|(?:\[\s*音乐\s*\]|【\s*音乐\s*】)\s*[（(]\s*[^，,）)]+?(?:\s*[，,]\s*[^）)]+?)?\s*[）)]|(?:\[\s*(?:拨打|发起)\s*(?:微信)?(?:群)?(?:语音|视频)(?:通话)?\s*\]|【\s*(?:拨打|发起)\s*(?:微信)?(?:群)?(?:语音|视频)(?:通话)?\s*】)/g;
+        const inlineSpecialRegex = /\[(?:收款|领取红包|退回转账|退回红包)\](?:\s*[（(]\s*[^）)]*\s*[）)])?|\[转账\]\s*(?:[（(]\s*(?:金额[：:]?\s*)?\d+(?:\.\d+)?\s*元?\s*[)）]|[¥￥]\s*\d+(?:\.\d+)?)|\[红包\]\s*(?:[（(]\s*(?:金额[：:]?\s*)?\d+(?:\.\d+)?\s*元?\s*[)）])?|(?:\[\s*定位\s*\]|【\s*定位\s*】)\s*[（(]\s*[^)）]+?\s*[)）]|(?:\[\s*蜜语\s*\]|【\s*蜜语\s*】)\s*(?:[（(]\s*[^）)]*\s*[）)])?|(?:\[\s*音乐\s*\]|【\s*音乐\s*】)\s*[（(]\s*[^，,）)]+?(?:\s*[，,]\s*[^）)]+?)?\s*[）)]|(?:\[\s*(?:拨打|发起)\s*(?:微信)?(?:群)?(?:语音|视频)(?:通话)?\s*\]|【\s*(?:拨打|发起)\s*(?:微信)?(?:群)?(?:语音|视频)(?:通话)?\s*】)/g;
         let hasMatch = false;
         let lastIndex = 0;
         let usedQuote = false;
@@ -4583,6 +4606,45 @@ renderChatRoom(chat) {
         }
 
         return result.filter(m => (m.specialMessage || String(m.content || '').trim()));
+    }
+
+    _applyWechatPaymentAction(chatId, action = {}, actorName = '') {
+        const safeChatId = String(chatId || '').trim();
+        if (!safeChatId || !action || action.type !== 'payment_action') return null;
+
+        const messages = this.app.wechatData.getMessages(safeChatId) || [];
+        const targetType = action.targetType === 'redpacket' ? 'redpacket' : 'transfer';
+        let target = null;
+        for (let i = messages.length - 1; i >= 0; i--) {
+            const msg = messages[i];
+            if (!msg || msg.type !== targetType) continue;
+            const isUserSent = msg.from === 'me' || msg.from === this.app.wechatData.getUserInfo()?.name;
+            if (!isUserSent) continue;
+            const status = String(msg.status || '').trim();
+            const isPending = targetType === 'redpacket'
+                ? (status === '' || status === 'sent')
+                : status !== 'received' && status !== 'refunded';
+            if (!isPending) continue;
+            target = msg;
+            break;
+        }
+
+        if (!target?.id) return null;
+
+        const isRefund = action.action === 'refund';
+        const nextStatus = isRefund ? 'refunded' : (targetType === 'redpacket' ? 'opened' : 'received');
+        const amount = Number.parseFloat(target.amount || 0);
+        const updated = this.app.wechatData.updateMessageById(safeChatId, target.id, {
+            status: nextStatus,
+            paymentHandledBy: String(actorName || '').trim(),
+            paymentHandledAt: Date.now()
+        });
+
+        if (isRefund && Number.isFinite(amount) && amount > 0) {
+            this.app.wechatData.updateWalletBalance(amount, safeChatId);
+        }
+
+        return updated;
     }
 
     _collectIncomingCallFollowUps(messages = [], callIndex = 0) {
@@ -6679,6 +6741,10 @@ renderChatRoom(chat) {
                     const msgData = special
                         ? { from: m.sender, ...special, time: m.time, avatar: senderAvatar, replyBatchId: responseBatchId }
                         : { from: m.sender, content: normalizedTextContent, type: 'text', time: m.time, quote: m.quote, avatar: senderAvatar, replyBatchId: responseBatchId };
+                    if (special?.type === 'payment_action') {
+                        this._applyWechatPaymentAction(bgChat.id, special, m.sender);
+                        continue;
+                    }
                     if (special?.type === 'redpacket') msgData.id = `rp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
                     const candidatePreview = String((special?.content || normalizedTextContent || '')).replace(/\s+/g, ' ').trim();
                     if (candidatePreview) {
@@ -6800,6 +6866,14 @@ renderChatRoom(chat) {
                     // 🔥 核心修复3：如果是群聊，禁止 fallback 到 savedChatAvatar
                     ? { from: msg.sender, ...special, time: msg.time, avatar: senderContact?.avatar || (isGroupChat ? '' : savedChatAvatar) || '👤', replyBatchId: responseBatchId }
                     : { from: msg.sender, content: normalizedTextContent, time: msg.time, type: 'text', avatar: senderContact?.avatar || (isGroupChat ? '' : savedChatAvatar) || '👤', quote: msg.quote, replyBatchId: responseBatchId };
+                if (special?.type === 'payment_action') {
+                    this._applyWechatPaymentAction(savedChatId, special, msg.sender);
+                    if (isViewingThisChat) {
+                        this.hideTypingStatus();
+                        this._refreshVisibleChatMessages(savedChatId);
+                    }
+                    continue;
+                }
                 if (special?.type === 'redpacket') msgData.id = `rp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
                 const added = this.app.wechatData.addMessage(savedChatId, msgData);
                 if (!added) {
@@ -7626,11 +7700,13 @@ renderChatRoom(chat) {
                     text += `${timeStr}${speaker}: ${quoteStr}[${mediaType}]（${promptText}）\n`;
                 } else if (msg.type === 'transfer') {
                     // 🔥 修复：直接将转账状态贴在文字后面
-                    const status = String(msg.status || '').trim() === 'received' ? '已收款' : '未收款';
+                    const rawStatus = String(msg.status || '').trim();
+                    const status = rawStatus === 'received' ? '已收款' : (rawStatus === 'refunded' ? '已退回' : '未收款');
                     text += `${timeStr}${speaker}: ${quoteStr}[转账 ¥${msg.amount}]（状态：${status}）\n`;
                 } else if (msg.type === 'redpacket') {
                     // 🔥 修复：直接将红包状态贴在文字后面
-                    const status = String(msg.status || '').trim() === 'opened' ? '已领取' : '未领取';
+                    const rawStatus = String(msg.status || '').trim();
+                    const status = rawStatus === 'opened' ? '已领取' : (rawStatus === 'refunded' ? '已退回' : '未领取');
                     text += `${timeStr}${speaker}: ${quoteStr}[红包 ¥${msg.amount}]（状态：${status}）\n`;
                 } else if (msg.type === 'location') {
                     const locationText = String(msg.locationText || msg.locationAddress || msg.content || '').trim();
@@ -12042,12 +12118,14 @@ ${chatHistory.slice(-5).map(h => `${h.from === 'me' ? userName : contactName}: $
         const isMe = message.from === 'me' || message.from === this.app.wechatData.getUserInfo().name;
         let resolvedStatus = String(message.status || '').trim();
         let isOpened = resolvedStatus === 'opened';
+        let isRefunded = resolvedStatus === 'refunded';
         const contact = this.app.wechatData.getContactByName(message.from);
 
-        if (!isMe && !isOpened) {
+        if (!isMe && !isOpened && !isRefunded) {
             const updatedMessage = this.app.wechatData.updateMessageById(chatId, messageId, { status: 'opened' });
             resolvedStatus = String(updatedMessage?.status || 'opened').trim();
             isOpened = resolvedStatus === 'opened';
+            isRefunded = resolvedStatus === 'refunded';
             // 收红包，加钱
             const rpAmount = parseFloat(message.amount) || 0;
             this.app.wechatData.updateWalletBalance(rpAmount);
@@ -12057,6 +12135,9 @@ ${chatHistory.slice(-5).map(h => `${h.from === 'me' ? userName : contactName}: $
         const senderName = message.from === 'me' ? this.app.wechatData.getUserInfo().name : message.from;
         const av = contact?.avatar || (message.from === 'me' ? this.app.wechatData.getUserInfo().avatar : '👤');
         const avatarHtml = this.app.renderAvatar(av, '👤', senderName);
+        const redPacketStatusText = isRefunded
+            ? (isMe ? '红包已退回' : '红包已被退回')
+            : (isMe ? (isOpened ? '红包已被领取' : '红包已发出') : '已存入零钱');
 
         const html = `
             <div class="wechat-app" style="position: relative;">
@@ -12084,7 +12165,7 @@ ${chatHistory.slice(-5).map(h => `${h.from === 'me' ? userName : contactName}: $
                             <span style="font-size:28px; font-weight:bold; color:#c4884f;">${message.amount}</span>
                             <span style="font-size:12px; color:#c4884f; margin-left:2px;">元</span>
                         </div>
-                        <div style="font-size:11px; color:#e6a158;">${isMe ? '红包已发出' : '已存入零钱'}</div>
+                        <div style="font-size:11px; color:#e6a158;">${redPacketStatusText}</div>
                     </div>
                 </div>
             </div>
@@ -12109,7 +12190,7 @@ ${chatHistory.slice(-5).map(h => `${h.from === 'me' ? userName : contactName}: $
         let resolvedStatus = String(message.status || '').trim();
         
         // 对方发来的转账，如果还没被收款（用 status 记录），点击后存入钱包
-        if (!isMe && resolvedStatus !== 'received') {
+        if (!isMe && resolvedStatus !== 'received' && resolvedStatus !== 'refunded') {
             const updatedMessage = this.app.wechatData.updateMessageById(chatId, messageId, { status: 'received' });
             resolvedStatus = String(updatedMessage?.status || 'received').trim();
             this.app.wechatData.updateWalletBalance(parseFloat(formattedAmount));
@@ -12122,7 +12203,17 @@ ${chatHistory.slice(-5).map(h => `${h.from === 'me' ? userName : contactName}: $
 
         const now = new Date();
         const timeStr = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日 ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-        const statusTitle = isMe ? '待对方确认收款' : '你已收款，资金已存入零钱';
+        const isTransferRefunded = resolvedStatus === 'refunded';
+        const isTransferReceived = resolvedStatus === 'received';
+        const statusTitle = isTransferRefunded
+            ? (isMe ? '转账已退回' : '你已退回该笔转账')
+            : (isMe
+                ? (isTransferReceived ? '对方已收款' : '待对方确认收款')
+                : '你已收款，资金已存入零钱');
+        const balanceLabel = isTransferRefunded
+            ? (isMe ? '已退回零钱' : '未存入零钱')
+            : '零钱余额';
+        const receiveTimeLabel = isTransferRefunded ? '退回时间' : '收款时间';
 
         const html = `
             <div class="wechat-app" style="position: relative;">
@@ -12146,7 +12237,7 @@ ${chatHistory.slice(-5).map(h => `${h.from === 'me' ? userName : contactName}: $
                         </div>
                         <div style="font-size:12px; color:#000; margin-bottom:10px;">${statusTitle}</div>
                         <div style="font-size:28px; font-weight:bold; color:#000; margin-bottom:4px;">¥ ${formattedAmount}</div>
-                        <div style="font-size:11px; color:#07c160; margin-bottom:16px;">零钱余额</div>
+                        <div style="font-size:11px; color:#07c160; margin-bottom:16px;">${balanceLabel}</div>
                     </div>
 
                     <!-- 时间信息 -->
@@ -12155,7 +12246,7 @@ ${chatHistory.slice(-5).map(h => `${h.from === 'me' ? userName : contactName}: $
                             <span>转账时间</span><span>${timeStr}</span>
                         </div>
                         <div style="display:flex; justify-content:space-between; font-size:11px; color:#888;">
-                            <span>收款时间</span><span>${timeStr}</span>
+                            <span>${receiveTimeLabel}</span><span>${timeStr}</span>
                         </div>
                     </div>
 
