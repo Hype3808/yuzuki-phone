@@ -2489,7 +2489,9 @@ renderChatRoom(chat) {
                 const isTransferOpened = paymentStatus === 'received' || isPaymentRefunded;
                 const transferSubtitle = isPaymentRefunded
                     ? '已退回'
-                    : (isMe ? '你发起了一笔转账' : (paymentStatus === 'received' ? '已被接收' : '收到转账'));
+                    : (isMe
+                        ? (paymentStatus === 'received' ? '对方已收款' : '你发起了一笔转账')
+                        : (paymentStatus === 'received' ? '已接收' : '收到转账'));
                 const formattedAmount = parseFloat(msg.amount || 0).toFixed(2);
                 messageBody = `
                 <div class="message-transfer ${isTransferOpened ? 'opened' : ''}" data-msg-id="${msg.id}">
@@ -2548,7 +2550,7 @@ renderChatRoom(chat) {
                         <div class="rp-content">
                             <div class="rp-title">${msg.wish || '恭喜发财，大吉大利'}</div>
                             <!-- 没被领取时不显示副标题，对齐原生 -->
-                            ${isPaymentRefunded ? `<div class="rp-subtitle">已退回</div>` : (isRedPacketOpened ? `<div class="rp-subtitle">已被领取</div>` : '')}
+                            ${isPaymentRefunded ? `<div class="rp-subtitle">已退回</div>` : (isRedPacketOpened ? `<div class="rp-subtitle">${isMe ? '已被领取' : '已领取'}</div>` : '')}
                         </div>
                     </div>
                     <div class="rp-footer">微信红包</div>
@@ -4642,6 +4644,20 @@ renderChatRoom(chat) {
 
         if (isRefund && Number.isFinite(amount) && amount > 0) {
             this.app.wechatData.updateWalletBalance(amount, safeChatId);
+        }
+
+        if (updated) {
+            const statusText = isRefund
+                ? '已退回'
+                : (targetType === 'redpacket' ? '对方已领取' : '对方已收款');
+            this.app.wechatData.addMessage(safeChatId, {
+                from: 'system',
+                type: 'system',
+                content: statusText,
+                paymentTargetId: target.id,
+                paymentTargetType: targetType,
+                paymentAction: isRefund ? 'refund' : 'accept'
+            });
         }
 
         return updated;
