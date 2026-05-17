@@ -3341,8 +3341,10 @@ export class HoneyView {
             setGiftPickerOpen(!isOpen);
         };
 
-        giftBtn?.addEventListener('pointerup', toggleGiftPicker);
-        giftBtn?.addEventListener('click', toggleGiftPicker);
+        if (giftBtn) {
+            const supportsPointerEvent = typeof window !== 'undefined' && 'PointerEvent' in window;
+            giftBtn.addEventListener(supportsPointerEvent ? 'pointerup' : 'click', toggleGiftPicker);
+        }
 
         root.querySelectorAll('.honey-gift-option').forEach(el => {
             el.addEventListener('click', (e) => {
