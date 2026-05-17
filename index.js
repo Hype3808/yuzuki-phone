@@ -16,7 +16,7 @@
 
 const ST_PHONE_BASE_URL = new URL('./', import.meta.url).href;
 const ST_PHONE_GLOBAL_CSS_URL = new URL('./phone.css', import.meta.url).href;
-const ST_PHONE_VERSION = '1.1.3';
+const ST_PHONE_VERSION = '1.1.4';
 const ST_PHONE_UPDATE_MANIFEST_URLS = [
     'https://raw.githubusercontent.com/gaigai315/yuzuki-phone/main/manifest.json',
     'https://raw.githubusercontent.com/gaigai315/yuzuki-phone/master/manifest.json'
@@ -36,21 +36,13 @@ const LOBBY_WECHAT_ONLINE_PROACTIVE_LAST_AT_KEY = 'phone_lobby_wechat_online_pro
 const LOBBY_WECHAT_ONLINE_PROACTIVE_PENDING_KEY = 'phone_lobby_wechat_online_proactive_pending_at';
 const ST_PHONE_CURRENT_UPDATE = {
     version: ST_PHONE_VERSION,
-    date: '2026-05-16',
+    date: '2026-05-17',
     items: [
         '【必做】更新后请在设置中执行一次【一键恢复默认提示词】，以同步最新全局提示词。',
-        '【新增】设置页新增微信互通模式与线上模式互斥开关；线上模式启用后并会关闭微信线下提示词、单聊记录和群聊记录注入。',
-        '【新增】微信线上模式支持当前会话按现实时间定时主动触发，可设置触发间隔，并在 API 忙碌时顺延到空闲后执行。',
-        '【优化】从正文同步手机时间时，若手机最新微信消息时间晚于正文时间，会提示系统取最晚值，并引导删除更晚的手机聊天记录后再同步。',
-        '【优化】微博推荐页与热搜详情支持保留用户已点赞的旧微博内容，多轮刷新不会清理，并会按现实经过时间更新微博发布时间显示。',
-        '【优化】日记设置页新增酒馆世界书开关与选择列表，手动生成和自动写日记会按该开关注入勾选的世界书。',
-        '【优化】魔坊通知气泡改为悬浮在输入框上方，缩小桌面端与移动端尺寸，并跟随酒馆阴影色和主要文本色显示。',
-        '【优化】魔坊内信笺与论坛模板的 CSS 渲染表现，调整移动端尺寸、文字位置与字体继承，让模板在小手机里显示更稳定。',
-        '【修复】微博、日记、微信聊天和朋友圈点击生图后会保存到酒馆 /backgrounds/ 本地文件夹并显示在相册中，重新生成、删除消息或清空朋友圈时会同步清理旧图。',
-        '【修复】微信、微博、蜜语注入酒馆世界书时，现在只会注入世界书内已开启的条目，已关闭条目不再进入手机提示词。',
-        '【修复】修复小手机魔坊列表在移动端删除模板时可能连续触发点击、误删多个模板的问题。',
-        '【修复】修复魔坊编辑保存后可能回退到首次保存内容，导致 HTML/CSS 修改后预览不生效的问题。',
-        '【修复】魔坊线下提示词会按当前聊天重新同步状态，删除旧 AI 回复里的魔坊标签后，不再继续注入旧内容。'
+        '【优化】NAI 生图预设升级为完整参数预设，保存和切换时会同步模型、采样器、Schedule、尺寸、Steps、Scale、CFG Rescale 与 Seed。',
+        '【优化】NAI 预设入口移动到 NovelAI 配置区靠上位置，放在 Key 与站点 URL 设置之后，方便按不同模型和参数组合管理预设。',
+        '【兼容】旧版只包含提示词的生图预设仍可继续使用，再次保存后会自动补齐完整 NAI 参数。',
+        '【修复】微信语音条的转文字气泡会清理“语音条转文字内容”等模板前缀，只显示括号内的实际正文。'
     ]
 };
 
@@ -5074,6 +5066,11 @@ if (window.GGP_Loaded) {
     // 🔧 辅助函数：解析消息类型
     function parseMessageType(msgObj) {
         const content = msgObj.content;
+        const normalizeVoiceText = (value = '') => String(value || '')
+            .trim()
+            .replace(/^(?:语音条?\s*)?(?:转文字|转文本|转写|转录|转化出的文字|转化文字|转换文字|文字内容|内容)\s*[：:]\s*/i, '')
+            .replace(/^语音条转文字内容\s*[：:]\s*/i, '')
+            .trim();
 
         // [拨打微信语音] / [拨打微信群语音] / [发起群视频通话]（兼容全角方括号【】）
         const wechatCallMatch = String(content || '').match(/[［\[]\s*(?:拨打|发起)\s*(?:微信)?(群)?(语音|视频)(?:通话)?\s*[］\]]|【\s*(?:拨打|发起)\s*(?:微信)?(群)?(语音|视频)(?:通话)?\s*】/);
@@ -5114,6 +5111,7 @@ if (window.GGP_Loaded) {
             if (wrappedVoiceMatch) {
                 parsedVoiceText = String(wrappedVoiceMatch[1] || '').trim();
             }
+            parsedVoiceText = normalizeVoiceText(parsedVoiceText);
             msgObj.type = 'voice';
             msgObj.voiceText = parsedVoiceText;
             // 自动计算秒数：每3个字1秒，最少2秒，最多60秒

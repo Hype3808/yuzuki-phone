@@ -2421,6 +2421,10 @@ renderChatRoom(chat) {
                     if (wrappedVoiceMatch) {
                         voiceText = String(wrappedVoiceMatch[1] || '').trim();
                     }
+                    voiceText = voiceText
+                        .replace(/^(?:语音条?\s*)?(?:转文字|转文本|转写|转录|转化出的文字|转化文字|转换文字|文字内容|内容)\s*[：:]\s*/i, '')
+                        .replace(/^语音条转文字内容\s*[：:]\s*/i, '')
+                        .trim();
                     durationNum = Math.max(2, Math.min(Math.ceil(voiceText.length / 3), 60));
                     durationStr = durationNum + '"';
                 } else {
@@ -2431,6 +2435,10 @@ renderChatRoom(chat) {
                         durationNum = parseInt(oldVMatch[1]);
                     }
                 }
+                voiceText = String(voiceText || '')
+                    .replace(/^(?:语音条?\s*)?(?:转文字|转文本|转写|转录|转化出的文字|转化文字|转换文字|文字内容|内容)\s*[：:]\s*/i, '')
+                    .replace(/^语音条转文字内容\s*[：:]\s*/i, '')
+                    .trim();
 
                 // 动态宽度
                 const minW = 60;

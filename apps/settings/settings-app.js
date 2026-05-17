@@ -1991,6 +1991,21 @@ export class SettingsApp {
                 fixedPrompt: String(preset?.fixedPrompt || ''),
                 fixedPromptEnd: String(preset?.fixedPromptEnd || ''),
                 negativePrompt: String(preset?.negativePrompt || ''),
+                novelaiModel: String(preset?.novelaiModel || preset?.model || ''),
+                novelaiSampler: String(preset?.novelaiSampler || preset?.sampler || ''),
+                novelaiSchedule: String(preset?.novelaiSchedule || preset?.schedule || ''),
+                honeyWidth: preset?.honeyWidth,
+                honeyHeight: preset?.honeyHeight,
+                wechatWidth: preset?.wechatWidth,
+                wechatHeight: preset?.wechatHeight,
+                weiboWidth: preset?.weiboWidth,
+                weiboHeight: preset?.weiboHeight,
+                width: preset?.width,
+                height: preset?.height,
+                steps: preset?.steps,
+                scale: preset?.scale,
+                cfgRescale: preset?.cfgRescale,
+                seed: preset?.seed,
                 updatedAt: Number(preset?.updatedAt || 0) || Date.now()
             };
         }).filter(Boolean);
@@ -2219,6 +2234,27 @@ export class SettingsApp {
                            value="${this._escapeHtml(novelaiUrl)}"
                            placeholder="例如：https://image.novelai.net"
                            style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-label">NAI 生图预设</div>
+                    <div class="setting-desc">保存当前 App 的提示词，以及模型、采样器、Schedule、尺寸、Steps、Scale、CFG Rescale、Seed。</div>
+                    <select id="phone-image-prompt-app-select" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                        ${imagePromptAppOptions}
+                    </select>
+                    <select id="phone-image-prompt-preset-select" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                        <option value="">未选择设定</option>
+                        ${imagePromptPresetOptions}
+                    </select>
+                    <input type="text" id="phone-image-prompt-preset-name"
+                           value="${activeImagePromptPresetName}"
+                           placeholder="设定名称，例如：画师串A / 厚涂 / 漫画风"
+                           style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 8px;">
+                        <button id="phone-image-prompt-preset-save" class="setting-btn" style="height: 30px; padding: 0 8px; font-size: 12px; background: #07c160; color: #fff; border: none; border-radius: 8px; cursor: pointer;">保存</button>
+                        <button id="phone-image-prompt-preset-new" class="setting-btn" style="height: 30px; padding: 0 8px; font-size: 12px; background: #f2f2f2; color: #222; border: 1px solid #d8d8d8; border-radius: 8px; cursor: pointer;">新建</button>
+                        <button id="phone-image-prompt-preset-delete" class="setting-btn" style="height: 30px; padding: 0 8px; font-size: 12px; background: #fff; color: #d33; border: 1px solid rgba(211,51,51,0.28); border-radius: 8px; cursor: pointer;">删除</button>
+                    </div>
                 </div>
 
                 <div class="setting-item">
@@ -2557,27 +2593,6 @@ export class SettingsApp {
                     <div class="setting-item">
                         <div class="setting-label">Seed</div>
                         <input type="number" id="phone-image-seed" min="-1" value="${seed}" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
-                    </div>
-                </div>
-
-                <div class="setting-item">
-                    <div class="setting-label">提示词设定</div>
-                    <div class="setting-desc">先选择 App 大类，再为该 App 保存多套前置、后置、负面提示词；日记照片生图目前复用微信这一组。</div>
-                    <select id="phone-image-prompt-app-select" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
-                        ${imagePromptAppOptions}
-                    </select>
-                    <select id="phone-image-prompt-preset-select" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
-                        <option value="">未选择设定</option>
-                        ${imagePromptPresetOptions}
-                    </select>
-                    <input type="text" id="phone-image-prompt-preset-name"
-                           value="${activeImagePromptPresetName}"
-                           placeholder="设定名称，例如：画师串A / 厚涂 / 漫画风"
-                           style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
-                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 8px;">
-                        <button id="phone-image-prompt-preset-save" class="setting-btn" style="height: 30px; padding: 0 8px; font-size: 12px; background: #07c160; color: #fff; border: none; border-radius: 8px; cursor: pointer;">保存</button>
-                        <button id="phone-image-prompt-preset-new" class="setting-btn" style="height: 30px; padding: 0 8px; font-size: 12px; background: #f2f2f2; color: #222; border: 1px solid #d8d8d8; border-radius: 8px; cursor: pointer;">新建</button>
-                        <button id="phone-image-prompt-preset-delete" class="setting-btn" style="height: 30px; padding: 0 8px; font-size: 12px; background: #fff; color: #d33; border: 1px solid rgba(211,51,51,0.28); border-radius: 8px; cursor: pointer;">删除</button>
                     </div>
                 </div>
 
@@ -3734,6 +3749,68 @@ export class SettingsApp {
             fixedPromptEnd: String(imageFixedPromptEndInput?.value || '').trim(),
             negativePrompt: String(imageNegativePromptInput?.value || '').trim()
         });
+        const readPresetNumber = (id, fallback, min, max, integer = false) => {
+            const input = document.getElementById(id);
+            return clampNumberInput(input, fallback, min, max, integer);
+        };
+        const setPresetNumber = async (id, value, fallback, min, max, integer = false) => {
+            if (value === undefined || value === null || value === '') return;
+            const input = document.getElementById(id);
+            if (!input) return;
+            input.value = String(value);
+            await this.storage.set(id, clampNumberInput(input, fallback, min, max, integer));
+        };
+        const getImageGenerationPresetSettings = () => ({
+            novelaiModel: String(imageNovelaiModel?.value || '').trim() || 'nai-diffusion-4-5-full',
+            novelaiSampler: String(document.getElementById('phone-image-novelai-sampler')?.value || '').trim() || 'k_euler',
+            novelaiSchedule: String(document.getElementById('phone-image-novelai-schedule')?.value || '').trim() || 'native',
+            honeyWidth: readPresetNumber('phone-image-honey-width', 832, 64, 2048, true),
+            honeyHeight: readPresetNumber('phone-image-honey-height', 1216, 64, 2048, true),
+            wechatWidth: readPresetNumber('phone-image-wechat-width', 512, 64, 2048, true),
+            wechatHeight: readPresetNumber('phone-image-wechat-height', 512, 64, 2048, true),
+            weiboWidth: readPresetNumber('phone-image-weibo-width', 1024, 64, 2048, true),
+            weiboHeight: readPresetNumber('phone-image-weibo-height', 1024, 64, 2048, true),
+            width: readPresetNumber('phone-image-width', 832, 64, 2048, true),
+            height: readPresetNumber('phone-image-height', 1216, 64, 2048, true),
+            steps: readPresetNumber('phone-image-steps', 28, 1, 50, true),
+            scale: readPresetNumber('phone-image-scale', 7, 0, 50, false),
+            cfgRescale: readPresetNumber('phone-image-cfg-rescale', 0, 0, 1, false),
+            seed: readPresetNumber('phone-image-seed', -1, -1, 4294967295, true)
+        });
+        const applyImageGenerationPresetSettings = async (preset) => {
+            if (!preset) return;
+            if (preset.novelaiModel) {
+                const model = String(preset.novelaiModel || '').trim() || 'nai-diffusion-4-5-full';
+                if (imageNovelaiModel) imageNovelaiModel.value = model;
+                if (imageNovelaiModelPreset) imageNovelaiModelPreset.value = model;
+                await this.storage.set('phone-image-novelai-model', model);
+            }
+            if (preset.novelaiSampler) {
+                const value = String(preset.novelaiSampler || '').trim() || 'k_euler';
+                const input = document.getElementById('phone-image-novelai-sampler');
+                if (input) input.value = value;
+                await this.storage.set('phone-image-novelai-sampler', value);
+            }
+            if (preset.novelaiSchedule) {
+                const value = String(preset.novelaiSchedule || '').trim() || 'native';
+                const input = document.getElementById('phone-image-novelai-schedule');
+                if (input) input.value = value;
+                await this.storage.set('phone-image-novelai-schedule', value);
+            }
+
+            await setPresetNumber('phone-image-honey-width', preset.honeyWidth, 832, 64, 2048, true);
+            await setPresetNumber('phone-image-honey-height', preset.honeyHeight, 1216, 64, 2048, true);
+            await setPresetNumber('phone-image-wechat-width', preset.wechatWidth, 512, 64, 2048, true);
+            await setPresetNumber('phone-image-wechat-height', preset.wechatHeight, 512, 64, 2048, true);
+            await setPresetNumber('phone-image-weibo-width', preset.weiboWidth, 1024, 64, 2048, true);
+            await setPresetNumber('phone-image-weibo-height', preset.weiboHeight, 1024, 64, 2048, true);
+            await setPresetNumber('phone-image-width', preset.width, 832, 64, 2048, true);
+            await setPresetNumber('phone-image-height', preset.height, 1216, 64, 2048, true);
+            await setPresetNumber('phone-image-steps', preset.steps, 28, 1, 50, true);
+            await setPresetNumber('phone-image-scale', preset.scale, 7, 0, 50, false);
+            await setPresetNumber('phone-image-cfg-rescale', preset.cfgRescale, 0, 0, 1, false);
+            await setPresetNumber('phone-image-seed', preset.seed, -1, -1, 4294967295, true);
+        };
         let currentImagePromptApp = this._normalizeImagePromptApp(this.storage.get('phone-image-active-prompt-app') || imagePromptAppSelect?.value || 'honey');
         const getActiveImagePromptApp = () => this._normalizeImagePromptApp(currentImagePromptApp || imagePromptAppSelect?.value || this.storage.get('phone-image-active-prompt-app') || 'honey');
         const saveImagePromptDraft = async (app, form = getImagePromptForm()) => {
@@ -3767,7 +3844,7 @@ export class SettingsApp {
             });
         };
         const createImagePromptPresetId = () => `preset-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-        const refreshImagePromptAppPanel = (appKey) => {
+        const refreshImagePromptAppPanel = async (appKey, options = {}) => {
             const normalizedApp = this._normalizeImagePromptApp(appKey);
             const presets = this._getImagePromptPresets(normalizedApp);
             let activeId = String(this.storage.get(`phone-image-${normalizedApp}-active-prompt-preset`) || '').trim();
@@ -3781,6 +3858,9 @@ export class SettingsApp {
             if (imageFixedPromptInput) imageFixedPromptInput.value = String(draft.fixedPrompt || '');
             if (imageFixedPromptEndInput) imageFixedPromptEndInput.value = String(draft.fixedPromptEnd || '');
             if (imageNegativePromptInput) imageNegativePromptInput.value = String(draft.negativePrompt || '');
+            if (activePreset && options.applyGenerationSettings !== false) {
+                await applyImageGenerationPresetSettings(activePreset);
+            }
         };
 
         imagePromptAppSelect?.addEventListener('change', async (e) => {
@@ -3789,7 +3869,7 @@ export class SettingsApp {
             await saveImagePromptDraft(previousApp);
             currentImagePromptApp = appKey;
             await this.storage.set('phone-image-active-prompt-app', appKey);
-            refreshImagePromptAppPanel(appKey);
+            await refreshImagePromptAppPanel(appKey);
         });
 
         imageEnabled?.addEventListener('change', async (e) => {
@@ -4132,6 +4212,7 @@ export class SettingsApp {
             }
             if (imagePromptPresetName) imagePromptPresetName.value = preset.name;
             await setImagePromptForm(preset);
+            await applyImageGenerationPresetSettings(preset);
             this.phoneShell?.showNotification?.('已切换生图设定', preset.name, '🎨');
         });
 
@@ -4155,10 +4236,12 @@ export class SettingsApp {
             }
 
             const form = getImagePromptForm();
+            const generationSettings = getImageGenerationPresetSettings();
             target.name = name;
             target.fixedPrompt = form.fixedPrompt;
             target.fixedPromptEnd = form.fixedPromptEnd;
             target.negativePrompt = form.negativePrompt;
+            Object.assign(target, generationSettings);
             target.updatedAt = now;
 
             await saveImagePromptDraft(appKey, form);

@@ -1792,6 +1792,10 @@ export class WechatData {
                 if (wrappedVoiceMatch) {
                     parsedVoiceText = String(wrappedVoiceMatch[1] || '').trim();
                 }
+                parsedVoiceText = parsedVoiceText
+                    .replace(/^(?:语音条?\s*)?(?:转文字|转文本|转写|转录|转化出的文字|转化文字|转换文字|文字内容|内容)\s*[：:]\s*/i, '')
+                    .replace(/^语音条转文字内容\s*[：:]\s*/i, '')
+                    .trim();
                 message.type = 'voice';
                 message.voiceText = parsedVoiceText;
                 let seconds = Math.ceil((message.voiceText || '语音').length / 3);
