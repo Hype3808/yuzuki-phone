@@ -62,8 +62,17 @@ export class PromptManager {
                 if (parsed.wechat?.groupChat?.content && !String(parsed.wechat.groupChat.content).includes('非群成员发微信')) {
                     parsed.wechat.groupChat.content = defaults.wechat.groupChat.content;
                 }
+                if (parsed.wechat?.offline?.content && !String(parsed.wechat.offline.content).includes('好友名后带“（已拉黑）”')) {
+                    parsed.wechat.offline.content = this._appendWechatOfflineBlockedRule(parsed.wechat.offline.content);
+                }
                 if (parsed.wechat?.online?.content && !String(parsed.wechat.online.content).includes('[音乐]（音乐名称')) {
                     parsed.wechat.online.content = this._appendWechatOnlineMusicInviteRule(parsed.wechat.online.content);
+                }
+                if (parsed.wechat?.online?.content && !String(parsed.wechat.online.content).includes('好友名后带“（已拉黑）”')) {
+                    parsed.wechat.online.content = this._appendWechatOnlineBlockedRule(parsed.wechat.online.content);
+                }
+                if (parsed.wechat?.groupChat?.content && !String(parsed.wechat.groupChat.content).includes('好友名后带“（已拉黑）”')) {
+                    parsed.wechat.groupChat.content = this._appendWechatGroupBlockedRule(parsed.wechat.groupChat.content);
                 }
                 const obsoleteMomentsLine = '本提示词只负责约束朋友圈动态的风格、互动和输出质量；角色卡、用户信息、世界书和最近剧情会由系统自动注入，不要在这里重复填写这些背景变量。';
                 if (parsed.wechat?.moments?.content && String(parsed.wechat.moments.content).includes(obsoleteMomentsLine)) {
@@ -164,6 +173,36 @@ export class PromptManager {
         return next;
     }
 
+    _appendWechatOfflineBlockedRule(content = '') {
+        const text = String(content || '');
+        const rule = '备注：好友名后带“（已拉黑）”表示{{user}}已经把该好友拉黑。已拉黑好友知道自己无法再通过微信联系{{user}}，不得使用<wechat>标签给{{user}}发送消息；如剧情需要，只能在正文中描写其无法发送、发送失败、改用线下或其他渠道等反应。';
+        if (!text || text.includes(rule)) return text;
+        return text.replace(
+            /(\{\{user\}\}手机上的微信群聊列表：\{\{wechatGroups\}\})/,
+            `$1\n${rule}`
+        );
+    }
+
+    _appendWechatOnlineBlockedRule(content = '') {
+        const text = String(content || '');
+        const rule = '16. 拉黑状态：如果当前单聊好友已被{{user}}拉黑，系统会阻止用户发起线上请求；你不应主动假装仍可正常通过单聊联系{{user}}。共同群聊名单中若成员名后带“（已拉黑）”，表示该成员被{{user}}拉黑，角色应理解这个关系状态。';
+        if (!text || text.includes(rule)) return text;
+        return text.replace(
+            /(15\.\s*红包\/转账处理：[\s\S]*?不要让待领取\/待收款长期悬空。)/,
+            `$1\n${rule}`
+        );
+    }
+
+    _appendWechatGroupBlockedRule(content = '') {
+        const text = String(content || '');
+        const rule = '4. 好友名后带“（已拉黑）”表示{{user}}已经把该好友拉黑。该标记只说明{{user}}与此人的单聊关系状态；群聊里仍按群成员身份发言，但不得把“（已拉黑）”当成真实发言人姓名的一部分。';
+        if (!text || text.includes(rule)) return text;
+        return text.replace(
+            /(3\.\s*发送者名字必须严格来自上方白名单，禁止自创昵称、简称、拼音、英文名。)/,
+            `$1\n${rule}`
+        );
+    }
+
     _getWeiboPublicBoundaryRule() {
         return `【微博与朋友圈分工边界】
 - 微博是公域平台，只生成公开舆论、热搜、路人讨论、粉丝/营销号/官方账号发声；可以参考角色卡和剧情，但只能转化为“外界可见的信息、公开动态、传闻或合理猜测”。
@@ -214,6 +253,7 @@ Execute output strictly in Simplified Chinese (简体中文). Render flesh, bodi
 
 {{user}}手机上的微信好友列表：{{wechatFriends}}
 {{user}}手机上的微信群聊列表：{{wechatGroups}}
+备注：好友名后带“（已拉黑）”表示{{user}}已经把该好友拉黑。已拉黑好友知道自己无法再通过微信联系{{user}}，不得使用<wechat>标签给{{user}}发送消息；如剧情需要，只能在正文中描写其无法发送、发送失败、改用线下或其他渠道等反应。
 
 【手机微信调用准则】：
 [<wechat>手机消息标签]触发条件：仅当剧情正文中其他角色（char/npc）使用手机给{{user}}发送消息时，才使用此标签。
@@ -327,6 +367,7 @@ date:{{STORY_DATE}}
 
 {{user}}手机上的微信好友列表：{{wechatFriends}}
 {{user}}手机上的微信群聊列表：{{wechatGroups}}
+备注：好友名后带“（已拉黑）”表示{{user}}已经把该好友拉黑。已拉黑好友知道自己无法再通过微信联系{{user}}，不得使用<wechat>标签给{{user}}发送消息；如剧情需要，只能在正文中描写其无法发送、发送失败、改用线下或其他渠道等反应。
 
 【手机微信调用准则】：
 [<wechat>手机消息标签]触发条件：仅当剧情正文中发生【涉及{{user}}的手机通讯】时才使用此标签。 具体包。允许{{user}}使用手机微信并发送给角色（char/npc）的消息
@@ -496,6 +537,7 @@ getDefaultPrompts() {
 13. 当{{user}}明确要求{{chatName}}去共同群聊里发消息，或剧情关键节点确实需要{{chatName}}把消息发到共同群聊时，才允许额外输出一个共同群聊窗口块；该群名必须来自【与当前好友共同所在群聊】，且群聊块里只能由{{chatName}}发言，禁止其他群成员回复。
 14. 音乐邀请：如果{{chatName}}可以主动邀请{{user}}一起听歌，可以单独发送音乐邀请标签，格式为：[音乐]（音乐名称，歌手名）。如果不知道歌手名，也可以使用：[音乐]（音乐名称）。该标签会渲染为微信音乐邀请卡片；不要把它写成解释文字，也不要和普通聊天内容混在同一条消息里。
 15. 红包/转账处理：当{{user}}向{{chatName}}发起微信转账或红包时，你必须以{{chatName}}的人设判断是否收下或退回；如果收转账，单独输出 {{chatName}}: [收款]；如果领取红包，单独输出 {{chatName}}: [领取红包]；如果退回，单独输出 {{chatName}}: [退回转账] 或 {{chatName}}: [退回红包]。这些动作标签会更新真实资金状态，不要写成解释文字，也不要和普通聊天混在同一条里。除非角色确实沉默/故意不处理，否则不要让待领取/待收款长期悬空。
+16. 拉黑状态：如果当前单聊好友已被{{user}}拉黑，系统会阻止用户发起线上请求；你不应主动假装仍可正常通过单聊联系{{user}}。共同群聊名单中若成员名后带“（已拉黑）”，表示该成员被{{user}}拉黑，角色应理解这个关系状态。
 
 ✅ 【以下为所有正确的消息回复格式示例】：
 <wechat>
@@ -900,9 +942,10 @@ from:林晓雨: 在呢
 1. 当前群聊窗口 ---{{groupName}}--- 里的每一条消息，发送者名字必须完全使用上方【群成员白名单】中的某一个，一字不差！
 2. 禁止使用白名单之外的任何名字（包括昵称、英文名、简称、临时路人、其他聊天窗口的人）。
 3. 如果你想让非群成员发微信，绝对不能写进 ---{{groupName}}---；只能在多窗口联动里另开私聊窗口。
-4. 禁止替{{user}}发送任何消息。
-5. 禁止提及{{user}}正在做什么（如"陈纪迟在开车"）。
-6. 若无法确定某人是否在群成员白名单中，就不要让 TA 在群聊里发言。
+4. 好友名后带“（已拉黑）”表示{{user}}已经把该好友拉黑。该标记只说明{{user}}与此人的单聊关系状态；群聊里仍按群成员身份发言，但不得把“（已拉黑）”当成真实发言人姓名的一部分。
+5. 禁止替{{user}}发送任何消息。
+6. 禁止提及{{user}}正在做什么（如"陈纪迟在开车"）。
+7. 若无法确定某人是否在群成员白名单中，就不要让 TA 在群聊里发言。
 
 ⚠️ 【回复规则】：
 1. 使用<wechat>标签包裹回复

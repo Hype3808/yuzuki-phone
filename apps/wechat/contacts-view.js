@@ -810,7 +810,19 @@ export class ContactsView {
                 if (!uploadedAvatar) throw new Error('图片上传管理器未初始化');
 
                 selectedAvatar = uploadedAvatar;
-                this.app.wechatData.syncContactAvatar(safeContactId, selectedAvatar);
+                const synced = this.app.wechatData.syncContactAvatar(safeContactId, selectedAvatar);
+                const savedContact = this.app.wechatData.getContact(safeContactId)
+                    || this.app.wechatData.findContactByNameLoose?.(contact.name, { includeChats: false });
+                const savedChat = this.app.wechatData.getChatByContactId?.(safeContactId);
+                const contactAvatarSaved = String(savedContact?.avatar || '').trim() === selectedAvatar;
+                const chatAvatarSaved = !savedChat || String(savedChat.avatar || '').trim() === selectedAvatar;
+                if (!synced || !contactAvatarSaved || !chatAvatarSaved) {
+                    selectedAvatar = oldAvatar || contact.avatar || '👤';
+                    if (preview) {
+                        preview.innerHTML = this.app.renderAvatar(selectedAvatar, '👤', contact.name);
+                    }
+                    throw new Error('头像已上传，但写入联系人数据失败，请重新打开联系人后再试');
+                }
                 if (window.VirtualPhone) {
                     window.VirtualPhone.cachedWechatData = this.app.wechatData;
                 }

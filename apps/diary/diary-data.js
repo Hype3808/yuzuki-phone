@@ -37,12 +37,36 @@ export class DiaryData {
             } else {
                 this._entries = [];
             }
+            if (this._normalizeDiaryAuthorMetadata(this._entries)) {
+                this.saveEntries();
+            }
         }
         return this._entries;
     }
 
     saveEntries() {
         this.storage.set('diary_entries', JSON.stringify(this._entries || []));
+    }
+
+    _normalizeDiaryAuthorMetadata(entries = []) {
+        if (!Array.isArray(entries)) return false;
+        let changed = false;
+        entries.forEach(entry => {
+            if (!entry || typeof entry !== 'object') return;
+            const author = String(entry.author || this._extractAuthorFromContent(entry.content)).trim();
+            if (author && entry.author !== author) {
+                entry.author = author;
+                changed = true;
+            }
+            if (!author || !Array.isArray(entry.photos)) return;
+            entry.photos.forEach(photo => {
+                if (!photo || typeof photo !== 'object') return;
+                if (photo.author) return;
+                photo.author = author;
+                changed = true;
+            });
+        });
+        return changed;
     }
 
     getSettings() {
@@ -230,7 +254,9 @@ export class DiaryData {
         const entries = this.getEntries();
         entry.id = entry.id || Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
         entry.createdAt = entry.createdAt || Date.now();
-        entry.photos = this.mergeEntryPhotos(entry.photos, this.extractPhotoPrompts(entry.content).photos);
+        const author = String(entry.author || this._extractAuthorFromContent(entry.content)).trim();
+        if (author) entry.author = author;
+        entry.photos = this.mergeEntryPhotos(entry.photos, this.extractPhotoPrompts(entry.content, { author }).photos);
         entries.push(entry);
         this.saveEntries();
         return entry;
@@ -239,12 +265,14 @@ export class DiaryData {
     createManualEntry(content, meta = {}) {
         const normalized = String(content || '').replace(/\r\n/g, '\n').trim();
         if (!normalized) throw new Error('日记内容不能为空');
+        const author = String(meta.author || this._extractAuthorFromContent(normalized)).trim();
 
         return this.addEntry({
             content: normalized,
             title: meta.title || this._extractTitleFromContent(normalized),
             date: meta.date || this._extractDateFromContent(normalized),
-            photos: Array.isArray(meta.photos) ? meta.photos : this.extractPhotoPrompts(normalized).photos,
+            author,
+            photos: Array.isArray(meta.photos) ? meta.photos : this.extractPhotoPrompts(normalized, { author }).photos,
             startIndex: Number.isFinite(meta.startIndex) ? meta.startIndex : null,
             endIndex: Number.isFinite(meta.endIndex) ? meta.endIndex : null,
             imported: !!meta.imported,
@@ -261,6 +289,7 @@ export class DiaryData {
         return diaries.map((diary, index) => this.createManualEntry(diary.content, {
             title: diary.title,
             date: diary.date,
+            author: diary.author,
             imported: true,
             createdAt: (this._dateToTimestamp(diary.date || diary.content) || now) + index
         }));
@@ -344,7 +373,11 @@ export class DiaryData {
         const entry = entries.find(e => e.id === entryId);
         if (entry) {
             entry.content = newContent;
-            entry.photos = this.mergeEntryPhotos(entry.photos, this.extractPhotoPrompts(newContent).photos);
+            const newAuthor = this._extractAuthorFromContent(newContent);
+            if (newAuthor) {
+                entry.author = newAuthor;
+            }
+            entry.photos = this.mergeEntryPhotos(entry.photos, this.extractPhotoPrompts(newContent, { author: entry.author }).photos);
             // 更新日期（如果内容中有新日期）
             const newDate = this._extractDateFromContent(newContent);
             if (newDate) {
@@ -356,8 +389,9 @@ export class DiaryData {
         return false;
     }
 
-    extractPhotoPrompts(content = '') {
+    extractPhotoPrompts(content = '', options = {}) {
         const source = String(content || '');
+        const author = String(options.author || this._extractAuthorFromContent(source)).trim();
         const photos = [];
         const regex = this._getPhotoPromptTagRegex();
         let match;
@@ -373,6 +407,7 @@ export class DiaryData {
                 type,
                 prompt,
                 reason,
+                author,
                 status: 'idle',
                 imageUrl: '',
                 error: ''
@@ -407,7 +442,11 @@ export class DiaryData {
             });
             if (same) {
                 used.add(existing.indexOf(same));
-                return { ...same, reason: photo.reason || same.reason || '' };
+                return {
+                    ...same,
+                    reason: photo.reason || same.reason || '',
+                    author: photo.author || same.author || ''
+                };
             }
             return {
                 ...photo,
@@ -418,7 +457,9 @@ export class DiaryData {
 
     normalizeEntryPhotos(entry) {
         if (!entry) return [];
-        const parsed = this.extractPhotoPrompts(entry.content).photos;
+        const author = String(entry.author || this._extractAuthorFromContent(entry.content)).trim();
+        if (author) entry.author = author;
+        const parsed = this.extractPhotoPrompts(entry.content, { author }).photos;
         const merged = this.mergeEntryPhotos(entry.photos, parsed);
         entry.photos = merged;
         return merged;
@@ -483,8 +524,8 @@ export class DiaryData {
         });
 
         try {
-            const references = await this._buildDiaryPersonalImageReferences(photo);
-            const prompt = await this._buildDiaryImagePrompt(photo);
+            const references = await this._buildDiaryPersonalImageReferences(photo, entry);
+            const prompt = await this._buildDiaryImagePrompt(photo, entry);
             const result = await imageManager.generate({
                 app: 'diary',
                 prompt,
@@ -612,9 +653,21 @@ export class DiaryData {
         }
     }
 
-    async _resolveDiaryPhotoContact() {
+    _normalizeDiaryAuthorName(name = '') {
+        return String(name || '')
+            .replace(/\s*[（(]\s*已拉黑\s*[）)]\s*$/g, '')
+            .replace(/^(?:署名|作者|日记人|姓名)[:：]\s*/g, '')
+            .trim();
+    }
+
+    async _resolveDiaryPhotoContact(photo = {}, entry = null) {
         const context = this._getContext();
-        const charName = String(context?.name2 || '').trim();
+        const authorName = this._normalizeDiaryAuthorName(
+            photo.author
+            || entry?.author
+            || this._extractAuthorFromContent(entry?.content)
+        );
+        const charName = authorName || String(context?.name2 || '').trim();
         if (!charName) return null;
         const wechatData = await this._getWechatDataForDiaryPhotos();
         const contacts = wechatData?.getContacts?.() || [];
@@ -640,11 +693,11 @@ export class DiaryData {
         return rows.length > 0 ? rows.join('\n') : '暂无';
     }
 
-    async _buildDiaryImagePrompt(photo = {}) {
+    async _buildDiaryImagePrompt(photo = {}, entry = null) {
         const basePrompt = String(photo.prompt || '').trim();
         if (String(photo.type || '') !== '个人图片') return basePrompt;
 
-        const contact = await this._resolveDiaryPhotoContact();
+        const contact = await this._resolveDiaryPhotoContact(photo, entry);
         const contactTags = String(contact?.naiPromptTags || contact?.imageTags || '')
             .split(',')
             .map(tag => tag.trim())
@@ -674,9 +727,9 @@ export class DiaryData {
         return dataUrl.startsWith('data:image/') ? dataUrl : '';
     }
 
-    async _buildDiaryPersonalImageReferences(photo = {}) {
+    async _buildDiaryPersonalImageReferences(photo = {}, entry = null) {
         if (String(photo.type || '') !== '个人图片') return [];
-        const contact = await this._resolveDiaryPhotoContact();
+        const contact = await this._resolveDiaryPhotoContact(photo, entry);
         if (!contact) return [];
         const referenceImage = String(contact.naiReferenceImage || contact.referenceImage || '').trim();
         if (!referenceImage || contact.naiReferenceEnabled === false || contact.naiReferenceEnabled === 'false') return [];
@@ -1156,6 +1209,7 @@ export class DiaryData {
                         startIndex,
                         endIndex,
                         date: diary.date,
+                        author: diary.author,
                     });
                     results.push(entry);
                 }
@@ -1206,6 +1260,7 @@ export class DiaryData {
                                 startIndex: bStart,
                                 endIndex: bEnd,
                                 date: diary.date,
+                                author: diary.author,
                             });
                             results.push(entry);
                         }
@@ -1280,6 +1335,7 @@ export class DiaryData {
                         startIndex,
                         endIndex,
                         date: diary.date,
+                        author: diary.author,
                     });
                 }
                 // 🔥 核心修改：生成成功后，推高专属标记
@@ -1394,6 +1450,57 @@ export class DiaryData {
         return '未知日期';
     }
 
+    _extractDiaryFooterLine(content = '') {
+        const lines = String(content || '')
+            .replace(/\r\n/g, '\n')
+            .split('\n')
+            .map(line => line.trim())
+            .filter(Boolean);
+        for (let i = lines.length - 1; i >= 0; i--) {
+            const line = lines[i];
+            if (/^(?:————|----+|—{2,}|-{2,})\s*\d{1,6}年\d{1,2}月\d{1,2}日/.test(line)) return line;
+        }
+        return '';
+    }
+
+    _extractAuthorFromContent(content) {
+        const footer = this._extractDiaryFooterLine(content);
+        if (!footer) return '';
+
+        let tail = footer
+            .replace(/^(?:————|----+|—{2,}|-{2,})\s*/, '')
+            .replace(/^\d{1,6}年\d{1,2}月\d{1,2}日\s*/, '')
+            .replace(/^星期[一二三四五六日天]\s*/, '')
+            .trim();
+        if (!tail) return '';
+
+        const weatherWords = new Set([
+            '晴', '阴', '雨', '雪', '雾', '霾', '风',
+            '多云', '小雨', '中雨', '大雨', '暴雨', '阵雨', '雷阵雨',
+            '小雪', '中雪', '大雪', '暴雪', '雨夹雪',
+            '微风', '大风', '台风', '晴转多云', '多云转晴', '阴转多云'
+        ]);
+        const parts = tail.split(/\s+/).filter(Boolean);
+        while (parts.length > 1) {
+            const value = parts[0].replace(/^天气[:：]?/, '').trim();
+            if (!weatherWords.has(value)) break;
+            parts.shift();
+        }
+        if (parts.length === 1) {
+            const onlyValue = parts[0].replace(/^天气[:：]?/, '').trim();
+            if (weatherWords.has(onlyValue)) return '';
+        }
+        tail = parts.join(' ').trim();
+
+        const author = tail
+            .replace(/^署名[:：]\s*/, '')
+            .replace(/^作者[:：]\s*/, '')
+            .replace(/^姓名[:：]\s*/, '')
+            .trim();
+        if (!author || author.length > 40 || /[，。！？、；]/.test(author)) return '';
+        return author;
+    }
+
     /**
      * 从日记内容中提取标题（【日记标题】格式）
      */
@@ -1452,7 +1559,8 @@ export class DiaryData {
             diaries.push({
                 content: trimmed,
                 date: date,
-                title: title
+                title: title,
+                author: this._extractAuthorFromContent(trimmed)
             });
         }
 
@@ -1461,7 +1569,8 @@ export class DiaryData {
             diaries.push({
                 content: rawContent.trim(),
                 date: this._extractDateFromContent(rawContent),
-                title: this._extractTitleFromContent(rawContent)
+                title: this._extractTitleFromContent(rawContent),
+                author: this._extractAuthorFromContent(rawContent)
             });
         }
 
@@ -1485,7 +1594,8 @@ export class DiaryData {
                 .map(content => ({
                     content,
                     title: this._extractTitleFromContent(content),
-                    date: this._extractDateFromContent(content)
+                    date: this._extractDateFromContent(content),
+                    author: this._extractAuthorFromContent(content)
                 }));
             if (splitBySeparators.length > 1) return splitBySeparators;
         }
@@ -1496,7 +1606,8 @@ export class DiaryData {
         return [{
             content: normalized,
             title: this._extractTitleFromContent(normalized),
-            date: this._extractDateFromContent(normalized)
+            date: this._extractDateFromContent(normalized),
+            author: this._extractAuthorFromContent(normalized)
         }];
     }
 
@@ -1511,7 +1622,8 @@ export class DiaryData {
                         return content ? {
                             content,
                             title: this._extractTitleFromContent(content),
-                            date: this._extractDateFromContent(content)
+                            date: this._extractDateFromContent(content),
+                            author: this._extractAuthorFromContent(content)
                         } : null;
                     }
                     const content = String(item?.content || item?.text || item?.body || '').trim();
@@ -1519,7 +1631,8 @@ export class DiaryData {
                     return {
                         content,
                         title: item?.title || this._extractTitleFromContent(content),
-                        date: item?.date || this._extractDateFromContent(content)
+                        date: item?.date || this._extractDateFromContent(content),
+                        author: item?.author || item?.name || this._extractAuthorFromContent(content)
                     };
                 })
                 .filter(Boolean);
@@ -1535,7 +1648,8 @@ export class DiaryData {
             chunks.push({
                 content,
                 title: this._extractTitleFromContent(content),
-                date: this._extractDateFromContent(content)
+                date: this._extractDateFromContent(content),
+                author: this._extractAuthorFromContent(content)
             });
         };
 

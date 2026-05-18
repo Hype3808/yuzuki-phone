@@ -164,6 +164,59 @@ export class ChatView {
             .toLowerCase();
     }
 
+    _getContactForChat(chat = null) {
+        if (!chat) return null;
+        const contactId = String(chat?.contactId || '').trim();
+        const chatName = String(chat?.name || '').trim();
+        return (contactId ? this.app.wechatData?.getContact?.(contactId) : null)
+            || this.app.wechatData?.findContactByNameLoose?.(chatName, { includeChats: false })
+            || (this.app.wechatData?.getContacts?.() || [])
+                .find(item => this._normalizeLookupName(item?.name) === this._normalizeLookupName(chatName))
+            || null;
+    }
+
+    _isBlockedSingleChat(chat = null) {
+        if (!chat || chat.type === 'group') return false;
+        return !!this._getContactForChat(chat)?.blocked;
+    }
+
+    _getContactByDisplayName(name = '') {
+        const safeName = String(name || '').trim();
+        if (!safeName) return null;
+        return this.app.wechatData?.findContactByNameLoose?.(safeName, { includeChats: false })
+            || (this.app.wechatData?.getContacts?.() || [])
+                .find(item => this._normalizeLookupName(item?.name) === this._normalizeLookupName(safeName))
+            || null;
+    }
+
+    _formatWechatContactNameForPrompt(name = '') {
+        const safeName = String(name || '').trim();
+        if (!safeName) return '';
+        const contact = this._getContactByDisplayName(safeName);
+        return contact?.blocked ? `${safeName}（已拉黑）` : safeName;
+    }
+
+    _formatWechatContactListForPrompt(contacts = []) {
+        const names = (Array.isArray(contacts) ? contacts : [])
+            .map(contact => {
+                const name = String(contact?.name || '').trim();
+                return name ? (contact?.blocked ? `${name}（已拉黑）` : name) : '';
+            })
+            .filter(Boolean);
+        return names.length > 0 ? names.join('、') : '暂无好友';
+    }
+
+    _formatGroupMembersForPrompt(members = []) {
+        return (Array.isArray(members) ? members : [])
+            .map(name => this._formatWechatContactNameForPrompt(name))
+            .filter(Boolean);
+    }
+
+    _notifyBlockedChatSend(chat = null) {
+        const name = String(chat?.name || '该好友').trim() || '该好友';
+        this.app.phoneShell?.showNotification('无法发送', `${name}已被拉黑，请先移除黑名单`, '⚠️');
+    }
+
     _extractPersonaUsers(context = null) {
         const ctx = context || this._safeGetContext();
         const users = [];
@@ -5954,6 +6007,10 @@ renderChatRoom(chat) {
 
         const targetChatId = String(this.app?.currentChat?.id || '').trim();  // 🔥 快照绑定：防止倒计时期间切换窗口导致串味
         if (!targetChatId) return;
+        if (this._isBlockedSingleChat(this.app.currentChat)) {
+            this._notifyBlockedChatSend(this.app.currentChat);
+            return;
+        }
 
         if (this.isSending && String(this._activeSendingChatId || '') === targetChatId) {
             this.abortSending();
@@ -6128,6 +6185,12 @@ renderChatRoom(chat) {
 
         if (!savedChatId) {
             console.error('❌ 无法获取当前聊天ID');
+            return false;
+        }
+        if (!isGroupChat && this._isBlockedSingleChat(targetChat || this.app.currentChat)) {
+            this._dequeuePendingChat(savedChatId);
+            this.hideTypingStatus(savedChatId);
+            this._notifyBlockedChatSend(targetChat || this.app.currentChat);
             return false;
         }
 
@@ -7204,7 +7267,7 @@ renderChatRoom(chat) {
         if (isGroupChat) {
             groupMembersArray = this._collectGroupParticipantsForFilter(targetChat, context);
         }
-        const groupMembers = groupMembersArray.join('、');
+        const groupMembers = this._formatGroupMembersForPrompt(groupMembersArray).join('、');
 
         // ========================================
         // 2️⃣ 角色信息（从角色卡读取）
@@ -7454,9 +7517,11 @@ renderChatRoom(chat) {
             const relatedGroupMeta = relatedGroupChats
                 .map((chat) => {
                     const name = String(chat?.name || '').trim();
-                    const members = this._collectGroupParticipantsForFilter(chat, context)
-                        .map(member => String(member || '').trim())
-                        .filter(Boolean);
+                    const members = this._formatGroupMembersForPrompt(
+                        this._collectGroupParticipantsForFilter(chat, context)
+                            .map(member => String(member || '').trim())
+                            .filter(Boolean)
+                    );
                     return { chat, name, members };
                 })
                 .filter(item => item.name);
@@ -7547,8 +7612,7 @@ renderChatRoom(chat) {
 
                     // 🔥 获取好友列表用于私聊窗口名
                     const contacts = this.app.wechatData.getContacts() || [];
-                    const contactNames = contacts.map(c => c.name).filter(n => n);
-                    const wechatContactsList = contactNames.length > 0 ? contactNames.join('、') : '暂无好友';
+                    const wechatContactsList = this._formatWechatContactListForPrompt(contacts);
 
                     // 替换群聊相关变量
                     systemPrompt = systemPrompt
@@ -7770,8 +7834,7 @@ renderChatRoom(chat) {
             const promptManager = window.VirtualPhone?.promptManager;
             const promptFeature = this._getCallPromptFeature(callMode, targetChat);
             const contacts = this.app.wechatData.getContacts() || [];
-            const contactNames = contacts.map(c => c.name).filter(Boolean);
-            const wechatContactsList = contactNames.length > 0 ? contactNames.join('、') : '暂无好友';
+            const wechatContactsList = this._formatWechatContactListForPrompt(contacts);
 
             let callSystemPrompt = '';
             if (promptManager?.getPromptForFeature) {
@@ -7925,8 +7988,7 @@ renderChatRoom(chat) {
         const realTimeInfo = this._formatRealDateTime(proactiveMeta.now || Date.now());
         const chats = this.app.wechatData.getChatList();
         const contacts = this.app.wechatData.getContacts?.() || [];
-        const contactNames = contacts.map(c => String(c?.name || '').trim()).filter(Boolean);
-        const wechatContactsList = contactNames.length > 0 ? contactNames.join('、') : '暂无好友';
+        const wechatContactsList = this._formatWechatContactListForPrompt(contacts);
         const allPersonalImageTagInfo = this._formatPersonalImageTagRows(contacts.map(contact => ({
             name: contact?.name,
             tags: contact?.naiPromptTags || contact?.imageTags
@@ -7946,7 +8008,7 @@ renderChatRoom(chat) {
             const sampleSingle = chats.find(chat => chat?.type !== 'group') || targetChat || {};
             const sampleGroup = chats.find(chat => chat?.type === 'group') || {};
             const groupMembers = sampleGroup?.type === 'group'
-                ? this._collectGroupParticipantsForFilter(sampleGroup, this._safeGetContext()).join('、')
+                ? this._formatGroupMembersForPrompt(this._collectGroupParticipantsForFilter(sampleGroup, this._safeGetContext())).join('、')
                 : '请参考【手机微信已有消息】中各群聊窗口的群成员白名单';
             singlePrompt = normalizePrompt(promptManager?.getPromptForFeature?.('wechat', 'online') || '', {
                 chatName: sampleSingle?.name || '候选微信好友',
@@ -8523,6 +8585,7 @@ renderChatRoom(chat) {
         const currentChat = this.app.currentChat || {};
         const isGroupChat = currentChat.type === 'group';
         const honeyInjectEnabled = !isGroupChat && this.app.wechatData.isHoneyHistoryInjectionEnabledForChat?.(currentChat.id);
+        const isBlocked = this._isBlockedSingleChat(currentChat);
         const html = `
             <div class="wechat-app">
                 <div class="wechat-header">
@@ -8562,10 +8625,13 @@ renderChatRoom(chat) {
                     </div>
                     ` : ''}
 
-                    <!-- 拉黑好友 -->
-                    <div style="background: #fff; padding: 15px 20px; margin-bottom: 10px; cursor: pointer;" id="block-contact-btn">
+                    <!-- 拉黑好友 / 移除黑名单 -->
+                    <div style="background: #fff; padding: 15px 20px; margin-bottom: 10px; cursor: pointer;" id="${isBlocked ? 'unblock-contact-btn' : 'block-contact-btn'}">
                         <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <div style="font-size: 16px; color: #ff3b30;">拉黑好友</div>
+                            <div>
+                                <div style="font-size: 16px; color: ${isBlocked ? '#07c160' : '#ff3b30'};">${isBlocked ? '移除黑名单' : '拉黑好友'}</div>
+                                ${isBlocked ? '<div style="font-size: 12px; color: #999; margin-top: 3px;">移除后可以重新发送和接收消息</div>' : ''}
+                            </div>
                             <i class="fa-solid fa-chevron-right" style="color: #c8c8c8;"></i>
                         </div>
                     </div>
@@ -8603,7 +8669,11 @@ renderChatRoom(chat) {
 
         // 拉黑好友按钮
         document.getElementById('block-contact-btn')?.addEventListener('click', () => {
-            this.showBlockConfirm();
+            this.showBlockContactDialog(false);
+        });
+
+        document.getElementById('unblock-contact-btn')?.addEventListener('click', () => {
+            this.showBlockContactDialog(true);
         });
 
         // 🔥 清空聊天记录按钮
@@ -9537,70 +9607,92 @@ renderChatRoom(chat) {
         });
     }
 
-    // 🚫 显示拉黑确认界面
-    showBlockConfirm() {
+    showBlockContactDialog(isUnblock = false) {
+        const chat = this.app.currentChat;
+        if (!chat || chat.type === 'group') return;
+
+        const modalId = 'wechat-block-contact-modal';
+        document.getElementById(modalId)?.remove();
+
+        const title = isUnblock ? '移除黑名单' : '拉黑好友';
+        const message = isUnblock
+            ? `将「${chat.name}」移出黑名单？`
+            : `确定要拉黑「${chat.name}」吗？`;
+        const desc = isUnblock
+            ? '移除后可以重新发送和接收消息'
+            : '拉黑后将无法收到对方消息';
+        const actionText = isUnblock ? '移除' : '拉黑';
+        const actionColor = isUnblock ? '#07c160' : '#ff3b30';
+
         const html = `
-            <div class="wechat-app">
-                <div class="wechat-header">
-                    <div class="wechat-header-left">
-                        <button class="wechat-back-btn" id="back-from-block">
-                            <i class="fa-solid fa-chevron-left"></i>
-                        </button>
+            <div id="${modalId}" style="
+                position: fixed;
+                inset: 0;
+                background: rgba(0,0,0,0.28);
+                z-index: 100000;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 18px;
+                box-sizing: border-box;
+            ">
+                <div style="
+                    width: min(270px, 100%);
+                    background: #fff;
+                    border-radius: 14px;
+                    overflow: hidden;
+                    box-shadow: 0 12px 36px rgba(0,0,0,0.18);
+                    text-align: center;
+                ">
+                    <div style="padding: 22px 18px 16px;">
+                        <div style="font-size: 17px; font-weight: 700; color: #111; margin-bottom: 8px;">${title}</div>
+                        <div style="font-size: 14px; color: #333; line-height: 1.45; margin-bottom: 6px;">${message}</div>
+                        <div style="font-size: 12px; color: #999; line-height: 1.45;">${desc}</div>
                     </div>
-                    <div class="wechat-header-title">拉黑好友</div>
-                    <div class="wechat-header-right"></div>
-                </div>
-                
-                <div class="wechat-content" style="background: #ededed; padding: 20px;">
-                    <div style="background: #fff; border-radius: 12px; padding: 30px; text-align: center;">
-                        <i class="fa-solid fa-ban" style="font-size: 48px; color: #ff3b30; margin-bottom: 20px;"></i>
-                        <div style="font-size: 18px; font-weight: 600; color: #000; margin-bottom: 10px;">确定要拉黑 ${this.app.currentChat.name} 吗？</div>
-                        <div style="font-size: 14px; color: #999; margin-bottom: 30px;">拉黑后将无法收到对方消息</div>
-                        
-                        <button id="confirm-block" style="
-                            width: 100%;
-                            padding: 14px;
-                            background: #ff3b30;
-                            color: #fff;
-                            border: none;
-                            border-radius: 8px;
-                            font-size: 16px;
-                            font-weight: 600;
-                            cursor: pointer;
-                            margin-bottom: 10px;
-                        ">确定拉黑</button>
-                        
-                        <button id="cancel-block" style="
-                            width: 100%;
-                            padding: 14px;
-                            background: #f0f0f0;
-                            color: #666;
-                            border: none;
-                            border-radius: 8px;
-                            font-size: 16px;
-                            cursor: pointer;
-                        ">取消</button>
-                    </div>
+                    <button id="wechat-block-dialog-confirm" style="
+                        width: 100%;
+                        height: 46px;
+                        border: none;
+                        border-top: 1px solid #eee;
+                        background: #fff;
+                        color: ${actionColor};
+                        font-size: 16px;
+                        font-weight: 600;
+                        cursor: pointer;
+                    ">${actionText}</button>
+                    <button id="wechat-block-dialog-cancel" style="
+                        width: 100%;
+                        height: 46px;
+                        border: none;
+                        border-top: 1px solid #eee;
+                        background: #fff;
+                        color: #333;
+                        font-size: 16px;
+                        cursor: pointer;
+                    ">取消</button>
                 </div>
             </div>
         `;
 
-        this.app.phoneShell.setContent(html);
+        const host = document.querySelector('.phone-view-current') || document.body;
+        host.insertAdjacentHTML('beforeend', html);
 
-        document.getElementById('back-from-block')?.addEventListener('click', () => {
-            this.showChatMenu();
+        const close = () => document.getElementById(modalId)?.remove();
+        document.getElementById('wechat-block-dialog-cancel')?.addEventListener('click', close);
+        document.getElementById(modalId)?.addEventListener('click', (e) => {
+            if (e.target?.id === modalId) close();
         });
-
-        document.getElementById('cancel-block')?.addEventListener('click', () => {
+        document.getElementById('wechat-block-dialog-confirm')?.addEventListener('click', () => {
+            const ok = isUnblock
+                ? this.app.wechatData.unblockContact?.(chat.contactId)
+                : (this.app.wechatData.blockContact(chat.contactId), true);
+            close();
+            this.app.phoneShell.showNotification(
+                ok ? (isUnblock ? '已移除' : '已拉黑') : '操作失败',
+                ok ? (isUnblock ? `${chat.name}已移出黑名单` : `${chat.name}已被拉黑`) : '找不到该联系人',
+                ok ? '✅' : '❌'
+            );
             this.showChatMenu();
-        });
-
-        document.getElementById('confirm-block')?.addEventListener('click', () => {
-            this.app.wechatData.blockContact(this.app.currentChat.contactId);
-            this.app.phoneShell.showNotification('已拉黑', `${this.app.currentChat.name}已被拉黑`, '✅');
-            this.app.currentChat = null;
-            this.app.currentView = 'chats';
-            setTimeout(() => this.app.render(), 1000);
         });
     }
 

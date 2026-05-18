@@ -1010,6 +1010,7 @@ export class DiaryView {
                             startIndex: start,
                             endIndex: end,
                             date: diary.date,
+                            author: diary.author,
                         });
                     }
                 }

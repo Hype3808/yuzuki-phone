@@ -43,7 +43,8 @@ const ST_PHONE_CURRENT_UPDATE = {
         '【修复】微信语音条的转文字气泡会清理“语音条转文字内容”等模板前缀，只显示括号内的实际正文。',
         '【新增】NAI 生图预设支持导入和导出，可一次复制分享多套预设并导入到当前 App。',
         '【优化】优化部分 CSS 渲染，减少面板切换和弹层显示时的闪烁。',
-        '【优化】优化微信转账/红包交互逻辑，AI 可按提示收款、领取或退回，并同步显示状态。'
+        '【优化】优化微信转账/红包交互逻辑，AI 可按提示收款、领取或退回，并同步显示状态。',
+        '【优化】微信拉黑状态会联动线下好友名单、线上单聊和群聊成员显示；日记 [个人图片] 会按日记末尾署名匹配微信联系人固定 tag 与参考图。'
     ]
 };
 
@@ -5350,30 +5351,44 @@ if (window.GGP_Loaded) {
             }
             wechatData = window.VirtualPhone.cachedWechatData;
 
-            const normalizeWechatName = (name) => String(name || '').trim().replace(/\s+/g, '').toLowerCase();
-            const contactLookupKey = normalizeWechatName(data.contact);
+            const stripWechatBlockedMarker = (name) => String(name || '').trim().replace(/\s*[（(]\s*已拉黑\s*[）)]\s*$/g, '').trim();
+            const normalizeWechatName = (name) => stripWechatBlockedMarker(name).replace(/\s+/g, '').toLowerCase();
+            const rawContactName = String(data.contact || '').trim();
+            const resolvedContactName = stripWechatBlockedMarker(rawContactName);
+            const contactLookupKey = normalizeWechatName(resolvedContactName);
             const explicitGroupType = data.chatType === 'group' && data.chatTypeSource === 'explicit';
             const hasExistingGroupByName = wechatData.getChatList().some(c =>
                 c?.type === 'group' && normalizeWechatName(c?.name) === contactLookupKey
             );
             const effectiveIsGroupChat = explicitGroupType || hasExistingGroupByName;
+            const isBlockedContact = (contact) => !!contact?.blocked;
 
             // 🔥🔥🔥 群聊处理：群聊不需要添加到联系人，直接找/创建群聊天 🔥🔥🔥
             let existingContact = null;
             if (!effectiveIsGroupChat) {
                 // 单聊：确保联系人存在（自动添加到通讯录）
-                existingContact = wechatData.getContacts().find(c => c.name === data.contact);
+                existingContact = wechatData.getContacts().find(c =>
+                    c.name === rawContactName || c.name === resolvedContactName || normalizeWechatName(c.name) === contactLookupKey
+                );
+                if (isBlockedContact(existingContact)) {
+                    console.warn('⚠️ [微信] 已丢弃被拉黑好友的线下消息:', rawContactName);
+                    return;
+                }
                 if (!existingContact) {
                     const newContactId = `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
                     wechatData.addContact({
                         id: newContactId,
-                        name: data.contact,
+                        name: resolvedContactName || rawContactName,
                         avatar: data.avatar || '👤',
                         remark: '',
                         relation: '',
-                        letter: wechatData.getFirstLetter(data.contact)
+                        letter: wechatData.getFirstLetter(resolvedContactName || rawContactName)
                     });
-                    existingContact = wechatData.getContacts().find(c => c.name === data.contact);
+                    existingContact = wechatData.getContacts().find(c => c.name === (resolvedContactName || rawContactName));
+                }
+                if (isBlockedContact(existingContact)) {
+                    console.warn('⚠️ [微信] 已丢弃被拉黑好友的线下消息:', rawContactName);
+                    return;
                 }
             }
 
@@ -5403,7 +5418,7 @@ if (window.GGP_Loaded) {
                 chat = wechatData.createChat({
                     id: newChatId,
                     contactId: existingContact?.id,
-                    name: data.contact,
+                    name: effectiveIsGroupChat ? rawContactName : (resolvedContactName || rawContactName),
                     type: effectiveIsGroupChat ? 'group' : 'single',
                     avatar: data.avatar || existingContact?.avatar || (effectiveIsGroupChat ? '👥' : '👤'),
                     members: effectiveIsGroupChat ? (data.members || []) : []
@@ -8152,8 +8167,8 @@ if (window.GGP_Loaded) {
                                                         const groupItems = [];
                                                         const contacts = wechatDataParsed.contacts || [];
                                                         contacts.forEach(c => {
-                                                            if (c.name) contactNames.push(c.name);
                                                             const name = String(c?.name || '').trim();
+                                                            if (name) contactNames.push(c?.blocked ? `${name}（已拉黑）` : name);
                                                             const tags = String(c?.naiPromptTags || c?.imageTags || '')
                                                                 .split(/[,，\n]+/)
                                                                 .map(tag => tag.trim())

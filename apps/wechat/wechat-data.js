@@ -2071,14 +2071,19 @@ getWeekday(date) {
 
     // 🔥 更新联系人信息（包括头像和名字双向同步）
     updateContact(contactId, updates) {
-        const contact = this.data.contacts.find(c => c.id === contactId);
+        const safeContactId = String(contactId || '').trim();
+        let contact = this.data.contacts.find(c => c.id === safeContactId);
+        if (!contact && safeContactId) {
+            contact = this.data.contacts.find(c => c.name === safeContactId)
+                || this.data.contacts.find(c => this._isSameLookupName(c.name, safeContactId));
+        }
         if (contact) {
             const oldName = contact.name; // 记录旧名字
             Object.assign(contact, updates);
 
             // 🔥 新增：如果修改了名字，同步更新关联的聊天窗口名字
             if (updates.name && updates.name !== oldName) {
-                const chat = this.getChatByContactId(contactId);
+                const chat = this.getChatByContactId(contact.id || safeContactId);
                 if (chat) {
                     chat.name = updates.name;
                 } else {
@@ -2099,48 +2104,60 @@ getWeekday(date) {
 
     // 🔥 同步头像到所有相关位置（聊天、联系人）
     syncContactAvatar(contactIdOrName, avatar) {
+        const lookup = String(contactIdOrName || '').trim();
+        const safeAvatar = String(avatar || '').trim();
+        if (!lookup || !safeAvatar) return false;
+
         let foundContact = false;
         let foundChat = false;
 
         // 1. 尝试通过 contactId 查找联系人
-        let contact = this.data.contacts.find(c => c.id === contactIdOrName);
+        let contact = this.data.contacts.find(c => c.id === lookup);
 
         // 2. 如果找不到，尝试通过名字查找
         if (!contact) {
-            contact = this.data.contacts.find(c => c.name === contactIdOrName)
-                || this.data.contacts.find(c => this._isSameLookupName(c.name, contactIdOrName));
+            contact = this.data.contacts.find(c => c.name === lookup)
+                || this.data.contacts.find(c => this._isSameLookupName(c.name, lookup));
         }
 
         if (contact) {
-            contact.avatar = avatar;
+            contact.avatar = safeAvatar;
             foundContact = true;
             this._syncHoneyContactToGlobalStore(contact);
         }
 
         // 3. 更新相关聊天（通过 contactId 或名字）
         this.data.chats.forEach(chat => {
-            if (chat.contactId === contactIdOrName || chat.name === contactIdOrName ||
+            if (String(chat.contactId || '').trim() === lookup || String(chat.name || '').trim() === lookup ||
                 (contact && chat.contactId === contact.id)
                 || (contact && this._isSameLookupName(chat.name, contact.name))
-                || (chat.type !== 'group' && this._isSameLookupName(chat.name, contactIdOrName))) {
-                chat.avatar = avatar;
+                || (chat.type !== 'group' && this._isSameLookupName(chat.name, lookup))) {
+                chat.avatar = safeAvatar;
                 foundChat = true;
             }
         });
 
-        this.saveData();
+        if (foundContact || foundChat) {
+            this.saveData();
+        }
+        return foundContact || foundChat;
     }
 
     // 🔥 通过聊天对象同步头像（更可靠）
     syncAvatarByChat(chat, avatar) {
+        const safeAvatar = String(avatar || '').trim();
+        if (!chat || !safeAvatar) return false;
+        let foundContact = false;
+
         // 1. 更新聊天本身
-        chat.avatar = avatar;
+        chat.avatar = safeAvatar;
 
         // 2. 通过 contactId 更新联系人
         if (chat.contactId) {
             const contact = this.data.contacts.find(c => c.id === chat.contactId);
             if (contact) {
-                contact.avatar = avatar;
+                contact.avatar = safeAvatar;
+                foundContact = true;
                 this._syncHoneyContactToGlobalStore(contact);
             }
         }
@@ -2149,11 +2166,13 @@ getWeekday(date) {
         const contactByName = this.data.contacts.find(c => c.name === chat.name)
             || this.data.contacts.find(c => this._isSameLookupName(c.name, chat.name));
         if (contactByName) {
-            contactByName.avatar = avatar;
+            contactByName.avatar = safeAvatar;
+            foundContact = true;
             this._syncHoneyContactToGlobalStore(contactByName);
         }
 
         this.saveData();
+        return true;
     }
     
     getMoments() {
@@ -3181,6 +3200,17 @@ parseAIResponse(text) {
             contact.blocked = true;
             this.saveData();
         }
+    }
+
+    // ✅ 移除黑名单
+    unblockContact(contactId) {
+        const contact = this.getContact(contactId);
+        if (contact) {
+            contact.blocked = false;
+            this.saveData();
+            return true;
+        }
+        return false;
     }
 
     // 🗑️ 删除联系人及对应的单聊会话
