@@ -805,9 +805,19 @@ export class ContactsView {
                 }
 
                 this.app.phoneShell.showNotification('处理中', '正在上传头像...', '⏳');
-                selectedAvatar = await window.VirtualPhone?.imageManager?.uploadDataUrl?.(croppedImage, 'contact_avatar');
-                if (!selectedAvatar) throw new Error('图片上传管理器未初始化');
-                this.app.phoneShell.showNotification('成功', '头像已上传', '✅');
+                const oldAvatar = String(selectedAvatar || contact.avatar || '').trim();
+                const uploadedAvatar = await window.VirtualPhone?.imageManager?.uploadDataUrl?.(croppedImage, 'contact_avatar');
+                if (!uploadedAvatar) throw new Error('图片上传管理器未初始化');
+
+                selectedAvatar = uploadedAvatar;
+                this.app.wechatData.syncContactAvatar(safeContactId, selectedAvatar);
+                if (window.VirtualPhone) {
+                    window.VirtualPhone.cachedWechatData = this.app.wechatData;
+                }
+                if (oldAvatar && oldAvatar !== selectedAvatar) {
+                    window.VirtualPhone?.imageManager?.deleteManagedBackgroundByPath?.(oldAvatar, { quiet: true, skipIfReferenced: true })?.catch?.(() => { });
+                }
+                this.app.phoneShell.showNotification('成功', '头像已上传并保存', '✅');
             } catch (err) {
                 if (String(err?.message || '') === '用户取消') return;
                 console.warn('头像上传服务器失败:', err);

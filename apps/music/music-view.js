@@ -747,6 +747,12 @@ export class MusicView {
         const listenShareModal = panel.querySelector('#music-listen-share-modal');
         const listenShareClose = panel.querySelector('#music-listen-share-close');
         const listenShareList = panel.querySelector('#music-listen-share-list');
+        const searchState = {
+            query: '',
+            page: 1,
+            pageSize: 10,
+            results: []
+        };
 
         const openSearch = (e) => {
             if (e) e.stopPropagation();
@@ -757,24 +763,34 @@ export class MusicView {
             if (searchModal) searchModal.style.setProperty('display', 'none');
         };
 
-        const performSearch = async () => {
+        const performSearch = async (page = 1) => {
             const query = searchInput.value.trim();
             if (!query) return;
 
             const resultsContainer = panel.querySelector('#music-search-results');
             resultsContainer.innerHTML = '<div class="music-search-placeholder">正在寻觅...</div>';
 
-            const results = await this.app.musicData.searchSongs(query);
-            this._renderSearchResults(results);
+            const nextPage = Math.max(1, Number.parseInt(page, 10) || 1);
+            if (query !== searchState.query || nextPage === 1 || !Array.isArray(searchState.results) || searchState.results.length === 0) {
+                searchState.query = query;
+                searchState.results = await this.app.musicData.searchSongs(query, { limit: 50 });
+            }
+            searchState.page = nextPage;
+            this._renderSearchResults(searchState.results, {
+                page: searchState.page,
+                pageSize: searchState.pageSize,
+                query,
+                onPage: nextPage => performSearch(nextPage)
+            });
         };
 
         if (searchBtn) searchBtn.onclick = openSearch;
         if (searchCloseBtn) searchCloseBtn.onclick = closeSearch;
-        if (searchSubmitBtn) searchSubmitBtn.onclick = (e) => { e.stopPropagation(); performSearch(); };
+        if (searchSubmitBtn) searchSubmitBtn.onclick = (e) => { e.stopPropagation(); performSearch(1); };
         if (searchInput) searchInput.onkeydown = (e) => {
             e.stopPropagation();
             if (e.key === 'Enter') {
-                performSearch();
+                performSearch(1);
             }
         };
 
@@ -1023,16 +1039,42 @@ export class MusicView {
         this._stopProgressTimer();
     }
 
-    _renderSearchResults(results) {
+    _renderSearchResults(results, options = {}) {
         const resultsContainer = document.getElementById('music-search-results');
         if (!resultsContainer) return;
 
-        if (!results || results.length === 0) {
-            resultsContainer.innerHTML = '<div class="music-search-placeholder">未寻得相关曲目。</div>';
+        const allResults = Array.isArray(results) ? results : [];
+        const page = Math.max(1, Number.parseInt(options.page, 10) || 1);
+        const pageSize = Math.max(1, Number.parseInt(options.pageSize, 10) || 10);
+        const totalPages = Math.max(1, Math.ceil(allResults.length / pageSize));
+        const safePage = Math.min(page, totalPages);
+        const pageResults = allResults.slice((safePage - 1) * pageSize, safePage * pageSize);
+        const canPrev = safePage > 1;
+        const canNext = safePage < totalPages;
+
+        if (allResults.length === 0) {
+            resultsContainer.innerHTML = `
+                <div class="music-search-placeholder">未寻得相关曲目。</div>
+                ${canPrev ? `
+                    <div class="music-search-pager">
+                        <button type="button" class="music-search-page-btn" data-page="${safePage - 1}">上一页</button>
+                        <span class="music-search-page-info">第 ${safePage} / ${totalPages} 页</span>
+                        <button type="button" class="music-search-page-btn" disabled>下一页</button>
+                    </div>
+                ` : ''}
+            `;
+            resultsContainer.querySelectorAll('.music-search-page-btn[data-page]').forEach(button => {
+                button.onclick = (e) => {
+                    e.stopPropagation();
+                    const nextPage = Number.parseInt(button.dataset.page, 10);
+                    if (Number.isFinite(nextPage) && typeof options.onPage === 'function') options.onPage(nextPage);
+                };
+            });
             return;
         }
 
-        resultsContainer.innerHTML = results.map(song => `
+        resultsContainer.innerHTML = `
+            ${pageResults.map(song => `
             <div class="music-search-item">
                 <img class="music-search-item-cover" src="${song.pic || ''}" onerror="this.style.display='none'">
                 <div class="music-search-item-info">
@@ -1041,7 +1083,13 @@ export class MusicView {
                 </div>
                 <button class="music-search-item-add" data-song-name="${this._escapeHtml(song.name)}" data-song-artist="${this._escapeHtml(song.artist)}">+</button>
             </div>
-        `).join('');
+            `).join('')}
+            <div class="music-search-pager">
+                <button type="button" class="music-search-page-btn" data-page="${safePage - 1}" ${canPrev ? '' : 'disabled'}>上一页</button>
+                <span class="music-search-page-info">第 ${safePage} / ${totalPages} 页</span>
+                <button type="button" class="music-search-page-btn" data-page="${safePage + 1}" ${canNext ? '' : 'disabled'}>下一页</button>
+            </div>
+        `;
 
         // 为所有新的"添加"按钮绑定事件
         resultsContainer.querySelectorAll('.music-search-item-add').forEach(button => {
@@ -1049,7 +1097,7 @@ export class MusicView {
                 e.stopPropagation();
                 const name = button.dataset.songName;
                 const artist = button.dataset.songArtist;
-                const songMeta = results.find(item => item.name === name && item.artist === artist) || {};
+                const songMeta = allResults.find(item => item.name === name && item.artist === artist) || {};
                 this.app.musicData.addSong(name, artist, {
                     id: songMeta.id || null,
                     pic: songMeta.pic || null
@@ -1061,6 +1109,17 @@ export class MusicView {
                 setTimeout(() => {
                     document.getElementById('music-search-modal')?.style.setProperty('display', 'none');
                 }, 500);
+            };
+        });
+
+        resultsContainer.querySelectorAll('.music-search-page-btn[data-page]').forEach(button => {
+            button.onclick = (e) => {
+                e.stopPropagation();
+                if (button.disabled) return;
+                const nextPage = Number.parseInt(button.dataset.page, 10);
+                if (Number.isFinite(nextPage) && typeof options.onPage === 'function') {
+                    options.onPage(nextPage);
+                }
             };
         });
     }

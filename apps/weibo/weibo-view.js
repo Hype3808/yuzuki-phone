@@ -2497,6 +2497,7 @@ export class WeiboView {
         if (imageStorage && imageManager.storage !== imageStorage) {
             imageManager.storage = imageStorage;
         }
+        const resolvedImageProvider = String(imageManager.resolveProvider?.({ app: 'weibo' }) || imageStorage?.get?.('phone-image-provider') || '').trim();
 
         const pendingTag = safeMediaType === '视频' ? '[视频]' : '[图片]';
         const previousImageUrl = this._getManagedWeiboGeneratedImageUrl(post, index);
@@ -2513,7 +2514,7 @@ export class WeiboView {
             mediaType: safeMediaType,
             generatedImageUrl: '',
             imageModel: '',
-            imageProvider: String(imageStorage?.get?.('phone-image-provider') || '').trim(),
+            imageProvider: resolvedImageProvider,
             imageGenerationWidth: '',
             imageGenerationHeight: ''
         });
@@ -2562,7 +2563,7 @@ export class WeiboView {
                 mediaType: safeMediaType,
                 generatedImageUrl: '',
                 imageModel: '',
-                imageProvider: String(imageStorage?.get?.('phone-image-provider') || '').trim()
+                imageProvider: resolvedImageProvider
             });
             this._persistPostMediaTarget(posts, source, post);
             this._refreshPostMediaUI(postId);

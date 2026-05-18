@@ -486,7 +486,7 @@ export class DiaryData {
             const references = await this._buildDiaryPersonalImageReferences(photo);
             const prompt = await this._buildDiaryImagePrompt(photo);
             const result = await imageManager.generate({
-                app: 'wechat',
+                app: 'diary',
                 prompt,
                 novelAIReferences: references
             });

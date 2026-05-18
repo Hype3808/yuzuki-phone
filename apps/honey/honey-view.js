@@ -7063,7 +7063,7 @@ export class HoneyView {
             next = Math.max(min, Math.min(max, next));
             return integer ? Math.round(next) : next;
         };
-        const provider = String(imageStorage?.get?.('phone-image-provider') || 'novelai').trim() || 'novelai';
+        const provider = String(imageManager.resolveProvider?.({ app: 'honey' }) || imageStorage?.get?.('phone-image-provider') || 'novelai').trim() || 'novelai';
         const honeyWidth = readNumber('phone-image-honey-width', 832, 64, 2048, true);
         const honeyHeight = readNumber('phone-image-honey-height', 1216, 64, 2048, true);
         const imageSteps = readNumber('phone-image-steps', 28, 1, 50, true);
@@ -7078,7 +7078,6 @@ export class HoneyView {
             ? imageManager.previewFinalPrompt({
                 app: 'honey',
                 prompt: normalizedPrompt,
-                provider,
                 width: safeHoneyWidth,
                 height: safeHoneyHeight,
                 steps: safeHoneySteps,
@@ -7092,7 +7091,6 @@ export class HoneyView {
             ? imageManager.previewFinalPrompt({
                 app: 'honey',
                 prompt: generationPrompt,
-                provider,
                 width: safeHoneyWidth,
                 height: safeHoneyHeight,
                 steps: safeHoneySteps,
@@ -7181,7 +7179,6 @@ export class HoneyView {
             const result = await imageManager.generate({
                 app: 'honey',
                 prompt: generationPrompt,
-                provider,
                 width: safeHoneyWidth,
                 height: safeHoneyHeight,
                 steps: safeHoneySteps,

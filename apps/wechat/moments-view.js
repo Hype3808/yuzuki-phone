@@ -778,6 +778,7 @@ export class MomentsView {
         if (imageStorage && imageManager.storage !== imageStorage) {
             imageManager.storage = imageStorage;
         }
+        const resolvedImageProvider = String(imageManager.resolveProvider?.({ app: 'wechat' }) || imageStorage?.get?.('phone-image-provider') || '').trim();
 
         const previousImageUrl = this._getManagedMomentGeneratedImageUrl(moment, index);
         const parsedImage = this._parseMomentImageItem(Array.isArray(moment.images) ? moment.images[index] : '');
@@ -798,7 +799,7 @@ export class MomentsView {
             mediaType,
             usePersonalReference,
             generatedImageUrl: '',
-            imageProvider: String(imageStorage?.get?.('phone-image-provider') || '').trim()
+            imageProvider: resolvedImageProvider
         });
         await this.app.wechatData.saveData();
         this._refreshMomentImageUI(momentId);
@@ -847,7 +848,7 @@ export class MomentsView {
                 mediaType,
                 usePersonalReference,
                 generatedImageUrl: '',
-                imageProvider: String(imageStorage?.get?.('phone-image-provider') || '').trim()
+                imageProvider: resolvedImageProvider
             });
             await this.app.wechatData.saveData();
             this._refreshMomentImageUI(momentId);

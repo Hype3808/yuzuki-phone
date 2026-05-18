@@ -2997,6 +2997,64 @@ parseAIResponse(text) {
         }
     }
      
+    // 精确替换某一酒馆楼层产出的微信正文消息，用于用户手动编辑正文 <wechat> 后重放该楼层。
+    removeMainChatTagMessagesAtFloor(targetTavernIndex) {
+        const targetIndex = Number.parseInt(targetTavernIndex, 10);
+        if (!Number.isFinite(targetIndex) || targetIndex < 0) return false;
+
+        const allChats = this.data.chats || [];
+        allChats.forEach(chat => {
+            if (chat && chat.id) {
+                this.getMessages(chat.id);
+            }
+        });
+
+        let isDirty = false;
+
+        for (const chatId in this.data.messages) {
+            const messages = Array.isArray(this.data.messages[chatId]) ? this.data.messages[chatId] : [];
+            const originalLen = messages.length;
+            this.data.messages[chatId] = messages.filter(m => {
+                if (!m?.fromMainChatTag) return true;
+                return Number(m.tavernMessageIndex) !== targetIndex;
+            });
+
+            if (this.data.messages[chatId].length !== originalLen) {
+                this._messagesDirty[chatId] = true;
+                isDirty = true;
+
+                const chat = this.getChat(chatId);
+                if (chat) {
+                    const remaining = this.data.messages[chatId];
+                    const latestPreviewMsg = [...remaining].reverse().find(msg =>
+                        msg && msg.hiddenFromPreview !== true && msg.isTimeMarker !== true && msg.type !== 'time_marker'
+                    );
+                    chat.unread = 0;
+                    if (latestPreviewMsg) {
+                        chat.lastMessage = this.getMessagePreview(latestPreviewMsg);
+                        chat.time = latestPreviewMsg.time || '';
+                        chat.timestamp = latestPreviewMsg.timestamp || Date.now();
+                    } else {
+                        chat.lastMessage = '';
+                        chat.time = '';
+                    }
+                }
+            }
+        }
+
+        if (isDirty) {
+            for (const chatId in this._messagesDirty) {
+                if (this._messagesDirty[chatId]) {
+                    this._saveMessages(chatId);
+                }
+            }
+            this.saveData();
+            window.VirtualPhone?.timeManager?.resetTime?.();
+        }
+
+        return isDirty;
+    }
+
     // 🔥🔥🔥 强力时光机：物理截断指定楼层及之后的所有微信消息 (完美对齐记忆插件的回档逻辑) 🔥🔥🔥
     rollbackToFloor(targetTavernIndex) {
         if (targetTavernIndex === undefined || targetTavernIndex === null) return;

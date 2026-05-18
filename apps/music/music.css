@@ -1380,3 +1380,34 @@
     background: transparent;
     color: rgba(109, 179, 216, 0.55);
 }
+
+.music-search-pager {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 12px 0 2px;
+}
+
+.music-search-page-btn {
+    height: 28px;
+    min-width: 64px;
+    border: 1px solid rgba(109, 179, 216, 0.35);
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.68);
+    color: #4f9fc8;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.music-search-page-btn:disabled {
+    opacity: 0.42;
+    cursor: default;
+}
+
+.music-search-page-info {
+    min-width: 44px;
+    text-align: center;
+    font-size: 12px;
+    color: rgba(0, 0, 0, 0.46);
+}

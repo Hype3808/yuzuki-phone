@@ -368,9 +368,48 @@ export class ImageGenerationManager {
                 return { width: 512, height: 512 };
             case 'weibo':
                 return { width: 1024, height: 1024 };
+            case 'diary':
+                return { width: 512, height: 512 };
             default:
                 return { width: 832, height: 1216 };
         }
+    }
+
+    _getProviderAppBindings() {
+        const raw = this.storage?.get?.('phone-image-provider-app-bindings');
+        let parsed = {};
+        try {
+            parsed = typeof raw === 'string' ? JSON.parse(raw || '{}') : raw;
+        } catch (e) {
+            parsed = {};
+        }
+
+        const allowedApps = new Set(['honey', 'wechat', 'weibo', 'diary']);
+        const allowedProviders = new Set(['novelai', 'openai', 'siliconflow', 'sd']);
+        const bindings = {};
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            Object.entries(parsed).forEach(([app, provider]) => {
+                const appKey = String(app || '').trim().toLowerCase();
+                const providerKey = String(provider || '').trim().toLowerCase();
+                if (allowedApps.has(appKey) && allowedProviders.has(providerKey)) {
+                    bindings[appKey] = providerKey;
+                }
+            });
+        }
+        return bindings;
+    }
+
+    getBoundProviderForApp(app = '') {
+        const appKey = String(app || '').trim().toLowerCase();
+        if (!appKey) return '';
+        return this._getProviderAppBindings()[appKey] || '';
+    }
+
+    resolveProvider(overrides = {}) {
+        const explicitProvider = String(overrides.provider || '').trim().toLowerCase();
+        if (explicitProvider) return explicitProvider;
+        const appKey = String(overrides.app || '').trim().toLowerCase();
+        return this.getBoundProviderForApp(appKey) || String(this._get('phone-image-provider', 'novelai')).trim() || 'novelai';
     }
 
     getSizeForApp(app = '') {
@@ -390,7 +429,7 @@ export class ImageGenerationManager {
     }
 
     getConfig(overrides = {}) {
-        const provider = String(overrides.provider || this._get('phone-image-provider', 'novelai')).trim() || 'novelai';
+        const provider = this.resolveProvider(overrides);
         const appKey = String(overrides.app || '').trim().toLowerCase();
         const legacySiliconflowKey = String(this._get('siliconflow_api_key', '') || '').trim();
         const legacySiliconflowModel = String(this._get('image_generation_model', '') || '').trim();
@@ -398,7 +437,7 @@ export class ImageGenerationManager {
         const rawSize = this.getSizeForApp(appKey);
         const size = { ...rawSize };
         const rawSteps = this._getNumber('phone-image-steps', 28, 1, 50);
-        const promptAppKey = ['honey', 'wechat', 'weibo'].includes(appKey) ? appKey : '';
+        const promptAppKey = ['honey', 'wechat', 'weibo', 'diary'].includes(appKey) ? appKey : '';
 
         if (appKey === 'honey') {
             if (size.width < 512 || size.height < 768) {

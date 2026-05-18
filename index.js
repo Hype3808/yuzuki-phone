@@ -98,6 +98,7 @@ if (window.GGP_Loaded) {
     const PHONE_PANEL_DESKTOP_POSITION_KEY = 'phone-panel-desktop-position';
     // 🔥 防重放护盾：仅允许被显式标记的旧楼层重新解析（用于 Swipe/Regenerate）
     const _forcedReplayFloors = new Map(); // key: `${chatId}:${floor}`, value: expireAt
+    const _exactReplayFloors = new Map(); // key: `${chatId}:${floor}`, value: expireAt
 
     function _makeForcedReplayKey(floor, chatId = null) {
         const safeFloor = Number.parseInt(floor, 10);
@@ -132,6 +133,32 @@ if (window.GGP_Loaded) {
         return true;
     }
 
+    function markExactReplayFloor(floor, ttlMs = 120000, chatId = null) {
+        const key = _makeForcedReplayKey(floor, chatId);
+        if (!key) return;
+        const expireAt = Date.now() + Math.max(5000, Number.parseInt(ttlMs, 10) || 120000);
+        _exactReplayFloors.set(key, expireAt);
+        markForcedReplayFloor(floor, ttlMs, chatId);
+    }
+
+    function consumeExactReplayFloor(floor, chatId = null) {
+        const now = Date.now();
+        for (const [k, expire] of _exactReplayFloors.entries()) {
+            if (!Number.isFinite(expire) || expire <= now) {
+                _exactReplayFloors.delete(k);
+            }
+        }
+        const key = _makeForcedReplayKey(floor, chatId);
+        if (!key) return false;
+        const expireAt = _exactReplayFloors.get(key);
+        if (!Number.isFinite(expireAt) || expireAt <= now) {
+            _exactReplayFloors.delete(key);
+            return false;
+        }
+        _exactReplayFloors.delete(key);
+        return true;
+    }
+
     function checkBetaLock() {
         return true;
     }
@@ -161,6 +188,10 @@ if (window.GGP_Loaded) {
 
     function hasExplicitUserReplyTag(text) {
         return /(?:<|&lt;)回复([^>&]+?)(?:>|&gt;)[\s\S]*?(?:<|&lt;)\/回复\1(?:>|&gt;)/i.test(String(text || ''));
+    }
+
+    function hasExplicitWechatTag(text) {
+        return /(?:<|&lt;)\s*wechat\b[\s\S]*?(?:<|&lt;)\s*\/\s*wechat\s*(?:>|&gt;)/i.test(String(text || ''));
     }
 
     function updatePhonePanelViewportHeight(options = {}) {
@@ -3519,8 +3550,9 @@ if (window.GGP_Loaded) {
                                 ev.preventDefault();
                                 const name = String(el.dataset.name || '').trim();
                                 if (!name) return;
-                                const tagStr = `\n<回复${name}>\n\n</回复${name}>\n`;
-                                const cursorPos = `\n<回复${name}>\n`.length;
+                                const currentDateTime = formatWechatInlineReplyDateTime();
+                                const tagStr = `\n<wechat><!--\n---{{user}}---\n接收人：${name}\ndate:${currentDateTime}\n\n--></wechat>\n`;
+                                const cursorPos = `\n<wechat><!--\n---{{user}}---\n接收人：${name}\ndate:${currentDateTime}\n`.length;
                                 insertTextToSendTextarea(tagStr, cursorPos);
                                 closeMenuSafely();
                             });
@@ -4699,6 +4731,36 @@ if (window.GGP_Loaded) {
         return getCurrentWechatRecipientAliases().includes(key);
     }
 
+    function parseWechatDateTimeLine(rawValue = '') {
+        const raw = String(rawValue || '').trim();
+        if (!raw) return { date: '', time: '' };
+        const match = raw.match(/(\d{1,8}年\s*[0-9]{1,2}月\s*[0-9]{1,2}日)\s*([0-9]{1,2}[:：][0-9]{2})?/);
+        if (!match) return { date: raw, time: '' };
+        return {
+            date: match[1].replace(/\s+/g, ''),
+            time: String(match[2] || '').replace('：', ':')
+        };
+    }
+
+    function formatWechatInlineReplyDateTime() {
+        const pad = (value) => String(value).padStart(2, '0');
+        try {
+            const tm = window.VirtualPhone?.timeManager || timeManager;
+            tm?.clearCache?.();
+            const current = tm?.getCurrentStoryTime?.();
+            const date = String(current?.date || '').trim();
+            const time = String(current?.time || '').trim().replace('：', ':');
+            if (date && /^\d{1,2}:\d{2}$/.test(time)) {
+                return `${date}${time}`;
+            }
+        } catch (e) {
+            console.warn('⚠️ [手机快捷回复] 获取剧情时间失败，使用真实时间兜底:', e);
+        }
+
+        const now = new Date();
+        return `${now.getFullYear()}年${pad(now.getMonth() + 1)}月${pad(now.getDate())}日${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    }
+
     function getWechatRuntimeSnapshot() {
         const chats = [];
         const contacts = [];
@@ -4844,6 +4906,7 @@ if (window.GGP_Loaded) {
             let currentChatType = 'single';
             let currentChatTypeSource = 'inferred';
             let currentDate = null;
+            let currentTime = null;
             let currentRecipient = null;
             let currentRecipientExplicit = false;
             let currentMessages = [];
@@ -4878,11 +4941,16 @@ if (window.GGP_Loaded) {
                         contact: currentContact,
                         chatType: currentChatType
                     })) {
-                        console.warn('⚠️ [微信] 跳过非用户接收人的线下微信消息:', {
-                            contact: currentContact,
-                            recipient: currentRecipient || '(未填写)'
-                        });
-                        return;
+                        if (isWechatSenderCurrentUser(currentContact) && currentRecipient) {
+                            currentContact = currentRecipient;
+                            messagesToSave = messagesToSave.map(msg => ({ ...msg, sender: 'me' }));
+                        } else {
+                            console.warn('⚠️ [微信] 跳过非用户接收人的线下微信消息:', {
+                                contact: currentContact,
+                                recipient: currentRecipient || '(未填写)'
+                            });
+                            return;
+                        }
                     }
 
                     results.push({
@@ -4917,6 +4985,7 @@ if (window.GGP_Loaded) {
                     currentChatType = 'single'; // 默认单聊，等解析到 type:group 再改
                     currentChatTypeSource = 'inferred';
                     currentDate = null;
+                    currentTime = null;
                     currentRecipient = null;
                     currentRecipientExplicit = false;
                     currentMessages = [];
@@ -4938,7 +5007,14 @@ if (window.GGP_Loaded) {
 
                 // 解析 date: 属性
                 if (trimmedLine.startsWith('date:') || trimmedLine.startsWith('date：')) {
-                    currentDate = trimmedLine.substring(5).trim();
+                    const parsedDateTime = parseWechatDateTimeLine(trimmedLine.substring(5));
+                    currentDate = parsedDateTime.date || trimmedLine.substring(5).trim();
+                    currentTime = parsedDateTime.time || currentTime;
+                    if (parsedDateTime.time) {
+                        currentMessages.forEach(msg => {
+                            if (!msg.time) msg.time = parsedDateTime.time;
+                        });
+                    }
                     continue;
                 }
 
@@ -4956,6 +5032,7 @@ if (window.GGP_Loaded) {
                     currentContact = trimmedLine.substring(5).trim();
                     currentChatType = 'single';
                     currentChatTypeSource = 'explicit';
+                    currentTime = null;
                     currentRecipient = null;
                     currentRecipientExplicit = false;
                     currentMessages = [];
@@ -5047,11 +5124,17 @@ if (window.GGP_Loaded) {
                     }
 
                     const msgObj = {
+                        time: currentTime || undefined,
                         sender: currentContact,
                         content: msgContent,
                         type: 'text',
                         quote: quote  // 🔥 携带引用信息
                     };
+                    const parsedCurrentDateTime = parseWechatDateTimeLine(currentDate);
+                    if (parsedCurrentDateTime.time) {
+                        msgObj.time = parsedCurrentDateTime.time;
+                        currentDate = parsedCurrentDateTime.date || currentDate;
+                    }
                     parseMessageType(msgObj);
                     currentMessages.push(msgObj);
                 }
@@ -5479,7 +5562,7 @@ if (window.GGP_Loaded) {
                 // 线下转线上用户发言清洗开关：
                 // 开启时丢弃 AI 伪造的用户发言；关闭时允许用户发言写入“我”。
                 if (msgSenderIsCurrentUser) {
-                    if (cleanUserReplyEnabled) {
+                    if (cleanUserReplyEnabled && !data.isHistoryReplay) {
                         console.warn('⚠️ [微信] 线下转线上已清洗用户发言:', {
                             contact: data.contact,
                             sender: rawMsgSender,
@@ -6172,6 +6255,9 @@ if (window.GGP_Loaded) {
                     }
                 }
             }
+            if (forcedReplay) {
+                isHistoryReplay = false;
+            }
             message._phone_processed = true;
             message._phone_lastSwipeId = swipeIndex;
             // 🔥 核心修复：优先从 swipes 获取原始文本，避免 message.mes 中的 markdown 链接被渲染成 HTML
@@ -6213,8 +6299,19 @@ if (window.GGP_Loaded) {
             // 🔥 新增：单独拦截用户消息，处理 <回复xx> 标签
             if (message.is_user) {
                 const listenUserMessages = isPhoneUserMessageListenerEnabled();
-                if (isPhoneFeatureEnabled() && !isHistoryReplay && (listenUserMessages || hasExplicitUserReplyTag(text))) {
+                if (isPhoneFeatureEnabled() && !isHistoryReplay && (listenUserMessages || hasExplicitUserReplyTag(text) || hasExplicitWechatTag(text))) {
                     processUserReplyTags(text, index, currentBatchId); // 🔥 传入 index 和 batchId
+                    const userWechatTagDataList = parseLightweightWechatTag(text);
+                    if (userWechatTagDataList.length > 0) {
+                        userWechatTagDataList.forEach(wechatTagData => {
+                            if (wechatTagData.type !== 'empty') {
+                                wechatTagData.isHistoryReplay = true;
+                                wechatTagData.tavernMessageIndex = index;
+                                wechatTagData.batchId = currentBatchId;
+                                handlePhoneTag(wechatTagData);
+                            }
+                        });
+                    }
                 }
                 // 用户楼层同样参与微博自动触发判断
                 if (listenUserMessages) {
@@ -6226,6 +6323,7 @@ if (window.GGP_Loaded) {
             // ==========================================
             // 🚫 以下功能，只有在手机启用时才解析
             // ==========================================
+            let exactReplayForMessage = false;
             if (isPhoneFeatureEnabled()) {
                 // 🔥🔥🔥 核心修复：在解析新标签之前，先回滚该楼层的旧数据！🔥🔥🔥
                 // 这样无论是 Regenerate 还是 Swipe，都能正确清除旧消息再写入新消息。
@@ -6233,7 +6331,10 @@ if (window.GGP_Loaded) {
                 if (!isHistoryReplay && !message.is_user) {
                     try {
                         const wechatDataInstance = window.VirtualPhone?.wechatApp?.wechatData || window.VirtualPhone?.cachedWechatData;
-                        if (wechatDataInstance && typeof wechatDataInstance.rollbackToFloor === 'function') {
+                        exactReplayForMessage = consumeExactReplayFloor(index, context.chatId);
+                        if (exactReplayForMessage && wechatDataInstance && typeof wechatDataInstance.removeMainChatTagMessagesAtFloor === 'function') {
+                            wechatDataInstance.removeMainChatTagMessagesAtFloor(index);
+                        } else if (wechatDataInstance && typeof wechatDataInstance.rollbackToFloor === 'function') {
                             // 回滚当前楼层（含）及之后的数据，为新内容腾出空间
                             wechatDataInstance.rollbackToFloor(index);
                         }
@@ -6259,7 +6360,7 @@ if (window.GGP_Loaded) {
                 if (wechatTagDataList.length > 0) {
                     wechatTagDataList.forEach(wechatTagData => {
                         if (wechatTagData.type !== 'empty') {
-                            wechatTagData.isHistoryReplay = isHistoryReplay;
+                            wechatTagData.isHistoryReplay = isHistoryReplay || exactReplayForMessage;
                             wechatTagData.tavernMessageIndex = index;
                             wechatTagData.batchId = currentBatchId; // 🔥 传入批次ID
                             handlePhoneTag(wechatTagData);
@@ -7420,8 +7521,27 @@ if (window.GGP_Loaded) {
                     });
                 }
 
-                // 🔥 监听编辑按钮点击，退出编辑后重新隐藏标签
-                $(document).on('click', '.mes_edit_done, .mes_edit_cancel, .mes_edit_ok, .mes_edit_button', () => {
+                // 🔥 监听编辑按钮点击，退出编辑后重新隐藏标签；保存正文编辑时精确重放该楼层微信标签
+                $(document).on('click', '.mes_edit_done, .mes_edit_ok', function () {
+                    const mesEl = $(this).closest('.mes');
+                    const mesId = parseInt(mesEl.attr('mesid'), 10);
+                    if (!Number.isNaN(mesId)) {
+                        markExactReplayFloor(mesId, 120000);
+                        setTimeout(() => {
+                            try {
+                                onMessageReceived(mesId);
+                                const isCallOverlayVisible = !!document.querySelector('.call-fullscreen');
+                                if (window.currentWechatApp && !isCallOverlayVisible) {
+                                    setTimeout(() => window.currentWechatApp.render(), 40);
+                                }
+                            } catch (e) {
+                                console.warn('[手机插件] 正文编辑后重放微信标签失败:', e);
+                            }
+                        }, 350);
+                    }
+                    setTimeout(hidePhoneTags, 300);
+                });
+                $(document).on('click', '.mes_edit_cancel, .mes_edit_button', () => {
                     setTimeout(hidePhoneTags, 300);
                 });
 
@@ -7911,6 +8031,7 @@ if (window.GGP_Loaded) {
                                                             'image_prompt': `[图片]（${String(msg.imagePrompt || msg.content || '待生成图片').trim()}）`,
                                                             'sticker': `[表情包](${String(msg.keyword || msg.content || '表情').trim() || '表情'})`,
                                                             'voice': `[语音 ${msg.duration || '3秒'}]`,
+                                                            'location': `[定位]（${String(msg.locationText || msg.locationAddress || msg.content || '未知位置').trim() || '未知位置'}）`,
                                                             'video': '[视频通话]',
                                                             'transfer': `[转账 ¥${msg.amount}]（状态：${paymentStatus === 'received' ? '已收款' : (paymentStatus === 'refunded' ? '已退回' : '未收款')}）`,
                                                             'redpacket': `[红包 ¥${msg.amount}]（状态：${paymentStatus === 'opened' ? '已领取' : (paymentStatus === 'refunded' ? '已退回' : '未领取')}）`

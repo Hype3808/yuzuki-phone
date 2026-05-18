@@ -243,13 +243,14 @@ export class MusicData {
         if (wasPlaying) this._notifyPlaybackStopped('clear_favorites');
     }
 
-    async searchSongs(query) {
+    async searchSongs(query, options = {}) {
         if (!query || query.trim() === '') {
             return [];
         }
         try {
             const searchQuery = encodeURIComponent(query);
-            const response = await fetch(`https://api.vkeys.cn/v2/music/netease?word=${searchQuery}`);
+            const limit = Math.max(1, Math.min(50, Number.parseInt(options.limit, 10) || 50));
+            const response = await fetch(`https://api.vkeys.cn/v2/music/netease?word=${searchQuery}&num=${limit}`);
             const json = await response.json();
 
             if (json?.data && Array.isArray(json.data)) {

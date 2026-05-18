@@ -1945,13 +1945,59 @@ export class SettingsApp {
         return [
             { id: 'honey', name: '蜜语' },
             { id: 'wechat', name: '微信' },
-            { id: 'weibo', name: '微博' }
+            { id: 'weibo', name: '微博' },
+            { id: 'diary', name: '日记' }
         ];
     }
 
     _normalizeImagePromptApp(app) {
         const value = String(app || '').trim().toLowerCase();
         return this._getImagePromptAppDefs().some(def => def.id === value) ? value : 'honey';
+    }
+
+    _getImageProviderAppBindings() {
+        const raw = this.storage.get('phone-image-provider-app-bindings');
+        let parsed = {};
+        try {
+            parsed = typeof raw === 'string' ? JSON.parse(raw || '{}') : raw;
+        } catch (e) {
+            parsed = {};
+        }
+
+        const allowedProviders = new Set(['novelai', 'openai', 'siliconflow', 'sd']);
+        const bindings = {};
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            this._getImagePromptAppDefs().forEach((def) => {
+                const provider = String(parsed[def.id] || '').trim().toLowerCase();
+                if (allowedProviders.has(provider)) bindings[def.id] = provider;
+            });
+        }
+        return bindings;
+    }
+
+    _renderImageProviderAppBinding(providerKey, bindings = this._getImageProviderAppBindings()) {
+        const safeProvider = String(providerKey || '').trim().toLowerCase();
+        const options = this._getImagePromptAppDefs().map((def) => {
+            const safeApp = this._escapeHtml(def.id);
+            const safeName = this._escapeHtml(def.name);
+            const checked = bindings?.[def.id] === safeProvider ? 'checked' : '';
+            return `
+                <label style="display:flex; align-items:center; gap:5px; min-width:0; font-size:12px; color:#222;">
+                    <input type="checkbox" class="phone-image-provider-app-bind" data-provider="${this._escapeHtml(safeProvider)}" data-app="${safeApp}" ${checked}>
+                    <span>${safeName}</span>
+                </label>
+            `;
+        }).join('');
+
+        return `
+            <div class="setting-item phone-image-provider-app-binding" data-provider-binding-panel="${this._escapeHtml(safeProvider)}">
+                <div class="setting-label">固定 App 绑定</div>
+                <div class="setting-desc">勾选后，对应 App 生图优先使用本供应商配置；未绑定的 App 继续使用上面的全局供应商。</div>
+                <div style="display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap:8px; margin-top:8px;">
+                    ${options}
+                </div>
+            </div>
+        `;
     }
 
     _getImagePromptDraft(app) {
@@ -1996,6 +2042,8 @@ export class SettingsApp {
                 wechatHeight: preset?.wechatHeight,
                 weiboWidth: preset?.weiboWidth,
                 weiboHeight: preset?.weiboHeight,
+                diaryWidth: preset?.diaryWidth,
+                diaryHeight: preset?.diaryHeight,
                 width: preset?.width,
                 height: preset?.height,
                 steps: preset?.steps,
@@ -2053,6 +2101,8 @@ export class SettingsApp {
                 wechatHeight: preset?.wechatHeight,
                 weiboWidth: preset?.weiboWidth,
                 weiboHeight: preset?.weiboHeight,
+                diaryWidth: preset?.diaryWidth,
+                diaryHeight: preset?.diaryHeight,
                 width: preset?.width,
                 height: preset?.height,
                 updatedAt: Number(preset?.updatedAt || 0) || Date.now()
@@ -2167,6 +2217,8 @@ export class SettingsApp {
         const wechatHeight = readImageNumber('phone-image-wechat-height', 512, 64, 2048, true);
         const weiboWidth = readImageNumber('phone-image-weibo-width', 1024, 64, 2048, true);
         const weiboHeight = readImageNumber('phone-image-weibo-height', 1024, 64, 2048, true);
+        const diaryWidth = readImageNumber('phone-image-diary-width', 512, 64, 2048, true);
+        const diaryHeight = readImageNumber('phone-image-diary-height', 512, 64, 2048, true);
         const steps = Number(this.storage.get('phone-image-steps') || 28);
         const scale = Number(this.storage.get('phone-image-scale') || 7);
         const cfgRescale = Number(this.storage.get('phone-image-cfg-rescale') || 0);
@@ -2201,6 +2253,7 @@ export class SettingsApp {
             const safeName = this._escapeHtml(preset.name);
             return `<option value="${safeId}" ${preset.id === activeOpenaiImagePresetId ? 'selected' : ''}>${safeName}</option>`;
         }).join('');
+        const imageProviderAppBindings = this._getImageProviderAppBindings();
         const novelaiDisplay = provider === 'novelai' ? '' : 'display: none;';
         const openaiDisplay = provider === 'openai' ? '' : 'display: none;';
         const siliconflowDisplay = provider === 'siliconflow' ? '' : 'display: none;';
@@ -2236,6 +2289,8 @@ export class SettingsApp {
 
             <div class="setting-section" id="phone-image-novelai-section" style="${novelaiDisplay}">
                 <div class="setting-section-title">🎨 NovelAI / NAI</div>
+
+                ${this._renderImageProviderAppBinding('novelai', imageProviderAppBindings)}
 
                 <div class="setting-item" style="display: flex; align-items: center; justify-content: space-between;">
                     <span id="phone-image-novelai-key-label" style="font-size: 14px; color: #000;">${novelaiSite === 'public' ? '公益站 Key' : 'API Key'}</span>
@@ -2365,6 +2420,8 @@ export class SettingsApp {
             <div class="setting-section" id="phone-image-openai-section" style="${openaiDisplay}">
                 <div class="setting-section-title">🤖 GPT / OpenAI兼容</div>
 
+                ${this._renderImageProviderAppBinding('openai', imageProviderAppBindings)}
+
                 <div class="setting-item" style="display: flex; align-items: center; justify-content: space-between;">
                     <span id="phone-image-openai-key-label" style="font-size: 14px; color: #000;">${openaiSite === 'public' ? '公益站 Key' : 'API Key'}</span>
                     <div style="display: flex; align-items: center; width: 150px; height: 30px; border: 1px solid #e0e0e0; border-radius: 8px; background: #fafafa; overflow: hidden;">
@@ -2480,6 +2537,8 @@ export class SettingsApp {
             <div class="setting-section" id="phone-image-siliconflow-section" style="${siliconflowDisplay}">
                 <div class="setting-section-title">🌊 硅基流动</div>
 
+                ${this._renderImageProviderAppBinding('siliconflow', imageProviderAppBindings)}
+
                 <div class="setting-item" style="display: flex; align-items: center; justify-content: space-between;">
                     <span style="font-size: 14px; color: #000;">API Key</span>
                     <div style="display: flex; align-items: center; width: 150px; height: 30px; border: 1px solid #e0e0e0; border-radius: 8px; background: #fafafa; overflow: hidden;">
@@ -2504,6 +2563,8 @@ export class SettingsApp {
 
             <div class="setting-section" id="phone-image-sd-section" style="${sdDisplay}">
                 <div class="setting-section-title">本地 Stable Diffusion</div>
+
+                ${this._renderImageProviderAppBinding('sd', imageProviderAppBindings)}
 
                 <div class="setting-item">
                     <div class="setting-label">SD WebUI 地址</div>
@@ -2646,7 +2707,7 @@ export class SettingsApp {
 
                 <div class="setting-item">
                     <div class="setting-label">各 App 生图尺寸</div>
-                    <div class="setting-desc">蜜语默认使用 NAI 竖图；微信默认小方图；微博默认方图。</div>
+                    <div class="setting-desc">蜜语默认使用 NAI 竖图；微信和日记默认小方图；微博默认方图。</div>
                     <button type="button" id="phone-image-reset-app-sizes" class="setting-btn" style="width: 100%; height: 30px; margin-top: 8px; border: 1px solid #d8d8d8; border-radius: 8px; background: #f7f7f7; color: #333; font-size: 12px; cursor: pointer;">恢复默认尺寸</button>
                     <div style="display: grid; grid-template-columns: 72px 1fr 1fr; gap: 8px; align-items: center; margin-top: 8px;">
                         <div style="font-size: 11px; color: #777;">App</div>
@@ -2664,6 +2725,10 @@ export class SettingsApp {
                         <div style="font-size: 12px; color: #333;">微博</div>
                         <input type="number" id="phone-image-weibo-width" min="64" max="2048" step="64" value="${weiboWidth}" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box;">
                         <input type="number" id="phone-image-weibo-height" min="64" max="2048" step="64" value="${weiboHeight}" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box;">
+
+                        <div style="font-size: 12px; color: #333;">日记</div>
+                        <input type="number" id="phone-image-diary-width" min="64" max="2048" step="64" value="${diaryWidth}" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box;">
+                        <input type="number" id="phone-image-diary-height" min="64" max="2048" step="64" value="${diaryHeight}" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box;">
                     </div>
                 </div>
 
@@ -3807,12 +3872,24 @@ export class SettingsApp {
         const imagePromptPresetDeleteBtn = document.getElementById('phone-image-prompt-preset-delete');
         const imagePromptPresetExportBtn = document.getElementById('phone-image-prompt-preset-export');
         const imagePromptPresetImportBtn = document.getElementById('phone-image-prompt-preset-import');
+        const imageProviderAppBindInputs = Array.from(document.querySelectorAll('.phone-image-provider-app-bind'));
         const setImageProviderVisibility = () => {
             const provider = String(imageProvider?.value || 'novelai').trim() || 'novelai';
             if (imageNovelaiSection) imageNovelaiSection.style.display = provider === 'novelai' ? '' : 'none';
             if (imageOpenaiSection) imageOpenaiSection.style.display = provider === 'openai' ? '' : 'none';
             if (imageSiliconflowSection) imageSiliconflowSection.style.display = provider === 'siliconflow' ? '' : 'none';
             if (imageSdSection) imageSdSection.style.display = provider === 'sd' ? '' : 'none';
+        };
+        const getImageProviderAppBindings = () => this._getImageProviderAppBindings();
+        const saveImageProviderAppBindings = async (bindings) => {
+            await this.storage.set('phone-image-provider-app-bindings', JSON.stringify(bindings || {}));
+        };
+        const syncImageProviderAppBindingInputs = (bindings = getImageProviderAppBindings()) => {
+            imageProviderAppBindInputs.forEach((input) => {
+                const appKey = String(input.dataset.app || '').trim().toLowerCase();
+                const providerKey = String(input.dataset.provider || '').trim().toLowerCase();
+                input.checked = !!appKey && !!providerKey && bindings[appKey] === providerKey;
+            });
         };
         let currentNovelaiSite = String(imageNovelaiSite?.value || this.storage.get('phone-image-novelai-site') || 'official').trim() || 'official';
         const syncNovelaiSiteFields = () => {
@@ -3875,6 +3952,8 @@ export class SettingsApp {
             wechatHeight: readPresetNumber('phone-image-wechat-height', 512, 64, 2048, true),
             weiboWidth: readPresetNumber('phone-image-weibo-width', 1024, 64, 2048, true),
             weiboHeight: readPresetNumber('phone-image-weibo-height', 1024, 64, 2048, true),
+            diaryWidth: readPresetNumber('phone-image-diary-width', 512, 64, 2048, true),
+            diaryHeight: readPresetNumber('phone-image-diary-height', 512, 64, 2048, true),
             width: readPresetNumber('phone-image-width', 832, 64, 2048, true),
             height: readPresetNumber('phone-image-height', 1216, 64, 2048, true),
             steps: readPresetNumber('phone-image-steps', 28, 1, 50, true),
@@ -3909,6 +3988,8 @@ export class SettingsApp {
             await setPresetNumber('phone-image-wechat-height', preset.wechatHeight, 512, 64, 2048, true);
             await setPresetNumber('phone-image-weibo-width', preset.weiboWidth, 1024, 64, 2048, true);
             await setPresetNumber('phone-image-weibo-height', preset.weiboHeight, 1024, 64, 2048, true);
+            await setPresetNumber('phone-image-diary-width', preset.diaryWidth, 512, 64, 2048, true);
+            await setPresetNumber('phone-image-diary-height', preset.diaryHeight, 512, 64, 2048, true);
             await setPresetNumber('phone-image-width', preset.width, 832, 64, 2048, true);
             await setPresetNumber('phone-image-height', preset.height, 1216, 64, 2048, true);
             await setPresetNumber('phone-image-steps', preset.steps, 28, 1, 50, true);
@@ -3929,6 +4010,8 @@ export class SettingsApp {
             wechatHeight: readPresetNumber('phone-image-wechat-height', 512, 64, 2048, true),
             weiboWidth: readPresetNumber('phone-image-weibo-width', 1024, 64, 2048, true),
             weiboHeight: readPresetNumber('phone-image-weibo-height', 1024, 64, 2048, true),
+            diaryWidth: readPresetNumber('phone-image-diary-width', 512, 64, 2048, true),
+            diaryHeight: readPresetNumber('phone-image-diary-height', 512, 64, 2048, true),
             width: readPresetNumber('phone-image-width', 832, 64, 2048, true),
             height: readPresetNumber('phone-image-height', 1216, 64, 2048, true)
         });
@@ -3971,6 +4054,8 @@ export class SettingsApp {
             await setPresetNumber('phone-image-wechat-height', preset.wechatHeight, 512, 64, 2048, true);
             await setPresetNumber('phone-image-weibo-width', preset.weiboWidth, 1024, 64, 2048, true);
             await setPresetNumber('phone-image-weibo-height', preset.weiboHeight, 1024, 64, 2048, true);
+            await setPresetNumber('phone-image-diary-width', preset.diaryWidth, 512, 64, 2048, true);
+            await setPresetNumber('phone-image-diary-height', preset.diaryHeight, 512, 64, 2048, true);
             await setPresetNumber('phone-image-width', preset.width, 832, 64, 2048, true);
             await setPresetNumber('phone-image-height', preset.height, 1216, 64, 2048, true);
         };
@@ -4041,6 +4126,8 @@ export class SettingsApp {
                 wechatHeight: preset?.wechatHeight,
                 weiboWidth: preset?.weiboWidth,
                 weiboHeight: preset?.weiboHeight,
+                diaryWidth: preset?.diaryWidth,
+                diaryHeight: preset?.diaryHeight,
                 width: preset?.width,
                 height: preset?.height,
                 steps: preset?.steps,
@@ -4067,6 +4154,8 @@ export class SettingsApp {
                 wechatHeight: preset?.wechatHeight,
                 weiboWidth: preset?.weiboWidth,
                 weiboHeight: preset?.weiboHeight,
+                diaryWidth: preset?.diaryWidth,
+                diaryHeight: preset?.diaryHeight,
                 width: preset?.width,
                 height: preset?.height,
                 steps: preset?.steps,
@@ -4189,6 +4278,23 @@ export class SettingsApp {
             await this.storage.set('phone-image-provider', provider);
             setImageProviderVisibility();
         });
+
+        imageProviderAppBindInputs.forEach((input) => {
+            input.addEventListener('change', async (e) => {
+                const target = e.currentTarget;
+                const appKey = this._normalizeImagePromptApp(target.dataset.app);
+                const providerKey = String(target.dataset.provider || '').trim().toLowerCase();
+                const bindings = getImageProviderAppBindings();
+                if (target.checked) {
+                    bindings[appKey] = providerKey;
+                } else if (bindings[appKey] === providerKey) {
+                    delete bindings[appKey];
+                }
+                await saveImageProviderAppBindings(bindings);
+                syncImageProviderAppBindingInputs(bindings);
+            });
+        });
+        syncImageProviderAppBindingInputs();
 
         imageNovelaiKey?.addEventListener('change', async (e) => {
             const site = String(imageNovelaiSite?.value || currentNovelaiSite || 'official').trim() || 'official';
@@ -5005,6 +5111,8 @@ export class SettingsApp {
             ['phone-image-wechat-height', 512, 64, 2048, true],
             ['phone-image-weibo-width', 1024, 64, 2048, true],
             ['phone-image-weibo-height', 1024, 64, 2048, true],
+            ['phone-image-diary-width', 512, 64, 2048, true],
+            ['phone-image-diary-height', 512, 64, 2048, true],
             ['phone-image-width', 832, 64, 2048, true],
             ['phone-image-height', 1216, 64, 2048, true],
             ['phone-image-steps', 28, 1, 50, true],
@@ -5023,6 +5131,8 @@ export class SettingsApp {
             'phone-image-wechat-height',
             'phone-image-weibo-width',
             'phone-image-weibo-height',
+            'phone-image-diary-width',
+            'phone-image-diary-height',
             'phone-image-width',
             'phone-image-height'
         ]);
@@ -5053,6 +5163,8 @@ export class SettingsApp {
                 'phone-image-wechat-height': 512,
                 'phone-image-weibo-width': 1024,
                 'phone-image-weibo-height': 1024,
+                'phone-image-diary-width': 512,
+                'phone-image-diary-height': 512,
                 'phone-image-width': 832,
                 'phone-image-height': 1216
             };
