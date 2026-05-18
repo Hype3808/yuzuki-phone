@@ -4088,10 +4088,9 @@ if (window.GGP_Loaded) {
             if (matches.length === 0) return [];
 
             const results = [];
-            matches.forEach(m => {
-                const parts = String(m[1] || '').split('|').map(s => s.trim());
-                results.push(...parts);
-            });
+            const lastMatch = matches[matches.length - 1];
+            const parts = String(lastMatch?.[1] || '').split('|').map(s => s.trim());
+            results.push(...parts);
             return results;
         };
 
@@ -4101,26 +4100,23 @@ if (window.GGP_Loaded) {
             if (matches.length === 0) return [];
 
             const normalized = [];
-            for (const m of matches) {
-                const raw = String(m[1] || '').trim();
-                if (!raw) continue;
+            const lastMatch = matches[matches.length - 1];
+            const raw = String(lastMatch?.[1] || '').trim();
+            if (!raw) return normalized;
 
-                // 支持这两种写法：
-                // 1) name|@handle|text|name|@handle|text
-                // 2) name|@handle|text；name|@handle|text
-                const chunks = raw
-                    .split(/[；;](?=[^|;\n\r]+\|@?[^|;\n\r]+\|)/g)
-                    .map(s => s.trim())
-                    .filter(Boolean);
+            // 支持这两种写法：
+            // 1) name|@handle|text|name|@handle|text
+            // 2) name|@handle|text；name|@handle|text
+            const chunks = raw
+                .split(/[；;](?=[^|;\n\r]+\|@?[^|;\n\r]+\|)/g)
+                .map(s => s.trim())
+                .filter(Boolean);
 
-                chunks.forEach(chunk => {
-                    const parts = chunk.split('|').map(s => s.trim());
-                    // 直接将分割后的扁平数组推入，交给 music-view.js 的 triplets 标准解析
-                    if (parts.length > 0) {
-                        normalized.push(...parts);
-                    }
-                });
-            }
+            chunks.forEach(chunk => {
+                const parts = chunk.split('|').map(s => s.trim());
+                // 直接将分割后的扁平数组推入，交给 music-view.js 的 triplets 标准解析
+                if (parts.length > 0) normalized.push(...parts);
+            });
             return normalized;
         };
 
@@ -6448,15 +6444,14 @@ if (window.GGP_Loaded) {
                     musicBlocks.push(String(text || ''));
                 }
             }
-            for (const musicContent of musicBlocks) {
+            const latestMusicContent = musicBlocks[musicBlocks.length - 1];
+            if (latestMusicContent) {
                 hasMusicTag = true;
 
                 // 🔥 核心修复：防止 F5 刷新网页时，历史记录里的旧音乐卡片覆盖当前最新的状态
-                if (isHistoryReplay) continue;
-
-                try {
+                if (!isHistoryReplay) try {
                     // 解析卡片字段
-                    const parsed = parseMusicCard(musicContent);
+                    const parsed = parseMusicCard(latestMusicContent);
 
                     // 🔥 强制唤醒：不管音乐APP是否打开过，收到标签立刻初始化并塞入歌曲
                     import('./apps/music/music-app.js').then(module => {
@@ -6474,8 +6469,10 @@ if (window.GGP_Loaded) {
                                 const songName = parsed.media[i].trim();
                                 const artistName = parsed.media[i + 1].trim();
                                 if (songName && artistName) {
-                                    musicApp.addSongToQueue(songName, artistName);
-                                    phoneShell?.showNotification('收到新推荐歌曲', `${songName} - ${artistName}`, '🎵');
+                                    const added = musicApp.addSongToQueue(songName, artistName);
+                                    if (added) {
+                                        phoneShell?.showNotification('收到新推荐歌曲', `${songName} - ${artistName}`, '🎵');
+                                    }
                                 }
                             }
                         }

@@ -71,7 +71,7 @@ export class MusicApp {
     }
 
     addSongToQueue(name, artist) {
-        this.musicData.addSong(name, artist);
+        return this.musicData.addSong(name, artist);
     }
 
     updateCardData(parsed) {

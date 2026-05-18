@@ -1964,7 +1964,7 @@ export class SettingsApp {
             parsed = {};
         }
 
-        const allowedProviders = new Set(['novelai', 'openai', 'siliconflow', 'sd']);
+        const allowedProviders = new Set(['novelai', 'openai', 'siliconflow', 'sd', 'comfyui']);
         const bindings = {};
         if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
             this._getImagePromptAppDefs().forEach((def) => {
@@ -2125,6 +2125,45 @@ export class SettingsApp {
         await this.storage.set('phone-image-openai-presets', JSON.stringify(this._normalizeOpenAIImagePresets(presets)));
     }
 
+    _normalizeComfyUIWorkflows(workflows = []) {
+        const seen = new Set();
+        return (Array.isArray(workflows) ? workflows : []).map((workflow) => {
+            const id = String(workflow?.id || '').trim();
+            const name = String(workflow?.name || '').trim();
+            const workflowText = typeof workflow?.workflow === 'string'
+                ? workflow.workflow
+                : (workflow?.workflow && typeof workflow.workflow === 'object' ? JSON.stringify(workflow.workflow, null, 2) : '');
+            if (!id || !name || seen.has(id)) return null;
+            seen.add(id);
+            return {
+                id,
+                name,
+                workflow: String(workflowText || '').trim(),
+                comfyuiModel: String(workflow?.comfyuiModel || workflow?.model || '').trim(),
+                comfyuiSampler: String(workflow?.comfyuiSampler || workflow?.sampler || 'euler').trim() || 'euler',
+                comfyuiScheduler: String(workflow?.comfyuiScheduler || workflow?.scheduler || 'normal').trim() || 'normal',
+                comfyuiVae: String(workflow?.comfyuiVae || workflow?.vae || '').trim(),
+                comfyuiClip: String(workflow?.comfyuiClip || workflow?.clip || '').trim(),
+                updatedAt: Number(workflow?.updatedAt || 0) || Date.now()
+            };
+        }).filter(Boolean);
+    }
+
+    _getComfyUIWorkflows() {
+        const raw = this.storage.get('phone-image-comfyui-workflows');
+        let workflows = [];
+        try {
+            workflows = typeof raw === 'string' ? JSON.parse(raw || '[]') : raw;
+        } catch (e) {
+            workflows = [];
+        }
+        return this._normalizeComfyUIWorkflows(workflows);
+    }
+
+    async _saveComfyUIWorkflows(workflows) {
+        await this.storage.set('phone-image-comfyui-workflows', JSON.stringify(this._normalizeComfyUIWorkflows(workflows)));
+    }
+
     renderImageGenerationSection() {
         const provider = String(this.storage.get('phone-image-provider') || 'novelai').trim() || 'novelai';
         const enabled = this.storage.get('phone-image-enabled') === true || this.storage.get('phone-image-enabled') === 'true';
@@ -2147,6 +2186,13 @@ export class SettingsApp {
         const sdUpscaler = String(this.storage.get('phone-image-sd-upscaler') || '').trim();
         const sdRestoreFaces = this.storage.get('phone-image-sd-restore-faces') === true || this.storage.get('phone-image-sd-restore-faces') === 'true';
         const sdADetailer = this.storage.get('phone-image-sd-adetailer') === true || this.storage.get('phone-image-sd-adetailer') === 'true';
+        const comfyuiUrl = String(this.storage.get('phone-image-comfyui-url') || 'http://127.0.0.1:8188').trim();
+        const comfyuiModel = String(this.storage.get('phone-image-comfyui-model') || '').trim();
+        const comfyuiSampler = String(this.storage.get('phone-image-comfyui-sampler') || 'euler').trim() || 'euler';
+        const comfyuiScheduler = String(this.storage.get('phone-image-comfyui-scheduler') || 'normal').trim() || 'normal';
+        const comfyuiVae = String(this.storage.get('phone-image-comfyui-vae') || '').trim();
+        const comfyuiClip = String(this.storage.get('phone-image-comfyui-clip') || '').trim();
+        const comfyuiWorkflow = String(this.storage.get('phone-image-comfyui-workflow') || '').trim();
         const novelaiSite = String(this.storage.get('phone-image-novelai-site') || 'official').trim() || 'official';
         const novelaiUrl = String(this.storage.get('phone-image-novelai-url') || '').trim();
         const novelaiPublicUrl = String(this.storage.get('phone-image-novelai-public-url') || '').trim();
@@ -2253,11 +2299,21 @@ export class SettingsApp {
             const safeName = this._escapeHtml(preset.name);
             return `<option value="${safeId}" ${preset.id === activeOpenaiImagePresetId ? 'selected' : ''}>${safeName}</option>`;
         }).join('');
+        const comfyuiWorkflows = this._getComfyUIWorkflows();
+        const activeComfyUIWorkflowId = String(this.storage.get('phone-image-comfyui-active-workflow') || '').trim();
+        const activeComfyUIWorkflow = comfyuiWorkflows.find(workflow => workflow.id === activeComfyUIWorkflowId) || null;
+        const activeComfyUIWorkflowName = this._escapeHtml(activeComfyUIWorkflow?.name || '');
+        const comfyuiWorkflowOptions = comfyuiWorkflows.map((workflow) => {
+            const safeId = this._escapeHtml(workflow.id);
+            const safeName = this._escapeHtml(workflow.name);
+            return `<option value="${safeId}" ${workflow.id === activeComfyUIWorkflowId ? 'selected' : ''}>${safeName}</option>`;
+        }).join('');
         const imageProviderAppBindings = this._getImageProviderAppBindings();
         const novelaiDisplay = provider === 'novelai' ? '' : 'display: none;';
         const openaiDisplay = provider === 'openai' ? '' : 'display: none;';
         const siliconflowDisplay = provider === 'siliconflow' ? '' : 'display: none;';
         const sdDisplay = provider === 'sd' ? '' : 'display: none;';
+        const comfyuiDisplay = provider === 'comfyui' ? '' : 'display: none;';
 
         return `
             <div class="setting-section">
@@ -2281,6 +2337,7 @@ export class SettingsApp {
                             <option value="novelai" ${provider === 'novelai' ? 'selected' : ''}>NovelAI / NAI</option>
                             <option value="openai" ${provider === 'openai' ? 'selected' : ''}>GPT / OpenAI兼容</option>
                             <option value="sd" ${provider === 'sd' ? 'selected' : ''}>本地 SD</option>
+                            <option value="comfyui" ${provider === 'comfyui' ? 'selected' : ''}>本地 ComfyUI</option>
                             <option value="siliconflow" ${provider === 'siliconflow' ? 'selected' : ''}>硅基流动</option>
                         </select>
                     </div>
@@ -2699,6 +2756,96 @@ export class SettingsApp {
                         测试 SD 生图连接
                     </button>
                     <div class="setting-desc" id="phone-image-test-sd-result" style="margin-top: 6px;">使用蜜语尺寸和当前 SD 参数生成一张测试图。</div>
+                </div>
+            </div>
+
+            <div class="setting-section" id="phone-image-comfyui-section" style="${comfyuiDisplay}">
+                <div class="setting-section-title">本地 ComfyUI</div>
+
+                ${this._renderImageProviderAppBinding('comfyui', imageProviderAppBindings)}
+
+                <div class="setting-item">
+                    <div class="setting-label">ComfyUI 地址</div>
+                    <div class="setting-desc">填写本地或局域网 ComfyUI 地址，默认端口通常是 8188。</div>
+                    <input type="text" id="phone-image-comfyui-url"
+                           value="${this._escapeHtml(comfyuiUrl)}"
+                           placeholder="http://127.0.0.1:8188"
+                           style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                </div>
+
+                <div class="setting-item">
+                    <button id="phone-image-comfyui-refresh" class="phone-image-test-btn" style="width: 100%; height: 34px; border: none; border-radius: 8px; background: #6366f1 !important; color: #fff !important; font-size: 13px; font-weight: 600; cursor: pointer;">
+                        连接并刷新 ComfyUI 数据
+                    </button>
+                    <div class="setting-desc" id="phone-image-comfyui-status" style="margin-top: 6px;">从 /object_info 读取模型、采样器、调度器、VAE 和 CLIP。</div>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-label">模型</div>
+                    <select id="phone-image-comfyui-model" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                        <option value="${this._escapeHtml(comfyuiModel)}">${comfyuiModel ? this._escapeHtml(comfyuiModel) : '未选择模型'}</option>
+                    </select>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                    <div class="setting-item">
+                        <div class="setting-label">采样器</div>
+                        <select id="phone-image-comfyui-sampler" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                            <option value="${this._escapeHtml(comfyuiSampler)}">${this._escapeHtml(comfyuiSampler)}</option>
+                        </select>
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-label">调度器</div>
+                        <select id="phone-image-comfyui-scheduler" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                            <option value="${this._escapeHtml(comfyuiScheduler)}">${this._escapeHtml(comfyuiScheduler)}</option>
+                        </select>
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-label">VAE</div>
+                        <select id="phone-image-comfyui-vae" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                            <option value="${this._escapeHtml(comfyuiVae)}">${comfyuiVae ? this._escapeHtml(comfyuiVae) : '不指定'}</option>
+                        </select>
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-label">CLIP</div>
+                        <select id="phone-image-comfyui-clip" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                            <option value="${this._escapeHtml(comfyuiClip)}">${comfyuiClip ? this._escapeHtml(comfyuiClip) : '不指定'}</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="setting-item">
+                    <div style="display: flex; align-items: center; gap: 5px;">
+                        <div class="setting-label">工作流 JSON</div>
+                        <button type="button" id="phone-image-comfyui-workflow-help" aria-label="查看 ComfyUI 工作流说明" title="查看说明" style="width: 16px; height: 16px; border: 1px solid #d8d8d8; border-radius: 50%; background: #fff; color: #666; display: flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; font-size: 10px; font-weight: 400; line-height: 1; font-family: Arial, sans-serif;">
+                            i
+                        </button>
+                    </div>
+                    <select id="phone-image-comfyui-workflow-select" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                        <option value="">未选择工作流</option>
+                        ${comfyuiWorkflowOptions}
+                    </select>
+                    <input type="text" id="phone-image-comfyui-workflow-name"
+                           value="${activeComfyUIWorkflowName}"
+                           placeholder="工作流名称，例如：基础文生图 / 微信参考图 / SDXL 高清"
+                           style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px;">
+                        <button id="phone-image-comfyui-workflow-save" class="setting-btn" style="height: 30px; padding: 0 8px; font-size: 12px; background: #fff; color: #078a46; border: 1px solid rgba(7,138,70,0.36); border-radius: 8px; cursor: pointer;">保存</button>
+                        <button id="phone-image-comfyui-workflow-new" class="setting-btn" style="height: 30px; padding: 0 8px; font-size: 12px; background: #f2f2f2; color: #222; border: 1px solid #d8d8d8; border-radius: 8px; cursor: pointer;">新建</button>
+                        <button id="phone-image-comfyui-workflow-delete" class="setting-btn" style="height: 30px; padding: 0 8px; font-size: 12px; background: #fff; color: #d33; border: 1px solid rgba(211,51,51,0.28); border-radius: 8px; cursor: pointer;">删除</button>
+                        <button id="phone-image-comfyui-workflow-export" class="setting-btn" style="height: 30px; padding: 0 8px; font-size: 12px; background: #fff; color: #1d4ed8; border: 1px solid rgba(37,99,235,0.34); border-radius: 8px; cursor: pointer;">导出</button>
+                        <button id="phone-image-comfyui-workflow-import" class="setting-btn" style="height: 30px; padding: 0 8px; font-size: 12px; background: #fff; color: #b45309; border: 1px solid rgba(245,158,11,0.42); border-radius: 8px; cursor: pointer;">导入</button>
+                        <button id="phone-image-comfyui-workflow-clear" class="setting-btn" style="height: 30px; padding: 0 8px; font-size: 12px; background: #fff; color: #555; border: 1px solid #d8d8d8; border-radius: 8px; cursor: pointer;">内置</button>
+                    </div>
+                    <textarea id="phone-image-comfyui-workflow" rows="8"
+                              style="width: 100%; min-height: 150px; padding: 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 11px; line-height: 1.45; background: #fafafa; box-sizing: border-box; margin-top: 6px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;">${this._escapeHtml(comfyuiWorkflow)}</textarea>
+                </div>
+
+                <div class="setting-item">
+                    <button id="phone-image-test-comfyui" class="phone-image-test-btn" style="width: 100%; height: 34px; border: none; border-radius: 8px; background: #10b981 !important; color: #fff !important; font-size: 13px; font-weight: 600; cursor: pointer;">
+                        测试 ComfyUI 生图连接
+                    </button>
+                    <div class="setting-desc" id="phone-image-test-comfyui-result" style="margin-top: 6px;">使用当前 ComfyUI 工作流和蜜语尺寸生成一张测试图。</div>
                 </div>
             </div>
 
@@ -3839,6 +3986,7 @@ export class SettingsApp {
         const imageOpenaiSection = document.getElementById('phone-image-openai-section');
         const imageSiliconflowSection = document.getElementById('phone-image-siliconflow-section');
         const imageSdSection = document.getElementById('phone-image-sd-section');
+        const imageComfyUISection = document.getElementById('phone-image-comfyui-section');
         const imageNovelaiSite = document.getElementById('phone-image-novelai-site');
         const imageNovelaiKey = document.getElementById('phone-image-novelai-key');
         const imageNovelaiKeyLabel = document.getElementById('phone-image-novelai-key-label');
@@ -3861,6 +4009,15 @@ export class SettingsApp {
         const imageOpenaiPresetSaveBtn = document.getElementById('phone-image-openai-preset-save');
         const imageOpenaiPresetNewBtn = document.getElementById('phone-image-openai-preset-new');
         const imageOpenaiPresetDeleteBtn = document.getElementById('phone-image-openai-preset-delete');
+        const imageComfyUIWorkflowSelect = document.getElementById('phone-image-comfyui-workflow-select');
+        const imageComfyUIWorkflowName = document.getElementById('phone-image-comfyui-workflow-name');
+        const imageComfyUIWorkflowSaveBtn = document.getElementById('phone-image-comfyui-workflow-save');
+        const imageComfyUIWorkflowNewBtn = document.getElementById('phone-image-comfyui-workflow-new');
+        const imageComfyUIWorkflowDeleteBtn = document.getElementById('phone-image-comfyui-workflow-delete');
+        const imageComfyUIWorkflowExportBtn = document.getElementById('phone-image-comfyui-workflow-export');
+        const imageComfyUIWorkflowImportBtn = document.getElementById('phone-image-comfyui-workflow-import');
+        const imageComfyUIWorkflowClearBtn = document.getElementById('phone-image-comfyui-workflow-clear');
+        const imageComfyUIWorkflowHelpBtn = document.getElementById('phone-image-comfyui-workflow-help');
         const imagePromptAppSelect = document.getElementById('phone-image-prompt-app-select');
         const imagePromptPresetSelect = document.getElementById('phone-image-prompt-preset-select');
         const imagePromptPresetName = document.getElementById('phone-image-prompt-preset-name');
@@ -3879,6 +4036,7 @@ export class SettingsApp {
             if (imageOpenaiSection) imageOpenaiSection.style.display = provider === 'openai' ? '' : 'none';
             if (imageSiliconflowSection) imageSiliconflowSection.style.display = provider === 'siliconflow' ? '' : 'none';
             if (imageSdSection) imageSdSection.style.display = provider === 'sd' ? '' : 'none';
+            if (imageComfyUISection) imageComfyUISection.style.display = provider === 'comfyui' ? '' : 'none';
         };
         const getImageProviderAppBindings = () => this._getImageProviderAppBindings();
         const saveImageProviderAppBindings = async (bindings) => {
@@ -4070,6 +4228,51 @@ export class SettingsApp {
                 imageOpenaiPresetSelect.appendChild(opt);
             });
         };
+        const getComfyUIWorkflowSettings = () => ({
+            workflow: String(document.getElementById('phone-image-comfyui-workflow')?.value || '').trim(),
+            comfyuiModel: String(document.getElementById('phone-image-comfyui-model')?.value || '').trim(),
+            comfyuiSampler: String(document.getElementById('phone-image-comfyui-sampler')?.value || 'euler').trim() || 'euler',
+            comfyuiScheduler: String(document.getElementById('phone-image-comfyui-scheduler')?.value || 'normal').trim() || 'normal',
+            comfyuiVae: String(document.getElementById('phone-image-comfyui-vae')?.value || '').trim(),
+            comfyuiClip: String(document.getElementById('phone-image-comfyui-clip')?.value || '').trim()
+        });
+        const setComfyUIFieldValue = (id, value) => {
+            const input = document.getElementById(id);
+            if (!input) return;
+            if (input.tagName === 'SELECT' && value && !Array.from(input.options).some(option => option.value === value)) {
+                const opt = document.createElement('option');
+                opt.value = value;
+                opt.textContent = value;
+                input.appendChild(opt);
+            }
+            input.value = value;
+        };
+        const applyComfyUIWorkflowSettings = async (workflow) => {
+            if (!workflow) return;
+            const fields = [
+                ['phone-image-comfyui-workflow', String(workflow.workflow || '')],
+                ['phone-image-comfyui-model', String(workflow.comfyuiModel || '')],
+                ['phone-image-comfyui-sampler', String(workflow.comfyuiSampler || 'euler').trim() || 'euler'],
+                ['phone-image-comfyui-scheduler', String(workflow.comfyuiScheduler || 'normal').trim() || 'normal'],
+                ['phone-image-comfyui-vae', String(workflow.comfyuiVae || '')],
+                ['phone-image-comfyui-clip', String(workflow.comfyuiClip || '')]
+            ];
+            for (const [id, value] of fields) {
+                setComfyUIFieldValue(id, value);
+                await this.storage.set(id, value);
+            }
+        };
+        const fillComfyUIWorkflowSelect = (workflows, activeId = '') => {
+            if (!imageComfyUIWorkflowSelect) return;
+            imageComfyUIWorkflowSelect.innerHTML = '<option value="">未选择工作流</option>';
+            workflows.forEach((workflow) => {
+                const opt = document.createElement('option');
+                opt.value = workflow.id;
+                opt.textContent = workflow.name;
+                opt.selected = workflow.id === activeId;
+                imageComfyUIWorkflowSelect.appendChild(opt);
+            });
+        };
         let currentImagePromptApp = this._normalizeImagePromptApp(this.storage.get('phone-image-active-prompt-app') || imagePromptAppSelect?.value || 'honey');
         const getActiveImagePromptApp = () => this._normalizeImagePromptApp(currentImagePromptApp || imagePromptAppSelect?.value || this.storage.get('phone-image-active-prompt-app') || 'honey');
         const saveImagePromptDraft = async (app, form = getImagePromptForm()) => {
@@ -4195,6 +4398,82 @@ export class SettingsApp {
             usedNames.add(nextName);
             return nextName;
         };
+        const isLikelyComfyUIApiWorkflow = (workflow) => {
+            const prompt = workflow?.prompt && typeof workflow.prompt === 'object' ? workflow.prompt : workflow;
+            if (!prompt || typeof prompt !== 'object' || Array.isArray(prompt)) return false;
+            return Object.values(prompt).some(node => node && typeof node === 'object' && typeof node.class_type === 'string');
+        };
+        const normalizeImportedComfyUIWorkflow = (item, fallbackName = '') => {
+            const rawWorkflow = item?.workflow ?? item?.prompt ?? item;
+            let workflowPayload = rawWorkflow;
+            if (typeof workflowPayload === 'string') {
+                try {
+                    workflowPayload = JSON.parse(workflowPayload);
+                } catch (err) {
+                    return null;
+                }
+            }
+            const prompt = workflowPayload?.prompt && typeof workflowPayload.prompt === 'object' ? workflowPayload.prompt : workflowPayload;
+            if (!isLikelyComfyUIApiWorkflow(prompt)) return null;
+            return {
+                id: createImagePromptPresetId(),
+                name: String(item?.name || item?.title || fallbackName || '导入工作流').trim() || '导入工作流',
+                workflow: JSON.stringify(prompt, null, 2),
+                comfyuiModel: String(item?.comfyuiModel || item?.model || '').trim(),
+                comfyuiSampler: String(item?.comfyuiSampler || item?.sampler || 'euler').trim() || 'euler',
+                comfyuiScheduler: String(item?.comfyuiScheduler || item?.scheduler || 'normal').trim() || 'normal',
+                comfyuiVae: String(item?.comfyuiVae || item?.vae || '').trim(),
+                comfyuiClip: String(item?.comfyuiClip || item?.clip || '').trim(),
+                updatedAt: Date.now()
+            };
+        };
+        const parseComfyUIWorkflowImportText = (rawText = '') => {
+            const text = String(rawText || '').trim();
+            if (!text) return [];
+            let payload = null;
+            try {
+                payload = JSON.parse(text);
+            } catch (err) {
+                throw new Error('导入内容不是有效 JSON');
+            }
+            const candidates = Array.isArray(payload)
+                ? payload
+                : (Array.isArray(payload?.workflows)
+                    ? payload.workflows
+                    : (Array.isArray(payload?.items) ? payload.items : [payload]));
+            const workflows = candidates
+                .map((item, index) => normalizeImportedComfyUIWorkflow(item, `导入工作流 ${index + 1}`))
+                .filter(Boolean);
+            if (!workflows.length && payload?.nodes && Array.isArray(payload.nodes)) {
+                throw new Error('这像是 ComfyUI 普通 UI 工作流，请在 ComfyUI 开启 Dev mode 后导出 API Format');
+            }
+            return workflows;
+        };
+        const makeUniqueComfyUIWorkflowName = (name, usedNames) => {
+            const baseName = String(name || '导入工作流').trim() || '导入工作流';
+            let nextName = baseName;
+            let index = 2;
+            while (usedNames.has(nextName)) {
+                nextName = `${baseName} 导入${index}`;
+                index += 1;
+            }
+            usedNames.add(nextName);
+            return nextName;
+        };
+        const buildComfyUIWorkflowSharePayload = (workflows = []) => ({
+            type: 'yuzuki-phone-comfyui-workflows',
+            version: 1,
+            exportedAt: new Date().toISOString(),
+            workflows: (Array.isArray(workflows) ? workflows : []).map(workflow => ({
+                name: String(workflow?.name || '').trim(),
+                workflow: String(workflow?.workflow || '').trim(),
+                model: String(workflow?.comfyuiModel || '').trim(),
+                sampler: String(workflow?.comfyuiSampler || '').trim(),
+                scheduler: String(workflow?.comfyuiScheduler || '').trim(),
+                vae: String(workflow?.comfyuiVae || '').trim(),
+                clip: String(workflow?.comfyuiClip || '').trim()
+            })).filter(workflow => workflow.name)
+        });
         const showImagePromptPresetTextModal = ({ title, desc, value = '', mode = 'export', onConfirm = null }) => {
             document.getElementById('phone-image-preset-share-modal')?.remove();
             const overlay = document.createElement('div');
@@ -4901,6 +5180,307 @@ export class SettingsApp {
             'DDIM',
             'PLMS'
         ];
+        const fallbackComfyUISamplers = ['euler', 'euler_ancestral', 'dpmpp_2m', 'dpmpp_2m_sde', 'dpmpp_sde', 'ddim'];
+        const fallbackComfyUISchedulers = ['normal', 'karras', 'exponential', 'sgm_uniform', 'simple', 'ddim_uniform'];
+        const saveComfyUISettings = async () => {
+            const textFields = [
+                ['phone-image-comfyui-url', 'http://127.0.0.1:8188'],
+                ['phone-image-comfyui-model', ''],
+                ['phone-image-comfyui-sampler', 'euler'],
+                ['phone-image-comfyui-scheduler', 'normal'],
+                ['phone-image-comfyui-vae', ''],
+                ['phone-image-comfyui-clip', ''],
+                ['phone-image-comfyui-workflow', '']
+            ];
+            for (const [id, fallback] of textFields) {
+                const input = document.getElementById(id);
+                if (!input) continue;
+                const value = String(input.value || '').trim() || fallback;
+                if (id !== 'phone-image-comfyui-workflow') input.value = value;
+                await this.storage.set(id, value);
+            }
+        };
+        [
+            'phone-image-comfyui-url',
+            'phone-image-comfyui-model',
+            'phone-image-comfyui-sampler',
+            'phone-image-comfyui-scheduler',
+            'phone-image-comfyui-vae',
+            'phone-image-comfyui-clip',
+            'phone-image-comfyui-workflow'
+        ].forEach((id) => {
+            const input = document.getElementById(id);
+            if (!input) return;
+            input.addEventListener('change', saveComfyUISettings);
+            input.addEventListener('blur', saveComfyUISettings);
+        });
+
+        imageComfyUIWorkflowSelect?.addEventListener('change', async (e) => {
+            const workflowId = String(e.target.value || '').trim();
+            await this.storage.set('phone-image-comfyui-active-workflow', workflowId);
+            const workflows = this._getComfyUIWorkflows();
+            const workflow = workflows.find(item => item.id === workflowId);
+            if (!workflow) {
+                if (imageComfyUIWorkflowName) imageComfyUIWorkflowName.value = '';
+                return;
+            }
+            if (imageComfyUIWorkflowName) imageComfyUIWorkflowName.value = workflow.name;
+            await applyComfyUIWorkflowSettings(workflow);
+            this.phoneShell?.showNotification?.('已切换 ComfyUI 工作流', workflow.name, '🎨');
+        });
+
+        imageComfyUIWorkflowSaveBtn?.addEventListener('click', async () => {
+            try {
+                await saveComfyUISettings();
+                const name = String(imageComfyUIWorkflowName?.value || '').trim();
+                if (!name) {
+                    this.phoneShell?.showNotification?.('保存失败', '请先填写 ComfyUI 工作流名称', '⚠️');
+                    imageComfyUIWorkflowName?.focus?.();
+                    return;
+                }
+
+                const settings = getComfyUIWorkflowSettings();
+                if (settings.workflow) {
+                    const parsed = JSON.parse(settings.workflow);
+                    if (!isLikelyComfyUIApiWorkflow(parsed)) {
+                        throw new Error('工作流必须是 ComfyUI API Format JSON，不能直接使用普通 UI 工作流');
+                    }
+                }
+
+                const now = Date.now();
+                const workflows = this._getComfyUIWorkflows();
+                let activeId = String(imageComfyUIWorkflowSelect?.value || this.storage.get('phone-image-comfyui-active-workflow') || '').trim();
+                let target = workflows.find(workflow => workflow.id === activeId);
+                if (!target) {
+                    activeId = createImagePromptPresetId();
+                    target = { id: activeId, name, workflow: '', updatedAt: now };
+                    workflows.push(target);
+                }
+                Object.assign(target, settings, { name, updatedAt: now });
+                await this._saveComfyUIWorkflows(workflows);
+                await this.storage.set('phone-image-comfyui-active-workflow', activeId);
+                fillComfyUIWorkflowSelect(workflows, activeId);
+                if (imageComfyUIWorkflowSelect) imageComfyUIWorkflowSelect.value = activeId;
+                this.phoneShell?.showNotification?.('已保存 ComfyUI 工作流', name, '✅');
+            } catch (err) {
+                this.phoneShell?.showNotification?.('保存失败', err?.message || String(err || '失败'), '⚠️');
+            }
+        });
+
+        imageComfyUIWorkflowNewBtn?.addEventListener('click', async () => {
+            if (imageComfyUIWorkflowSelect) imageComfyUIWorkflowSelect.value = '';
+            if (imageComfyUIWorkflowName) {
+                imageComfyUIWorkflowName.value = '';
+                imageComfyUIWorkflowName.focus();
+            }
+            await this.storage.set('phone-image-comfyui-active-workflow', '');
+            this.phoneShell?.showNotification?.('新建 ComfyUI 工作流', '填写名称后点击保存', '✏️');
+        });
+
+        imageComfyUIWorkflowDeleteBtn?.addEventListener('click', async () => {
+            const activeId = String(imageComfyUIWorkflowSelect?.value || this.storage.get('phone-image-comfyui-active-workflow') || '').trim();
+            if (!activeId) {
+                this.phoneShell?.showNotification?.('删除失败', '请先选择要删除的 ComfyUI 工作流', '⚠️');
+                return;
+            }
+            const workflows = this._getComfyUIWorkflows();
+            const target = workflows.find(workflow => workflow.id === activeId);
+            if (!target) return;
+            if (!confirm(`删除 ComfyUI 工作流「${target.name}」？`)) return;
+
+            const nextWorkflows = workflows.filter(workflow => workflow.id !== activeId);
+            await this._saveComfyUIWorkflows(nextWorkflows);
+            await this.storage.set('phone-image-comfyui-active-workflow', '');
+            fillComfyUIWorkflowSelect(nextWorkflows, '');
+            if (imageComfyUIWorkflowSelect) imageComfyUIWorkflowSelect.value = '';
+            if (imageComfyUIWorkflowName) imageComfyUIWorkflowName.value = '';
+            this.phoneShell?.showNotification?.('已删除 ComfyUI 工作流', target.name, '🗑️');
+        });
+
+        imageComfyUIWorkflowExportBtn?.addEventListener('click', async () => {
+            const workflows = this._getComfyUIWorkflows();
+            const activeId = String(imageComfyUIWorkflowSelect?.value || this.storage.get('phone-image-comfyui-active-workflow') || '').trim();
+            const activeWorkflow = workflows.find(workflow => workflow.id === activeId);
+            const exportWorkflows = activeWorkflow ? [activeWorkflow] : workflows;
+            if (!exportWorkflows.length) {
+                this.phoneShell?.showNotification?.('导出失败', '还没有可导出的 ComfyUI 工作流', '⚠️');
+                return;
+            }
+            const payload = buildComfyUIWorkflowSharePayload(exportWorkflows);
+            showImagePromptPresetTextModal({
+                title: activeWorkflow ? '导出当前 ComfyUI 工作流' : '导出 ComfyUI 工作流',
+                desc: `共 ${payload.workflows.length} 套。复制后可分享或备份；导入后不会覆盖已有工作流。`,
+                value: JSON.stringify(payload, null, 2),
+                mode: 'export'
+            });
+        });
+
+        imageComfyUIWorkflowImportBtn?.addEventListener('click', async () => {
+            showImagePromptPresetTextModal({
+                title: '导入 ComfyUI 工作流',
+                desc: '粘贴 ComfyUI API Format JSON，或粘贴本项目导出的工作流包。普通 UI 工作流需要先在 ComfyUI 导出 API Format。',
+                value: '',
+                mode: 'import',
+                onConfirm: async (rawText) => {
+                    const imported = parseComfyUIWorkflowImportText(rawText);
+                    if (!imported.length) throw new Error('没有识别到可导入的 ComfyUI API 工作流');
+                    const existing = this._getComfyUIWorkflows();
+                    const usedNames = new Set(existing.map(workflow => String(workflow.name || '').trim()).filter(Boolean));
+                    const nextWorkflows = [...existing];
+                    let firstImportedId = '';
+                    imported.forEach((workflow) => {
+                        workflow.id = createImagePromptPresetId();
+                        if (!firstImportedId) firstImportedId = workflow.id;
+                        workflow.name = makeUniqueComfyUIWorkflowName(workflow.name, usedNames);
+                        workflow.updatedAt = Date.now();
+                        nextWorkflows.push(workflow);
+                    });
+                    await this._saveComfyUIWorkflows(nextWorkflows);
+                    await this.storage.set('phone-image-comfyui-active-workflow', firstImportedId);
+                    fillComfyUIWorkflowSelect(nextWorkflows, firstImportedId);
+                    if (imageComfyUIWorkflowSelect) imageComfyUIWorkflowSelect.value = firstImportedId;
+                    const activeWorkflow = nextWorkflows.find(workflow => workflow.id === firstImportedId) || imported[0];
+                    if (activeWorkflow) {
+                        if (imageComfyUIWorkflowName) imageComfyUIWorkflowName.value = activeWorkflow.name;
+                        await applyComfyUIWorkflowSettings(activeWorkflow);
+                    }
+                    this.phoneShell?.showNotification?.('导入完成', `已导入 ${imported.length} 套 ComfyUI 工作流`, '✅');
+                }
+            });
+        });
+
+        imageComfyUIWorkflowClearBtn?.addEventListener('click', async () => {
+            setComfyUIFieldValue('phone-image-comfyui-workflow', '');
+            if (imageComfyUIWorkflowSelect) imageComfyUIWorkflowSelect.value = '';
+            if (imageComfyUIWorkflowName) imageComfyUIWorkflowName.value = '';
+            await this.storage.set('phone-image-comfyui-active-workflow', '');
+            await saveComfyUISettings();
+            this.phoneShell?.showNotification?.('已切换内置工作流', '当前会使用基础文生图工作流', '✅');
+        });
+
+        imageComfyUIWorkflowHelpBtn?.addEventListener('click', () => {
+            showImagePromptPresetTextModal({
+                title: 'ComfyUI 工作流说明',
+                desc: '第三方工作流导入和占位符用法',
+                value: [
+                    '留空会使用内置基础工作流。',
+                    '如果要用第三方 ComfyUI 工作流，请在 ComfyUI 中导出 API Format，然后粘贴到下方。',
+                    '工作流里可以用占位符自动接收提示词、尺寸、模型和微信参考图；常用占位符：',
+                    '%prompt%、%negative_prompt%、%width%、%height%、%MODEL_NAME%、%reference_image%。',
+                    '如果导入后提示缺少节点，请在 ComfyUI Manager 安装对应自定义节点。'
+                ].join('\n'),
+                mode: 'export'
+            });
+        });
+
+        document.getElementById('phone-image-comfyui-refresh')?.addEventListener('click', async (e) => {
+            const btn = e.currentTarget;
+            const statusEl = document.getElementById('phone-image-comfyui-status');
+            const modelSelect = document.getElementById('phone-image-comfyui-model');
+            const samplerSelect = document.getElementById('phone-image-comfyui-sampler');
+            const schedulerSelect = document.getElementById('phone-image-comfyui-scheduler');
+            const vaeSelect = document.getElementById('phone-image-comfyui-vae');
+            const clipSelect = document.getElementById('phone-image-comfyui-clip');
+            const setStatus = (text, color = '#666') => {
+                if (statusEl) {
+                    statusEl.textContent = text;
+                    statusEl.style.color = color;
+                }
+            };
+            const oldText = btn?.textContent || '连接并刷新 ComfyUI 数据';
+            try {
+                await saveComfyUISettings();
+                const comfyUrlValue = String(document.getElementById('phone-image-comfyui-url')?.value || '').trim() || 'http://127.0.0.1:8188';
+                const imageManager = window.VirtualPhone?.imageGenerationManager;
+                if (!imageManager?.fetchComfyUIResources) throw new Error('生图管理器未初始化');
+                if (btn) {
+                    btn.disabled = true;
+                    btn.textContent = '刷新中...';
+                }
+                setStatus('正在读取 ComfyUI /object_info...', '#6366f1');
+                const resources = await imageManager.fetchComfyUIResources(comfyUrlValue);
+                const savedModel = String(this.storage.get('phone-image-comfyui-model') || '').trim();
+                const savedSampler = String(this.storage.get('phone-image-comfyui-sampler') || 'euler').trim() || 'euler';
+                const savedScheduler = String(this.storage.get('phone-image-comfyui-scheduler') || 'normal').trim() || 'normal';
+                const savedVae = String(this.storage.get('phone-image-comfyui-vae') || '').trim();
+                const savedClip = String(this.storage.get('phone-image-comfyui-clip') || '').trim();
+                fillSdSelect(modelSelect, resources?.models || [], savedModel, '未选择模型');
+                fillSdSelect(samplerSelect, resources?.samplers?.length ? resources.samplers : fallbackComfyUISamplers, savedSampler, null);
+                fillSdSelect(schedulerSelect, resources?.schedulers?.length ? resources.schedulers : fallbackComfyUISchedulers, savedScheduler, null);
+                fillSdSelect(vaeSelect, resources?.vae || [], savedVae, '不指定');
+                fillSdSelect(clipSelect, resources?.clips || [], savedClip, '不指定');
+                await saveComfyUISettings();
+                const counts = [
+                    `${Array.isArray(resources?.models) ? resources.models.length : 0} 个模型`,
+                    `${Array.isArray(resources?.samplers) ? resources.samplers.length : 0} 个采样器`,
+                    `${Array.isArray(resources?.vae) ? resources.vae.length : 0} 个 VAE`
+                ].join('，');
+                setStatus(`已刷新 ComfyUI 数据：${counts}。`, '#0f9f6e');
+            } catch (err) {
+                const message = err?.message || String(err || '刷新失败');
+                setStatus(`刷新失败：${message}`, '#d33');
+                this.phoneShell?.showNotification?.('ComfyUI 数据刷新失败', message, '⚠️');
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = oldText;
+                }
+            }
+        });
+
+        document.getElementById('phone-image-test-comfyui')?.addEventListener('click', async (e) => {
+            const btn = e.currentTarget;
+            const resultEl = document.getElementById('phone-image-test-comfyui-result');
+            const setResult = (text, color = '#666') => {
+                if (resultEl) {
+                    resultEl.textContent = text;
+                    resultEl.style.color = color;
+                }
+            };
+            const oldText = btn?.textContent || '测试 ComfyUI 生图连接';
+            try {
+                await this.storage.set('phone-image-provider', 'comfyui');
+                await this.storage.set('phone-image-enabled', true);
+                await saveComfyUISettings();
+                const imageManager = window.VirtualPhone?.imageGenerationManager;
+                if (!imageManager?.generate) throw new Error('生图管理器未初始化');
+                if (btn) {
+                    btn.disabled = true;
+                    btn.textContent = '测试中...';
+                }
+                setResult('正在提交 ComfyUI 工作流...', '#10b981');
+                const result = await imageManager.generate({
+                    app: 'honey',
+                    provider: 'comfyui',
+                    prompt: '1girl, solo, anime illustration, live streaming, looking at viewer',
+                    width: 832,
+                    height: 1216,
+                    fixedPrompt: String(document.getElementById('phone-image-fixed-prompt')?.value || '').trim(),
+                    fixedPromptEnd: String(document.getElementById('phone-image-fixed-prompt-end')?.value || '').trim(),
+                    negativePrompt: String(document.getElementById('phone-image-negative-prompt')?.value || '').trim(),
+                    ignoreEnabled: true
+                });
+                if (!result?.imageUrl && !result?.imageData) throw new Error('ComfyUI 未返回图片');
+                const detail = [
+                    result.width && result.height ? `${result.width}x${result.height}` : '',
+                    result.steps ? `${result.steps} steps` : '',
+                    result.sampler || '',
+                    result.scheduler || ''
+                ].filter(Boolean).join(' · ');
+                setResult(`ComfyUI 连接成功，已收到图片数据${detail ? `：${detail}` : '。'}`, '#0f9f6e');
+                this.phoneShell?.showNotification?.('生图测试', detail ? `ComfyUI 连接成功 ${detail}` : 'ComfyUI 连接成功', '✓');
+            } catch (err) {
+                const message = err?.message || String(err || '测试失败');
+                setResult(`测试失败：${message}`, '#d33');
+                this.phoneShell?.showNotification?.('ComfyUI 生图测试失败', message, '⚠️');
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = oldText;
+                }
+            }
+        });
+
         const saveSdSettings = async () => {
             const sdTextFields = [
                 ['phone-image-sd-url', 'http://127.0.0.1:7860'],

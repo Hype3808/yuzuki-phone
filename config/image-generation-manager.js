@@ -19,6 +19,10 @@ export class ImageGenerationManager {
         this._sdModelsCacheUrl = '';
         this._sdModelsCacheTime = 0;
         this._sdModelsCacheTtl = 5 * 60 * 1000;
+        this._comfyUIResourcesCache = null;
+        this._comfyUIResourcesCacheUrl = '';
+        this._comfyUIResourcesCacheTime = 0;
+        this._comfyUIResourcesCacheTtl = 5 * 60 * 1000;
         this._csrfToken = null;
         this._csrfTokenPromise = null;
     }
@@ -46,6 +50,15 @@ export class ImageGenerationManager {
     }
 
     _normalizeSdBaseUrl(value) {
+        let baseUrl = String(value || '').trim().replace(/\/+$/, '');
+        if (!baseUrl) return '';
+        if (!/^https?:\/\/.+/i.test(baseUrl)) {
+            baseUrl = `http://${baseUrl.replace(/^\/+/, '')}`;
+        }
+        return baseUrl;
+    }
+
+    _normalizeComfyUIBaseUrl(value) {
         let baseUrl = String(value || '').trim().replace(/\/+$/, '');
         if (!baseUrl) return '';
         if (!/^https?:\/\/.+/i.test(baseUrl)) {
@@ -280,6 +293,10 @@ export class ImageGenerationManager {
             .slice(0, 1);
     }
 
+    _normalizeComfyUIReferenceImages(options = {}) {
+        return this._normalizeSdReferenceImages(options);
+    }
+
     _containsCjk(text) {
         return /[\u3400-\u9fff\u3000-\u303f\uff00-\uffef]/.test(String(text || ''));
     }
@@ -385,7 +402,7 @@ export class ImageGenerationManager {
         }
 
         const allowedApps = new Set(['honey', 'wechat', 'weibo', 'diary']);
-        const allowedProviders = new Set(['novelai', 'openai', 'siliconflow', 'sd']);
+        const allowedProviders = new Set(['novelai', 'openai', 'siliconflow', 'sd', 'comfyui']);
         const bindings = {};
         if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
             Object.entries(parsed).forEach(([app, provider]) => {
@@ -469,6 +486,13 @@ export class ImageGenerationManager {
             openaiPublicRelayUrl: String(overrides.openaiPublicRelayUrl || this._get('phone-image-openai-public-relay-url', '')).trim(),
             openaiMode: String(overrides.openaiMode || this._get('phone-image-openai-mode', 'images')).trim() || 'images',
             openaiQuality: String(overrides.openaiQuality || this._get('phone-image-openai-quality', 'auto')).trim() || 'auto',
+            comfyuiUrl: this._normalizeComfyUIBaseUrl(overrides.comfyuiUrl || this._get('phone-image-comfyui-url', 'http://127.0.0.1:8188')),
+            comfyuiWorkflow: String(overrides.comfyuiWorkflow ?? this._get('phone-image-comfyui-workflow', '')).trim(),
+            comfyuiModel: String(overrides.comfyuiModel || this._get('phone-image-comfyui-model', '')).trim(),
+            comfyuiVae: String(overrides.comfyuiVae || this._get('phone-image-comfyui-vae', '')).trim(),
+            comfyuiClip: String(overrides.comfyuiClip || this._get('phone-image-comfyui-clip', '')).trim(),
+            comfyuiSampler: String(overrides.comfyuiSampler || this._get('phone-image-comfyui-sampler', 'euler')).trim() || 'euler',
+            comfyuiScheduler: String(overrides.comfyuiScheduler || this._get('phone-image-comfyui-scheduler', 'normal')).trim() || 'normal',
             sdUrl: this._normalizeSdBaseUrl(overrides.sdUrl || this._get('phone-image-sd-url', 'http://127.0.0.1:7860')),
             sdAuth: String(overrides.sdAuth || this._get('phone-image-sd-auth', '')).trim(),
             sdVae: String(overrides.sdVae || this._get('phone-image-sd-vae', '')).trim(),
@@ -508,13 +532,16 @@ export class ImageGenerationManager {
     async generate(options = {}) {
         const config = this.getConfig(options);
         if (!config.enabled && options.ignoreEnabled !== true) throw new Error('生图功能未启用');
-        if (config.provider !== 'sd' && !config.apiKey) throw new Error('缺少生图 API Key');
+        if (!['sd', 'comfyui'].includes(config.provider) && !config.apiKey) throw new Error('缺少生图 API Key');
 
         if (config.provider === 'siliconflow') {
             return this._generateSiliconflow(options, config);
         }
         if (config.provider === 'sd') {
             return this._generateStableDiffusion(options, config);
+        }
+        if (config.provider === 'comfyui') {
+            return this._generateComfyUI(options, config);
         }
         if (config.provider === 'openai') {
             return this._generateOpenAIImage(options, config);
@@ -1061,6 +1088,25 @@ export class ImageGenerationManager {
         });
     }
 
+    _dataUrlToBlob(dataUrl, fallbackMime = 'image/png') {
+        const raw = String(dataUrl || '').trim();
+        if (!raw) return null;
+        const match = raw.match(/^data:([^;,]+)?;base64,([\s\S]+)$/i);
+        const mime = String(match?.[1] || fallbackMime || 'image/png').trim() || 'image/png';
+        const base64 = match ? match[2] : raw;
+        try {
+            const binary = atob(base64.replace(/\s+/g, ''));
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+            }
+            return new Blob([bytes], { type: mime });
+        } catch (err) {
+            console.warn('[ComfyUI] 参考图 base64 解析失败:', err);
+            return null;
+        }
+    }
+
     _waitForImageDecode(src, timeoutMs = 12000) {
         return new Promise((resolve, reject) => {
             if (!src) {
@@ -1466,6 +1512,353 @@ export class ImageGenerationManager {
             this.fetchSdLoras(baseUrl).catch(() => [])
         ]);
         return { models, samplers, schedulers, vae, upscalers, loras };
+    }
+
+    _getComfyUIInputOptions(objectInfo, classType, inputName) {
+        const input = objectInfo?.[classType]?.input?.required?.[inputName]
+            || objectInfo?.[classType]?.input?.optional?.[inputName]
+            || null;
+        const first = Array.isArray(input) ? input[0] : input;
+        if (!Array.isArray(first)) return [];
+        return first.map(item => String(item || '').trim()).filter(Boolean);
+    }
+
+    _uniqueComfyUIItems(...groups) {
+        const seen = new Set();
+        const values = [];
+        groups.flat().forEach((item) => {
+            const value = String(item || '').trim();
+            if (!value || seen.has(value)) return;
+            seen.add(value);
+            values.push(value);
+        });
+        return values;
+    }
+
+    async fetchComfyUIResources(baseUrl) {
+        const normalizedUrl = this._normalizeComfyUIBaseUrl(baseUrl || this._get('phone-image-comfyui-url', 'http://127.0.0.1:8188'));
+        if (!normalizedUrl) throw new Error('未配置 ComfyUI 服务地址');
+
+        const now = Date.now();
+        if (
+            this._comfyUIResourcesCache &&
+            this._comfyUIResourcesCacheUrl === normalizedUrl &&
+            now - this._comfyUIResourcesCacheTime < this._comfyUIResourcesCacheTtl
+        ) {
+            return this._comfyUIResourcesCache;
+        }
+
+        const response = await fetch(`${normalizedUrl}/object_info`, {
+            method: 'GET',
+            headers: { Accept: 'application/json' }
+        });
+        if (!response.ok) {
+            const text = await response.text().catch(() => '');
+            throw new Error(`ComfyUI object_info 读取失败：HTTP ${response.status}${text ? ` ${text.slice(0, 120)}` : ''}`);
+        }
+        const objectInfo = await response.json();
+        const resources = {
+            models: this._uniqueComfyUIItems(
+                this._getComfyUIInputOptions(objectInfo, 'CheckpointLoaderSimple', 'ckpt_name'),
+                this._getComfyUIInputOptions(objectInfo, 'CheckpointLoader', 'ckpt_name'),
+                this._getComfyUIInputOptions(objectInfo, 'UNETLoader', 'unet_name')
+            ),
+            samplers: this._uniqueComfyUIItems(
+                this._getComfyUIInputOptions(objectInfo, 'KSampler', 'sampler_name'),
+                this._getComfyUIInputOptions(objectInfo, 'KSamplerAdvanced', 'sampler_name')
+            ),
+            schedulers: this._uniqueComfyUIItems(
+                this._getComfyUIInputOptions(objectInfo, 'KSampler', 'scheduler'),
+                this._getComfyUIInputOptions(objectInfo, 'KSamplerAdvanced', 'scheduler')
+            ),
+            vae: this._uniqueComfyUIItems(
+                this._getComfyUIInputOptions(objectInfo, 'VAELoader', 'vae_name')
+            ),
+            clips: this._uniqueComfyUIItems(
+                this._getComfyUIInputOptions(objectInfo, 'CLIPLoader', 'clip_name'),
+                this._getComfyUIInputOptions(objectInfo, 'DualCLIPLoader', 'clip_name1'),
+                this._getComfyUIInputOptions(objectInfo, 'DualCLIPLoader', 'clip_name2')
+            ),
+            loras: this._uniqueComfyUIItems(
+                this._getComfyUIInputOptions(objectInfo, 'LoraLoader', 'lora_name')
+            )
+        };
+        this._comfyUIResourcesCache = resources;
+        this._comfyUIResourcesCacheUrl = normalizedUrl;
+        this._comfyUIResourcesCacheTime = now;
+        return resources;
+    }
+
+    _getDefaultComfyUIWorkflow() {
+        return {
+            "3": {
+                inputs: {
+                    seed: "%seed%",
+                    steps: "%steps%",
+                    cfg: "%cfg_scale%",
+                    sampler_name: "%sampler_name%",
+                    scheduler: "%scheduler%",
+                    denoise: 1,
+                    model: ["4", 0],
+                    positive: ["6", 0],
+                    negative: ["7", 0],
+                    latent_image: ["5", 0]
+                },
+                class_type: "KSampler"
+            },
+            "4": {
+                inputs: {
+                    ckpt_name: "%MODEL_NAME%"
+                },
+                class_type: "CheckpointLoaderSimple"
+            },
+            "5": {
+                inputs: {
+                    width: "%width%",
+                    height: "%height%",
+                    batch_size: 1
+                },
+                class_type: "EmptyLatentImage"
+            },
+            "6": {
+                inputs: {
+                    text: "%prompt%",
+                    clip: ["4", 1]
+                },
+                class_type: "CLIPTextEncode"
+            },
+            "7": {
+                inputs: {
+                    text: "%negative_prompt%",
+                    clip: ["4", 1]
+                },
+                class_type: "CLIPTextEncode"
+            },
+            "8": {
+                inputs: {
+                    samples: ["3", 0],
+                    vae: ["4", 2]
+                },
+                class_type: "VAEDecode"
+            },
+            "9": {
+                inputs: {
+                    filename_prefix: "YuzukiPhone",
+                    images: ["8", 0]
+                },
+                class_type: "SaveImage"
+            }
+        };
+    }
+
+    _parseComfyUIWorkflow(workflowText) {
+        const raw = String(workflowText || '').trim();
+        if (!raw) return this._getDefaultComfyUIWorkflow();
+        let parsed;
+        try {
+            parsed = JSON.parse(raw);
+        } catch (err) {
+            throw new Error(`ComfyUI 工作流 JSON 解析失败：${err?.message || err}`);
+        }
+        const prompt = parsed?.prompt && typeof parsed.prompt === 'object' ? parsed.prompt : parsed;
+        if (!prompt || typeof prompt !== 'object' || Array.isArray(prompt)) {
+            throw new Error('ComfyUI 工作流必须是 API 格式 JSON 对象');
+        }
+        return prompt;
+    }
+
+    _replaceComfyUIPlaceholders(value, replacements) {
+        if (Array.isArray(value)) {
+            return value.map(item => this._replaceComfyUIPlaceholders(item, replacements));
+        }
+        if (value && typeof value === 'object') {
+            const next = {};
+            Object.entries(value).forEach(([key, item]) => {
+                next[key] = this._replaceComfyUIPlaceholders(item, replacements);
+            });
+            return next;
+        }
+        if (typeof value !== 'string') return value;
+        if (Object.prototype.hasOwnProperty.call(replacements, value)) {
+            return replacements[value];
+        }
+        return value.replace(/%[A-Za-z0-9_]+%/g, token => {
+            if (!Object.prototype.hasOwnProperty.call(replacements, token)) return token;
+            const replacement = replacements[token];
+            return replacement === null || replacement === undefined ? '' : String(replacement);
+        });
+    }
+
+    _buildComfyUIWorkflow(options, config, referenceImage = null) {
+        const prompt = String(options.prompt || '').trim();
+        if (!prompt) throw new Error('缺少生图提示词');
+
+        const appKey = String(options.app || '').trim().toLowerCase();
+        const appDefaults = this._getAppDefaultSize(appKey);
+        let width = Number(options.width || config.width);
+        let height = Number(options.height || config.height);
+        let steps = Number(options.steps || config.steps);
+        let scale = Number(options.scale ?? config.scale);
+        let seed = Number(options.seed ?? config.seed);
+
+        if (appKey === 'honey') {
+            if (!Number.isFinite(width) || !Number.isFinite(height) || width < 512 || height < 768) {
+                width = appDefaults.width;
+                height = appDefaults.height;
+            }
+            if (!Number.isFinite(steps) || steps < 20) steps = 28;
+            if (!Number.isFinite(scale) || scale < 1) scale = 7;
+        }
+        width = Math.max(64, Math.min(2048, Math.round(width || appDefaults.width)));
+        height = Math.max(64, Math.min(2048, Math.round(height || appDefaults.height)));
+        steps = Math.max(1, Math.min(150, Math.round(steps || 28)));
+        scale = Number.isFinite(scale) ? Math.max(0, Math.min(50, scale)) : 7;
+        if (!Number.isFinite(seed) || seed < 0) {
+            seed = Math.floor(Math.random() * 4294967295);
+        } else {
+            seed = Math.floor(seed);
+        }
+
+        const positivePrompt = this._joinPrompt([config.fixedPrompt, prompt, config.fixedPromptEnd]);
+        const negativePrompt = this._joinPrompt([config.negativePrompt, options.negativePrompt]);
+        const replacements = {
+            '%prompt%': positivePrompt,
+            '%positive_prompt%': positivePrompt,
+            '%negative_prompt%': negativePrompt,
+            '%width%': width,
+            '%height%': height,
+            '%steps%': steps,
+            '%cfg_scale%': scale,
+            '%cfg%': scale,
+            '%seed%': seed,
+            '%sampler_name%': config.comfyuiSampler,
+            '%scheduler%': config.comfyuiScheduler,
+            '%MODEL_NAME%': config.comfyuiModel,
+            '%model%': config.comfyuiModel,
+            '%VAE%': config.comfyuiVae,
+            '%vae%': config.comfyuiVae,
+            '%CLIP_NAME%': config.comfyuiClip,
+            '%clip_name%': config.comfyuiClip,
+            '%clip%': config.comfyuiClip,
+            '%ipa%': '',
+            '%c_quanzhong%': scale,
+            '%c_idquanzhong%': scale,
+            '%c_xijie%': scale,
+            '%c_fenwei%': scale,
+            '%reference_image%': referenceImage?.filename || '',
+            '%reference_image_filename%': referenceImage?.filename || '',
+            '%reference_image_subfolder%': referenceImage?.subfolder || '',
+            '%reference_image_type%': referenceImage?.type || 'input',
+            '%comfyui_reference_image%': referenceImage?.filename || '',
+            '%comfyuicankaoImage%': referenceImage?.filename || '',
+            '%comfyuicankaotupian%': referenceImage?.filename || ''
+        };
+        const workflowTemplate = this._parseComfyUIWorkflow(config.comfyuiWorkflow);
+        const requiresModel = !String(config.comfyuiWorkflow || '').trim()
+            || JSON.stringify(workflowTemplate).includes('%MODEL_NAME%')
+            || JSON.stringify(workflowTemplate).includes('%model%');
+        const requiresReferenceImage = JSON.stringify(workflowTemplate).includes('%reference_image%')
+            || JSON.stringify(workflowTemplate).includes('%reference_image_filename%')
+            || JSON.stringify(workflowTemplate).includes('%comfyui_reference_image%')
+            || JSON.stringify(workflowTemplate).includes('%comfyuicankaoImage%')
+            || JSON.stringify(workflowTemplate).includes('%comfyuicankaotupian%');
+        const workflow = this._replaceComfyUIPlaceholders(workflowTemplate, replacements);
+        return { workflow, positivePrompt, negativePrompt, width, height, steps, scale, seed, requiresModel, requiresReferenceImage };
+    }
+
+    _extractComfyUIImage(historyPayload, promptId) {
+        const root = promptId && historyPayload?.[promptId] ? historyPayload[promptId] : historyPayload;
+        const outputs = root?.outputs || historyPayload?.outputs || {};
+        for (const output of Object.values(outputs || {})) {
+            const images = Array.isArray(output?.images) ? output.images : [];
+            if (images.length > 0) {
+                const image = images[0] || {};
+                return {
+                    filename: String(image.filename || '').trim(),
+                    subfolder: String(image.subfolder || '').trim(),
+                    type: String(image.type || 'output').trim() || 'output'
+                };
+            }
+        }
+        return null;
+    }
+
+    async _waitForComfyUIHistory(baseUrl, promptId, signal = null) {
+        const startedAt = Date.now();
+        const timeoutMs = 180000;
+        while (Date.now() - startedAt < timeoutMs) {
+            if (signal?.aborted) throw new Error('ComfyUI 请求已取消');
+            const response = await fetch(`${baseUrl}/history/${encodeURIComponent(promptId)}`, {
+                method: 'GET',
+                headers: { Accept: 'application/json' },
+                signal
+            });
+            if (response.ok) {
+                const payload = await response.json().catch(() => null);
+                const image = this._extractComfyUIImage(payload, promptId);
+                if (image?.filename) return image;
+                const status = payload?.[promptId]?.status || payload?.status || {};
+                const messages = Array.isArray(status?.messages) ? status.messages : [];
+                const errorMessage = messages
+                    .map(item => Array.isArray(item) ? item.join(' ') : String(item || ''))
+                    .find(text => /error|exception/i.test(text));
+                if (errorMessage) throw new Error(`ComfyUI 执行失败：${errorMessage.slice(0, 240)}`);
+            }
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        throw new Error('ComfyUI 生成超时，请检查工作流或本地队列');
+    }
+
+    async _readComfyUIImage(baseUrl, image, signal = null) {
+        const params = new URLSearchParams({
+            filename: image.filename,
+            subfolder: image.subfolder || '',
+            type: image.type || 'output'
+        });
+        const response = await fetch(`${baseUrl}/view?${params.toString()}`, {
+            method: 'GET',
+            signal
+        });
+        if (!response.ok) {
+            const text = await response.text().catch(() => '');
+            throw new Error(`ComfyUI 图片读取失败：HTTP ${response.status}${text ? ` ${text.slice(0, 120)}` : ''}`);
+        }
+        const blob = await response.blob();
+        if (!blob || blob.size <= 0) throw new Error('ComfyUI 返回空图片');
+        return await this._blobToDataUrl(blob);
+    }
+
+    async _uploadComfyUIReferenceImage(baseUrl, imageData, signal = null) {
+        const blob = this._dataUrlToBlob(imageData);
+        if (!blob) return null;
+        const ext = /jpe?g/i.test(blob.type) ? 'jpg' : (/webp/i.test(blob.type) ? 'webp' : 'png');
+        const filename = `yuzuki_ref_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        const formData = new FormData();
+        formData.append('image', blob, filename);
+        formData.append('type', 'input');
+        formData.append('overwrite', 'true');
+
+        const response = await fetch(`${baseUrl}/upload/image`, {
+            method: 'POST',
+            body: formData,
+            signal
+        });
+        const text = await response.text();
+        let payload = null;
+        try {
+            payload = text ? JSON.parse(text) : null;
+        } catch (err) {
+            payload = null;
+        }
+        if (!response.ok) {
+            const message = payload?.error || payload?.message || text;
+            throw new Error(`ComfyUI 参考图上传失败：HTTP ${response.status}${message ? ` ${String(message).slice(0, 160)}` : ''}`);
+        }
+        return {
+            filename: String(payload?.name || payload?.filename || filename).trim() || filename,
+            subfolder: String(payload?.subfolder || '').trim(),
+            type: String(payload?.type || 'input').trim() || 'input'
+        };
     }
 
     buildSdModelHashMap(models) {
@@ -2030,6 +2423,88 @@ export class ImageGenerationManager {
             sampler: payload.sampler_name,
             scale,
             seed: payload.seed,
+            imageData,
+            imageUrl: imageData
+        };
+    }
+
+    async _generateComfyUI(options, config) {
+        const prompt = String(options.prompt || '').trim();
+        if (!prompt) throw new Error('缺少生图提示词');
+
+        const baseUrl = this._normalizeComfyUIBaseUrl(config.comfyuiUrl);
+        if (!baseUrl) throw new Error('未配置 ComfyUI 服务地址');
+
+        const referenceImages = this._normalizeComfyUIReferenceImages(options);
+        const workflowTemplate = this._parseComfyUIWorkflow(config.comfyuiWorkflow);
+        const workflowTemplateText = JSON.stringify(workflowTemplate);
+        const needsReferenceUpload = workflowTemplateText.includes('%reference_image%')
+            || workflowTemplateText.includes('%reference_image_filename%')
+            || workflowTemplateText.includes('%comfyui_reference_image%')
+            || workflowTemplateText.includes('%comfyuicankaoImage%')
+            || workflowTemplateText.includes('%comfyuicankaotupian%');
+        let uploadedReferenceImage = null;
+        if (needsReferenceUpload && referenceImages.length > 0) {
+            uploadedReferenceImage = await this._uploadComfyUIReferenceImage(baseUrl, referenceImages[0], options.signal);
+        }
+
+        const built = this._buildComfyUIWorkflow(options, {
+            ...config,
+            comfyuiWorkflow: JSON.stringify(workflowTemplate)
+        }, uploadedReferenceImage);
+        if (built.requiresModel && !config.comfyuiModel) {
+            throw new Error('请先选择 ComfyUI 模型，或在工作流中去掉 %MODEL_NAME% 占位符');
+        }
+        if (built.requiresReferenceImage && !uploadedReferenceImage) {
+            throw new Error('当前 ComfyUI 工作流需要参考图，但本次没有可用的微信联系人参考图');
+        }
+
+        const response = await fetch(`${baseUrl}/prompt`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json'
+            },
+            body: JSON.stringify({
+                prompt: built.workflow,
+                client_id: `yuzuki-phone-${Date.now()}-${Math.random().toString(16).slice(2)}`
+            }),
+            signal: options.signal
+        });
+        const text = await response.text();
+        let payload = null;
+        try {
+            payload = text ? JSON.parse(text) : null;
+        } catch (err) {
+            payload = null;
+        }
+        if (!response.ok) {
+            const message = payload?.error?.message || payload?.error || payload?.message || text;
+            throw new Error(`ComfyUI 提交失败：HTTP ${response.status}${message ? ` ${String(message).slice(0, 180)}` : ''}`);
+        }
+        const promptId = String(payload?.prompt_id || '').trim();
+        if (!promptId) throw new Error('ComfyUI 未返回 prompt_id');
+
+        const imageRef = await this._waitForComfyUIHistory(baseUrl, promptId, options.signal);
+        const imageData = await this._readComfyUIImage(baseUrl, imageRef, options.signal);
+        const imageInfo = await this._waitForImageDecode(imageData).catch((err) => {
+            throw new Error(`ComfyUI 返回图片不可用: ${err?.message || err}`);
+        });
+
+        return {
+            provider: 'comfyui',
+            model: config.comfyuiModel,
+            prompt,
+            width: imageInfo.width || built.width,
+            height: imageInfo.height || built.height,
+            requestedWidth: built.width,
+            requestedHeight: built.height,
+            steps: built.steps,
+            sampler: config.comfyuiSampler,
+            scheduler: config.comfyuiScheduler,
+            scale: built.scale,
+            seed: built.seed,
+            promptId,
             imageData,
             imageUrl: imageData
         };

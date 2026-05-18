@@ -104,39 +104,98 @@ export class MusicData {
 
     toggleFavorite(song) {
         const favs = this.getFavorites();
-        const index = favs.findIndex(s => s.name === song.name && s.artist === song.artist);
+        const targetKey = this._getSongDedupKey(song?.name, song?.artist);
+        const index = favs.findIndex(s => this._getSongDedupKey(s?.name, s?.artist) === targetKey);
         if (index > -1) {
             favs.splice(index, 1);
         } else {
-            favs.push({ ...song });
+            const normalized = this._normalizeSongRecord(song?.name, song?.artist, song || {});
+            if (normalized.name) favs.push({ ...song, ...normalized });
         }
         this.saveFavorites();
         this._notifyStateChange();
     }
 
     isFavorite(song) {
-        return this.getFavorites().some(s => s.name === song.name && s.artist === song.artist);
+        const targetKey = this._getSongDedupKey(song?.name, song?.artist);
+        return this.getFavorites().some(s => this._getSongDedupKey(s?.name, s?.artist) === targetKey);
     }
 
     getActiveList() {
         return this.activeListType === 'favorites' ? this.getFavorites() : this.getPlaylist();
     }
 
-    addSong(name, artist, meta = {}) {
-        const playlist = this.getPlaylist();
+    _cleanSongText(value = '') {
+        let text = String(value || '')
+            .replace(/[\u200B-\u200D\uFEFF]/g, '')
+            .replace(/｜/g, '|')
+            .replace(/\s+/g, ' ')
+            .trim();
+        text = text
+            .replace(/^\s*(?:-|--|—|–)?\s*by\s+/i, '')
+            .replace(/\s*(?:-|--|—|–)?\s*by\s*$/i, '')
+            .trim();
+        let changed = true;
+        while (changed && text.length > 1) {
+            changed = false;
+            const pairs = [
+                ['【', '】'],
+                ['《', '》'],
+                ['〈', '〉'],
+                ['「', '」'],
+                ['『', '』'],
+                ['[', ']'],
+                ['(', ')'],
+                ['（', '）'],
+                ['"', '"'],
+                ["'", "'"]
+            ];
+            for (const [left, right] of pairs) {
+                if (text.startsWith(left) && text.endsWith(right)) {
+                    text = text.slice(left.length, -right.length).trim();
+                    changed = true;
+                }
+            }
+        }
+        return text;
+    }
 
-        // 去重
-        const exists = playlist.some(s => s.name === name && s.artist === artist);
-        if (exists) return;
+    _normalizeSongDedupPart(value = '') {
+        return this._cleanSongText(value)
+            .toLowerCase()
+            .replace(/[【】《》〈〉「」『』\[\]（）()"'“”‘’]/g, '')
+            .replace(/\s+/g, '')
+            .trim();
+    }
 
-        playlist.push({
-            name,
-            artist,
+    _getSongDedupKey(name = '', artist = '') {
+        const songName = this._normalizeSongDedupPart(name);
+        const artistName = this._normalizeSongDedupPart(artist);
+        return `${songName}|${artistName}`;
+    }
+
+    _normalizeSongRecord(name, artist, meta = {}) {
+        return {
+            name: this._cleanSongText(name),
+            artist: this._cleanSongText(artist || '未知') || '未知',
             id: meta.id || null,
             url: meta.url || null,
             pic: meta.pic || null,
             lrc: Array.isArray(meta.lrc) ? meta.lrc : null
-        });
+        };
+    }
+
+    addSong(name, artist, meta = {}) {
+        const playlist = this.getPlaylist();
+        const record = this._normalizeSongRecord(name, artist, meta);
+        if (!record.name) return false;
+
+        // 去重
+        const nextKey = this._getSongDedupKey(record.name, record.artist);
+        const exists = playlist.some(s => this._getSongDedupKey(s?.name, s?.artist) === nextKey);
+        if (exists) return false;
+
+        playlist.push(record);
         this.savePlaylist();
 
         // 🔥 修复核心：新歌加入时，绝不允许打断当前正在播放的歌曲！
@@ -151,31 +210,21 @@ export class MusicData {
             // 如果没满足自动播放条件（例如关闭了连播，或者正在播放中），仅仅通知 UI 刷新，绝不触碰音频状态
             this._notifyStateChange();
         }
+        return true;
     }
 
     async playSongByName(name, artist, meta = {}) {
-        const safeName = String(name || '').trim();
-        const safeArtist = String(artist || '').trim();
+        const safeName = this._cleanSongText(name);
+        const safeArtist = this._cleanSongText(artist);
         if (!safeName) return false;
 
         this.activeListType = 'playlist';
         const playlist = this.getPlaylist();
-        let index = playlist.findIndex(song =>
-            String(song?.name || '').trim() === safeName
-            && (safeArtist
-                ? String(song?.artist || '').trim() === safeArtist
-                : true)
-        );
+        const targetKey = this._getSongDedupKey(safeName, safeArtist || '未知');
+        let index = playlist.findIndex(song => this._getSongDedupKey(song?.name, song?.artist || '未知') === targetKey);
 
         if (index < 0) {
-            playlist.push({
-                name: safeName,
-                artist: safeArtist || '',
-                id: meta.id || null,
-                url: meta.url || null,
-                pic: meta.pic || null,
-                lrc: Array.isArray(meta.lrc) ? meta.lrc : null
-            });
+            playlist.push(this._normalizeSongRecord(safeName, safeArtist || '未知', meta));
             index = playlist.length - 1;
             this.savePlaylist();
         }
@@ -254,13 +303,21 @@ export class MusicData {
             const json = await response.json();
 
             if (json?.data && Array.isArray(json.data)) {
-                // 格式化返回结果，方便视图层使用
-                return json.data.map(item => ({
-                    id: item.id,
-                    name: item.song,
-                    artist: item.singer || '未知',
-                    pic: item.cover || item.pic || null
-                }));
+                const seen = new Set();
+                return json.data.map(item => {
+                    const song = this._cleanSongText(item.song || item.name || '');
+                    const singer = this._cleanSongText(item.singer || item.artist || '未知') || '未知';
+                    if (!song) return null;
+                    const key = this._getSongDedupKey(song, singer);
+                    if (!key || seen.has(key)) return null;
+                    seen.add(key);
+                    return {
+                        id: item.id,
+                        name: song,
+                        artist: singer,
+                        pic: item.cover || item.pic || null
+                    };
+                }).filter(Boolean);
             }
             return [];
         } catch (e) {
