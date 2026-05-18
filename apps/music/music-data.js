@@ -298,28 +298,39 @@ export class MusicData {
         }
         try {
             const searchQuery = encodeURIComponent(query);
-            const limit = Math.max(1, Math.min(50, Number.parseInt(options.limit, 10) || 50));
-            const response = await fetch(`https://api.vkeys.cn/v2/music/netease?word=${searchQuery}&num=${limit}`);
-            const json = await response.json();
+            const limit = Math.max(1, Math.min(80, Number.parseInt(options.limit, 10) || 50));
+            const pageSize = Math.max(1, Math.min(20, Number.parseInt(options.pageSize, 10) || 20));
+            const maxPages = Math.max(1, Math.ceil(limit / pageSize));
+            const seen = new Set();
+            const songs = [];
 
-            if (json?.data && Array.isArray(json.data)) {
-                const seen = new Set();
-                return json.data.map(item => {
+            for (let page = 1; page <= maxPages && songs.length < limit; page++) {
+                const response = await fetch(`https://api.vkeys.cn/v2/music/netease?word=${searchQuery}&page=${page}&num=${pageSize}`);
+                const json = await response.json();
+                const items = Array.isArray(json?.data) ? json.data : [];
+                if (items.length === 0) break;
+
+                let addedInPage = 0;
+                items.forEach(item => {
                     const song = this._cleanSongText(item.song || item.name || '');
                     const singer = this._cleanSongText(item.singer || item.artist || '未知') || '未知';
                     if (!song) return null;
                     const key = this._getSongDedupKey(song, singer);
                     if (!key || seen.has(key)) return null;
                     seen.add(key);
-                    return {
+                    songs.push({
                         id: item.id,
                         name: song,
                         artist: singer,
                         pic: item.cover || item.pic || null
-                    };
-                }).filter(Boolean);
+                    });
+                    addedInPage++;
+                });
+
+                if (items.length < pageSize || addedInPage === 0) break;
             }
-            return [];
+
+            return songs.slice(0, limit);
         } catch (e) {
             console.error('🎵 [音乐] 歌曲搜索失败:', e);
             return []; // 出错时返回空数组

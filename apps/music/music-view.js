@@ -763,7 +763,7 @@ export class MusicView {
             if (searchModal) searchModal.style.setProperty('display', 'none');
         };
 
-        const performSearch = async (page = 1) => {
+        const performSearch = async (page = 1, options = {}) => {
             const query = searchInput.value.trim();
             if (!query) return;
 
@@ -771,26 +771,30 @@ export class MusicView {
             resultsContainer.innerHTML = '<div class="music-search-placeholder">正在寻觅...</div>';
 
             const nextPage = Math.max(1, Number.parseInt(page, 10) || 1);
-            if (query !== searchState.query || nextPage === 1 || !Array.isArray(searchState.results) || searchState.results.length === 0) {
+            const shouldRefresh = !!options.refresh
+                || query !== searchState.query
+                || !Array.isArray(searchState.results)
+                || searchState.results.length === 0;
+            if (shouldRefresh) {
                 searchState.query = query;
-                searchState.results = await this.app.musicData.searchSongs(query, { limit: 50 });
+                searchState.results = await this.app.musicData.searchSongs(query, { limit: 80, pageSize: 20 });
             }
             searchState.page = nextPage;
             this._renderSearchResults(searchState.results, {
                 page: searchState.page,
                 pageSize: searchState.pageSize,
                 query,
-                onPage: nextPage => performSearch(nextPage)
+                onPage: nextPage => performSearch(nextPage, { refresh: false })
             });
         };
 
         if (searchBtn) searchBtn.onclick = openSearch;
         if (searchCloseBtn) searchCloseBtn.onclick = closeSearch;
-        if (searchSubmitBtn) searchSubmitBtn.onclick = (e) => { e.stopPropagation(); performSearch(1); };
+        if (searchSubmitBtn) searchSubmitBtn.onclick = (e) => { e.stopPropagation(); performSearch(1, { refresh: true }); };
         if (searchInput) searchInput.onkeydown = (e) => {
             e.stopPropagation();
             if (e.key === 'Enter') {
-                performSearch(1);
+                performSearch(1, { refresh: true });
             }
         };
 
