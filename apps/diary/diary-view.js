@@ -533,7 +533,10 @@ export class DiaryView {
                 e.preventDefault();
                 e.stopPropagation();
                 const photoId = String(btn.getAttribute('data-photo-id') || '').trim();
-                if (photoId) this._generateDiaryPhoto(photoId, { force: true });
+                if (photoId) this._generateDiaryPhoto(photoId, {
+                    force: true,
+                    groupRoot: btn.closest('.diary-photo-memory')
+                });
             };
         });
 
@@ -635,17 +638,18 @@ export class DiaryView {
         const entryId = String(this.currentEntryId || '').trim();
         const safePhotoId = String(photoId || '').trim();
         if (!entryId || !safePhotoId) return;
+        let groupRoot = options.groupRoot || null;
         const photo = this.app.diaryData.updateEntryPhoto(entryId, safePhotoId, {
             status: 'loading',
             error: ''
         });
-        this._refreshDiaryPhotoMemory();
+        groupRoot = this._refreshDiaryPhotoGroup(groupRoot) || groupRoot;
         try {
             await this.app.diaryData.generateEntryPhoto(entryId, safePhotoId, options);
         } catch (err) {
             this.app.phoneShell?.showNotification?.('日记照片', String(err?.message || err || '生成失败'), '❌');
         } finally {
-            this._refreshDiaryPhotoMemory();
+            this._refreshDiaryPhotoGroup(groupRoot);
         }
         return photo;
     }
@@ -741,6 +745,29 @@ export class DiaryView {
     _refreshDiaryPhotoMemory() {
         if (!this.currentEntryId) return;
         this.render();
+    }
+
+    _refreshDiaryPhotoGroup(root) {
+        if (!root || !root.isConnected) return null;
+        const entry = this.app.diaryData.getEntry(this.currentEntryId);
+        if (!entry) return null;
+        const groupKey = String(root.getAttribute('data-photo-group') || 'main');
+        const activeIndex = Number.parseInt(root.getAttribute('data-active-index') || '0', 10) || 0;
+        const ids = Array.from(root.querySelectorAll('.diary-photo-card'))
+            .map(card => String(card.getAttribute('data-photo-id') || '').trim())
+            .filter(Boolean);
+        const photos = (Array.isArray(entry.photos) ? entry.photos : [])
+            .filter(photo => ids.includes(String(photo?.id || '')))
+            .sort((a, b) => ids.indexOf(String(a?.id || '')) - ids.indexOf(String(b?.id || '')));
+        if (photos.length === 0) return null;
+
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = this._renderDiaryPhotoStack(entry, photos, activeIndex, groupKey);
+        const next = wrapper.firstElementChild;
+        if (!next) return null;
+        root.replaceWith(next);
+        this._bindDiaryPhotoEvents();
+        return next;
     }
 
     // ==================== 设置视图 ====================
