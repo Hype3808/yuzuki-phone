@@ -2106,7 +2106,7 @@ export class SettingsApp {
                 fixedPromptEnd: String(preset?.fixedPromptEnd || ''),
                 negativePrompt: String(preset?.negativePrompt || ''),
                 openaiModel: String(preset?.openaiModel || preset?.model || '').trim(),
-                openaiMode: String(preset?.openaiMode || 'images').trim() || 'images',
+                openaiMode: 'images',
                 openaiQuality: String(preset?.openaiQuality || 'auto').trim() || 'auto',
                 honeyWidth: preset?.honeyWidth,
                 honeyHeight: preset?.honeyHeight,
@@ -2218,7 +2218,6 @@ export class SettingsApp {
         const openaiUrl = String(this.storage.get('phone-image-openai-url') || '').trim();
         const openaiPublicUrl = String(this.storage.get('phone-image-openai-public-url') || '').trim();
         const openaiPublicRelayUrl = String(this.storage.get('phone-image-openai-public-relay-url') || '').trim();
-        const openaiMode = String(this.storage.get('phone-image-openai-mode') || 'images').trim() || 'images';
         const openaiQuality = String(this.storage.get('phone-image-openai-quality') || 'auto').trim() || 'auto';
         const sampler = String(this.storage.get('phone-image-novelai-sampler') || 'k_euler').trim() || 'k_euler';
         const schedule = String(this.storage.get('phone-image-novelai-schedule') || 'native').trim() || 'native';
@@ -2555,8 +2554,30 @@ export class SettingsApp {
                 </div>
 
                 <div class="setting-item">
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                        <span style="font-size: 14px; color: #000;">模型</span>
+                        <button type="button" id="phone-image-openai-fetch-models" style="height: 30px; padding: 0 10px; border: none; border-radius: 8px; background: #2563eb !important; color: #fff !important; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap;">
+                            拉取模型
+                        </button>
+                    </div>
+                    <select id="phone-image-openai-model-preset" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                        <option value="">-- 快速选择 --</option>
+                        <option value="gpt-image-2">gpt-image-2</option>
+                        <option value="gpt-image-1.5">gpt-image-1.5</option>
+                        <option value="gpt-image-1">gpt-image-1</option>
+                        <option value="gpt-image-1-mini">gpt-image-1-mini</option>
+                        <option value="dall-e-3">dall-e-3</option>
+                    </select>
+                    <input type="text" id="phone-image-openai-model"
+                           value="${this._escapeHtml(openaiModel)}"
+                           placeholder="gpt-image-2"
+                           style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                    <div class="setting-desc" id="phone-image-openai-models-result" style="margin-top: 6px;">从当前站点的 /v1/models 拉取可用模型。</div>
+                </div>
+
+                <div class="setting-item">
                     <div class="setting-label">GPT 生图预设</div>
-                    <div class="setting-desc">GPT 单独保存模型、接口模式、质量、尺寸和提示词；不与 NAI 预设混用。</div>
+                    <div class="setting-desc">GPT 单独保存模型、质量、尺寸和提示词；不与 NAI 预设混用。</div>
                     <select id="phone-image-openai-preset-select" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
                         <option value="">未选择 GPT 预设</option>
                         ${openaiImagePresetOptions}
@@ -2572,36 +2593,7 @@ export class SettingsApp {
                     </div>
                 </div>
 
-                <div class="setting-item">
-                    <div style="display: flex; align-items: center; justify-content: space-between;">
-                        <span style="font-size: 14px; color: #000;">模型</span>
-                        <select id="phone-image-openai-model-preset" style="width: 150px; height: 30px; padding: 0 6px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 11px; background: #fafafa;">
-                            <option value="">-- 快速选择 --</option>
-                            <option value="gpt-image-2">gpt-image-2</option>
-                            <option value="gpt-image-1.5">gpt-image-1.5</option>
-                            <option value="gpt-image-1">gpt-image-1</option>
-                            <option value="gpt-image-1-mini">gpt-image-1-mini</option>
-                            <option value="dall-e-3">dall-e-3</option>
-                        </select>
-                    </div>
-                    <input type="text" id="phone-image-openai-model"
-                           value="${this._escapeHtml(openaiModel)}"
-                           placeholder="gpt-image-2"
-                           style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
-                    <button type="button" id="phone-image-openai-fetch-models" style="width: 100%; height: 30px; margin-top: 6px; border: none; border-radius: 8px; background: #2563eb !important; color: #fff !important; font-size: 12px; font-weight: 600; cursor: pointer;">
-                        拉取 GPT 生图模型
-                    </button>
-                    <div class="setting-desc" id="phone-image-openai-models-result" style="margin-top: 6px;">从当前站点的 /v1/models 拉取可用模型。</div>
-                </div>
-
-                <div class="setting-item">
-                    <div class="setting-label">接口模式</div>
-                    <div class="setting-desc">New API / sub2api 后台成功路径是 /v1/images/generations 时保持标准模式；只有明确要求走聊天生图时才选聊天接口。</div>
-                    <select id="phone-image-openai-mode" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
-                        <option value="images" ${openaiMode === 'images' ? 'selected' : ''}>标准图片接口 /images/generations</option>
-                        <option value="chat" ${openaiMode === 'chat' ? 'selected' : ''}>聊天接口 /chat/completions</option>
-                    </select>
-                </div>
+                <input type="hidden" id="phone-image-openai-mode" value="images">
 
                 <div class="setting-item">
                     <div class="setting-label">质量</div>
@@ -4193,7 +4185,7 @@ export class SettingsApp {
             fixedPromptEnd: String(imageFixedPromptEndInput?.value || '').trim(),
             negativePrompt: String(imageNegativePromptInput?.value || '').trim(),
             openaiModel: String(imageOpenaiModel?.value || '').trim() || 'gpt-image-2',
-            openaiMode: String(document.getElementById('phone-image-openai-mode')?.value || 'images').trim() || 'images',
+            openaiMode: 'images',
             openaiQuality: String(imageOpenaiQuality?.value || 'auto').trim() || 'auto',
             honeyWidth: readPresetNumber('phone-image-honey-width', 832, 64, 2048, true),
             honeyHeight: readPresetNumber('phone-image-honey-height', 1216, 64, 2048, true),
@@ -4227,12 +4219,9 @@ export class SettingsApp {
                 if (imageOpenaiModelPreset) imageOpenaiModelPreset.value = model;
                 await this.storage.set('phone-image-openai-model', model);
             }
-            if (preset.openaiMode) {
-                const value = String(preset.openaiMode || 'images').trim() || 'images';
-                const input = document.getElementById('phone-image-openai-mode');
-                if (input) input.value = value;
-                await this.storage.set('phone-image-openai-mode', value);
-            }
+            const modeInput = document.getElementById('phone-image-openai-mode');
+            if (modeInput) modeInput.value = 'images';
+            await this.storage.set('phone-image-openai-mode', 'images');
             if (preset.openaiQuality) {
                 const value = String(preset.openaiQuality || 'auto').trim() || 'auto';
                 if (imageOpenaiQuality) imageOpenaiQuality.value = value;
@@ -5091,7 +5080,7 @@ export class SettingsApp {
                 await this.storage.set('phone-image-openai-public-relay-url', publicRelayUrl);
                 await this.storage.set('phone-image-openai-url', customUrl);
                 await this.storage.set('phone-image-openai-model', String(document.getElementById('phone-image-openai-model')?.value || '').trim() || 'gpt-image-2');
-                await this.storage.set('phone-image-openai-mode', String(document.getElementById('phone-image-openai-mode')?.value || 'images').trim() || 'images');
+                await this.storage.set('phone-image-openai-mode', 'images');
                 await this.storage.set('phone-image-openai-quality', String(document.getElementById('phone-image-openai-quality')?.value || 'auto').trim() || 'auto');
 
                 const imageManager = window.VirtualPhone?.imageGenerationManager;
@@ -5107,7 +5096,7 @@ export class SettingsApp {
                     prompt: 'anime illustration, cute smartphone chat selfie sticker, soft light, clean background',
                     width: 1024,
                     height: 1024,
-                    openaiMode: String(document.getElementById('phone-image-openai-mode')?.value || 'images').trim() || 'images',
+                    openaiMode: 'images',
                     fixedPrompt: String(document.getElementById('phone-image-fixed-prompt')?.value || '').trim(),
                     fixedPromptEnd: String(document.getElementById('phone-image-fixed-prompt-end')?.value || '').trim(),
                     negativePrompt: String(document.getElementById('phone-image-negative-prompt')?.value || '').trim(),
@@ -5268,12 +5257,6 @@ export class SettingsApp {
             const value = String(e.target.value || 'auto').trim() || 'auto';
             e.target.value = value;
             await this.storage.set('phone-image-openai-quality', value);
-        });
-
-        document.getElementById('phone-image-openai-mode')?.addEventListener('change', async (e) => {
-            const value = String(e.target.value || 'images').trim() || 'images';
-            e.target.value = value;
-            await this.storage.set('phone-image-openai-mode', value);
         });
 
         imageOpenaiPresetSelect?.addEventListener('change', async (e) => {

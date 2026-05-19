@@ -508,7 +508,7 @@ export class ImageGenerationManager {
             openaiCustomUrl: String(overrides.openaiCustomUrl || this._get('phone-image-openai-url', '')).trim(),
             openaiPublicUrl: String(overrides.openaiPublicUrl || this._get('phone-image-openai-public-url', '')).trim(),
             openaiPublicRelayUrl: String(overrides.openaiPublicRelayUrl || this._get('phone-image-openai-public-relay-url', '')).trim(),
-            openaiMode: String(overrides.openaiMode || this._get('phone-image-openai-mode', 'images')).trim() || 'images',
+            openaiMode: 'images',
             openaiQuality: String(overrides.openaiQuality || this._get('phone-image-openai-quality', 'auto')).trim() || 'auto',
             comfyuiUrl: this._normalizeComfyUIBaseUrl(overrides.comfyuiUrl || this._get('phone-image-comfyui-url', 'http://127.0.0.1:8188')),
             comfyuiWorkflow: String(overrides.comfyuiWorkflow ?? comfyuiAppWorkflow?.workflow ?? this._get('phone-image-comfyui-workflow', '')).trim(),
@@ -3089,9 +3089,6 @@ export class ImageGenerationManager {
         const width = Number(options.width || config.width);
         const height = Number(options.height || config.height);
         const model = String(config.model || 'gpt-image-2').trim() || 'gpt-image-2';
-        if (String(config.openaiMode || '').trim() === 'chat') {
-            return this._generateOpenAIChatImage(options, config);
-        }
         const requestedSize = this._getOpenAIImageSize(model, width, height);
         const targetEndpoint = this._resolveOpenAIEndpoint(config);
         const endpoint = this._resolveOpenAIRelayEndpoint(config, targetEndpoint);
