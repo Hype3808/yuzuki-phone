@@ -422,6 +422,29 @@ export class ImageGenerationManager {
         return this._getProviderAppBindings()[appKey] || '';
     }
 
+    _normalizeImagePresetScope(app = '') {
+        const appKey = String(app || '').trim().toLowerCase();
+        if (appKey === 'diary') return 'wechat';
+        if (['honey', 'wechat', 'weibo'].includes(appKey)) return appKey;
+        return '';
+    }
+
+    _getComfyUIWorkflowForApp(app = '') {
+        const scope = this._normalizeImagePresetScope(app);
+        if (!scope) return null;
+        const activeId = String(this._get(`phone-image-${scope}-comfyui-active-workflow`, '') || this._get('phone-image-comfyui-active-workflow', '') || '').trim();
+        if (!activeId) return null;
+        let workflows = [];
+        try {
+            const raw = this._get('phone-image-comfyui-workflows', '[]');
+            workflows = typeof raw === 'string' ? JSON.parse(raw || '[]') : raw;
+        } catch (e) {
+            workflows = [];
+        }
+        if (!Array.isArray(workflows)) return null;
+        return workflows.find(workflow => String(workflow?.id || '').trim() === activeId) || null;
+    }
+
     resolveProvider(overrides = {}) {
         const explicitProvider = String(overrides.provider || '').trim().toLowerCase();
         if (explicitProvider) return explicitProvider;
@@ -454,7 +477,8 @@ export class ImageGenerationManager {
         const rawSize = this.getSizeForApp(appKey);
         const size = { ...rawSize };
         const rawSteps = this._getNumber('phone-image-steps', 28, 1, 50);
-        const promptAppKey = ['honey', 'wechat', 'weibo', 'diary'].includes(appKey) ? appKey : '';
+        const promptAppKey = this._normalizeImagePresetScope(appKey);
+        const comfyuiAppWorkflow = this._getComfyUIWorkflowForApp(appKey);
 
         if (appKey === 'honey') {
             if (size.width < 512 || size.height < 768) {
@@ -487,13 +511,13 @@ export class ImageGenerationManager {
             openaiMode: String(overrides.openaiMode || this._get('phone-image-openai-mode', 'images')).trim() || 'images',
             openaiQuality: String(overrides.openaiQuality || this._get('phone-image-openai-quality', 'auto')).trim() || 'auto',
             comfyuiUrl: this._normalizeComfyUIBaseUrl(overrides.comfyuiUrl || this._get('phone-image-comfyui-url', 'http://127.0.0.1:8188')),
-            comfyuiWorkflow: String(overrides.comfyuiWorkflow ?? this._get('phone-image-comfyui-workflow', '')).trim(),
-            comfyuiNodeMapping: String(overrides.comfyuiNodeMapping ?? this._get('phone-image-comfyui-node-mapping', '')).trim(),
-            comfyuiModel: String(overrides.comfyuiModel || this._get('phone-image-comfyui-model', '')).trim(),
-            comfyuiVae: String(overrides.comfyuiVae || this._get('phone-image-comfyui-vae', '')).trim(),
-            comfyuiClip: String(overrides.comfyuiClip || this._get('phone-image-comfyui-clip', '')).trim(),
-            comfyuiSampler: String(overrides.comfyuiSampler || this._get('phone-image-comfyui-sampler', 'euler')).trim() || 'euler',
-            comfyuiScheduler: String(overrides.comfyuiScheduler || this._get('phone-image-comfyui-scheduler', 'normal')).trim() || 'normal',
+            comfyuiWorkflow: String(overrides.comfyuiWorkflow ?? comfyuiAppWorkflow?.workflow ?? this._get('phone-image-comfyui-workflow', '')).trim(),
+            comfyuiNodeMapping: String(overrides.comfyuiNodeMapping ?? comfyuiAppWorkflow?.nodeMapping ?? this._get('phone-image-comfyui-node-mapping', '')).trim(),
+            comfyuiModel: String(overrides.comfyuiModel || comfyuiAppWorkflow?.comfyuiModel || comfyuiAppWorkflow?.model || this._get('phone-image-comfyui-model', '')).trim(),
+            comfyuiVae: String(overrides.comfyuiVae || comfyuiAppWorkflow?.comfyuiVae || comfyuiAppWorkflow?.vae || this._get('phone-image-comfyui-vae', '')).trim(),
+            comfyuiClip: String(overrides.comfyuiClip || comfyuiAppWorkflow?.comfyuiClip || comfyuiAppWorkflow?.clip || this._get('phone-image-comfyui-clip', '')).trim(),
+            comfyuiSampler: String(overrides.comfyuiSampler || comfyuiAppWorkflow?.comfyuiSampler || comfyuiAppWorkflow?.sampler || this._get('phone-image-comfyui-sampler', 'euler')).trim() || 'euler',
+            comfyuiScheduler: String(overrides.comfyuiScheduler || comfyuiAppWorkflow?.comfyuiScheduler || comfyuiAppWorkflow?.scheduler || this._get('phone-image-comfyui-scheduler', 'normal')).trim() || 'normal',
             sdUrl: this._normalizeSdBaseUrl(overrides.sdUrl || this._get('phone-image-sd-url', 'http://127.0.0.1:7860')),
             sdAuth: String(overrides.sdAuth || this._get('phone-image-sd-auth', '')).trim(),
             sdVae: String(overrides.sdVae || this._get('phone-image-sd-vae', '')).trim(),

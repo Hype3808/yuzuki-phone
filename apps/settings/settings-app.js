@@ -1955,6 +1955,11 @@ export class SettingsApp {
         return this._getImagePromptAppDefs().some(def => def.id === value) ? value : 'honey';
     }
 
+    _normalizeImagePresetScope(app) {
+        const appKey = this._normalizeImagePromptApp(app);
+        return appKey === 'diary' ? 'wechat' : appKey;
+    }
+
     _getImageProviderAppBindings() {
         const raw = this.storage.get('phone-image-provider-app-bindings');
         let parsed = {};
@@ -2001,7 +2006,7 @@ export class SettingsApp {
     }
 
     _getImagePromptDraft(app) {
-        const appKey = this._normalizeImagePromptApp(app);
+        const appKey = this._normalizeImagePresetScope(app);
         return {
             fixedPrompt: String(this.storage.get(`phone-image-${appKey}-fixed-prompt`) || ''),
             fixedPromptEnd: String(this.storage.get(`phone-image-${appKey}-fixed-prompt-end`) || ''),
@@ -2055,7 +2060,13 @@ export class SettingsApp {
         }).filter(Boolean);
     }
 
-    _getImagePromptPresets(_app = 'honey') {
+    _getImagePromptPresets(app = 'honey') {
+        const appKey = this._normalizeImagePresetScope(app);
+        const presetMap = this._getImagePromptPresetMap();
+        if (Array.isArray(presetMap[appKey])) {
+            return this._normalizeImagePromptPresets(presetMap[appKey]);
+        }
+
         const rawGlobal = this.storage.get('phone-image-prompt-presets');
         let globalPresets = null;
         try {
@@ -2063,20 +2074,22 @@ export class SettingsApp {
         } catch (e) {
             globalPresets = null;
         }
-        if (Array.isArray(globalPresets)) {
+        if (appKey === 'honey' && Array.isArray(globalPresets)) {
             return this._normalizeImagePromptPresets(globalPresets);
         }
 
-        const presetMap = this._getImagePromptPresetMap();
-        const merged = [];
-        this._getImagePromptAppDefs().forEach((def) => {
-            if (Array.isArray(presetMap[def.id])) merged.push(...presetMap[def.id]);
-        });
-        return this._normalizeImagePromptPresets(merged);
+        return [];
     }
 
     async _saveImagePromptPresets(app, presets) {
-        await this.storage.set('phone-image-prompt-presets', JSON.stringify(this._normalizeImagePromptPresets(presets)));
+        const appKey = this._normalizeImagePresetScope(app);
+        const normalized = this._normalizeImagePromptPresets(presets);
+        const presetMap = this._getImagePromptPresetMap();
+        presetMap[appKey] = normalized;
+        await this.storage.set('phone-image-prompt-presets-by-app', JSON.stringify(presetMap));
+        if (appKey === 'honey') {
+            await this.storage.set('phone-image-prompt-presets', JSON.stringify(normalized));
+        }
     }
 
     _normalizeOpenAIImagePresets(presets = []) {
@@ -2276,12 +2289,13 @@ export class SettingsApp {
         const debugPayload = this.storage.get('phone-image-debug-payload') === true || this.storage.get('phone-image-debug-payload') === 'true';
         const imagePromptAppDefs = this._getImagePromptAppDefs();
         const activeImagePromptApp = this._normalizeImagePromptApp(this.storage.get('phone-image-active-prompt-app') || 'honey');
-        const imagePromptDraft = this._getImagePromptDraft(activeImagePromptApp);
+        const activeImagePresetScope = this._normalizeImagePresetScope(activeImagePromptApp);
+        const imagePromptDraft = this._getImagePromptDraft(activeImagePresetScope);
         const fixedPrompt = this._escapeHtml(imagePromptDraft.fixedPrompt);
         const fixedPromptEnd = this._escapeHtml(imagePromptDraft.fixedPromptEnd);
         const negativePrompt = this._escapeHtml(imagePromptDraft.negativePrompt);
-        const imagePromptPresets = this._getImagePromptPresets(activeImagePromptApp);
-        const activeImagePromptPresetId = String(this.storage.get(`phone-image-${activeImagePromptApp}-active-prompt-preset`) || '').trim();
+        const imagePromptPresets = this._getImagePromptPresets(activeImagePresetScope);
+        const activeImagePromptPresetId = String(this.storage.get(`phone-image-${activeImagePresetScope}-active-prompt-preset`) || '').trim();
         const activeImagePromptPreset = imagePromptPresets.find(preset => preset.id === activeImagePromptPresetId) || null;
         const activeImagePromptPresetName = this._escapeHtml(activeImagePromptPreset?.name || '');
         const imagePromptAppOptions = imagePromptAppDefs.map((def) => {
@@ -2304,7 +2318,11 @@ export class SettingsApp {
             return `<option value="${safeId}" ${preset.id === activeOpenaiImagePresetId ? 'selected' : ''}>${safeName}</option>`;
         }).join('');
         const comfyuiWorkflows = this._getComfyUIWorkflows();
-        const activeComfyUIWorkflowId = String(this.storage.get('phone-image-comfyui-active-workflow') || '').trim();
+        const activeComfyUIWorkflowId = String(
+            this.storage.get(`phone-image-${activeImagePresetScope}-comfyui-active-workflow`)
+            || this.storage.get('phone-image-comfyui-active-workflow')
+            || ''
+        ).trim();
         const activeComfyUIWorkflow = comfyuiWorkflows.find(workflow => workflow.id === activeComfyUIWorkflowId) || null;
         const activeComfyUIWorkflowName = this._escapeHtml(activeComfyUIWorkflow?.name || '');
         const comfyuiWorkflowOptions = comfyuiWorkflows.map((workflow) => {
@@ -2354,6 +2372,41 @@ export class SettingsApp {
                 ${this._renderImageProviderAppBinding('novelai', imageProviderAppBindings)}
 
                 <div class="setting-item" style="display: flex; align-items: center; justify-content: space-between;">
+                    <span style="font-size: 14px; color: #000;">接口站点</span>
+                    <select id="phone-image-novelai-site" style="width: 150px; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa;">
+                        <option value="official" ${novelaiSite === 'official' ? 'selected' : ''}>官方站点</option>
+                        <option value="public" ${novelaiSite === 'public' ? 'selected' : ''}>公益站点</option>
+                        <option value="custom" ${novelaiSite === 'custom' ? 'selected' : ''}>自定义地址</option>
+                    </select>
+                </div>
+
+                <div class="setting-item" id="phone-image-novelai-public-url-row" style="${novelaiSite === 'public' ? '' : 'display: none;'}">
+                    <div class="setting-label">公益站点 Base URL</div>
+                    <div class="setting-desc">填写兼容 NovelAI /ai/generate-image 的中转或公益站地址。</div>
+                    <input type="text" id="phone-image-novelai-public-url"
+                           value="${this._escapeHtml(novelaiPublicUrl)}"
+                           placeholder="例如：https://your-nai-site.example.com"
+                           style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                </div>
+
+                <div class="setting-item" id="phone-image-novelai-url-row" style="${novelaiSite === 'custom' ? '' : 'display: none;'}">
+                    <div class="setting-label">自定义 Base URL</div>
+                    <input type="text" id="phone-image-novelai-url"
+                           value="${this._escapeHtml(novelaiUrl)}"
+                           placeholder="例如：https://image.novelai.net"
+                           style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                </div>
+
+                <div class="setting-item" id="phone-image-novelai-queue-row" style="${novelaiSite === 'public' ? 'display: none;' : ''}">
+                    <div class="setting-label">共享队列服务 URL</div>
+                    <div class="setting-desc">多人共用同一个 NAI Key 时填写；留空则直接请求 NAI。</div>
+                    <input type="text" id="phone-image-novelai-queue-url"
+                           value="${this._escapeHtml(novelaiQueueUrl)}"
+                           placeholder="例如：https://your-queue.example.com"
+                           style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                </div>
+
+                <div class="setting-item" style="display: flex; align-items: center; justify-content: space-between;">
                     <span id="phone-image-novelai-key-label" style="font-size: 14px; color: #000;">${novelaiSite === 'public' ? '公益站 Key' : 'API Key'}</span>
                     <div style="display: flex; align-items: center; width: 150px; height: 30px; border: 1px solid #e0e0e0; border-radius: 8px; background: #fafafa; overflow: hidden;">
                         <input type="password" id="phone-image-novelai-key"
@@ -2384,44 +2437,9 @@ export class SettingsApp {
                     </label>
                 </div>
 
-                <div class="setting-item" id="phone-image-novelai-queue-row" style="${novelaiSite === 'public' ? 'display: none;' : ''}">
-                    <div class="setting-label">共享队列服务 URL</div>
-                    <div class="setting-desc">多人共用同一个 NAI Key 时填写；留空则直接请求 NAI。</div>
-                    <input type="text" id="phone-image-novelai-queue-url"
-                           value="${this._escapeHtml(novelaiQueueUrl)}"
-                           placeholder="例如：https://your-queue.example.com"
-                           style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
-                </div>
-
-                <div class="setting-item" style="display: flex; align-items: center; justify-content: space-between;">
-                    <span style="font-size: 14px; color: #000;">接口站点</span>
-                    <select id="phone-image-novelai-site" style="width: 150px; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa;">
-                        <option value="official" ${novelaiSite === 'official' ? 'selected' : ''}>官方站点</option>
-                        <option value="public" ${novelaiSite === 'public' ? 'selected' : ''}>公益站点</option>
-                        <option value="custom" ${novelaiSite === 'custom' ? 'selected' : ''}>自定义地址</option>
-                    </select>
-                </div>
-
-                <div class="setting-item" id="phone-image-novelai-public-url-row" style="${novelaiSite === 'public' ? '' : 'display: none;'}">
-                    <div class="setting-label">公益站点 Base URL</div>
-                    <div class="setting-desc">填写兼容 NovelAI /ai/generate-image 的中转或公益站地址。</div>
-                    <input type="text" id="phone-image-novelai-public-url"
-                           value="${this._escapeHtml(novelaiPublicUrl)}"
-                           placeholder="例如：https://your-nai-site.example.com"
-                           style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
-                </div>
-
-                <div class="setting-item" id="phone-image-novelai-url-row" style="${novelaiSite === 'custom' ? '' : 'display: none;'}">
-                    <div class="setting-label">自定义 Base URL</div>
-                    <input type="text" id="phone-image-novelai-url"
-                           value="${this._escapeHtml(novelaiUrl)}"
-                           placeholder="例如：https://image.novelai.net"
-                           style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
-                </div>
-
                 <div class="setting-item">
                     <div class="setting-label">NAI 生图预设</div>
-                    <div class="setting-desc">预设在蜜语、微信、微博之间共享；每个 App 只单独记住当前选中的预设。</div>
+                    <div class="setting-desc">预设按蜜语、微信/日记、微博分别管理；微信和日记使用同一套当前预设。</div>
                     <select id="phone-image-prompt-app-select" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
                         ${imagePromptAppOptions}
                     </select>
@@ -2826,6 +2844,10 @@ export class SettingsApp {
                             i
                         </button>
                     </div>
+                    <div class="setting-desc">工作流按蜜语、微信/日记、微博分别记住当前选择；微信和日记使用同一套工作流。</div>
+                    <select id="phone-image-comfyui-app-select" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                        ${imagePromptAppOptions}
+                    </select>
                     <select id="phone-image-comfyui-workflow-select" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
                         <option value="">未选择工作流</option>
                         ${comfyuiWorkflowOptions}
@@ -4018,6 +4040,7 @@ export class SettingsApp {
         const imageOpenaiPresetNewBtn = document.getElementById('phone-image-openai-preset-new');
         const imageOpenaiPresetDeleteBtn = document.getElementById('phone-image-openai-preset-delete');
         const imageComfyUIWorkflowSelect = document.getElementById('phone-image-comfyui-workflow-select');
+        const imageComfyUIAppSelect = document.getElementById('phone-image-comfyui-app-select');
         const imageComfyUIWorkflowName = document.getElementById('phone-image-comfyui-workflow-name');
         const imageComfyUIWorkflowSaveBtn = document.getElementById('phone-image-comfyui-workflow-save');
         const imageComfyUIWorkflowNewBtn = document.getElementById('phone-image-comfyui-workflow-new');
@@ -4287,8 +4310,15 @@ export class SettingsApp {
         };
         let currentImagePromptApp = this._normalizeImagePromptApp(this.storage.get('phone-image-active-prompt-app') || imagePromptAppSelect?.value || 'honey');
         const getActiveImagePromptApp = () => this._normalizeImagePromptApp(currentImagePromptApp || imagePromptAppSelect?.value || this.storage.get('phone-image-active-prompt-app') || 'honey');
+        let currentComfyUIApp = this._normalizeImagePromptApp(this.storage.get('phone-image-active-comfyui-app') || imageComfyUIAppSelect?.value || getActiveImagePromptApp());
+        const getComfyUIPresetScope = () => this._normalizeImagePresetScope(currentComfyUIApp || imageComfyUIAppSelect?.value || getActiveImagePromptApp());
+        const getComfyUIActiveWorkflowId = () => String(
+            this.storage.get(`phone-image-${getComfyUIPresetScope()}-comfyui-active-workflow`)
+            || this.storage.get('phone-image-comfyui-active-workflow')
+            || ''
+        ).trim();
         const saveImagePromptDraft = async (app, form = getImagePromptForm()) => {
-            const appKey = this._normalizeImagePromptApp(app);
+            const appKey = this._normalizeImagePresetScope(app);
             await this.storage.set(`phone-image-${appKey}-fixed-prompt`, String(form.fixedPrompt || '').trim());
             await this.storage.set(`phone-image-${appKey}-fixed-prompt-end`, String(form.fixedPromptEnd || '').trim());
             await this.storage.set(`phone-image-${appKey}-negative-prompt`, String(form.negativePrompt || '').trim());
@@ -4424,6 +4454,69 @@ export class SettingsApp {
                 URL.revokeObjectURL(url);
                 link.remove();
             }, 0);
+        };
+        const showImagePresetExportChooser = ({ title, desc, presets = [], selectedIds = [], onConfirm = null }) => {
+            document.getElementById('phone-image-preset-export-chooser')?.remove();
+            const normalizedPresets = (Array.isArray(presets) ? presets : []).filter(preset => preset?.id);
+            if (!normalizedPresets.length) return;
+            const selectedSet = new Set((Array.isArray(selectedIds) ? selectedIds : []).map(id => String(id || '').trim()).filter(Boolean));
+            const defaultSelected = selectedSet.size > 0
+                ? selectedSet
+                : new Set(normalizedPresets.map(preset => preset.id));
+            const overlay = document.createElement('div');
+            overlay.id = 'phone-image-preset-export-chooser';
+            overlay.style.cssText = 'position:absolute; inset:0; z-index:10020; background:rgba(0,0,0,0.38); display:flex; align-items:center; justify-content:center; padding:14px; box-sizing:border-box;';
+            overlay.innerHTML = `
+                <div style="width:100%; max-width:320px; max-height:82%; background:#fff; border-radius:12px; box-shadow:0 12px 28px rgba(0,0,0,0.22); display:flex; flex-direction:column; overflow:hidden;">
+                    <div style="padding:12px 14px 8px; border-bottom:1px solid #eee;">
+                        <div style="font-size:15px; font-weight:700; color:#111;">${this._escapeHtml(title)}</div>
+                        <div style="font-size:11px; line-height:1.45; color:#666; margin-top:4px;">${this._escapeHtml(desc)}</div>
+                    </div>
+                    <div style="padding:8px 12px; border-bottom:1px solid #eee; display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                        <button type="button" id="phone-image-preset-export-all" style="height:28px; border:1px solid #d8d8d8; border-radius:8px; background:#f7f7f7; color:#333; font-size:12px; cursor:pointer;">全选</button>
+                        <button type="button" id="phone-image-preset-export-none" style="height:28px; border:1px solid #d8d8d8; border-radius:8px; background:#fff; color:#333; font-size:12px; cursor:pointer;">清空</button>
+                    </div>
+                    <div style="overflow:auto; max-height:42vh; padding:6px 12px; background:#fbfbfb;">
+                        ${normalizedPresets.map((preset, index) => `
+                            <label style="display:flex; align-items:flex-start; gap:8px; padding:9px 0; border-bottom:${index === normalizedPresets.length - 1 ? 'none' : '1px solid #eee'}; cursor:pointer;">
+                                <input type="checkbox" class="phone-image-preset-export-choice" value="${this._escapeHtml(preset.id)}" ${defaultSelected.has(preset.id) ? 'checked' : ''} style="margin-top:1px; width:16px; height:16px; flex:0 0 16px;">
+                                <span style="min-width:0; color:#222; font-size:12px; line-height:1.35; word-break:break-word;">${this._escapeHtml(preset.name || `预设 ${index + 1}`)}</span>
+                            </label>
+                        `).join('')}
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; padding:10px 12px; border-top:1px solid #eee; background:#fff;">
+                        <button type="button" id="phone-image-preset-export-cancel" style="height:32px; border:1px solid #ddd; border-radius:8px; background:#fff; color:#333; font-size:12px; cursor:pointer;">取消</button>
+                        <button type="button" id="phone-image-preset-export-confirm" style="height:32px; border:none; border-radius:8px; background:#2563eb; color:#fff; font-size:12px; font-weight:700; cursor:pointer;">导出</button>
+                    </div>
+                </div>
+            `;
+            const host = document.querySelector('.phone-view-current') || document.querySelector('.phone-body-panel') || document.body;
+            host.appendChild(overlay);
+            const choices = () => Array.from(overlay.querySelectorAll('.phone-image-preset-export-choice'));
+            const close = () => overlay.remove();
+            overlay.querySelector('#phone-image-preset-export-cancel')?.addEventListener('click', close);
+            overlay.querySelector('#phone-image-preset-export-all')?.addEventListener('click', () => {
+                choices().forEach(input => { input.checked = true; });
+            });
+            overlay.querySelector('#phone-image-preset-export-none')?.addEventListener('click', () => {
+                choices().forEach(input => { input.checked = false; });
+            });
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) close();
+            });
+            overlay.querySelector('#phone-image-preset-export-confirm')?.addEventListener('click', async () => {
+                try {
+                    const ids = choices()
+                        .filter(input => input.checked)
+                        .map(input => String(input.value || '').trim())
+                        .filter(Boolean);
+                    if (!ids.length) throw new Error('请至少选择一个预设');
+                    await onConfirm?.(ids);
+                    close();
+                } catch (err) {
+                    this.phoneShell?.showNotification?.('导出失败', err?.message || String(err || '失败'), '⚠️');
+                }
+            });
         };
         const makeUniqueImagePresetName = (name, usedNames) => {
             const baseName = String(name || '导入预设').trim() || '导入预设';
@@ -4807,8 +4900,9 @@ export class SettingsApp {
         };
         const refreshImagePromptAppPanel = async (appKey, options = {}) => {
             const normalizedApp = this._normalizeImagePromptApp(appKey);
+            const presetScope = this._normalizeImagePresetScope(normalizedApp);
             const presets = this._getImagePromptPresets(normalizedApp);
-            let activeId = String(this.storage.get(`phone-image-${normalizedApp}-active-prompt-preset`) || '').trim();
+            let activeId = String(this.storage.get(`phone-image-${presetScope}-active-prompt-preset`) || '').trim();
             const activePreset = presets.find(item => item.id === activeId);
             if (!activePreset) activeId = '';
             fillImagePromptPresetSelect(presets, activeId);
@@ -4823,6 +4917,20 @@ export class SettingsApp {
                 await applyImageGenerationPresetSettings(activePreset);
             }
         };
+        const refreshComfyUIAppPanel = async (appKey, options = {}) => {
+            currentComfyUIApp = this._normalizeImagePromptApp(appKey);
+            const scope = getComfyUIPresetScope();
+            const workflows = this._getComfyUIWorkflows();
+            let activeId = String(this.storage.get(`phone-image-${scope}-comfyui-active-workflow`) || this.storage.get('phone-image-comfyui-active-workflow') || '').trim();
+            const activeWorkflow = workflows.find(item => item.id === activeId);
+            if (!activeWorkflow) activeId = '';
+            fillComfyUIWorkflowSelect(workflows, activeId);
+            if (imageComfyUIWorkflowSelect) imageComfyUIWorkflowSelect.value = activeId;
+            if (imageComfyUIWorkflowName) imageComfyUIWorkflowName.value = activeWorkflow?.name || '';
+            if (activeWorkflow && options.applyWorkflow !== false) {
+                await applyComfyUIWorkflowSettings(activeWorkflow);
+            }
+        };
 
         imagePromptAppSelect?.addEventListener('change', async (e) => {
             const previousApp = currentImagePromptApp;
@@ -4831,6 +4939,13 @@ export class SettingsApp {
             currentImagePromptApp = appKey;
             await this.storage.set('phone-image-active-prompt-app', appKey);
             await refreshImagePromptAppPanel(appKey);
+        });
+
+        imageComfyUIAppSelect?.addEventListener('change', async (e) => {
+            const appKey = this._normalizeImagePromptApp(e.target.value);
+            currentComfyUIApp = appKey;
+            await this.storage.set('phone-image-active-comfyui-app', appKey);
+            await refreshComfyUIAppPanel(appKey);
         });
 
         imageEnabled?.addEventListener('change', async (e) => {
@@ -5263,7 +5378,8 @@ export class SettingsApp {
         imagePromptPresetSelect?.addEventListener('change', async (e) => {
             const presetId = String(e.target.value || '').trim();
             const appKey = getActiveImagePromptApp();
-            await this.storage.set(`phone-image-${appKey}-active-prompt-preset`, presetId);
+            const presetScope = this._normalizeImagePresetScope(appKey);
+            await this.storage.set(`phone-image-${presetScope}-active-prompt-preset`, presetId);
             const presets = this._getImagePromptPresets(appKey);
             const preset = presets.find(item => item.id === presetId);
             if (!preset) {
@@ -5287,7 +5403,8 @@ export class SettingsApp {
             const appKey = getActiveImagePromptApp();
             const now = Date.now();
             const presets = this._getImagePromptPresets(appKey);
-            let activeId = String(imagePromptPresetSelect?.value || this.storage.get(`phone-image-${appKey}-active-prompt-preset`) || '').trim();
+            const presetScope = this._normalizeImagePresetScope(appKey);
+            let activeId = String(imagePromptPresetSelect?.value || this.storage.get(`phone-image-${presetScope}-active-prompt-preset`) || '').trim();
             let target = presets.find(preset => preset.id === activeId);
             if (!target) {
                 activeId = createImagePromptPresetId();
@@ -5306,7 +5423,7 @@ export class SettingsApp {
 
             await saveImagePromptDraft(appKey, form);
             await this._saveImagePromptPresets(appKey, presets);
-            await this.storage.set(`phone-image-${appKey}-active-prompt-preset`, activeId);
+            await this.storage.set(`phone-image-${presetScope}-active-prompt-preset`, activeId);
             fillImagePromptPresetSelect(presets, activeId);
             this.phoneShell?.showNotification?.('已保存生图设定', name, '✅');
         });
@@ -5318,13 +5435,14 @@ export class SettingsApp {
                 imagePromptPresetName.value = '';
                 imagePromptPresetName.focus();
             }
-            await this.storage.set(`phone-image-${appKey}-active-prompt-preset`, '');
+            await this.storage.set(`phone-image-${this._normalizeImagePresetScope(appKey)}-active-prompt-preset`, '');
             this.phoneShell?.showNotification?.('新建生图设定', '填写名称后点击保存', '✏️');
         });
 
         imagePromptPresetDeleteBtn?.addEventListener('click', async () => {
             const appKey = getActiveImagePromptApp();
-            const activeId = String(imagePromptPresetSelect?.value || this.storage.get(`phone-image-${appKey}-active-prompt-preset`) || '').trim();
+            const presetScope = this._normalizeImagePresetScope(appKey);
+            const activeId = String(imagePromptPresetSelect?.value || this.storage.get(`phone-image-${presetScope}-active-prompt-preset`) || '').trim();
             if (!activeId) {
                 this.phoneShell?.showNotification?.('删除失败', '请先选择要删除的设定', '⚠️');
                 return;
@@ -5336,7 +5454,7 @@ export class SettingsApp {
 
             const nextPresets = presets.filter(preset => preset.id !== activeId);
             await this._saveImagePromptPresets(appKey, nextPresets);
-            await this.storage.set(`phone-image-${appKey}-active-prompt-preset`, '');
+            await this.storage.set(`phone-image-${presetScope}-active-prompt-preset`, '');
             fillImagePromptPresetSelect(nextPresets, '');
             if (imagePromptPresetName) imagePromptPresetName.value = '';
             this.phoneShell?.showNotification?.('已删除生图设定', target.name, '🗑️');
@@ -5349,10 +5467,22 @@ export class SettingsApp {
                 this.phoneShell?.showNotification?.('导出失败', '还没有可导出的共享 NAI 生图预设', '⚠️');
                 return;
             }
-            const payload = buildImagePromptPresetSharePayload(appKey, presets);
+            const presetScope = this._normalizeImagePresetScope(appKey);
+            const activeId = String(imagePromptPresetSelect?.value || this.storage.get(`phone-image-${presetScope}-active-prompt-preset`) || '').trim();
             const appName = getImagePromptAppName(appKey);
-            downloadJsonFile(payload, `yuzuki-nai-presets-${appName}-${new Date().toISOString().slice(0, 10)}.json`);
-            this.phoneShell?.showNotification?.('导出完成', `已导出 ${payload.presets.length} 套 NAI 预设文件`, '✅');
+            showImagePresetExportChooser({
+                title: '导出 NAI 预设',
+                desc: '选择要写入 JSON 文件的预设。',
+                presets,
+                selectedIds: activeId ? [activeId] : presets.map(preset => preset.id),
+                onConfirm: async (selectedIds) => {
+                    const selectedSet = new Set(selectedIds);
+                    const exportPresets = presets.filter(preset => selectedSet.has(preset.id));
+                    const payload = buildImagePromptPresetSharePayload(appKey, exportPresets);
+                    downloadJsonFile(payload, `yuzuki-nai-presets-${appName}-${new Date().toISOString().slice(0, 10)}.json`);
+                    this.phoneShell?.showNotification?.('导出完成', `已导出 ${payload.presets.length} 套 NAI 预设文件`, '✅');
+                }
+            });
         });
 
         imagePromptPresetImportBtn?.addEventListener('click', async () => {
@@ -5384,7 +5514,7 @@ export class SettingsApp {
                 await this._saveImagePromptPresets(appKey, nextPresets);
                 const activeId = firstImportedId;
                 if (activeId) {
-                    await this.storage.set(`phone-image-${appKey}-active-prompt-preset`, activeId);
+                    await this.storage.set(`phone-image-${this._normalizeImagePresetScope(appKey)}-active-prompt-preset`, activeId);
                 }
                 fillImagePromptPresetSelect(nextPresets, activeId);
                 if (imagePromptPresetSelect) imagePromptPresetSelect.value = activeId;
@@ -5509,6 +5639,8 @@ export class SettingsApp {
 
         imageComfyUIWorkflowSelect?.addEventListener('change', async (e) => {
             const workflowId = String(e.target.value || '').trim();
+            const scope = getComfyUIPresetScope();
+            await this.storage.set(`phone-image-${scope}-comfyui-active-workflow`, workflowId);
             await this.storage.set('phone-image-comfyui-active-workflow', workflowId);
             const workflows = this._getComfyUIWorkflows();
             const workflow = workflows.find(item => item.id === workflowId);
@@ -5543,7 +5675,8 @@ export class SettingsApp {
 
                 const now = Date.now();
                 const workflows = this._getComfyUIWorkflows();
-                let activeId = String(imageComfyUIWorkflowSelect?.value || this.storage.get('phone-image-comfyui-active-workflow') || '').trim();
+                const scope = getComfyUIPresetScope();
+                let activeId = String(imageComfyUIWorkflowSelect?.value || this.storage.get(`phone-image-${scope}-comfyui-active-workflow`) || this.storage.get('phone-image-comfyui-active-workflow') || '').trim();
                 let target = workflows.find(workflow => workflow.id === activeId);
                 if (!target) {
                     activeId = createImagePromptPresetId();
@@ -5552,6 +5685,7 @@ export class SettingsApp {
                 }
                 Object.assign(target, settings, { name, updatedAt: now });
                 await this._saveComfyUIWorkflows(workflows);
+                await this.storage.set(`phone-image-${scope}-comfyui-active-workflow`, activeId);
                 await this.storage.set('phone-image-comfyui-active-workflow', activeId);
                 fillComfyUIWorkflowSelect(workflows, activeId);
                 if (imageComfyUIWorkflowSelect) imageComfyUIWorkflowSelect.value = activeId;
@@ -5567,12 +5701,14 @@ export class SettingsApp {
                 imageComfyUIWorkflowName.value = '';
                 imageComfyUIWorkflowName.focus();
             }
+            await this.storage.set(`phone-image-${getComfyUIPresetScope()}-comfyui-active-workflow`, '');
             await this.storage.set('phone-image-comfyui-active-workflow', '');
             this.phoneShell?.showNotification?.('新建 ComfyUI 工作流', '填写名称后点击保存', '✏️');
         });
 
         imageComfyUIWorkflowDeleteBtn?.addEventListener('click', async () => {
-            const activeId = String(imageComfyUIWorkflowSelect?.value || this.storage.get('phone-image-comfyui-active-workflow') || '').trim();
+            const scope = getComfyUIPresetScope();
+            const activeId = String(imageComfyUIWorkflowSelect?.value || this.storage.get(`phone-image-${scope}-comfyui-active-workflow`) || this.storage.get('phone-image-comfyui-active-workflow') || '').trim();
             if (!activeId) {
                 this.phoneShell?.showNotification?.('删除失败', '请先选择要删除的 ComfyUI 工作流', '⚠️');
                 return;
@@ -5584,6 +5720,7 @@ export class SettingsApp {
 
             const nextWorkflows = workflows.filter(workflow => workflow.id !== activeId);
             await this._saveComfyUIWorkflows(nextWorkflows);
+            await this.storage.set(`phone-image-${scope}-comfyui-active-workflow`, '');
             await this.storage.set('phone-image-comfyui-active-workflow', '');
             fillComfyUIWorkflowSelect(nextWorkflows, '');
             if (imageComfyUIWorkflowSelect) imageComfyUIWorkflowSelect.value = '';
@@ -5593,7 +5730,7 @@ export class SettingsApp {
 
         imageComfyUIWorkflowExportBtn?.addEventListener('click', async () => {
             const workflows = this._getComfyUIWorkflows();
-            const activeId = String(imageComfyUIWorkflowSelect?.value || this.storage.get('phone-image-comfyui-active-workflow') || '').trim();
+            const activeId = String(imageComfyUIWorkflowSelect?.value || getComfyUIActiveWorkflowId()).trim();
             const activeWorkflow = workflows.find(workflow => workflow.id === activeId);
             const exportWorkflows = activeWorkflow ? [activeWorkflow] : workflows;
             if (!exportWorkflows.length) {
@@ -5634,6 +5771,7 @@ export class SettingsApp {
                     nextWorkflows.push(workflow);
                 });
                 await this._saveComfyUIWorkflows(nextWorkflows);
+                await this.storage.set(`phone-image-${getComfyUIPresetScope()}-comfyui-active-workflow`, firstImportedId);
                 await this.storage.set('phone-image-comfyui-active-workflow', firstImportedId);
                 fillComfyUIWorkflowSelect(nextWorkflows, firstImportedId);
                 if (imageComfyUIWorkflowSelect) imageComfyUIWorkflowSelect.value = firstImportedId;
@@ -5655,6 +5793,7 @@ export class SettingsApp {
             setComfyUIFieldValue('phone-image-comfyui-node-mapping', '');
             if (imageComfyUIWorkflowSelect) imageComfyUIWorkflowSelect.value = '';
             if (imageComfyUIWorkflowName) imageComfyUIWorkflowName.value = '';
+            await this.storage.set(`phone-image-${getComfyUIPresetScope()}-comfyui-active-workflow`, '');
             await this.storage.set('phone-image-comfyui-active-workflow', '');
             await this.storage.set('phone-image-comfyui-node-mapping', '');
             await saveComfyUISettings();
