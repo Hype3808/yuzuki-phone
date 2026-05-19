@@ -124,13 +124,13 @@ export class DiaryView {
             `;
         } else {
             listHtml = sorted.map(entry => {
-                const parsed = this._parseDate(entry.date);
-                const previewSource = data.stripPhotoPromptTags
-                    ? data.stripPhotoPromptTags(entry.content || '')
-                    : String(entry.content || '');
-                const preview = previewSource.replace(/【[^】]*】/g, '').trim().slice(0, 40);
-                const titleMatch = (entry.content || '').match(/【([^】]+)】/);
-                const diaryTitle = (titleMatch && !titleMatch[1].match(/\d{1,6}年/)) ? titleMatch[1] : '';
+                const parsedDiary = data.parseDiaryContent(entry.content || '');
+                const parsed = this._parseDate(entry.date || parsedDiary.date);
+                const preview = String(parsedDiary.body || '')
+                    .replace(/\s+/g, ' ')
+                    .trim()
+                    .slice(0, 40);
+                const diaryTitle = parsedDiary.title || entry.title || '';
                 const isHidden = entry.offlineHidden === true;
                 const isSelected = this.tocSelectedIds.has(String(entry.id));
                 return `
@@ -500,10 +500,11 @@ export class DiaryView {
             if (!photoId) return;
             const runAction = () => {
                 const cardIndex = Number.parseInt(card.getAttribute('data-photo-index') || '0', 10) || 0;
+                const groupKey = String(card.closest('.diary-photo-memory')?.getAttribute('data-photo-group') || 'main');
                 const activeIndex = Number.parseInt(card.closest('.diary-photo-memory')?.getAttribute('data-active-index') || '0', 10) || 0;
                 if (cardIndex !== activeIndex) {
-                    this._setDiaryPhotoActiveIndex(cardIndex);
-                    this._refreshDiaryPhotoMemory();
+                    this._setDiaryPhotoActiveIndex(cardIndex, groupKey);
+                    this._activateDiaryPhotoCard(card.closest('.diary-photo-memory'), cardIndex);
                     return;
                 }
                 if (card.classList.contains('is-flipped')) {
@@ -546,30 +547,56 @@ export class DiaryView {
         });
     }
 
-    _setDiaryPhotoActiveIndex(index = 0) {
+    _setDiaryPhotoActiveIndex(index = 0, groupKey = 'main') {
         const entryId = String(this.currentEntryId || '').trim();
         if (!entryId) return;
-        this._diaryPhotoActiveIndexByEntry.set(entryId, Math.max(0, Number.parseInt(index, 10) || 0));
+        this._diaryPhotoActiveIndexByEntry.set(`${entryId}:${String(groupKey || 'main')}`, Math.max(0, Number.parseInt(index, 10) || 0));
     }
 
-    _getDiaryPhotoActiveIndex(photoCount = 0) {
+    _getDiaryPhotoActiveIndex(photoCount = 0, groupKey = 'main') {
         const entryId = String(this.currentEntryId || '').trim();
-        const stored = entryId ? this._diaryPhotoActiveIndexByEntry.get(entryId) : 0;
+        const stored = entryId ? this._diaryPhotoActiveIndexByEntry.get(`${entryId}:${String(groupKey || 'main')}`) : 0;
         const index = Math.max(0, Number.parseInt(stored, 10) || 0);
         return Math.min(index, Math.max(0, photoCount - 1));
+    }
+
+    _activateDiaryPhotoCard(root, activeIndex = 0) {
+        if (!root) return;
+        const cards = Array.from(root.querySelectorAll('.diary-photo-card'));
+        const count = cards.length;
+        if (count <= 1) return;
+        const normalizedActiveIndex = Math.min(Math.max(0, Number.parseInt(activeIndex, 10) || 0), count - 1);
+        root.setAttribute('data-active-index', String(normalizedActiveIndex));
+        cards.forEach((card, index) => {
+            const stackOffset = (index - normalizedActiveIndex + count) % count;
+            const rotate = stackOffset === 0 ? '-1.5deg' : (stackOffset === 1 ? '4deg' : '-5deg');
+            card.classList.remove('diary-photo-stack-0', 'diary-photo-stack-1', 'diary-photo-stack-2');
+            card.classList.add(`diary-photo-stack-${stackOffset}`);
+            card.style.setProperty('--diary-photo-rotate', rotate);
+            card.style.setProperty('--diary-photo-stack-offset', String(stackOffset));
+        });
     }
 
     _renderDiaryPhotoMemory(entry) {
         const photos = Array.isArray(entry?.photos) ? entry.photos.slice(0, 3) : [];
         if (photos.length === 0) return '';
-        const activeIndex = this._getDiaryPhotoActiveIndex(photos.length);
-        const cards = photos.map((photo, index) => {
+        return this._renderDiaryPhotoStack(entry, photos, null, 'main');
+    }
+
+    _renderDiaryPhotoStack(entry, photos = [], activeIndexOverride = null, groupKey = 'main') {
+        const safePhotos = Array.isArray(photos) ? photos.slice(0, 3) : [];
+        if (safePhotos.length === 0) return '';
+        const activeIndex = this._getDiaryPhotoActiveIndex(safePhotos.length, groupKey);
+        const normalizedActiveIndex = activeIndexOverride === null
+            ? activeIndex
+            : Math.min(Math.max(0, Number.parseInt(activeIndexOverride, 10) || 0), safePhotos.length - 1);
+        const cards = safePhotos.map((photo, index) => {
             const status = String(photo?.status || 'idle');
             const imageUrl = String(photo?.imageUrl || '').trim();
             const prompt = this._escapeHtml(String(photo?.prompt || ''));
             const reason = this._escapeHtml(String(photo?.reason || ''));
             const rawType = String(photo?.type || '图片');
-            const stackOffset = (index - activeIndex + photos.length) % photos.length;
+            const stackOffset = (index - normalizedActiveIndex + safePhotos.length) % safePhotos.length;
             const rotate = stackOffset === 0 ? '-1.5deg' : (stackOffset === 1 ? '4deg' : '-5deg');
             const displayUrl = imageUrl && status === 'done'
                 ? imageUrl
@@ -601,7 +628,7 @@ export class DiaryView {
                 </div>
             `;
         }).join('');
-        return `<div class="diary-photo-memory" id="diary-photo-memory" data-photo-count="${photos.length}" data-active-index="${activeIndex}">${cards}</div>`;
+        return `<div class="diary-photo-memory" data-photo-count="${safePhotos.length}" data-active-index="${normalizedActiveIndex}" data-photo-group="${this._escapeAttr(groupKey)}">${cards}</div>`;
     }
 
     async _generateDiaryPhoto(photoId, options = {}) {
@@ -645,14 +672,31 @@ export class DiaryView {
         const month = parsedDate.month ? String(parsedDate.month).padStart(2, '0') : '--';
         const day = parsedDate.day && parsedDate.day !== '?' ? String(parsedDate.day).padStart(2, '0') : '--';
         const weatherLine = [parsedDate.weekday || '', parsedDiary.weather || ''].filter(Boolean).join(' | ');
-        const bodyBlocks = this._formatContentBlocks(parsedDiary.body || entry?.content || '');
-        const photoHtml = this._renderDiaryPhotoMemory(entry);
-        const insertAt = Math.min(2, bodyBlocks.length);
-        const contentHtml = [
-            ...bodyBlocks.slice(0, insertAt),
-            photoHtml,
-            ...bodyBlocks.slice(insertAt)
-        ].filter(Boolean).join('');
+        const bodyParts = this._formatContentParts(parsedDiary.rawBody || parsedDiary.body || entry?.content || '');
+        const photos = Array.isArray(entry?.photos) ? entry.photos.slice(0, 3) : [];
+        let inlinePhotoIndex = 0;
+        const hasInlinePhoto = bodyParts.some(part => part === '__DIARY_PHOTO__');
+        const insertAt = Math.min(2, bodyParts.length);
+        const contentHtml = hasInlinePhoto
+            ? bodyParts.reduce((htmlParts, part, index) => {
+                if (part !== '__DIARY_PHOTO__') {
+                    htmlParts.push(part);
+                    return htmlParts;
+                }
+                if (bodyParts[index - 1] === '__DIARY_PHOTO__') return htmlParts;
+                const inlinePhotos = [];
+                while (bodyParts[index + inlinePhotos.length] === '__DIARY_PHOTO__') {
+                    const photo = photos[inlinePhotoIndex++];
+                    if (photo) inlinePhotos.push(photo);
+                }
+                if (inlinePhotos.length > 0) htmlParts.push(this._renderDiaryPhotoStack(entry, inlinePhotos, null, `inline-${index}`));
+                return htmlParts;
+            }, []).filter(Boolean).join('')
+            : [
+                ...bodyParts.slice(0, insertAt),
+                this._renderDiaryPhotoStack(entry, photos, null, 'main'),
+                ...bodyParts.slice(insertAt)
+            ].filter(Boolean).join('');
         const signature = String(parsedDiary.author || entry?.author || '').trim();
 
         return `
@@ -695,18 +739,8 @@ export class DiaryView {
     }
 
     _refreshDiaryPhotoMemory() {
-        const entry = this.app.diaryData.getEntry(this.currentEntryId);
-        const root = document.getElementById('diary-photo-memory');
-        if (!entry || !root) return;
-        const wrapper = document.createElement('div');
-        wrapper.innerHTML = this._renderDiaryPhotoMemory(entry);
-        const next = wrapper.firstElementChild;
-        if (!next) {
-            root.remove();
-            return;
-        }
-        root.replaceWith(next);
-        this._bindDiaryPhotoEvents();
+        if (!this.currentEntryId) return;
+        this.render();
     }
 
     // ==================== 设置视图 ====================
@@ -1668,11 +1702,11 @@ export class DiaryView {
     }
 
     _formatContent(content) {
-        const blocks = this._formatContentBlocks(content);
+        const blocks = this._formatContentParts(content).filter(part => part !== '__DIARY_PHOTO__');
         return `<div class="diary-text-body">${blocks.join('') || '<span style="color:#baa;">（空白页）</span>'}</div>`;
     }
 
-    _formatContentBlocks(content) {
+    _formatContentParts(content) {
         if (!content) return [];
 
         let formatted = content;
@@ -1683,9 +1717,6 @@ export class DiaryView {
         formatted = formatted.replace(/^日记正文[:：]\s*$/gm, '');
         formatted = formatted.replace(/^照片[:：]\s*$/gm, '');
         formatted = formatted.replace(/^落款[:：].*$/gm, '');
-        formatted = this.app?.diaryData?.stripPhotoPromptTags
-            ? this.app.diaryData.stripPhotoPromptTags(formatted)
-            : formatted;
         formatted = formatted.replace(/^(?:[^\S\r\n]|&nbsp;|&emsp;|&ensp;|&#160;|&#8195;|\u200B|\u3000)+/gm, '');
         formatted = formatted.replace(/^[\r\n]+/, '');
 
@@ -1700,7 +1731,23 @@ export class DiaryView {
             return `<del class="diary-strike">${text}</del>`;
         });
 
-        return formatted
+        const photoRegex = this.app?.diaryData?._getPhotoPromptTagRegex?.() || /\[(个人图片|图片)\]\s*[（(]([\s\S]*?)[）)](?:\s*[（(]([\s\S]*?)[）)])?/g;
+        const parts = [];
+        let lastIndex = 0;
+        let match;
+        while ((match = photoRegex.exec(formatted)) !== null) {
+            const before = formatted.slice(lastIndex, match.index).trim();
+            if (before) parts.push(...this._formatTextBlocks(before));
+            parts.push('__DIARY_PHOTO__');
+            lastIndex = match.index + match[0].length;
+        }
+        const tail = formatted.slice(lastIndex).trim();
+        if (tail) parts.push(...this._formatTextBlocks(tail));
+        return parts;
+    }
+
+    _formatTextBlocks(text = '') {
+        return String(text || '')
             .split(/\n{2,}/)
             .map(part => part.trim())
             .filter(Boolean)

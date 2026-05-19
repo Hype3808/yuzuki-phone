@@ -470,13 +470,13 @@ export class DiaryData {
         const title = this._extractTitleFromContent(text) || '';
         const newDateMatch = text.match(/^日期[:：]\s*(.+)$/m);
         const newWeatherMatch = text.match(/^天气[:：]\s*(.+)$/m);
-        const newBodyMatch = text.match(/^日记正文[:：]\s*\n?([\s\S]*?)(?=\n\s*(?:照片|落款)[:：]|\s*$)/m);
-        const newPhotoMatch = text.match(/^照片[:：]\s*\n?([\s\S]*?)(?=\n\s*落款[:：]|\s*$)/m);
-        const newAuthorMatch = text.match(/^落款[:：]\s*(.+)$/m);
+        const newBodyMatch = text.match(/^日记正文[:：]\s*\n?([\s\S]*?)(?=\n\s*落款[:：]|\s*$)/m);
+        const newAuthorMatch = text.match(/^落款[:：]\s*(?:\n\s*)?(.+)$/m);
         const isNewFormat = !!(title && newDateMatch && newBodyMatch && newAuthorMatch);
 
         if (isNewFormat) {
-            const body = this.stripPhotoPromptTags(newBodyMatch?.[1] || '')
+            const rawBody = String(newBodyMatch?.[1] || '').trim();
+            const body = this.stripPhotoPromptTags(rawBody)
                 .replace(/\n{3,}/g, '\n\n')
                 .trim();
             return {
@@ -486,7 +486,8 @@ export class DiaryData {
                 weather: String(newWeatherMatch?.[1] || '').trim(),
                 author: this._normalizeDiaryAuthorName(newAuthorMatch?.[1] || ''),
                 body,
-                photos: this.extractPhotoPrompts(newPhotoMatch?.[1] || text, {
+                rawBody,
+                photos: this.extractPhotoPrompts(rawBody, {
                     author: this._normalizeDiaryAuthorName(newAuthorMatch?.[1] || '')
                 }).photos
             };
@@ -503,6 +504,11 @@ export class DiaryData {
         const weather = this._extractLegacyWeatherFromFooter(footer);
         let body = source
             .replace(/^【[^】]+】\s*/, '')
+            .replace(/^日期[:：].*$/gm, '')
+            .replace(/^天气[:：].*$/gm, '')
+            .replace(/^日记正文[:：]\s*$/gm, '')
+            .replace(/^照片[:：]\s*$/gm, '')
+            .replace(/^落款[:：].*$/gm, '')
             .replace(this._getPhotoPromptTagRegex(), '')
             .trim();
         if (footer) {
@@ -516,6 +522,7 @@ export class DiaryData {
             weather,
             author,
             body,
+            rawBody: source,
             photos: this.extractPhotoPrompts(source, { author }).photos
         };
     }
