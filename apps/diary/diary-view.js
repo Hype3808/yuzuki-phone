@@ -454,32 +454,18 @@ export class DiaryView {
 
         const bgHtml = pageBg ? `<div class="diary-page-bg" style="background-image: url('${pageBg}');"></div>` : '';
         const bodyClass = pageBg ? 'diary-page-body has-bg' : 'diary-page-body';
-        const diaryTitle = this._extractTitle(entry.content);
+        const parsedDiary = data.parseDiaryContent(entry.content);
+        const diaryTitle = parsedDiary.title || '无标题';
         const diaryPhotos = data.normalizeEntryPhotos(entry);
         if (diaryPhotos.length) data.saveEntries();
 
         const html = `
             <div class="diary-app">
                 <div class="diary-page ${enterClass}">
-                    <div class="diary-page-header">
-                        <button class="diary-page-back diary-pencil-btn" id="diary-page-back">
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M15 18l-6-6 6-6"/>
-                        </svg>
-                        </button>
-                        <div class="diary-page-date">${diaryTitle}</div>
-                        <button class="diary-page-settings-btn diary-pencil-btn" id="diary-page-settings">
-                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
-                            </svg>
-                        </button>
-                    </div>
+                    <div class="diary-page-status-safe" aria-hidden="true"></div>
                     ${bgHtml}
                     <div class="${bodyClass}" id="diary-page-body">
-                        ${this._renderDiaryPhotoMemory(entry)}
-                        <div class="diary-page-content" id="diary-page-content" style="font-size: ${fontSize}px; line-height: ${lineHeight};">
-                            ${this._formatContent(entry.content)}
-                        </div>
+                        ${this._renderBujoDiaryPage(entry, parsedDiary, { fontSize, lineHeight })}
                     </div>
                 </div>
             </div>
@@ -596,7 +582,7 @@ export class DiaryView {
                     : '');
             const actionHtml = `
                 <button class="diary-photo-tool diary-photo-regenerate" type="button" data-photo-id="${this._escapeAttr(photo.id)}" title="重新生成">↻</button>
-                <button class="diary-photo-tool diary-photo-flip" type="button" title="查看照片说明">i</button>
+                <button class="diary-photo-tool diary-photo-flip" type="button" title="查看照片说明">↪</button>
             `;
             const backText = reason || '这张照片还没有留下说明。';
             const frontCaption = rawType === '个人图片' ? '「 私人影像 」' : '「 沉溺于那片海 」';
@@ -652,6 +638,60 @@ export class DiaryView {
         }
         const seed = Math.abs(hash).toString(36) || 'diary';
         return `https://picsum.photos/seed/diary-${seed}/480/480`;
+    }
+
+    _renderBujoDiaryPage(entry, parsedDiary = {}, options = {}) {
+        const parsedDate = this._parseDate(parsedDiary.date);
+        const month = parsedDate.month ? String(parsedDate.month).padStart(2, '0') : '--';
+        const day = parsedDate.day && parsedDate.day !== '?' ? String(parsedDate.day).padStart(2, '0') : '--';
+        const weatherLine = [parsedDate.weekday || '', parsedDiary.weather || ''].filter(Boolean).join(' | ');
+        const bodyBlocks = this._formatContentBlocks(parsedDiary.body || entry?.content || '');
+        const photoHtml = this._renderDiaryPhotoMemory(entry);
+        const insertAt = Math.min(2, bodyBlocks.length);
+        const contentHtml = [
+            ...bodyBlocks.slice(0, insertAt),
+            photoHtml,
+            ...bodyBlocks.slice(insertAt)
+        ].filter(Boolean).join('');
+        const signature = String(parsedDiary.author || entry?.author || '').trim();
+
+        return `
+            <div class="diary-bujo-wrapper">
+                <div class="diary-bujo-page-actions">
+                    <button class="diary-page-back diary-bujo-nav-btn diary-bujo-back-btn" id="diary-page-back">Back</button>
+                    <button class="diary-page-settings-btn diary-bujo-nav-btn diary-bujo-edit-btn" id="diary-page-settings">Edit</button>
+                </div>
+                <div class="diary-bujo-header">
+                    <div class="diary-bujo-calendar">
+                        <div class="diary-bujo-rings">-0-0-</div>
+                        <div class="diary-bujo-datebox">${month}/${day}</div>
+                        <div class="diary-bujo-weather">${this._escapeHtml(weatherLine || '今日')}</div>
+                    </div>
+                    <div class="diary-bujo-title-area">
+                        <div class="diary-bujo-title-small">Notes:</div>
+                        <div class="diary-bujo-title-main">${this._escapeHtml(parsedDiary.title || '无标题')}</div>
+                    </div>
+                    <div class="diary-bujo-sticker" aria-hidden="true">
+                        <svg viewBox="0 0 64 64" role="img" focusable="false">
+                            <path d="M17 28 14 13l13 9 5-1 5 1 13-9-3 15" />
+                            <path d="M13 35c0-13 9-21 19-21s19 8 19 21c0 11-8 18-19 18s-19-7-19-18Z" />
+                            <path d="M24 34h.1M40 34h.1" />
+                            <path d="M31 39h2l-1 2-1-2Z" />
+                            <path d="M25 43c3 3 11 3 14 0" />
+                            <path d="M18 39H7M18 43H8M46 39h11M46 43h10" />
+                        </svg>
+                    </div>
+                </div>
+
+                <div class="diary-bujo-divider">diary content</div>
+
+                <div class="diary-page-content diary-bujo-content" id="diary-page-content" style="font-size: ${options.fontSize}px; line-height: ${options.lineHeight};">
+                    ${contentHtml || '<span style="color:#baa;">（空白页）</span>'}
+                </div>
+
+                ${signature ? `<div class="diary-bujo-signature"><span>${this._escapeHtml(signature)}</span></div>` : ''}
+            </div>
+        `;
     }
 
     _refreshDiaryPhotoMemory() {
@@ -737,6 +777,9 @@ export class DiaryView {
                                 <label class="diary-s-btn diary-s-btn-primary" for="diary-bg-global">📄 日记</label>
                                 <input type="file" id="diary-bg-global" accept="image/png, image/jpeg, image/gif, image/webp, image/*" style="display:none;">
                             </div>
+                            <button class="diary-s-btn diary-s-btn-warn" id="diary-bg-reset-default" style="width: 100%; margin-top: 8px;">
+                                恢复默认背景并清理上传文件
+                            </button>
                         </div>
 
                         <!-- 手动生成日记 -->
@@ -934,6 +977,23 @@ export class DiaryView {
                 } catch (err) {
                     alert('❌ 日记默认背景上传失败：' + (err?.message || err));
                 }
+            }
+        };
+
+        const bgResetDefault = document.getElementById('diary-bg-reset-default');
+        if (bgResetDefault) bgResetDefault.onclick = async () => {
+            if (!confirm('确定恢复默认日记背景，并清理已上传的封面、目录、日记背景文件吗？')) return;
+            try {
+                bgResetDefault.disabled = true;
+                bgResetDefault.textContent = '正在恢复...';
+                const result = await this.app.diaryData.resetDefaultBackgrounds();
+                result?.cleanup?.();
+                this.render();
+                alert(`✅ 已恢复默认背景，并开始清理 ${result?.cleanupCount || 0} 个上传文件`);
+            } catch (err) {
+                bgResetDefault.disabled = false;
+                bgResetDefault.textContent = '恢复默认背景并清理上传文件';
+                alert('❌ 恢复默认背景失败：' + (err?.message || err));
             }
         };
 
@@ -1569,6 +1629,7 @@ export class DiaryView {
         if (m) {
             return {
                 day: m[3],
+                month: m[2],
                 monthLabel: `${m[2]}月`,
                 year: m[1],
                 full: `${m[1]}年${m[2]}月${m[3]}日`,
@@ -1607,14 +1668,24 @@ export class DiaryView {
     }
 
     _formatContent(content) {
-        if (!content) return '<span style="color:#baa;">（空白页）</span>';
+        const blocks = this._formatContentBlocks(content);
+        return `<div class="diary-text-body">${blocks.join('') || '<span style="color:#baa;">（空白页）</span>'}</div>`;
+    }
+
+    _formatContentBlocks(content) {
+        if (!content) return [];
 
         let formatted = content;
+        formatted = formatted.replace(/^(?:[^\S\r\n]|&nbsp;|&emsp;|&ensp;|&#160;|&#8195;|\u200B|\u3000)+/gm, '');
+        formatted = formatted.replace(/^【[^】]+】\s*/, '');
+        formatted = formatted.replace(/^日期[:：].*$/gm, '');
+        formatted = formatted.replace(/^天气[:：].*$/gm, '');
+        formatted = formatted.replace(/^日记正文[:：]\s*$/gm, '');
+        formatted = formatted.replace(/^照片[:：]\s*$/gm, '');
+        formatted = formatted.replace(/^落款[:：].*$/gm, '');
         formatted = this.app?.diaryData?.stripPhotoPromptTags
             ? this.app.diaryData.stripPhotoPromptTags(formatted)
             : formatted;
-        formatted = formatted.replace(/^(?:[^\S\r\n]|&nbsp;|&emsp;|&ensp;|&#160;|&#8195;|\u200B|\u3000)+/gm, '');
-        formatted = formatted.replace(/^【[^】]+】\s*/, '');
         formatted = formatted.replace(/^(?:[^\S\r\n]|&nbsp;|&emsp;|&ensp;|&#160;|&#8195;|\u200B|\u3000)+/gm, '');
         formatted = formatted.replace(/^[\r\n]+/, '');
 
@@ -1629,7 +1700,11 @@ export class DiaryView {
             return `<del class="diary-strike">${text}</del>`;
         });
 
-        return `<div class="diary-text-body" style="text-indent: 0 !important; margin: 0 !important; padding: 0 !important; clear: both; display: block; text-align: left;">${formatted}</div>`;
+        return formatted
+            .split(/\n{2,}/)
+            .map(part => part.trim())
+            .filter(Boolean)
+            .map(part => `<div class="diary-bujo-text-item">${part.replace(/\n/g, '<br>')}</div>`);
     }
 
     _escapeHtml(value = '') {

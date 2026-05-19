@@ -173,6 +173,38 @@ export class DiaryData {
         this._cleanupReplacedDiaryImage(oldUrl, nextUrl);
     }
 
+    async resetDefaultBackgrounds() {
+        const bgKeys = [
+            ['global_diary_bg_cover', 'diary_shared_bg_cover'],
+            ['global_diary_bg_toc', 'diary_shared_bg_toc'],
+            ['global_diary_bg_global', 'diary_shared_bg_global']
+        ];
+        const managedImages = [];
+
+        bgKeys.forEach(([storageKey, legacyKey]) => {
+            managedImages.push(this.storage.get(storageKey));
+            try {
+                managedImages.push(localStorage.getItem(legacyKey));
+            } catch (e) { }
+        });
+
+        await Promise.all(bgKeys.map(async ([storageKey, legacyKey]) => {
+            await this.storage.remove(storageKey);
+            try {
+                localStorage.removeItem(legacyKey);
+            } catch (e) { }
+        }));
+
+        const cleanupPaths = [...new Set(managedImages
+            .map(path => this._normalizeManagedDiaryImagePath(path))
+            .filter(Boolean))];
+
+        return {
+            cleanupCount: cleanupPaths.length,
+            cleanup: () => this._cleanupManagedDiaryImages(cleanupPaths)
+        };
+    }
+
     // ==================== 行间距 ====================
 
     getPageLineHeight(entryId) {
@@ -421,6 +453,73 @@ export class DiaryData {
         return /\[(个人图片|图片)\]\s*[（(]([\s\S]*?)[）)](?:\s*[（(]([\s\S]*?)[）)])?/g;
     }
 
+    parseDiaryContent(content = {}) {
+        const text = String(content || '').replace(/\r\n/g, '\n').trim();
+        if (!text) {
+            return {
+                format: 'empty',
+                title: '',
+                date: '',
+                weather: '',
+                author: '',
+                body: '',
+                photos: []
+            };
+        }
+
+        const title = this._extractTitleFromContent(text) || '';
+        const newDateMatch = text.match(/^日期[:：]\s*(.+)$/m);
+        const newWeatherMatch = text.match(/^天气[:：]\s*(.+)$/m);
+        const newBodyMatch = text.match(/^日记正文[:：]\s*\n?([\s\S]*?)(?=\n\s*(?:照片|落款)[:：]|\s*$)/m);
+        const newPhotoMatch = text.match(/^照片[:：]\s*\n?([\s\S]*?)(?=\n\s*落款[:：]|\s*$)/m);
+        const newAuthorMatch = text.match(/^落款[:：]\s*(.+)$/m);
+        const isNewFormat = !!(title && newDateMatch && newBodyMatch && newAuthorMatch);
+
+        if (isNewFormat) {
+            const body = this.stripPhotoPromptTags(newBodyMatch?.[1] || '')
+                .replace(/\n{3,}/g, '\n\n')
+                .trim();
+            return {
+                format: 'new',
+                title,
+                date: String(newDateMatch?.[1] || '').trim(),
+                weather: String(newWeatherMatch?.[1] || '').trim(),
+                author: this._normalizeDiaryAuthorName(newAuthorMatch?.[1] || ''),
+                body,
+                photos: this.extractPhotoPrompts(newPhotoMatch?.[1] || text, {
+                    author: this._normalizeDiaryAuthorName(newAuthorMatch?.[1] || '')
+                }).photos
+            };
+        }
+
+        return this._parseLegacyDiaryContent(text);
+    }
+
+    _parseLegacyDiaryContent(text = '') {
+        const source = String(text || '').replace(/\r\n/g, '\n').trim();
+        const footer = this._extractDiaryFooterLine(source);
+        const date = this._extractLegacyDateFromContent(source);
+        const author = this._extractLegacyAuthorFromContent(source);
+        const weather = this._extractLegacyWeatherFromFooter(footer);
+        let body = source
+            .replace(/^【[^】]+】\s*/, '')
+            .replace(this._getPhotoPromptTagRegex(), '')
+            .trim();
+        if (footer) {
+            body = body.replace(footer, '').trim();
+        }
+        body = body.replace(/\n{3,}/g, '\n\n').trim();
+        return {
+            format: 'legacy',
+            title: this._extractTitleFromContent(source) || '',
+            date,
+            weather,
+            author,
+            body,
+            photos: this.extractPhotoPrompts(source, { author }).photos
+        };
+    }
+
     stripPhotoPromptTags(content = '') {
         return String(content || '')
             .replace(this._getPhotoPromptTagRegex(), '')
@@ -662,16 +761,19 @@ export class DiaryData {
 
     async _resolveDiaryPhotoContact(photo = {}, entry = null) {
         const context = this._getContext();
+        const parsedEntry = this.parseDiaryContent(entry?.content || '');
         const authorName = this._normalizeDiaryAuthorName(
             photo.author
             || entry?.author
+            || parsedEntry.author
             || this._extractAuthorFromContent(entry?.content)
         );
         const charName = authorName || String(context?.name2 || '').trim();
         if (!charName) return null;
         const wechatData = await this._getWechatDataForDiaryPhotos();
         const contacts = wechatData?.getContacts?.() || [];
-        return contacts.find(contact => wechatData?._isSameLookupName?.(contact.name, charName))
+        return wechatData?.findContactByNameLoose?.(charName, { includeChats: false })
+            || contacts.find(contact => wechatData?._isSameLookupName?.(contact.name, charName))
             || contacts.find(contact => String(contact?.name || '').trim() === charName)
             || null;
     }
@@ -1433,18 +1535,22 @@ export class DiaryData {
      * 从日记内容中提取日期（支持新格式：————YYYY年MM月DD日 星期* 天气 姓名）
      */
     _extractDateFromContent(content) {
-        // 新格式：————2024年12月25日 星期三 晴 小雨
-        const newMatch = content.match(/————(\d{1,6}年\d{1,2}月\d{1,2}日)\s*(星期[一二三四五六日天])?/);
-        if (newMatch) {
-            return newMatch[2] ? `${newMatch[1]} ${newMatch[2]}` : newMatch[1];
+        const newMatch = String(content || '').match(/^日期[:：]\s*(.+)$/m);
+        if (newMatch) return String(newMatch[1] || '').trim();
+        return this._extractLegacyDateFromContent(content);
+    }
+
+    _extractLegacyDateFromContent(content) {
+        const text = String(content || '');
+        const footerMatch = text.match(/————(\d{1,6}年\d{1,2}月\d{1,2}日)\s*(星期[一二三四五六日天])?/);
+        if (footerMatch) {
+            return footerMatch[2] ? `${footerMatch[1]} ${footerMatch[2]}` : footerMatch[1];
         }
 
-        // 旧格式兼容：【2024年12月25日 星期三】
-        const oldMatch = content.match(/【(\d{1,6}年\d{1,2}月\d{1,2}日\s*星期[一二三四五六日天]?)】/);
+        const oldMatch = text.match(/【(\d{1,6}年\d{1,2}月\d{1,2}日\s*星期[一二三四五六日天]?)】/);
         if (oldMatch) return oldMatch[1];
 
-        // 通用日期匹配
-        const generalMatch = content.match(/(\d{1,6}年\d{1,2}月\d{1,2}日)/);
+        const generalMatch = text.match(/(\d{1,6}年\d{1,2}月\d{1,2}日)/);
         if (generalMatch) return generalMatch[1];
 
         return '未知日期';
@@ -1464,6 +1570,12 @@ export class DiaryData {
     }
 
     _extractAuthorFromContent(content) {
+        const newMatch = String(content || '').match(/^落款[:：]\s*(.+)$/m);
+        if (newMatch) return this._normalizeDiaryAuthorName(newMatch[1]);
+        return this._extractLegacyAuthorFromContent(content);
+    }
+
+    _extractLegacyAuthorFromContent(content) {
         const footer = this._extractDiaryFooterLine(content);
         if (!footer) return '';
 
@@ -1501,11 +1613,28 @@ export class DiaryData {
         return author;
     }
 
+    _extractLegacyWeatherFromFooter(footer = '') {
+        const text = String(footer || '').trim();
+        if (!text) return '';
+        let tail = text
+            .replace(/^(?:————|----+|—{2,}|-{2,})\s*/, '')
+            .replace(/^\d{1,6}年\d{1,2}月\d{1,2}日\s*/, '')
+            .replace(/^星期[一二三四五六日天]\s*/, '')
+            .trim();
+        if (!tail) return '';
+
+        const author = this._extractLegacyAuthorFromContent(text);
+        if (author && tail.endsWith(author)) {
+            tail = tail.slice(0, -author.length).trim();
+        }
+        return tail.replace(/^天气[:：]\s*/, '').trim();
+    }
+
     /**
      * 从日记内容中提取标题（【日记标题】格式）
      */
     _extractTitleFromContent(content) {
-        const match = content.match(/【([^】]+)】/);
+        const match = String(content || '').match(/【([^】]+)】/);
         if (match && !match[1].match(/\d{1,6}年/)) {
             // 确保不是日期格式的【】
             return match[1];
@@ -1544,8 +1673,7 @@ export class DiaryData {
             return [];
         }
 
-        // 按分割线分割多篇日记（支持多种分割线格式）
-        const separatorRegex = /\n---+分割线---+\n|\n-{3,}\n|\n={3,}\n/;
+        const separatorRegex = /\n\s*---分割线---\s*\n/;
         const parts = rawContent.split(separatorRegex).filter(p => p.trim());
 
         const diaries = [];
@@ -1553,24 +1681,23 @@ export class DiaryData {
             const trimmed = part.trim();
             if (!trimmed) continue;
 
-            const date = this._extractDateFromContent(trimmed);
-            const title = this._extractTitleFromContent(trimmed);
+            const parsed = this.parseDiaryContent(trimmed);
 
             diaries.push({
                 content: trimmed,
-                date: date,
-                title: title,
-                author: this._extractAuthorFromContent(trimmed)
+                date: parsed.date,
+                title: parsed.title,
+                author: parsed.author
             });
         }
 
-        // 如果没有分割线，整体作为一篇日记
         if (diaries.length === 0 && rawContent.trim()) {
+            const parsed = this.parseDiaryContent(rawContent);
             diaries.push({
                 content: rawContent.trim(),
-                date: this._extractDateFromContent(rawContent),
-                title: this._extractTitleFromContent(rawContent),
-                author: this._extractAuthorFromContent(rawContent)
+                date: parsed.date,
+                title: parsed.title,
+                author: parsed.author
             });
         }
 
@@ -1585,30 +1712,7 @@ export class DiaryData {
         const jsonDiaries = this._tryParseImportedJson(normalized);
         if (jsonDiaries.length > 0) return jsonDiaries;
 
-        const strictSeparatorRegex = /\n\s*===\s*\n/;
-        if (strictSeparatorRegex.test(normalized)) {
-            const splitBySeparators = normalized
-                .split(strictSeparatorRegex)
-                .map(part => part.trim())
-                .filter(Boolean)
-                .map(content => ({
-                    content,
-                    title: this._extractTitleFromContent(content),
-                    date: this._extractDateFromContent(content),
-                    author: this._extractAuthorFromContent(content)
-                }));
-            if (splitBySeparators.length > 1) return splitBySeparators;
-        }
-
-        const lineSplitDiaries = this._splitImportedDiaryText(normalized);
-        if (lineSplitDiaries.length > 0) return lineSplitDiaries;
-
-        return [{
-            content: normalized,
-            title: this._extractTitleFromContent(normalized),
-            date: this._extractDateFromContent(normalized),
-            author: this._extractAuthorFromContent(normalized)
-        }];
+        return this.parseMultipleDiaries(normalized);
     }
 
     _tryParseImportedJson(text) {
@@ -1619,70 +1723,28 @@ export class DiaryData {
                 .map(item => {
                     if (typeof item === 'string') {
                         const content = item.trim();
+                        const parsedDiary = this.parseDiaryContent(content);
                         return content ? {
                             content,
-                            title: this._extractTitleFromContent(content),
-                            date: this._extractDateFromContent(content),
-                            author: this._extractAuthorFromContent(content)
+                            title: parsedDiary.title,
+                            date: parsedDiary.date,
+                            author: parsedDiary.author
                         } : null;
                     }
                     const content = String(item?.content || item?.text || item?.body || '').trim();
                     if (!content) return null;
+                    const parsedDiary = this.parseDiaryContent(content);
                     return {
                         content,
-                        title: item?.title || this._extractTitleFromContent(content),
-                        date: item?.date || this._extractDateFromContent(content),
-                        author: item?.author || item?.name || this._extractAuthorFromContent(content)
+                        title: item?.title || parsedDiary.title,
+                        date: item?.date || parsedDiary.date,
+                        author: item?.author || item?.name || parsedDiary.author
                     };
                 })
                 .filter(Boolean);
         } catch (e) {
             return [];
         }
-    }
-
-    _splitImportedDiaryText(text) {
-        const pushChunk = (chunks, lines) => {
-            const content = lines.join('\n').trim();
-            if (!content) return;
-            chunks.push({
-                content,
-                title: this._extractTitleFromContent(content),
-                date: this._extractDateFromContent(content),
-                author: this._extractAuthorFromContent(content)
-            });
-        };
-
-        const chunks = [];
-        let current = [];
-        let hasDateMark = false;
-        const lines = text.split('\n');
-
-        for (const line of lines) {
-            const trimmed = line.trim();
-            const startsWithTitle = /^【(?!\d{1,6}年)[^】]{1,80}】/.test(trimmed);
-            const startsNumberedDiary = /^第\s*\d+\s*[篇页则]?[：:、.\s]/.test(trimmed);
-            const isSeparator = /^===$/.test(trimmed);
-            const shouldStartNew = current.length > 0 && (
-                isSeparator ||
-                ((startsWithTitle || startsNumberedDiary) && (hasDateMark || current.join('\n').length > 280))
-            );
-
-            if (shouldStartNew) {
-                pushChunk(chunks, current);
-                current = [];
-                hasDateMark = false;
-                if (isSeparator) continue;
-            }
-
-            current.push(line);
-            if (/————\s*\d{1,6}年\d{1,2}月\d{1,2}日|\d{1,6}年\d{1,2}月\d{1,2}日/.test(trimmed)) {
-                hasDateMark = true;
-            }
-        }
-
-        pushChunk(chunks, current);
-        return chunks.length > 1 ? chunks : [];
     }
 
     clearCache() {
