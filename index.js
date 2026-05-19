@@ -36,15 +36,10 @@ const LOBBY_WECHAT_ONLINE_PROACTIVE_LAST_AT_KEY = 'phone_lobby_wechat_online_pro
 const LOBBY_WECHAT_ONLINE_PROACTIVE_PENDING_KEY = 'phone_lobby_wechat_online_proactive_pending_at';
 const ST_PHONE_CURRENT_UPDATE = {
     version: ST_PHONE_VERSION,
-    date: '2026-05-17',
+    date: '2026-05-18',
     items: [
         '【必做】更新后请在设置中执行一次【一键恢复默认提示词】，以同步最新全局提示词。',
-        '【优化】NAI 生图预设升级为完整参数预设，保存和切换时会同步模型、采样器、Schedule、尺寸、Steps、Scale、CFG Rescale 与 Seed。',
-        '【修复】微信语音条的转文字气泡会清理“语音条转文字内容”等模板前缀，只显示括号内的实际正文。',
-        '【新增】NAI 生图预设支持导入和导出，可一次复制分享多套预设并导入到当前 App。',
-        '【优化】优化部分 CSS 渲染，减少面板切换和弹层显示时的闪烁。',
-        '【优化】优化微信转账/红包交互逻辑，AI 可按提示收款、领取或退回，并同步显示状态。',
-        '【优化】微信拉黑状态会联动线下好友名单、线上单聊和群聊成员显示；日记 [个人图片] 会按日记末尾署名匹配微信联系人固定 tag 与参考图。'
+        '【修复】修复用户在正文 <wechat> 模板中向微信群发送消息时，消息未同步显示到对应群聊的问题。'
     ]
 };
 
@@ -4939,7 +4934,13 @@ if (window.GGP_Loaded) {
                         chatType: currentChatType
                     })) {
                         if (isWechatSenderCurrentUser(currentContact) && currentRecipient) {
+                            const recipientGroup = getWechatKnownGroupByName(currentRecipient);
                             currentContact = currentRecipient;
+                            if (recipientGroup) {
+                                currentChatType = 'group';
+                                currentChatTypeSource = 'inferred';
+                                knownGroupMembers = Array.isArray(recipientGroup.members) ? [...recipientGroup.members] : [];
+                            }
                             messagesToSave = messagesToSave.map(msg => ({ ...msg, sender: 'me' }));
                         } else {
                             console.warn('⚠️ [微信] 跳过非用户接收人的线下微信消息:', {
@@ -5549,24 +5550,30 @@ if (window.GGP_Loaded) {
 
                 if (effectiveIsGroupChat && msg.sender) {
                     // 群聊消息，使用每条消息的发送者
-                    const normalizedGroupSender = normalizeWechatGroupSpeakerName(msg.sender, allowedGroupSpeakerNames);
-                    if (allowedGroupSpeakerNames.length > 0 && !normalizedGroupSender) {
-                        console.warn('⚠️ [微信] 写入前丢弃非群成员发言:', {
-                            group: chat.name,
-                            sender: msg.sender,
-                            allowed: allowedGroupSpeakerNames
-                        });
-                        return;
-                    }
-                    messageSender = normalizedGroupSender || msg.sender;
-
-                    // 尝试获取发送者的头像
-                    const senderContact = wechatData.getContactByName(messageSender);
-                    if (senderContact && senderContact.avatar) {
-                        senderAvatar = senderContact.avatar;
+                    if (msgSenderIsCurrentUser) {
+                        messageSender = 'me';
+                        const userInfo = wechatData.getUserInfo?.() || {};
+                        senderAvatar = userInfo.avatar || '';
                     } else {
-                        // 🔥 核心修复4：强制置空，阻止继承 data.avatar（避免把群头像套到个人头上）
-                        senderAvatar = '';
+                        const normalizedGroupSender = normalizeWechatGroupSpeakerName(msg.sender, allowedGroupSpeakerNames);
+                        if (allowedGroupSpeakerNames.length > 0 && !normalizedGroupSender) {
+                            console.warn('⚠️ [微信] 写入前丢弃非群成员发言:', {
+                                group: chat.name,
+                                sender: msg.sender,
+                                allowed: allowedGroupSpeakerNames
+                            });
+                            return;
+                        }
+                        messageSender = normalizedGroupSender || msg.sender;
+
+                        // 尝试获取发送者的头像
+                        const senderContact = wechatData.getContactByName(messageSender);
+                        if (senderContact && senderContact.avatar) {
+                            senderAvatar = senderContact.avatar;
+                        } else {
+                            // 🔥 核心修复4：强制置空，阻止继承 data.avatar（避免把群头像套到个人头上）
+                            senderAvatar = '';
+                        }
                     }
                 }
 
