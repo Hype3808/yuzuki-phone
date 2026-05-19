@@ -2442,6 +2442,7 @@ export class SettingsApp {
                         <button id="phone-image-prompt-preset-export" class="setting-btn" style="height: 30px; padding: 0 8px; font-size: 12px; background: #eef6ff; color: #1d4f91; border: 1px solid #b9d6fb; border-radius: 8px; cursor: pointer;">导出预设</button>
                         <button id="phone-image-prompt-preset-import" class="setting-btn" style="height: 30px; padding: 0 8px; font-size: 12px; background: #fff7ed; color: #8a4d16; border: 1px solid #f1c38c; border-radius: 8px; cursor: pointer;">导入预设</button>
                     </div>
+                    <input type="file" id="phone-image-prompt-preset-import-file" accept=".json,application/json,text/json" style="display: none;">
                 </div>
 
                 <div class="setting-item">
@@ -2841,6 +2842,7 @@ export class SettingsApp {
                         <button id="phone-image-comfyui-workflow-import" class="setting-btn" style="height: 30px; padding: 0 8px; font-size: 12px; background: #fff; color: #b45309; border: 1px solid rgba(245,158,11,0.42); border-radius: 8px; cursor: pointer;">导入</button>
                         <button id="phone-image-comfyui-workflow-clear" class="setting-btn" style="height: 30px; padding: 0 8px; font-size: 12px; background: #fff; color: #555; border: 1px solid #d8d8d8; border-radius: 8px; cursor: pointer;">内置</button>
                     </div>
+                    <input type="file" id="phone-image-comfyui-workflow-import-file" accept=".json,application/json,text/json" style="display: none;">
                     <textarea id="phone-image-comfyui-workflow" rows="8"
                               style="width: 100%; min-height: 150px; padding: 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 11px; line-height: 1.45; background: #fafafa; box-sizing: border-box; margin-top: 6px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;">${this._escapeHtml(comfyuiWorkflow)}</textarea>
                 </div>
@@ -4022,6 +4024,7 @@ export class SettingsApp {
         const imageComfyUIWorkflowDeleteBtn = document.getElementById('phone-image-comfyui-workflow-delete');
         const imageComfyUIWorkflowExportBtn = document.getElementById('phone-image-comfyui-workflow-export');
         const imageComfyUIWorkflowImportBtn = document.getElementById('phone-image-comfyui-workflow-import');
+        const imageComfyUIWorkflowImportFile = document.getElementById('phone-image-comfyui-workflow-import-file');
         const imageComfyUIWorkflowClearBtn = document.getElementById('phone-image-comfyui-workflow-clear');
         const imageComfyUIWorkflowHelpBtn = document.getElementById('phone-image-comfyui-workflow-help');
         const imagePromptAppSelect = document.getElementById('phone-image-prompt-app-select');
@@ -4035,6 +4038,7 @@ export class SettingsApp {
         const imagePromptPresetDeleteBtn = document.getElementById('phone-image-prompt-preset-delete');
         const imagePromptPresetExportBtn = document.getElementById('phone-image-prompt-preset-export');
         const imagePromptPresetImportBtn = document.getElementById('phone-image-prompt-preset-import');
+        const imagePromptPresetImportFile = document.getElementById('phone-image-prompt-preset-import-file');
         const imageProviderAppBindInputs = Array.from(document.querySelectorAll('.phone-image-provider-app-bind'));
         const setImageProviderVisibility = () => {
             const provider = String(imageProvider?.value || 'novelai').trim() || 'novelai';
@@ -4394,6 +4398,32 @@ export class SettingsApp {
             return candidates
                 .map((preset, index) => normalizeImportedImagePreset(preset, `导入预设 ${index + 1}`))
                 .filter(Boolean);
+        };
+        const readJsonImportFile = async (file) => {
+            if (!file) throw new Error('未选择文件');
+            const text = await file.text();
+            if (!String(text || '').trim()) throw new Error('文件内容为空');
+            return text;
+        };
+        const downloadJsonFile = (payload, filename) => {
+            const safeName = String(filename || 'yuzuki-export.json')
+                .replace(/[\\/:*?"<>|]+/g, '-')
+                .replace(/\s+/g, '-')
+                .replace(/-+/g, '-')
+                .replace(/^-|-$/g, '') || 'yuzuki-export.json';
+            const finalName = /\.json$/i.test(safeName) ? safeName : `${safeName}.json`;
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = finalName;
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            link.click();
+            setTimeout(() => {
+                URL.revokeObjectURL(url);
+                link.remove();
+            }, 0);
         };
         const makeUniqueImagePresetName = (name, usedNames) => {
             const baseName = String(name || '导入预设').trim() || '导入预设';
@@ -5320,51 +5350,56 @@ export class SettingsApp {
                 return;
             }
             const payload = buildImagePromptPresetSharePayload(appKey, presets);
-            showImagePromptPresetTextModal({
-                title: '导出共享 NAI 预设',
-                desc: `共 ${payload.presets.length} 套。复制后可分享给别人，对方在同一位置导入。`,
-                value: JSON.stringify(payload, null, 2),
-                mode: 'export'
-            });
+            const appName = getImagePromptAppName(appKey);
+            downloadJsonFile(payload, `yuzuki-nai-presets-${appName}-${new Date().toISOString().slice(0, 10)}.json`);
+            this.phoneShell?.showNotification?.('导出完成', `已导出 ${payload.presets.length} 套 NAI 预设文件`, '✅');
         });
 
         imagePromptPresetImportBtn?.addEventListener('click', async () => {
+            if (!imagePromptPresetImportFile) {
+                this.phoneShell?.showNotification?.('导入失败', '当前环境不支持文件选择', '⚠️');
+                return;
+            }
+            imagePromptPresetImportFile.value = '';
+            imagePromptPresetImportFile.click();
+        });
+
+        imagePromptPresetImportFile?.addEventListener('change', async () => {
             const appKey = getActiveImagePromptApp();
-            showImagePromptPresetTextModal({
-                title: '导入共享 NAI 预设',
-                desc: '粘贴别人分享的 JSON，可一次导入多套；导入后蜜语、微信、微博都能选择使用，不覆盖已有预设。',
-                value: '',
-                mode: 'import',
-                onConfirm: async (rawText) => {
-                    const imported = parseImagePromptPresetImportText(rawText);
-                    if (!imported.length) throw new Error('没有识别到可导入的预设');
-                    const existing = this._getImagePromptPresets(appKey);
-                    const usedNames = new Set(existing.map(preset => String(preset.name || '').trim()).filter(Boolean));
-                    const nextPresets = [...existing];
-                    let firstImportedId = '';
-                    imported.forEach((preset) => {
-                        preset.id = createImagePromptPresetId();
-                        if (!firstImportedId) firstImportedId = preset.id;
-                        preset.name = makeUniqueImagePresetName(preset.name, usedNames);
-                        preset.updatedAt = Date.now();
-                        nextPresets.push(preset);
-                    });
-                    await this._saveImagePromptPresets(appKey, nextPresets);
-                    const activeId = firstImportedId;
-                    if (activeId) {
-                        await this.storage.set(`phone-image-${appKey}-active-prompt-preset`, activeId);
-                    }
-                    fillImagePromptPresetSelect(nextPresets, activeId);
-                    if (imagePromptPresetSelect) imagePromptPresetSelect.value = activeId;
-                    const activePreset = nextPresets.find(preset => preset.id === activeId) || imported[0];
-                    if (activePreset) {
-                        if (imagePromptPresetName) imagePromptPresetName.value = activePreset.name;
-                        await setImagePromptForm(activePreset);
-                        await applyImageGenerationPresetSettings(activePreset);
-                    }
-                    this.phoneShell?.showNotification?.('导入完成', `已导入 ${imported.length} 套 NAI 预设`, '✅');
+            try {
+                const rawText = await readJsonImportFile(imagePromptPresetImportFile.files?.[0]);
+                const imported = parseImagePromptPresetImportText(rawText);
+                if (!imported.length) throw new Error('没有识别到可导入的预设');
+                const existing = this._getImagePromptPresets(appKey);
+                const usedNames = new Set(existing.map(preset => String(preset.name || '').trim()).filter(Boolean));
+                const nextPresets = [...existing];
+                let firstImportedId = '';
+                imported.forEach((preset) => {
+                    preset.id = createImagePromptPresetId();
+                    if (!firstImportedId) firstImportedId = preset.id;
+                    preset.name = makeUniqueImagePresetName(preset.name, usedNames);
+                    preset.updatedAt = Date.now();
+                    nextPresets.push(preset);
+                });
+                await this._saveImagePromptPresets(appKey, nextPresets);
+                const activeId = firstImportedId;
+                if (activeId) {
+                    await this.storage.set(`phone-image-${appKey}-active-prompt-preset`, activeId);
                 }
-            });
+                fillImagePromptPresetSelect(nextPresets, activeId);
+                if (imagePromptPresetSelect) imagePromptPresetSelect.value = activeId;
+                const activePreset = nextPresets.find(preset => preset.id === activeId) || imported[0];
+                if (activePreset) {
+                    if (imagePromptPresetName) imagePromptPresetName.value = activePreset.name;
+                    await setImagePromptForm(activePreset);
+                    await applyImageGenerationPresetSettings(activePreset);
+                }
+                this.phoneShell?.showNotification?.('导入完成', `已导入 ${imported.length} 套 NAI 预设`, '✅');
+            } catch (err) {
+                this.phoneShell?.showNotification?.('导入失败', err?.message || String(err || '失败'), '⚠️');
+            } finally {
+                imagePromptPresetImportFile.value = '';
+            }
         });
 
         document.getElementById('siliconflow-api-key')?.addEventListener('change', async (e) => {
@@ -5566,46 +5601,53 @@ export class SettingsApp {
                 return;
             }
             const payload = buildComfyUIWorkflowSharePayload(exportWorkflows);
-            showImagePromptPresetTextModal({
-                title: activeWorkflow ? '导出当前 ComfyUI 工作流' : '导出 ComfyUI 工作流',
-                desc: `共 ${payload.workflows.length} 套。复制后可分享或备份；导入后不会覆盖已有工作流。`,
-                value: JSON.stringify(payload, null, 2),
-                mode: 'export'
-            });
+            const baseName = activeWorkflow
+                ? `yuzuki-comfyui-workflow-${activeWorkflow.name}`
+                : 'yuzuki-comfyui-workflows';
+            downloadJsonFile(payload, `${baseName}-${new Date().toISOString().slice(0, 10)}.json`);
+            this.phoneShell?.showNotification?.('导出完成', `已导出 ${payload.workflows.length} 套 ComfyUI 工作流文件`, '✅');
         });
 
         imageComfyUIWorkflowImportBtn?.addEventListener('click', async () => {
-            showImagePromptPresetTextModal({
-                title: '导入 ComfyUI 工作流',
-                desc: '粘贴 ComfyUI API Format、普通 UI 工作流，或本项目导出的工作流包；普通 UI 工作流会尽力自动转换。',
-                value: '',
-                mode: 'import',
-                onConfirm: async (rawText) => {
-                    const imported = parseComfyUIWorkflowImportText(rawText);
-                    if (!imported.length) throw new Error('没有识别到可导入的 ComfyUI API 工作流');
-                    const existing = this._getComfyUIWorkflows();
-                    const usedNames = new Set(existing.map(workflow => String(workflow.name || '').trim()).filter(Boolean));
-                    const nextWorkflows = [...existing];
-                    let firstImportedId = '';
-                    imported.forEach((workflow) => {
-                        workflow.id = createImagePromptPresetId();
-                        if (!firstImportedId) firstImportedId = workflow.id;
-                        workflow.name = makeUniqueComfyUIWorkflowName(workflow.name, usedNames);
-                        workflow.updatedAt = Date.now();
-                        nextWorkflows.push(workflow);
-                    });
-                    await this._saveComfyUIWorkflows(nextWorkflows);
-                    await this.storage.set('phone-image-comfyui-active-workflow', firstImportedId);
-                    fillComfyUIWorkflowSelect(nextWorkflows, firstImportedId);
-                    if (imageComfyUIWorkflowSelect) imageComfyUIWorkflowSelect.value = firstImportedId;
-                    const activeWorkflow = nextWorkflows.find(workflow => workflow.id === firstImportedId) || imported[0];
-                    if (activeWorkflow) {
-                        if (imageComfyUIWorkflowName) imageComfyUIWorkflowName.value = activeWorkflow.name;
-                        await applyComfyUIWorkflowSettings(activeWorkflow);
-                    }
-                    this.phoneShell?.showNotification?.('导入完成', `已导入 ${imported.length} 套 ComfyUI 工作流`, '✅');
+            if (!imageComfyUIWorkflowImportFile) {
+                this.phoneShell?.showNotification?.('导入失败', '当前环境不支持文件选择', '⚠️');
+                return;
+            }
+            imageComfyUIWorkflowImportFile.value = '';
+            imageComfyUIWorkflowImportFile.click();
+        });
+
+        imageComfyUIWorkflowImportFile?.addEventListener('change', async () => {
+            try {
+                const rawText = await readJsonImportFile(imageComfyUIWorkflowImportFile.files?.[0]);
+                const imported = parseComfyUIWorkflowImportText(rawText);
+                if (!imported.length) throw new Error('没有识别到可导入的 ComfyUI 工作流');
+                const existing = this._getComfyUIWorkflows();
+                const usedNames = new Set(existing.map(workflow => String(workflow.name || '').trim()).filter(Boolean));
+                const nextWorkflows = [...existing];
+                let firstImportedId = '';
+                imported.forEach((workflow) => {
+                    workflow.id = createImagePromptPresetId();
+                    if (!firstImportedId) firstImportedId = workflow.id;
+                    workflow.name = makeUniqueComfyUIWorkflowName(workflow.name, usedNames);
+                    workflow.updatedAt = Date.now();
+                    nextWorkflows.push(workflow);
+                });
+                await this._saveComfyUIWorkflows(nextWorkflows);
+                await this.storage.set('phone-image-comfyui-active-workflow', firstImportedId);
+                fillComfyUIWorkflowSelect(nextWorkflows, firstImportedId);
+                if (imageComfyUIWorkflowSelect) imageComfyUIWorkflowSelect.value = firstImportedId;
+                const activeWorkflow = nextWorkflows.find(workflow => workflow.id === firstImportedId) || imported[0];
+                if (activeWorkflow) {
+                    if (imageComfyUIWorkflowName) imageComfyUIWorkflowName.value = activeWorkflow.name;
+                    await applyComfyUIWorkflowSettings(activeWorkflow);
                 }
-            });
+                this.phoneShell?.showNotification?.('导入完成', `已导入 ${imported.length} 套 ComfyUI 工作流`, '✅');
+            } catch (err) {
+                this.phoneShell?.showNotification?.('导入失败', err?.message || String(err || '失败'), '⚠️');
+            } finally {
+                imageComfyUIWorkflowImportFile.value = '';
+            }
         });
 
         imageComfyUIWorkflowClearBtn?.addEventListener('click', async () => {
