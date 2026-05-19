@@ -488,6 +488,7 @@ export class ImageGenerationManager {
             openaiQuality: String(overrides.openaiQuality || this._get('phone-image-openai-quality', 'auto')).trim() || 'auto',
             comfyuiUrl: this._normalizeComfyUIBaseUrl(overrides.comfyuiUrl || this._get('phone-image-comfyui-url', 'http://127.0.0.1:8188')),
             comfyuiWorkflow: String(overrides.comfyuiWorkflow ?? this._get('phone-image-comfyui-workflow', '')).trim(),
+            comfyuiNodeMapping: String(overrides.comfyuiNodeMapping ?? this._get('phone-image-comfyui-node-mapping', '')).trim(),
             comfyuiModel: String(overrides.comfyuiModel || this._get('phone-image-comfyui-model', '')).trim(),
             comfyuiVae: String(overrides.comfyuiVae || this._get('phone-image-comfyui-vae', '')).trim(),
             comfyuiClip: String(overrides.comfyuiClip || this._get('phone-image-comfyui-clip', '')).trim(),
@@ -1660,11 +1661,218 @@ export class ImageGenerationManager {
         } catch (err) {
             throw new Error(`ComfyUI 工作流 JSON 解析失败：${err?.message || err}`);
         }
+        if (Array.isArray(parsed?.workflows) && parsed.workflows.length > 0) {
+            const first = parsed.workflows[0];
+            parsed = typeof first?.workflow === 'string'
+                ? JSON.parse(first.workflow)
+                : (first?.workflow ?? first?.prompt ?? first);
+        } else if (parsed?.workflow && typeof parsed.workflow === 'object') {
+            parsed = parsed.workflow;
+        } else if (typeof parsed?.workflow === 'string') {
+            parsed = JSON.parse(parsed.workflow);
+        }
+        if (parsed?.nodes && Array.isArray(parsed.nodes)) {
+            return this._convertComfyUIWorkflowToApiPrompt(parsed);
+        }
         const prompt = parsed?.prompt && typeof parsed.prompt === 'object' ? parsed.prompt : parsed;
         if (!prompt || typeof prompt !== 'object' || Array.isArray(prompt)) {
             throw new Error('ComfyUI 工作流必须是 API 格式 JSON 对象');
         }
         return prompt;
+    }
+
+    _convertComfyUIWorkflowToApiPrompt(workflow) {
+        const nodes = Array.isArray(workflow?.nodes) ? workflow.nodes : [];
+        const links = Array.isArray(workflow?.links) ? workflow.links : [];
+        if (!nodes.length) throw new Error('ComfyUI UI 工作流缺少 nodes');
+
+        const nodeById = new Map(nodes.map(node => [String(node?.id || ''), node]).filter(([id]) => id));
+        const originByLinkId = new Map();
+        const bypassNodes = new Set();
+        nodes.forEach((node) => {
+            if (Number(node?.mode ?? 0) === 4) bypassNodes.add(String(node?.id || ''));
+        });
+
+        const linkMap = new Map();
+        links.forEach((link) => {
+            if (!Array.isArray(link) || link.length < 5) return;
+            const linkId = String(link[0]);
+            const originId = String(link[1]);
+            const originSlot = Number(link[2]) || 0;
+            linkMap.set(linkId, [originId, originSlot]);
+            originByLinkId.set(linkId, { originId, originSlot });
+        });
+
+        const findBypassSource = (bypassNode, originSlot, seen = new Set()) => {
+            const bypassId = String(bypassNode?.id || '');
+            if (!bypassId || seen.has(bypassId)) return null;
+            seen.add(bypassId);
+            const inputs = Array.isArray(bypassNode?.inputs) ? bypassNode.inputs : [];
+            const preferred = inputs[originSlot] || inputs.find(input => input?.link !== null && input?.link !== undefined);
+            const linkId = preferred?.link !== null && preferred?.link !== undefined ? String(preferred.link) : '';
+            const source = linkId ? originByLinkId.get(linkId) : null;
+            if (!source) return null;
+            if (!bypassNodes.has(source.originId)) return [source.originId, source.originSlot];
+            return findBypassSource(nodeById.get(source.originId), source.originSlot, seen);
+        };
+
+        const resolveLink = (linkId) => {
+            const source = linkMap.get(String(linkId));
+            if (!source) return null;
+            const [originId, originSlot] = source;
+            if (!bypassNodes.has(originId)) return source;
+            return findBypassSource(nodeById.get(originId), originSlot) || source;
+        };
+
+        const shouldSkipNode = (node) => {
+            const mode = Number(node?.mode ?? 0);
+            const classType = String(node?.type || '').trim();
+            // LiteGraph mode 2 = never, 4 = bypass. Bypass nodes are rewired through resolveLink().
+            return mode === 2
+                || mode === 4
+                || /^(note|markdownnote|label(?:\s*\(rgthree\))?)$/i.test(classType);
+        };
+        const widgetInputs = (node) => (Array.isArray(node?.inputs) ? node.inputs : [])
+            .filter(input => input?.widget && input?.name);
+        const seedInputNames = new Set(['seed', 'noise_seed']);
+        const controlAfterGenerateValues = new Set(['fixed', 'randomize', 'increment', 'decrement']);
+        const prompt = {};
+
+        nodes.forEach((node) => {
+            if (!node || shouldSkipNode(node)) return;
+            const id = String(node.id || '').trim();
+            const classType = String(node.type || '').trim();
+            if (!id || !classType) return;
+
+            const inputs = {};
+            const widgets = Array.isArray(node.widgets_values) ? node.widgets_values : [];
+            let widgetIndex = 0;
+
+            (Array.isArray(node.inputs) ? node.inputs : []).forEach((input) => {
+                const name = String(input?.name || '').trim();
+                if (!name) return;
+
+                const hasWidget = !!input?.widget;
+                const linked = input?.link !== null && input?.link !== undefined && linkMap.has(String(input.link));
+                if (linked) {
+                    const resolved = resolveLink(input.link);
+                    if (resolved) inputs[name] = resolved;
+                } else if (hasWidget && widgetIndex < widgets.length) {
+                    inputs[name] = widgets[widgetIndex];
+                }
+
+                if (hasWidget) {
+                    widgetIndex += 1;
+                    if (
+                        seedInputNames.has(name) &&
+                        widgetIndex < widgets.length &&
+                        controlAfterGenerateValues.has(String(widgets[widgetIndex] || '').toLowerCase())
+                    ) {
+                        widgetIndex += 1;
+                    }
+                }
+            });
+
+            // Some primitive/custom nodes expose widget values without declaring widget inputs.
+            if (Object.keys(inputs).length === 0 && widgetInputs(node).length === 0 && widgets.length > 0) {
+                const classKey = classType.toLowerCase();
+                if (/primitive|string|text/.test(classKey)) {
+                    inputs.value = widgets[0];
+                } else if (/seed/.test(classKey)) {
+                    inputs.seed = widgets[0];
+                }
+            }
+
+            prompt[id] = {
+                inputs,
+                class_type: classType
+            };
+            const title = String(node.title || node.properties?.['Node name for S&R'] || '').trim();
+            if (title) prompt[id]._meta = { title };
+        });
+
+        Object.entries(prompt).forEach(([nodeId, node]) => {
+            Object.entries(node.inputs || {}).forEach(([inputName, value]) => {
+                if (!Array.isArray(value) || value.length < 1) return;
+                if (!prompt[String(value[0])]) {
+                    delete node.inputs[inputName];
+                }
+            });
+            if (!node.inputs || typeof node.inputs !== 'object') node.inputs = {};
+            if (!node.class_type) delete prompt[nodeId];
+        });
+
+        if (Object.keys(prompt).length === 0) {
+            throw new Error('ComfyUI UI 工作流转换失败：没有可提交的节点');
+        }
+        return this._optimizeConvertedComfyUIPrompt(prompt);
+    }
+
+    _optimizeConvertedComfyUIPrompt(prompt) {
+        const graph = prompt && typeof prompt === 'object' && !Array.isArray(prompt) ? prompt : {};
+        const getNode = (id) => graph[String(id)] || null;
+        const getInput = (id, name) => getNode(id)?.inputs?.[name];
+        const resolveLink = (value) => {
+            if (!Array.isArray(value) || value.length < 1) return value;
+            const node = getNode(value[0]);
+            if (!node) return value;
+            const type = String(node.class_type || '');
+            if (/^(PrimitiveBoolean|BooleanConstant)$/i.test(type) && Object.prototype.hasOwnProperty.call(node.inputs || {}, 'value')) {
+                return Boolean(node.inputs.value);
+            }
+            if (/^(PrimitiveInt|IntConstant|PrimitiveFloat|FloatConstant)$/i.test(type) && Object.prototype.hasOwnProperty.call(node.inputs || {}, 'value')) {
+                return node.inputs.value;
+            }
+            return value;
+        };
+
+        Object.values(graph).forEach((node) => {
+            Object.entries(node.inputs || {}).forEach(([inputName, value]) => {
+                const resolved = resolveLink(value);
+                if (resolved !== value) node.inputs[inputName] = resolved;
+            });
+        });
+
+        Object.entries(graph).forEach(([nodeId, node]) => {
+            const type = String(node?.class_type || '');
+            if (!/input switch$/i.test(type)) return;
+            const booleanValue = resolveLink(node.inputs?.boolean);
+            if (typeof booleanValue !== 'boolean') return;
+            const selected = booleanValue
+                ? (node.inputs?.conditioning_a ?? node.inputs?.image_a ?? node.inputs?.input_a)
+                : (node.inputs?.conditioning_b ?? node.inputs?.image_b ?? node.inputs?.input_b);
+            if (selected === undefined) return;
+            Object.values(graph).forEach((targetNode) => {
+                Object.entries(targetNode.inputs || {}).forEach(([inputName, value]) => {
+                    if (Array.isArray(value) && String(value[0]) === nodeId) {
+                        targetNode.inputs[inputName] = selected;
+                    }
+                });
+            });
+            delete graph[nodeId];
+        });
+
+        let changed = true;
+        while (changed) {
+            changed = false;
+            const referenced = new Set();
+            Object.values(graph).forEach((node) => {
+                Object.values(node.inputs || {}).forEach((value) => {
+                    if (Array.isArray(value) && value.length > 0) referenced.add(String(value[0]));
+                });
+            });
+            Object.entries(graph).forEach(([nodeId, node]) => {
+                const type = String(node?.class_type || '');
+                const isUnreferencedHelper = !referenced.has(nodeId)
+                    && /^(Fast Bypasser \(rgthree\)|PrimitiveBoolean|BooleanConstant|PrimitiveInt|IntConstant|PrimitiveFloat|FloatConstant)$/i.test(type);
+                if (isUnreferencedHelper) {
+                    delete graph[nodeId];
+                    changed = true;
+                }
+            });
+        }
+
+        return graph;
     }
 
     _replaceComfyUIPlaceholders(value, replacements) {
@@ -1687,6 +1895,204 @@ export class ImageGenerationManager {
             const replacement = replacements[token];
             return replacement === null || replacement === undefined ? '' : String(replacement);
         });
+    }
+
+    _parseComfyUINodeMapping(mappingText) {
+        const raw = typeof mappingText === 'string' ? mappingText.trim() : mappingText;
+        if (!raw) return {};
+        if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw;
+        try {
+            const parsed = JSON.parse(String(raw));
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+                throw new Error('映射配置必须是 JSON 对象');
+            }
+            return parsed;
+        } catch (err) {
+            throw new Error(`ComfyUI 节点映射 JSON 解析失败：${err?.message || err}`);
+        }
+    }
+
+    _normalizeComfyUINodeBinding(binding, fallbackInput = '') {
+        if (!binding) return null;
+        if (typeof binding === 'string') {
+            const text = binding.trim();
+            if (!text) return null;
+            const match = /^([^.\s]+)(?:\.(.+))?$/.exec(text);
+            return {
+                nodeId: match ? match[1] : text,
+                input: match && match[2] ? match[2] : fallbackInput,
+                mode: 'replace',
+                skipEmpty: true
+            };
+        }
+        if (typeof binding !== 'object' || Array.isArray(binding)) return null;
+        const nodeId = String(binding.nodeId ?? binding.node ?? binding.id ?? '').trim();
+        const inputValue = binding.input ?? binding.field ?? binding.name ?? fallbackInput ?? '';
+        const input = String(inputValue).trim();
+        if (!nodeId || !input) return null;
+        return {
+            nodeId,
+            input,
+            mode: String(binding.mode || 'replace').trim().toLowerCase() || 'replace',
+            optional: binding.optional !== false,
+            skipEmpty: binding.skipEmpty !== false
+        };
+    }
+
+    _setComfyUINodeInput(workflow, binding, value) {
+        const normalized = this._normalizeComfyUINodeBinding(binding);
+        if (!normalized) return false;
+        const node = workflow?.[normalized.nodeId];
+        if (!node || typeof node !== 'object') {
+            if (normalized.optional === false) throw new Error(`ComfyUI 节点映射找不到节点：${normalized.nodeId}`);
+            return false;
+        }
+        if (!node.inputs || typeof node.inputs !== 'object') node.inputs = {};
+        if ((value === null || value === undefined || value === '') && normalized.skipEmpty !== false) {
+            return false;
+        }
+        const current = node.inputs[normalized.input];
+        const mode = normalized.mode;
+        if ((mode === 'append' || mode === 'prepend') && typeof current === 'string') {
+            const nextValue = value === null || value === undefined ? '' : String(value);
+            node.inputs[normalized.input] = mode === 'append'
+                ? [current, nextValue].filter(Boolean).join(current && nextValue ? ', ' : '')
+                : [nextValue, current].filter(Boolean).join(nextValue && current ? ', ' : '');
+        } else {
+            node.inputs[normalized.input] = value;
+        }
+        return true;
+    }
+
+    _applyComfyUINodeMappings(workflow, mappingText, values) {
+        const explicitMapping = this._parseComfyUINodeMapping(mappingText);
+        const mapping = explicitMapping && Object.keys(explicitMapping).length > 0
+            ? explicitMapping
+            : this._guessComfyUINodeMapping(workflow);
+        if (!mapping || Object.keys(mapping).length === 0) return workflow;
+
+        const mappedValues = { ...values };
+        const hasFixedPromptBinding = Object.prototype.hasOwnProperty.call(mapping, 'fixedPrompt')
+            || Object.prototype.hasOwnProperty.call(mapping, 'fixed_prompt');
+        if (hasFixedPromptBinding && Object.prototype.hasOwnProperty.call(mapping, 'prompt')) {
+            mappedValues.positivePrompt = this._joinPrompt([values.promptText, values.fixedPromptEnd]);
+        }
+
+        const aliases = {
+            prompt: 'positivePrompt',
+            positive: 'positivePrompt',
+            positive_prompt: 'positivePrompt',
+            fixed_prompt: 'fixedPrompt',
+            fixed_prompt_end: 'fixedPromptEnd',
+            negative: 'negativePrompt',
+            negative_prompt: 'negativePrompt',
+            cfg: 'scale',
+            cfg_scale: 'scale',
+            sampler_name: 'sampler',
+            width: 'width',
+            height: 'height',
+            steps: 'steps',
+            seed: 'seed',
+            scheduler: 'scheduler',
+            model: 'model',
+            modelName: 'model',
+            vae: 'vae',
+            clip: 'clip',
+            reference_image: 'referenceImage',
+            reference_image_filename: 'referenceImage'
+        };
+        const fallbackInputs = {
+            positivePrompt: 'text',
+            fixedPrompt: 'value',
+            fixedPromptEnd: 'value',
+            negativePrompt: 'text',
+            width: 'width',
+            height: 'height',
+            steps: 'steps',
+            scale: 'cfg',
+            seed: 'seed',
+            sampler: 'sampler_name',
+            scheduler: 'scheduler',
+            model: 'ckpt_name',
+            vae: 'vae_name',
+            clip: 'clip_name',
+            referenceImage: 'image'
+        };
+
+        Object.entries(mapping).forEach(([rawKey, rawBinding]) => {
+            const valueKey = aliases[rawKey] || rawKey;
+            if (!Object.prototype.hasOwnProperty.call(mappedValues, valueKey)) return;
+            const value = mappedValues[valueKey];
+            const bindings = Array.isArray(rawBinding) ? rawBinding : [rawBinding];
+            bindings.forEach(binding => {
+                const normalized = this._normalizeComfyUINodeBinding(binding, fallbackInputs[valueKey] || '');
+                if (normalized) this._setComfyUINodeInput(workflow, normalized, value);
+            });
+        });
+
+        return workflow;
+    }
+
+    _guessComfyUINodeMapping(workflow = {}) {
+        const entries = Object.entries(workflow || {});
+        const hasInput = (node, input) => node?.inputs && Object.prototype.hasOwnProperty.call(node.inputs, input);
+        const titleOf = (node) => String(node?._meta?.title || '').trim();
+        const textOf = ([id, node]) => `${node?.class_type || ''} ${titleOf(node)} ${JSON.stringify(node?.inputs || {})}`.toLowerCase();
+        const mapping = {};
+
+        const stringCandidates = entries
+            .filter(([, node]) => /string|text|primitive/i.test(String(node?.class_type || '')) && hasInput(node, 'value'))
+            .map(([id, node]) => ({ id, node, text: textOf([id, node]) }));
+        const scorePromptCandidate = (item) => {
+            let score = 0;
+            if (/prompt|提示词/.test(item.text)) score += 20;
+            if (/clip text encode|cliptextencode/.test(item.text)) score += 18;
+            if (/main|primary|主提示词/.test(item.text)) score += 8;
+            if (/custom|upscale|sd upscale|prefix|额外|additional|negative|负面/.test(item.text)) score -= 30;
+            return score;
+        };
+        const promptCandidate = [...stringCandidates]
+            .sort((a, b) => scorePromptCandidate(b) - scorePromptCandidate(a))
+            .find(item => scorePromptCandidate(item) > 0);
+        if (promptCandidate?.id) {
+            mapping.prompt = `${promptCandidate.id}.value`;
+        } else {
+            const clipPrompt = entries.find(([, node]) => /cliptextencode/i.test(String(node?.class_type || '')) && hasInput(node, 'text'));
+            if (clipPrompt) mapping.prompt = `${clipPrompt[0]}.text`;
+        }
+
+        const fixedCandidate = stringCandidates.find(item => /prefix|额外|additional/.test(item.text));
+        if (fixedCandidate?.id) mapping.fixedPrompt = `${fixedCandidate.id}.value`;
+
+        const negativeCandidate = entries.find(entry => /negative|负面/.test(textOf(entry)) && (hasInput(entry[1], 'text') || hasInput(entry[1], 'value')));
+        if (negativeCandidate) mapping.negative_prompt = `${negativeCandidate[0]}.${hasInput(negativeCandidate[1], 'text') ? 'text' : 'value'}`;
+
+        const latentCandidate = entries.find(([, node]) => /emptylatentimage/i.test(String(node?.class_type || '')) && hasInput(node, 'width') && hasInput(node, 'height'));
+        if (latentCandidate) {
+            mapping.width = `${latentCandidate[0]}.width`;
+            mapping.height = `${latentCandidate[0]}.height`;
+        }
+
+        const seedCandidate = entries.find(([id, node]) => /seed/i.test(`${node?.class_type || ''} ${titleOf(node)}`) && hasInput(node, 'seed') && !/ksampler/i.test(String(node?.class_type || '')))
+            || entries.find(([id, node]) => /(seed|ksampler)/i.test(`${node?.class_type || ''} ${titleOf(node)}`) && (hasInput(node, 'seed') || hasInput(node, 'noise_seed')));
+        if (seedCandidate) mapping.seed = `${seedCandidate[0]}.${hasInput(seedCandidate[1], 'seed') ? 'seed' : 'noise_seed'}`;
+
+        const samplerCandidates = entries.filter(([, node]) => /ksampler/i.test(String(node?.class_type || '')) && hasInput(node, 'sampler_name'));
+        if (samplerCandidates.length > 0) {
+            const bindingsFor = (inputName) => samplerCandidates
+                .filter(([, node]) => hasInput(node, inputName))
+                .map(([id]) => `${id}.${inputName}`);
+            const stepBindings = bindingsFor('steps');
+            const cfgBindings = bindingsFor('cfg');
+            const samplerBindings = bindingsFor('sampler_name');
+            const schedulerBindings = bindingsFor('scheduler');
+            if (stepBindings.length > 0) mapping.steps = stepBindings;
+            if (cfgBindings.length > 0) mapping.cfg = cfgBindings;
+            if (samplerBindings.length > 0) mapping.sampler_name = samplerBindings;
+            if (schedulerBindings.length > 0) mapping.scheduler = schedulerBindings;
+        }
+
+        return mapping;
     }
 
     _buildComfyUIWorkflow(options, config, referenceImage = null) {
@@ -1763,6 +2169,24 @@ export class ImageGenerationManager {
             || JSON.stringify(workflowTemplate).includes('%comfyuicankaoImage%')
             || JSON.stringify(workflowTemplate).includes('%comfyuicankaotupian%');
         const workflow = this._replaceComfyUIPlaceholders(workflowTemplate, replacements);
+        this._applyComfyUINodeMappings(workflow, config.comfyuiNodeMapping, {
+            promptText: prompt,
+            positivePrompt,
+            fixedPrompt: String(config.fixedPrompt || '').trim(),
+            fixedPromptEnd: String(config.fixedPromptEnd || '').trim(),
+            negativePrompt,
+            width,
+            height,
+            steps,
+            scale,
+            seed,
+            sampler: config.comfyuiSampler,
+            scheduler: config.comfyuiScheduler,
+            model: config.comfyuiModel,
+            vae: config.comfyuiVae,
+            clip: config.comfyuiClip,
+            referenceImage: referenceImage?.filename || ''
+        });
         return { workflow, positivePrompt, negativePrompt, width, height, steps, scale, seed, requiresModel, requiresReferenceImage };
     }
 
@@ -1776,7 +2200,28 @@ export class ImageGenerationManager {
                 return {
                     filename: String(image.filename || '').trim(),
                     subfolder: String(image.subfolder || '').trim(),
-                    type: String(image.type || 'output').trim() || 'output'
+                    type: String(image.type || 'output').trim() || 'output',
+                    mediaType: 'image'
+                };
+            }
+            const videos = Array.isArray(output?.videos) ? output.videos : [];
+            if (videos.length > 0) {
+                const video = videos[0] || {};
+                return {
+                    filename: String(video.filename || '').trim(),
+                    subfolder: String(video.subfolder || '').trim(),
+                    type: String(video.type || 'output').trim() || 'output',
+                    mediaType: 'video'
+                };
+            }
+            const gifs = Array.isArray(output?.gifs) ? output.gifs : [];
+            if (gifs.length > 0) {
+                const gif = gifs[0] || {};
+                return {
+                    filename: String(gif.filename || '').trim(),
+                    subfolder: String(gif.subfolder || '').trim(),
+                    type: String(gif.type || 'output').trim() || 'output',
+                    mediaType: 'image'
                 };
             }
         }
@@ -1809,11 +2254,11 @@ export class ImageGenerationManager {
         throw new Error('ComfyUI 生成超时，请检查工作流或本地队列');
     }
 
-    async _readComfyUIImage(baseUrl, image, signal = null) {
+    async _readComfyUIOutput(baseUrl, output, signal = null) {
         const params = new URLSearchParams({
-            filename: image.filename,
-            subfolder: image.subfolder || '',
-            type: image.type || 'output'
+            filename: output.filename,
+            subfolder: output.subfolder || '',
+            type: output.type || 'output'
         });
         const response = await fetch(`${baseUrl}/view?${params.toString()}`, {
             method: 'GET',
@@ -1821,11 +2266,15 @@ export class ImageGenerationManager {
         });
         if (!response.ok) {
             const text = await response.text().catch(() => '');
-            throw new Error(`ComfyUI 图片读取失败：HTTP ${response.status}${text ? ` ${text.slice(0, 120)}` : ''}`);
+            throw new Error(`ComfyUI 输出读取失败：HTTP ${response.status}${text ? ` ${text.slice(0, 120)}` : ''}`);
         }
         const blob = await response.blob();
-        if (!blob || blob.size <= 0) throw new Error('ComfyUI 返回空图片');
+        if (!blob || blob.size <= 0) throw new Error('ComfyUI 返回空输出');
         return await this._blobToDataUrl(blob);
+    }
+
+    async _readComfyUIImage(baseUrl, image, signal = null) {
+        return this._readComfyUIOutput(baseUrl, image, signal);
     }
 
     async _uploadComfyUIReferenceImage(baseUrl, imageData, signal = null) {

@@ -2139,6 +2139,9 @@ export class SettingsApp {
                 id,
                 name,
                 workflow: String(workflowText || '').trim(),
+                nodeMapping: typeof workflow?.nodeMapping === 'string'
+                    ? String(workflow.nodeMapping || '').trim()
+                    : (workflow?.nodeMapping && typeof workflow.nodeMapping === 'object' ? JSON.stringify(workflow.nodeMapping, null, 2) : ''),
                 comfyuiModel: String(workflow?.comfyuiModel || workflow?.model || '').trim(),
                 comfyuiSampler: String(workflow?.comfyuiSampler || workflow?.sampler || 'euler').trim() || 'euler',
                 comfyuiScheduler: String(workflow?.comfyuiScheduler || workflow?.scheduler || 'normal').trim() || 'normal',
@@ -2193,6 +2196,7 @@ export class SettingsApp {
         const comfyuiVae = String(this.storage.get('phone-image-comfyui-vae') || '').trim();
         const comfyuiClip = String(this.storage.get('phone-image-comfyui-clip') || '').trim();
         const comfyuiWorkflow = String(this.storage.get('phone-image-comfyui-workflow') || '').trim();
+        const comfyuiNodeMapping = String(this.storage.get('phone-image-comfyui-node-mapping') || '').trim();
         const novelaiSite = String(this.storage.get('phone-image-novelai-site') || 'official').trim() || 'official';
         const novelaiUrl = String(this.storage.get('phone-image-novelai-url') || '').trim();
         const novelaiPublicUrl = String(this.storage.get('phone-image-novelai-public-url') || '').trim();
@@ -2840,6 +2844,8 @@ export class SettingsApp {
                     <textarea id="phone-image-comfyui-workflow" rows="8"
                               style="width: 100%; min-height: 150px; padding: 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 11px; line-height: 1.45; background: #fafafa; box-sizing: border-box; margin-top: 6px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;">${this._escapeHtml(comfyuiWorkflow)}</textarea>
                 </div>
+
+                <textarea id="phone-image-comfyui-node-mapping" style="display:none;">${this._escapeHtml(comfyuiNodeMapping)}</textarea>
 
                 <div class="setting-item">
                     <button id="phone-image-test-comfyui" class="phone-image-test-btn" style="width: 100%; height: 34px; border: none; border-radius: 8px; background: #10b981 !important; color: #fff !important; font-size: 13px; font-weight: 600; cursor: pointer;">
@@ -4230,6 +4236,7 @@ export class SettingsApp {
         };
         const getComfyUIWorkflowSettings = () => ({
             workflow: String(document.getElementById('phone-image-comfyui-workflow')?.value || '').trim(),
+            nodeMapping: String(document.getElementById('phone-image-comfyui-node-mapping')?.value || '').trim(),
             comfyuiModel: String(document.getElementById('phone-image-comfyui-model')?.value || '').trim(),
             comfyuiSampler: String(document.getElementById('phone-image-comfyui-sampler')?.value || 'euler').trim() || 'euler',
             comfyuiScheduler: String(document.getElementById('phone-image-comfyui-scheduler')?.value || 'normal').trim() || 'normal',
@@ -4251,6 +4258,7 @@ export class SettingsApp {
             if (!workflow) return;
             const fields = [
                 ['phone-image-comfyui-workflow', String(workflow.workflow || '')],
+                ['phone-image-comfyui-node-mapping', String(workflow.nodeMapping || '')],
                 ['phone-image-comfyui-model', String(workflow.comfyuiModel || '')],
                 ['phone-image-comfyui-sampler', String(workflow.comfyuiSampler || 'euler').trim() || 'euler'],
                 ['phone-image-comfyui-scheduler', String(workflow.comfyuiScheduler || 'normal').trim() || 'normal'],
@@ -4403,6 +4411,220 @@ export class SettingsApp {
             if (!prompt || typeof prompt !== 'object' || Array.isArray(prompt)) return false;
             return Object.values(prompt).some(node => node && typeof node === 'object' && typeof node.class_type === 'string');
         };
+        const convertComfyUIWorkflowToApiPrompt = (workflow) => {
+            const nodes = Array.isArray(workflow?.nodes) ? workflow.nodes : [];
+            const links = Array.isArray(workflow?.links) ? workflow.links : [];
+            if (!nodes.length) throw new Error('ComfyUI UI 工作流缺少 nodes');
+
+            const nodeById = new Map(nodes.map(node => [String(node?.id || ''), node]).filter(([id]) => id));
+            const originByLinkId = new Map();
+            const bypassNodes = new Set();
+            nodes.forEach((node) => {
+                if (Number(node?.mode ?? 0) === 4) bypassNodes.add(String(node?.id || ''));
+            });
+
+            const linkMap = new Map();
+            links.forEach((link) => {
+                if (!Array.isArray(link) || link.length < 5) return;
+                const linkId = String(link[0]);
+                const originId = String(link[1]);
+                const originSlot = Number(link[2]) || 0;
+                linkMap.set(linkId, [originId, originSlot]);
+                originByLinkId.set(linkId, { originId, originSlot });
+            });
+
+            const findBypassSource = (bypassNode, originSlot, seen = new Set()) => {
+                const bypassId = String(bypassNode?.id || '');
+                if (!bypassId || seen.has(bypassId)) return null;
+                seen.add(bypassId);
+                const inputs = Array.isArray(bypassNode?.inputs) ? bypassNode.inputs : [];
+                const preferred = inputs[originSlot] || inputs.find(input => input?.link !== null && input?.link !== undefined);
+                const linkId = preferred?.link !== null && preferred?.link !== undefined ? String(preferred.link) : '';
+                const source = linkId ? originByLinkId.get(linkId) : null;
+                if (!source) return null;
+                if (!bypassNodes.has(source.originId)) return [source.originId, source.originSlot];
+                return findBypassSource(nodeById.get(source.originId), source.originSlot, seen);
+            };
+            const resolveLink = (linkId) => {
+                const source = linkMap.get(String(linkId));
+                if (!source) return null;
+                const [originId, originSlot] = source;
+                if (!bypassNodes.has(originId)) return source;
+                return findBypassSource(nodeById.get(originId), originSlot) || source;
+            };
+
+            const seedInputNames = new Set(['seed', 'noise_seed']);
+            const controlAfterGenerateValues = new Set(['fixed', 'randomize', 'increment', 'decrement']);
+            const prompt = {};
+            nodes.forEach((node) => {
+                const id = String(node.id || '').trim();
+                const classType = String(node.type || '').trim();
+                if (!node || [2, 4].includes(Number(node.mode ?? 0)) || /^(note|markdownnote|label(?:\s*\(rgthree\))?)$/i.test(classType)) return;
+                if (!id || !classType) return;
+
+                const inputs = {};
+                const widgets = Array.isArray(node.widgets_values) ? node.widgets_values : [];
+                let widgetIndex = 0;
+                (Array.isArray(node.inputs) ? node.inputs : []).forEach((input) => {
+                    const name = String(input?.name || '').trim();
+                    if (!name) return;
+                    const linked = input?.link !== null && input?.link !== undefined && linkMap.has(String(input.link));
+                    const hasWidget = !!input?.widget;
+                    if (linked) {
+                        const resolved = resolveLink(input.link);
+                        if (resolved) inputs[name] = resolved;
+                    } else if (hasWidget && widgetIndex < widgets.length) {
+                        inputs[name] = widgets[widgetIndex];
+                    }
+                    if (hasWidget) {
+                        widgetIndex += 1;
+                        if (
+                            seedInputNames.has(name) &&
+                            widgetIndex < widgets.length &&
+                            controlAfterGenerateValues.has(String(widgets[widgetIndex] || '').toLowerCase())
+                        ) {
+                            widgetIndex += 1;
+                        }
+                    }
+                });
+                if (Object.keys(inputs).length === 0 && widgets.length > 0) {
+                    const classKey = classType.toLowerCase();
+                    if (/primitive|string|text/.test(classKey)) inputs.value = widgets[0];
+                    else if (/seed/.test(classKey)) inputs.seed = widgets[0];
+                }
+                prompt[id] = { inputs, class_type: classType };
+                const title = String(node.title || node.properties?.['Node name for S&R'] || '').trim();
+                if (title) prompt[id]._meta = { title };
+            });
+
+            Object.values(prompt).forEach((node) => {
+                Object.entries(node.inputs || {}).forEach(([inputName, value]) => {
+                    if (Array.isArray(value) && !prompt[String(value[0])]) delete node.inputs[inputName];
+                });
+            });
+            if (!Object.keys(prompt).length) throw new Error('ComfyUI UI 工作流转换失败');
+            return optimizeConvertedComfyUIPrompt(prompt);
+        };
+        const optimizeConvertedComfyUIPrompt = (prompt = {}) => {
+            const graph = prompt && typeof prompt === 'object' && !Array.isArray(prompt) ? prompt : {};
+            const getNode = (id) => graph[String(id)] || null;
+            const resolveLink = (value) => {
+                if (!Array.isArray(value) || value.length < 1) return value;
+                const node = getNode(value[0]);
+                if (!node) return value;
+                const type = String(node.class_type || '');
+                if (/^(PrimitiveBoolean|BooleanConstant)$/i.test(type) && Object.prototype.hasOwnProperty.call(node.inputs || {}, 'value')) {
+                    return Boolean(node.inputs.value);
+                }
+                if (/^(PrimitiveInt|IntConstant|PrimitiveFloat|FloatConstant)$/i.test(type) && Object.prototype.hasOwnProperty.call(node.inputs || {}, 'value')) {
+                    return node.inputs.value;
+                }
+                return value;
+            };
+
+            Object.values(graph).forEach((node) => {
+                Object.entries(node.inputs || {}).forEach(([inputName, value]) => {
+                    const resolved = resolveLink(value);
+                    if (resolved !== value) node.inputs[inputName] = resolved;
+                });
+            });
+
+            Object.entries(graph).forEach(([nodeId, node]) => {
+                const type = String(node?.class_type || '');
+                if (!/input switch$/i.test(type)) return;
+                const booleanValue = resolveLink(node.inputs?.boolean);
+                if (typeof booleanValue !== 'boolean') return;
+                const selected = booleanValue
+                    ? (node.inputs?.conditioning_a ?? node.inputs?.image_a ?? node.inputs?.input_a)
+                    : (node.inputs?.conditioning_b ?? node.inputs?.image_b ?? node.inputs?.input_b);
+                if (selected === undefined) return;
+                Object.values(graph).forEach((targetNode) => {
+                    Object.entries(targetNode.inputs || {}).forEach(([inputName, value]) => {
+                        if (Array.isArray(value) && String(value[0]) === nodeId) {
+                            targetNode.inputs[inputName] = selected;
+                        }
+                    });
+                });
+                delete graph[nodeId];
+            });
+
+            let changed = true;
+            while (changed) {
+                changed = false;
+                const referenced = new Set();
+                Object.values(graph).forEach((node) => {
+                    Object.values(node.inputs || {}).forEach((value) => {
+                        if (Array.isArray(value) && value.length > 0) referenced.add(String(value[0]));
+                    });
+                });
+                Object.entries(graph).forEach(([nodeId, node]) => {
+                    const type = String(node?.class_type || '');
+                    const isUnreferencedHelper = !referenced.has(nodeId)
+                        && /^(Fast Bypasser \(rgthree\)|PrimitiveBoolean|BooleanConstant|PrimitiveInt|IntConstant|PrimitiveFloat|FloatConstant)$/i.test(type);
+                    if (isUnreferencedHelper) {
+                        delete graph[nodeId];
+                        changed = true;
+                    }
+                });
+            }
+
+            return graph;
+        };
+        const guessComfyUINodeMapping = (apiPrompt = {}, originalWorkflow = null) => {
+            const entries = Object.entries(apiPrompt || {});
+            const nodeTitle = (id, node) => String(node?._meta?.title || '').trim();
+            const nodeText = (id, node) => `${node?.class_type || ''} ${nodeTitle(id, node)} ${JSON.stringify(node?.inputs || {})}`.toLowerCase();
+            const hasInput = (node, input) => node?.inputs && Object.prototype.hasOwnProperty.call(node.inputs, input);
+            const mapping = {};
+
+            const stringCandidates = entries
+                .filter(([, node]) => /string|text|primitive/i.test(String(node?.class_type || '')) && hasInput(node, 'value'))
+                .map(([id, node]) => ({ id, node, text: nodeText(id, node), value: String(node.inputs.value || '') }));
+            const scorePromptCandidate = (item) => {
+                let score = 0;
+                if (/prompt|提示词/.test(item.text)) score += 20;
+                if (/clip text encode|cliptextencode/.test(item.text)) score += 18;
+                if (/main|primary|主提示词/.test(item.text)) score += 8;
+                if (/custom|upscale|sd upscale|prefix|额外|additional|negative|负面/.test(item.text)) score -= 30;
+                return score;
+            };
+            const promptCandidate = [...stringCandidates]
+                .sort((a, b) => scorePromptCandidate(b) - scorePromptCandidate(a))
+                .find(item => scorePromptCandidate(item) > 0)
+                || entries.find(([, node]) => /cliptextencode/i.test(String(node?.class_type || '')) && hasInput(node, 'text'))?.[0];
+            if (typeof promptCandidate === 'string') {
+                mapping.prompt = `${promptCandidate}.text`;
+            } else if (promptCandidate?.id) {
+                mapping.prompt = `${promptCandidate.id}.value`;
+            }
+            const fixedCandidate = stringCandidates.find(item => /prefix|额外|additional/.test(item.text));
+            if (fixedCandidate?.id) mapping.fixedPrompt = `${fixedCandidate.id}.value`;
+            const negativeCandidate = entries.find(([id, node]) => /negative|负面/.test(nodeText(id, node)) && (hasInput(node, 'text') || hasInput(node, 'value')));
+            if (negativeCandidate) mapping.negative_prompt = `${negativeCandidate[0]}.${hasInput(negativeCandidate[1], 'text') ? 'text' : 'value'}`;
+            const latentCandidate = entries.find(([, node]) => /emptylatentimage/i.test(String(node?.class_type || '')) && hasInput(node, 'width') && hasInput(node, 'height'));
+            if (latentCandidate) {
+                mapping.width = `${latentCandidate[0]}.width`;
+                mapping.height = `${latentCandidate[0]}.height`;
+            }
+            const seedCandidate = entries.find(([id, node]) => /seed/i.test(`${node?.class_type || ''} ${nodeTitle(id, node)}`) && hasInput(node, 'seed') && !/ksampler/i.test(String(node?.class_type || '')))
+                || entries.find(([id, node]) => /(seed|ksampler)/i.test(`${node?.class_type || ''} ${nodeTitle(id, node)}`) && (hasInput(node, 'seed') || hasInput(node, 'noise_seed')));
+            if (seedCandidate) mapping.seed = `${seedCandidate[0]}.${hasInput(seedCandidate[1], 'seed') ? 'seed' : 'noise_seed'}`;
+            const samplerCandidates = entries.filter(([, node]) => /ksampler/i.test(String(node?.class_type || '')) && hasInput(node, 'sampler_name'));
+            if (samplerCandidates.length > 0) {
+                const bindingsFor = (inputName) => samplerCandidates
+                    .filter(([, node]) => hasInput(node, inputName))
+                    .map(([id]) => `${id}.${inputName}`);
+                const stepBindings = bindingsFor('steps');
+                const cfgBindings = bindingsFor('cfg');
+                const samplerBindings = bindingsFor('sampler_name');
+                const schedulerBindings = bindingsFor('scheduler');
+                if (stepBindings.length > 0) mapping.steps = stepBindings;
+                if (cfgBindings.length > 0) mapping.cfg = cfgBindings;
+                if (samplerBindings.length > 0) mapping.sampler_name = samplerBindings;
+                if (schedulerBindings.length > 0) mapping.scheduler = schedulerBindings;
+            }
+            return mapping;
+        };
         const normalizeImportedComfyUIWorkflow = (item, fallbackName = '') => {
             const rawWorkflow = item?.workflow ?? item?.prompt ?? item;
             let workflowPayload = rawWorkflow;
@@ -4413,12 +4635,23 @@ export class SettingsApp {
                     return null;
                 }
             }
-            const prompt = workflowPayload?.prompt && typeof workflowPayload.prompt === 'object' ? workflowPayload.prompt : workflowPayload;
+            if (Array.isArray(workflowPayload?.workflows) && workflowPayload.workflows.length > 0) {
+                return normalizeImportedComfyUIWorkflow(workflowPayload.workflows[0], fallbackName);
+            }
+            const isUiWorkflow = workflowPayload?.nodes && Array.isArray(workflowPayload.nodes);
+            const prompt = isUiWorkflow
+                ? convertComfyUIWorkflowToApiPrompt(workflowPayload)
+                : (workflowPayload?.prompt && typeof workflowPayload.prompt === 'object' ? workflowPayload.prompt : workflowPayload);
             if (!isLikelyComfyUIApiWorkflow(prompt)) return null;
+            const importedMapping = typeof item?.nodeMapping === 'string'
+                ? String(item.nodeMapping || '').trim()
+                : (item?.nodeMapping && typeof item.nodeMapping === 'object' ? JSON.stringify(item.nodeMapping, null, 2) : '');
+            const guessedMapping = importedMapping || (isUiWorkflow ? JSON.stringify(guessComfyUINodeMapping(prompt, workflowPayload), null, 2) : '');
             return {
                 id: createImagePromptPresetId(),
                 name: String(item?.name || item?.title || fallbackName || '导入工作流').trim() || '导入工作流',
                 workflow: JSON.stringify(prompt, null, 2),
+                nodeMapping: guessedMapping,
                 comfyuiModel: String(item?.comfyuiModel || item?.model || '').trim(),
                 comfyuiSampler: String(item?.comfyuiSampler || item?.sampler || 'euler').trim() || 'euler',
                 comfyuiScheduler: String(item?.comfyuiScheduler || item?.scheduler || 'normal').trim() || 'normal',
@@ -4444,10 +4677,31 @@ export class SettingsApp {
             const workflows = candidates
                 .map((item, index) => normalizeImportedComfyUIWorkflow(item, `导入工作流 ${index + 1}`))
                 .filter(Boolean);
-            if (!workflows.length && payload?.nodes && Array.isArray(payload.nodes)) {
-                throw new Error('这像是 ComfyUI 普通 UI 工作流，请在 ComfyUI 开启 Dev mode 后导出 API Format');
-            }
             return workflows;
+        };
+        const normalizeComfyUIWorkflowSettings = (settings, fallbackName = '当前工作流') => {
+            if (!settings?.workflow) return settings;
+            const normalized = normalizeImportedComfyUIWorkflow({
+                name: fallbackName,
+                workflow: settings.workflow,
+                nodeMapping: settings.nodeMapping,
+                comfyuiModel: settings.comfyuiModel,
+                comfyuiSampler: settings.comfyuiSampler,
+                comfyuiScheduler: settings.comfyuiScheduler,
+                comfyuiVae: settings.comfyuiVae,
+                comfyuiClip: settings.comfyuiClip
+            }, fallbackName);
+            if (!normalized) throw new Error('无法识别 ComfyUI 工作流 JSON，请粘贴 API Format、普通 UI 工作流或本项目导出的工作流包');
+            return {
+                ...settings,
+                workflow: normalized.workflow,
+                nodeMapping: normalized.nodeMapping || settings.nodeMapping || '',
+                comfyuiModel: settings.comfyuiModel || normalized.comfyuiModel || '',
+                comfyuiSampler: settings.comfyuiSampler || normalized.comfyuiSampler || 'euler',
+                comfyuiScheduler: settings.comfyuiScheduler || normalized.comfyuiScheduler || 'normal',
+                comfyuiVae: settings.comfyuiVae || normalized.comfyuiVae || '',
+                comfyuiClip: settings.comfyuiClip || normalized.comfyuiClip || ''
+            };
         };
         const makeUniqueComfyUIWorkflowName = (name, usedNames) => {
             const baseName = String(name || '导入工作流').trim() || '导入工作流';
@@ -4467,6 +4721,7 @@ export class SettingsApp {
             workflows: (Array.isArray(workflows) ? workflows : []).map(workflow => ({
                 name: String(workflow?.name || '').trim(),
                 workflow: String(workflow?.workflow || '').trim(),
+                nodeMapping: String(workflow?.nodeMapping || '').trim(),
                 model: String(workflow?.comfyuiModel || '').trim(),
                 sampler: String(workflow?.comfyuiSampler || '').trim(),
                 scheduler: String(workflow?.comfyuiScheduler || '').trim(),
@@ -5190,7 +5445,8 @@ export class SettingsApp {
                 ['phone-image-comfyui-scheduler', 'normal'],
                 ['phone-image-comfyui-vae', ''],
                 ['phone-image-comfyui-clip', ''],
-                ['phone-image-comfyui-workflow', '']
+                ['phone-image-comfyui-workflow', ''],
+                ['phone-image-comfyui-node-mapping', '']
             ];
             for (const [id, fallback] of textFields) {
                 const input = document.getElementById(id);
@@ -5207,7 +5463,8 @@ export class SettingsApp {
             'phone-image-comfyui-scheduler',
             'phone-image-comfyui-vae',
             'phone-image-comfyui-clip',
-            'phone-image-comfyui-workflow'
+            'phone-image-comfyui-workflow',
+            'phone-image-comfyui-node-mapping'
         ].forEach((id) => {
             const input = document.getElementById(id);
             if (!input) return;
@@ -5239,11 +5496,13 @@ export class SettingsApp {
                     return;
                 }
 
-                const settings = getComfyUIWorkflowSettings();
-                if (settings.workflow) {
-                    const parsed = JSON.parse(settings.workflow);
-                    if (!isLikelyComfyUIApiWorkflow(parsed)) {
-                        throw new Error('工作流必须是 ComfyUI API Format JSON，不能直接使用普通 UI 工作流');
+                const settings = normalizeComfyUIWorkflowSettings(getComfyUIWorkflowSettings(), name);
+                if (settings.workflow) setComfyUIFieldValue('phone-image-comfyui-workflow', settings.workflow);
+                if (settings.nodeMapping) setComfyUIFieldValue('phone-image-comfyui-node-mapping', settings.nodeMapping);
+                if (settings.nodeMapping) {
+                    const parsedMapping = JSON.parse(settings.nodeMapping);
+                    if (!parsedMapping || typeof parsedMapping !== 'object' || Array.isArray(parsedMapping)) {
+                        throw new Error('节点映射必须是 JSON 对象');
                     }
                 }
 
@@ -5318,7 +5577,7 @@ export class SettingsApp {
         imageComfyUIWorkflowImportBtn?.addEventListener('click', async () => {
             showImagePromptPresetTextModal({
                 title: '导入 ComfyUI 工作流',
-                desc: '粘贴 ComfyUI API Format JSON，或粘贴本项目导出的工作流包。普通 UI 工作流需要先在 ComfyUI 导出 API Format。',
+                desc: '粘贴 ComfyUI API Format、普通 UI 工作流，或本项目导出的工作流包；普通 UI 工作流会尽力自动转换。',
                 value: '',
                 mode: 'import',
                 onConfirm: async (rawText) => {
@@ -5351,9 +5610,11 @@ export class SettingsApp {
 
         imageComfyUIWorkflowClearBtn?.addEventListener('click', async () => {
             setComfyUIFieldValue('phone-image-comfyui-workflow', '');
+            setComfyUIFieldValue('phone-image-comfyui-node-mapping', '');
             if (imageComfyUIWorkflowSelect) imageComfyUIWorkflowSelect.value = '';
             if (imageComfyUIWorkflowName) imageComfyUIWorkflowName.value = '';
             await this.storage.set('phone-image-comfyui-active-workflow', '');
+            await this.storage.set('phone-image-comfyui-node-mapping', '');
             await saveComfyUISettings();
             this.phoneShell?.showNotification?.('已切换内置工作流', '当前会使用基础文生图工作流', '✅');
         });
@@ -5363,11 +5624,12 @@ export class SettingsApp {
                 title: 'ComfyUI 工作流说明',
                 desc: '第三方工作流导入和占位符用法',
                 value: [
-                    '留空会使用内置基础工作流。',
-                    '如果要用第三方 ComfyUI 工作流，请在 ComfyUI 中导出 API Format，然后粘贴到下方。',
-                    '工作流里可以用占位符自动接收提示词、尺寸、模型和微信参考图；常用占位符：',
+                    '不填则使用内置基础工作流。',
+                    '这里只需要一个 JSON：可直接粘贴 ComfyUI 普通工作流、API Format，或本项目导出的工作流包。',
+                    '普通工作流会自动转换，并自动识别提示词、尺寸、seed 和采样器节点。',
+                    '简单工作流也可继续使用占位符：',
                     '%prompt%、%negative_prompt%、%width%、%height%、%MODEL_NAME%、%reference_image%。',
-                    '如果导入后提示缺少节点，请在 ComfyUI Manager 安装对应自定义节点。'
+                    '如提示缺少节点，请在 ComfyUI Manager 安装对应自定义节点。'
                 ].join('\n'),
                 mode: 'export'
             });
