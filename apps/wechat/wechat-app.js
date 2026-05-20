@@ -722,6 +722,178 @@ export class WechatApp {
     border-right: 0;
 }
 
+.wechat-inner-os-wrapper {
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
+}
+
+.wechat-inner-os-bubble {
+    padding-right: 22px;
+    border-bottom-right-radius: 0;
+    overflow: visible;
+}
+
+.wechat-inner-os-fold {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    z-index: 3;
+}
+
+.wechat-inner-os-fold::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 0;
+    height: 0;
+    border-width: 16px 16px 0 0;
+    border-style: solid;
+    border-color: #d4d4d4 #ededed transparent transparent;
+    box-shadow: -2px -2px 3px rgba(0, 0, 0, 0.08);
+    transition: all 0.2s ease;
+}
+
+.wechat-inner-os-fold:hover::after {
+    border-width: 20px 20px 0 0;
+    border-color: #c0c0c0 #ededed transparent transparent;
+    box-shadow: -3px -3px 5px rgba(0, 0, 0, 0.15);
+}
+
+.wechat-inner-os-popup {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 8px);
+    right: -10px;
+    width: max-content;
+    min-width: 150px;
+    max-width: min(210px, 62vw);
+    box-sizing: border-box;
+    padding: 9px 12px 10px;
+    border-radius: 8px 8px 0 8px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(40, 40, 40, 0.65);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.18);
+    color: #fff;
+    font-size: 12px;
+    line-height: 1.35;
+    font-style: italic;
+    white-space: pre-wrap;
+    z-index: 100;
+    gap: 5px;
+    flex-direction: column;
+    align-items: flex-start;
+    transform-origin: bottom right;
+    animation: wechatInnerOsPopUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+.wechat-inner-os-popup::after {
+    content: '';
+    position: absolute;
+    right: 15px;
+    bottom: -7px;
+    width: 0;
+    height: 0;
+    border-left: 7px solid transparent;
+    border-right: 7px solid transparent;
+    border-top: 7px solid rgba(40, 40, 40, 0.65);
+}
+
+.message-left .wechat-inner-os-popup {
+    left: auto;
+    right: -10px;
+}
+
+.message-right .wechat-inner-os-popup {
+    right: -10px;
+}
+
+.wechat-inner-os-title {
+    display: block;
+    margin: 0;
+    padding: 0;
+    color: #ff5e5e;
+    font-size: 10px;
+    line-height: 1;
+    font-weight: 700;
+    font-style: normal;
+    letter-spacing: 1px;
+}
+
+.wechat-inner-os-content {
+    display: block;
+    margin: 0;
+    padding: 0;
+    word-break: break-word;
+    font-weight: 400;
+    line-height: 1.38;
+}
+
+.wechat-inner-os-wrapper.show-os .wechat-inner-os-popup {
+    display: inline-flex;
+}
+
+@media (max-width: 500px) {
+    .wechat-inner-os-popup {
+        max-width: min(190px, 58vw);
+        min-width: 132px;
+        padding: 8px 10px 9px;
+        font-size: 11px;
+        line-height: 1.32;
+        gap: 4px;
+    }
+
+    .message-left .wechat-inner-os-popup {
+        left: 0;
+        right: auto;
+        transform-origin: bottom left;
+    }
+
+    .message-left .wechat-inner-os-popup::after {
+        left: 14px;
+        right: auto;
+    }
+
+    .message-right .wechat-inner-os-popup {
+        right: 0;
+        left: auto;
+        transform-origin: bottom right;
+    }
+
+    .message-right .wechat-inner-os-popup::after {
+        right: 14px;
+        left: auto;
+    }
+
+    .wechat-inner-os-title {
+        font-size: 9px;
+    }
+
+    .wechat-inner-os-content {
+        line-height: 1.34;
+    }
+}
+
+@keyframes wechatInnerOsPopUp {
+    0% {
+        opacity: 0;
+        transform: scale(0.5);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
 .message-music-listen-card {
     width: 230px;
     max-width: 72vw;

@@ -1,121 +1,45 @@
 /* ========================================================
  *  柚月小手机 (Yuzuki's Little Phone)
+ *  游戏大厅入口
  * ======================================================== */
 
-import { GamesData } from './games-data.js';
-import { GamesView } from './games-view.js';
-import { WechatData } from '../wechat/wechat-data.js';
+import { PokerApp } from './poker/poker-app.js';
+import { Game2048Data } from './game2048/game2048-data.js';
+import { Game2048View } from './game2048/game2048-view.js';
 
-export class GamesApp {
+export class GamesApp extends PokerApp {
     constructor(phoneShell, storage) {
-        this.phoneShell = phoneShell;
-        this.storage = storage;
-        this.gamesData = new GamesData(storage);
-        this.gamesView = new GamesView(this);
-        this.currentView = 'lobby';
-
-        window.addEventListener('phone:swipeBack', () => this.handleSwipeBack());
+        super(phoneShell, storage);
+        this.game2048Data = new Game2048Data(storage);
+        this.game2048View = new Game2048View(this);
     }
 
-    getWechatData() {
-        if (window.VirtualPhone?.cachedWechatData) return window.VirtualPhone.cachedWechatData;
-        if (window.VirtualPhone?.wechatApp?.wechatData) return window.VirtualPhone.wechatApp.wechatData;
-        if (!this._wechatData) {
-            this._wechatData = new WechatData(this.storage);
-        }
-        return this._wechatData;
-    }
-
-    resolvePlayerAvatar(player = {}) {
-        const wechatData = this.getWechatData();
-        if (!wechatData) return '';
-        if (player.id === 'user') {
-            return wechatData.getUserInfo?.()?.avatar || '';
-        }
-        const contact = wechatData.getContactByName?.(player.name);
-        return contact?.avatar || '';
-    }
-
-    renderPlayerAvatar(player = {}) {
-        const wechatApp = window.VirtualPhone?.wechatApp;
-        const avatar = this.resolvePlayerAvatar(player);
-        const name = String(player?.name || '').trim();
-        if (wechatApp && typeof wechatApp.renderAvatar === 'function') {
-            return wechatApp.renderAvatar(avatar, '👤', name);
-        }
-
-        if (avatar && /^(data:image\/|https?:\/\/|\/|\.\/|backgrounds\/|apps\/)/i.test(String(avatar))) {
-            return `<img src="${this._escapeAttr(avatar)}" alt="${this._escapeAttr(name)}">`;
-        }
-
-        const initial = Array.from(name)[0] || '人';
-        return `<span>${this._escapeHtml(initial)}</span>`;
-    }
-
-    render() {
+    open2048() {
         this.applyPhoneChromeTheme();
-        this.currentView = 'lobby';
-        this.gamesView.renderLobby();
+        this.currentView = 'game2048';
+        this.game2048View.render();
     }
 
-    openPoker() {
-        this.applyPhoneChromeTheme();
-        this.currentView = 'lobby';
-        this.gamesView.openPokerSetupOverlay();
+    move2048(direction) {
+        const result = this.game2048Data.move(direction);
+        if (result.moved) this.game2048View.render();
     }
 
-    startPokerGame(playerCount) {
-        this.applyPhoneChromeTheme();
-        this.gamesData.startPokerGame(playerCount);
-        this.currentView = 'poker';
-        this.gamesView.renderPoker();
+    reset2048() {
+        this.game2048Data.reset();
+        this.game2048View.render();
     }
 
     backToLobby() {
-        this.applyPhoneChromeTheme();
-        this.currentView = 'lobby';
-        this.gamesView.renderLobby();
-    }
-
-    applyPhoneChromeTheme() {
-        document.querySelectorAll('.phone-body-panel-games').forEach(el => el.classList.remove('phone-body-panel-games'));
-        const panel = document.querySelector('.phone-body-panel');
-        panel?.classList.add('phone-body-panel-games');
-    }
-
-    removePhoneChromeTheme() {
-        const panel = document.querySelector('.phone-body-panel');
-        panel?.classList.remove('phone-body-panel-games');
-    }
-
-    _escapeHtml(text) {
-        return String(text ?? '')
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
-    }
-
-    _escapeAttr(text) {
-        return this._escapeHtml(text);
+        this.game2048View?.destroy?.();
+        super.backToLobby();
     }
 
     handleSwipeBack() {
-        const currentView = document.querySelector('.phone-view-current');
-        if (!currentView || !currentView.querySelector('.games-app')) return;
-
-        if (this.currentView === 'poker') {
+        if (this.currentView === 'game2048') {
             this.backToLobby();
-        } else {
-            this.removePhoneChromeTheme();
-            window.dispatchEvent(new CustomEvent('phone:goHome'));
+            return;
         }
-
-        const screen = document.querySelector('.phone-screen');
-        if (screen) {
-            screen.style.pointerEvents = 'none';
-            setTimeout(() => { screen.style.pointerEvents = ''; }, 400);
-        }
+        super.handleSwipeBack();
     }
 }

@@ -71,6 +71,9 @@ export class PromptManager {
                 if (parsed.wechat?.online?.content && !String(parsed.wechat.online.content).includes('好友名后带“（已拉黑）”')) {
                     parsed.wechat.online.content = this._appendWechatOnlineBlockedRule(parsed.wechat.online.content);
                 }
+                if (parsed.wechat?.online?.content && !String(parsed.wechat.online.content).includes('[内心]（未说出口的一句话内容）')) {
+                    parsed.wechat.online.content = this._appendWechatOnlineInnerThoughtRule(parsed.wechat.online.content);
+                }
                 if (parsed.wechat?.groupChat?.content && !String(parsed.wechat.groupChat.content).includes('好友名后带“（已拉黑）”')) {
                     parsed.wechat.groupChat.content = this._appendWechatGroupBlockedRule(parsed.wechat.groupChat.content);
                 }
@@ -191,6 +194,38 @@ export class PromptManager {
             /(15\.\s*红包\/转账处理：[\s\S]*?不要让待领取\/待收款长期悬空。)/,
             `$1\n${rule}`
         );
+    }
+
+    _appendWechatOnlineInnerThoughtRule(content = '') {
+        const text = String(content || '');
+        const rule = '17. 内心OS：仅当{{chatName}}在聊天中出现强烈情绪波动(如生气、开心等)未说出口的真实想法时，可以在同一条普通消息末尾追加 [内心]（未说出口的一句话内容），不要单独作为一条消息输出。';
+        const example = '{{chatName}}: 没事，我很快就到。[内心]（其实我已经在门外站了很久。）';
+        let next = text;
+        if (!next.includes(rule)) {
+            next = next.replace(
+                /(16\.\s*拉黑状态：[\s\S]*?角色应理解这个关系状态。)/,
+                `$1\n${rule}`
+            );
+            if (!next.includes(rule)) {
+                next = next.replace(
+                    /\n(✅\s*【以下为所有正确的消息回复格式示例】)/,
+                    `\n${rule}\n\n$1`
+                );
+            }
+        }
+        if (!next.includes('{{chatName}}: 没事，我很快就到。[内心]')) {
+            next = next.replace(
+                /({{chatName}}:\s*「引用\s*\{\{user\}\}:\s*今晚吃什么」火锅怎么样？)/,
+                `$1\n${example}`
+            );
+            if (!next.includes('{{chatName}}: 没事，我很快就到。[内心]')) {
+                next = next.replace(
+                    /\n(<\/wechat>)/,
+                    `\n${example}\n$1`
+                );
+            }
+        }
+        return next;
     }
 
     _appendWechatGroupBlockedRule(content = '') {
@@ -538,6 +573,7 @@ getDefaultPrompts() {
 14. 音乐邀请：如果{{chatName}}可以主动邀请{{user}}一起听歌，可以单独发送音乐邀请标签，格式为：[音乐]（音乐名称，歌手名）。如果不知道歌手名，也可以使用：[音乐]（音乐名称）。该标签会渲染为微信音乐邀请卡片；不要把它写成解释文字，也不要和普通聊天内容混在同一条消息里。
 15. 红包/转账处理：当{{user}}向{{chatName}}发起微信转账或红包时，你必须以{{chatName}}的人设判断是否收下或退回；如果收转账，单独输出 {{chatName}}: [收款]；如果领取红包，单独输出 {{chatName}}: [领取红包]；如果退回，单独输出 {{chatName}}: [退回转账] 或 {{chatName}}: [退回红包]。这些动作标签会更新真实资金状态，不要写成解释文字，也不要和普通聊天混在同一条里。除非角色确实沉默/故意不处理，否则不要让待领取/待收款长期悬空。
 16. 拉黑状态：如果当前单聊好友已被{{user}}拉黑，系统会阻止用户发起线上请求；你不应主动假装仍可正常通过单聊联系{{user}}。共同群聊名单中若成员名后带“（已拉黑）”，表示该成员被{{user}}拉黑，角色应理解这个关系状态。
+17. 内心OS：仅当{{chatName}}在聊天中出现强烈情绪波动(如生气、开心等)未说出口的真实想法时，可以在同一条普通消息末尾追加 [内心]（未说出口的一句话内容），不要单独作为一条消息输出。
 
 ✅ 【以下为所有正确的消息回复格式示例】：
 <wechat>
@@ -561,6 +597,7 @@ getDefaultPrompts() {
 {{chatName}}: [个人图片]（English NovelAI tags）
 {{chatName}}: [表情包]（表情名称）
 {{chatName}}: 「引用 {{user}}: 今晚吃什么」火锅怎么样？
+{{chatName}}: 没事，我很快就到。[内心]（其实我已经在门外站了很久。）
 </wechat>
 
 ✅ 【{{chatName}}需要去共同群聊发消息时的格式】：

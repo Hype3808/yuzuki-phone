@@ -199,7 +199,7 @@ export class PhoneShell {
         };
         const resolveGestureControlHost = (node) => {
             if (!node || typeof node.closest !== 'function') return null;
-            return node.closest('input[type="range"], [role="slider"], .phone-gesture-control, .honey-live-visibility-modal, .mofo-app');
+            return node.closest('input[type="range"], [role="slider"], .phone-gesture-control, .games-2048-board, .honey-live-visibility-modal, .mofo-app');
         };
 
         // 🔥 核心修复 1：移除屏幕宽度限制，全面接管虚拟手机的触摸滑动！
@@ -260,7 +260,7 @@ export class PhoneShell {
                 '.honey-live-gifts', '.honey-live-gifts-list', '.honey-live-bottom',
                 '.mofo-app', '.mofo-list-col', '.mofo-detail-col',
                 '.mofo-editor-overlay', '.mofo-editor-panel', '.mofo-editor-body',
-                '.games-app', '.games-lobby-content', '.games-log',
+                '.games-app', '.games-lobby-content', '.games-log', '.games-contact-list', '.games-settings-panel', '.games-worldbook-list', '.games-ai-error-message',
                 '.album-body', '.album-grid', '.album-preview-panel',
                 '#phone-inline-reply-menu-pop', '.inline-reply-tabbar', '.inline-reply-page',
                 '#mofo-list-wrap', '#mofo-preview-wrap'

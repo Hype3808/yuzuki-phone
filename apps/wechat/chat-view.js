@@ -2098,6 +2098,7 @@ renderChatRoom(chat) {
 
         this.bindMessageLongPressEvents();
         this.bindSpecialMessageEvents();
+        this.bindInnerThoughtEvents();
         this.bindMessageSelectionEvents();
         this._syncMessageSelectionBar();
 
@@ -2363,6 +2364,7 @@ renderChatRoom(chat) {
         // 4. 重新绑定事件
         this.bindMessageLongPressEvents();
         this.bindSpecialMessageEvents();
+        this.bindInnerThoughtEvents();
         this.bindMessageSelectionEvents();
 
         // 5. 恢复滚动状态（如果本来在底部，就继续贴底）
@@ -2854,7 +2856,7 @@ renderChatRoom(chat) {
 
             default:
                 // 🔥 普通文本消息（引用在气泡外下方显示）
-                messageBody = `<div class="message-text">${this.parseEmoji(this._stripCallSpeechPrefix(msg.content))}</div>`;
+                messageBody = this.renderTextMessageBubble(msg.content, { isGroupChat });
                 break;
         }
 
@@ -2873,6 +2875,45 @@ renderChatRoom(chat) {
             ${isMe ? `<div class="message-avatar">${this.app.renderAvatar(userInfo.avatar, '😊', userInfo.name)}</div>` : ''}
         </div>
     `;
+    }
+
+    extractInnerThought(content) {
+        const source = String(content ?? '');
+        const thoughts = [];
+        const visibleContent = source.replace(/\[\s*内心\s*\]\s*[（(]\s*([\s\S]*?)\s*[）)]/g, (_match, thought) => {
+            const text = String(thought || '').trim();
+            if (text) thoughts.push(text);
+            return '';
+        }).replace(/[ \t]{2,}/g, ' ').trim();
+
+        return {
+            visibleContent,
+            innerThought: thoughts.join('\n')
+        };
+    }
+
+    renderTextMessageBubble(content, { isGroupChat = false } = {}) {
+        const parsed = this.extractInnerThought(content);
+        const cleanContent = parsed.visibleContent || (parsed.innerThought ? '...' : content);
+        const visibleText = this._stripCallSpeechPrefix(cleanContent);
+        const visibleHtml = this.parseEmoji(visibleText);
+
+        if (!parsed.innerThought || isGroupChat) {
+            return `<div class="message-text">${visibleHtml}</div>`;
+        }
+
+        return `
+            <div class="wechat-inner-os-wrapper">
+                <div class="message-text wechat-inner-os-bubble">
+                    ${visibleHtml}
+                    <button class="wechat-inner-os-fold" type="button" aria-label="查看内心OS"></button>
+                </div>
+                <div class="wechat-inner-os-popup" role="note">
+                    <div class="wechat-inner-os-title">INNER THOUGHTS</div>
+                    <div class="wechat-inner-os-content">${this._escapeHtml(parsed.innerThought)}</div>
+                </div>
+            </div>
+        `;
     }
 
     renderEmojiPanel() {
@@ -4866,6 +4907,30 @@ renderChatRoom(chat) {
         this.scheduleInlineStickerHydration();
     }
 
+    bindInnerThoughtEvents() {
+        const currentView = this.getCurrentWechatView();
+        const root = currentView?.querySelector('#chat-messages') || currentView;
+        if (!root) return;
+
+        root.querySelectorAll('.wechat-inner-os-fold').forEach(btn => {
+            if (btn.dataset.innerOsBound === '1') return;
+            btn.dataset.innerOsBound = '1';
+            btn.addEventListener('click', (e) => {
+                if (this._isMessageSelectionActiveForCurrentChat()) return;
+                e.preventDefault();
+                e.stopPropagation();
+
+                const wrapper = btn.closest('.wechat-inner-os-wrapper');
+                if (!wrapper) return;
+                const shouldOpen = !wrapper.classList.contains('show-os');
+                root.querySelectorAll('.wechat-inner-os-wrapper.show-os').forEach(el => {
+                    if (el !== wrapper) el.classList.remove('show-os');
+                });
+                wrapper.classList.toggle('show-os', shouldOpen);
+            });
+        });
+    }
+
     async syncWeiboNewsToWeiboApp(weiboPayload, fallbackBlogger = '微博', options = {}) {
         if (!weiboPayload) return null;
 
@@ -5772,6 +5837,7 @@ renderChatRoom(chat) {
 
         // 🔥 绑定红包/转账气泡点击事件
         this.bindSpecialMessageEvents();
+        this.bindInnerThoughtEvents();
 
         // 添加头像点击事件
         queryAll('.message-avatar').forEach(avatar => {
@@ -8767,11 +8833,11 @@ renderChatRoom(chat) {
                         </button>
                     </div>
 
-                    <!-- 同步到微信主页背景 -->
+                    <!-- 同步到全局微信背景 -->
                     <div style="background: #fff; border-radius: 10px; padding: 20px; margin-bottom: 15px;">
-                        <div style="font-size: 14px; color: #999; margin-bottom: 4px;">微信主页背景</div>
+                        <div style="font-size: 14px; color: #999; margin-bottom: 4px;">全局微信背景</div>
                         <div style="font-size: 11px; color: #07c160; margin-bottom: 12px;">
-                            当前状态：${listBgActive ? '已设置（微信/通讯录/朋友圈/我）' : '未设置'}
+                            当前状态：${listBgActive ? '已设置（微信/通讯录/朋友圈/我 全局同步）' : '未设置'}
                         </div>
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                             <button id="sync-current-bg-to-chatlist" style="
@@ -8784,7 +8850,7 @@ renderChatRoom(chat) {
                                 font-size: 13px;
                                 font-weight: 500;
                                 cursor: pointer;
-                            ">同步四页背景</button>
+                            ">同步全局微信背景</button>
                             <button id="clear-chatlist-bg" style="
                                 width: 100%;
                                 padding: 10px;
@@ -8795,7 +8861,7 @@ renderChatRoom(chat) {
                                 font-size: 13px;
                                 font-weight: 500;
                                 cursor: pointer;
-                            ">清除四页背景</button>
+                            ">清除全局背景</button>
                         </div>
                     </div>
                     
@@ -8835,7 +8901,7 @@ renderChatRoom(chat) {
             const latestUserInfo = this.app.wechatData.getUserInfo?.() || {};
             const sourceBg = String(this.app.currentChat?.background || latestUserInfo.globalChatBackground || '').trim();
             if (!sourceBg) {
-                this.app.phoneShell.showNotification('提示', '当前没有可同步的聊天背景（四页）', '⚠️');
+                this.app.phoneShell.showNotification('提示', '当前没有可同步的聊天背景', '⚠️');
                 return;
             }
 
@@ -8852,7 +8918,7 @@ renderChatRoom(chat) {
                 tryCleanupOldListBg(oldListBg, keepSet);
             }
 
-            this.app.phoneShell.showNotification('设置成功', '微信主页四页背景已同步', '✅');
+            this.app.phoneShell.showNotification('设置成功', '全局微信背景已同步', '✅');
             setTimeout(() => this.app.render(), 320);
         });
 
@@ -8860,7 +8926,7 @@ renderChatRoom(chat) {
             const latestUserInfo = this.app.wechatData.getUserInfo?.() || {};
             const oldListBg = String(latestUserInfo.chatListBackground || '').trim();
             if (!oldListBg) {
-                this.app.phoneShell.showNotification('提示', '当前未设置四页背景', 'ℹ️');
+                this.app.phoneShell.showNotification('提示', '当前未设置全局微信背景', 'ℹ️');
                 return;
             }
 
@@ -8872,7 +8938,7 @@ renderChatRoom(chat) {
             ].filter(Boolean));
             tryCleanupOldListBg(oldListBg, keepSet);
 
-            this.app.phoneShell.showNotification('已清除', '微信主页四页背景已恢复默认', '✅');
+            this.app.phoneShell.showNotification('已清除', '全局微信背景已恢复默认', '✅');
             setTimeout(() => this.app.render(), 320);
         });
 

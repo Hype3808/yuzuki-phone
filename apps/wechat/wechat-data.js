@@ -14,6 +14,8 @@ import { GlobalSocialStore } from '../../config/global-social-store.js';
 
 const LOBBY_LINK_CHARACTER_IDS_KEY = 'phone-lobby-link-character-ids';
 const LOBBY_LINK_GROUP_IDS_KEY = 'phone-lobby-link-group-ids';
+const GLOBAL_WECHAT_CHATLIST_BACKGROUND_KEY = 'global_wechat_chatlist_background';
+const GLOBAL_WECHAT_CHATLIST_BACKGROUND_NONE = '__none__';
 
 export class WechatData {
     constructor(storage) {
@@ -1305,15 +1307,19 @@ export class WechatData {
 
     getUserInfo() {
         const info = this.data.userInfo;
+        const globalChatListBackground = this.getChatListBackground();
+        const withGlobalBg = globalChatListBackground === (info.chatListBackground || '')
+            ? info
+            : { ...info, chatListBackground: globalChatListBackground };
         // 如果用户没有手动上传过自定义头像，则动态抓取酒馆默认的 Persona 头像
-        if (!info.avatar || info.avatar.trim() === '') {
+        if (!withGlobalBg.avatar || withGlobalBg.avatar.trim() === '') {
             const stAvatar = this._getSillyTavernPersonaAvatar();
             if (stAvatar) {
                 // 返回一个包含了默认头像的拷贝，绝不污染原始数据库
-                return { ...info, avatar: stAvatar };
+                return { ...withGlobalBg, avatar: stAvatar };
             }
         }
-        return info;
+        return withGlobalBg;
     }
 
     getWalletBalance(chatId = null) {
@@ -1371,8 +1377,24 @@ export class WechatData {
 
     // 🔥 新增：设置微信聊天列表背景
     setChatListBackground(background) {
-        this.data.userInfo.chatListBackground = background || null;
+        const next = String(background || '').trim() || null;
+        this.data.userInfo.chatListBackground = next;
+        if (next) {
+            this.storage?.set?.(GLOBAL_WECHAT_CHATLIST_BACKGROUND_KEY, next);
+        } else {
+            this.storage?.set?.(GLOBAL_WECHAT_CHATLIST_BACKGROUND_KEY, GLOBAL_WECHAT_CHATLIST_BACKGROUND_NONE);
+        }
         this.saveData();
+    }
+
+    getChatListBackground() {
+        const rawGlobalBg = this.storage?.get?.(GLOBAL_WECHAT_CHATLIST_BACKGROUND_KEY, undefined);
+        if (rawGlobalBg !== undefined && rawGlobalBg !== null) {
+            const globalBg = String(rawGlobalBg || '').trim();
+            if (globalBg === GLOBAL_WECHAT_CHATLIST_BACKGROUND_NONE) return '';
+            return globalBg;
+        }
+        return String(this.data.userInfo?.chatListBackground || '').trim();
     }
 
     getMusicListening(chatId) {

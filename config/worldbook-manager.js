@@ -517,6 +517,7 @@ export class WorldbookManager {
     getLegacyEnabledKey(appKey) {
         if (appKey === 'honey') return 'phone-honey-use-worldbook';
         if (appKey === 'wechat') return 'wechat-use-worldbook';
+        if (appKey === 'games') return 'games-use-worldbook';
         return '';
     }
 

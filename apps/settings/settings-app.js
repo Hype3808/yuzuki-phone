@@ -3871,6 +3871,7 @@ export class SettingsApp {
                         await this.storage.set('phone-prompts', JSON.stringify(defaults), true);
                     }
                 }
+                await this.storage.set('games_poker_ai_prompt', '', true);
 
                 const restoredCount = Number(resetResult?.restoredActivePresetCount || 0);
                 const defaultCount = Number(resetResult?.defaultPromptCount || 0);
@@ -4687,32 +4688,52 @@ export class SettingsApp {
             const nodeTitle = (id, node) => String(node?._meta?.title || '').trim();
             const nodeText = (id, node) => `${node?.class_type || ''} ${nodeTitle(id, node)} ${JSON.stringify(node?.inputs || {})}`.toLowerCase();
             const hasInput = (node, input) => node?.inputs && Object.prototype.hasOwnProperty.call(node.inputs, input);
+            const promptInputNames = ['text', 'value', 'clip_l', 'text_l', 'text_g', 't5xxl', 'prompt', 'positive'];
+            const getPromptInputs = (node) => promptInputNames.filter(input => hasInput(node, input));
             const mapping = {};
 
             const stringCandidates = entries
                 .filter(([, node]) => /string|text|primitive/i.test(String(node?.class_type || '')) && hasInput(node, 'value'))
                 .map(([id, node]) => ({ id, node, text: nodeText(id, node), value: String(node.inputs.value || '') }));
+            const encoderCandidates = entries
+                .filter(([, node]) => getPromptInputs(node).length > 0)
+                .map(([id, node]) => ({ id, node, text: nodeText(id, node), inputs: getPromptInputs(node) }));
             const scorePromptCandidate = (item) => {
                 let score = 0;
                 if (/prompt|提示词/.test(item.text)) score += 20;
-                if (/clip text encode|cliptextencode/.test(item.text)) score += 18;
+                if (/clip text encode|cliptextencode|conditioning|encode/i.test(item.text)) score += 18;
+                if (item.inputs?.some(input => /^(clip_l|text_l|text_g|t5xxl)$/.test(input))) score += 16;
                 if (/main|primary|主提示词/.test(item.text)) score += 8;
                 if (/custom|upscale|sd upscale|prefix|额外|additional|negative|负面/.test(item.text)) score -= 30;
                 return score;
             };
             const promptCandidate = [...stringCandidates]
                 .sort((a, b) => scorePromptCandidate(b) - scorePromptCandidate(a))
-                .find(item => scorePromptCandidate(item) > 0)
-                || entries.find(([, node]) => /cliptextencode/i.test(String(node?.class_type || '')) && hasInput(node, 'text'))?.[0];
+                .find(item => scorePromptCandidate(item) > 0);
             if (typeof promptCandidate === 'string') {
                 mapping.prompt = `${promptCandidate}.text`;
             } else if (promptCandidate?.id) {
                 mapping.prompt = `${promptCandidate.id}.value`;
+            } else {
+                const encoderPrompt = [...encoderCandidates]
+                    .sort((a, b) => scorePromptCandidate(b) - scorePromptCandidate(a))
+                    .find(item => scorePromptCandidate(item) > 0)
+                    || encoderCandidates.find(item => /cliptextencode|encode/i.test(String(item.node?.class_type || '')));
+                if (encoderPrompt?.id) {
+                    const bindings = encoderPrompt.inputs
+                        .filter(input => !/negative|负面/i.test(`${input} ${encoderPrompt.text}`))
+                        .map(input => `${encoderPrompt.id}.${input}`);
+                    if (bindings.length > 0) mapping.prompt = bindings.length === 1 ? bindings[0] : bindings;
+                }
             }
             const fixedCandidate = stringCandidates.find(item => /prefix|额外|additional/.test(item.text));
             if (fixedCandidate?.id) mapping.fixedPrompt = `${fixedCandidate.id}.value`;
-            const negativeCandidate = entries.find(([id, node]) => /negative|负面/.test(nodeText(id, node)) && (hasInput(node, 'text') || hasInput(node, 'value')));
-            if (negativeCandidate) mapping.negative_prompt = `${negativeCandidate[0]}.${hasInput(negativeCandidate[1], 'text') ? 'text' : 'value'}`;
+            const negativeCandidate = entries.find(([id, node]) => /negative|负面/.test(nodeText(id, node)) && getPromptInputs(node).length > 0);
+            if (negativeCandidate) {
+                const inputs = getPromptInputs(negativeCandidate[1]);
+                const bindings = inputs.map(input => `${negativeCandidate[0]}.${input}`);
+                mapping.negative_prompt = bindings.length === 1 ? bindings[0] : bindings;
+            }
             const latentCandidate = entries.find(([, node]) => /emptylatentimage/i.test(String(node?.class_type || '')) && hasInput(node, 'width') && hasInput(node, 'height'));
             if (latentCandidate) {
                 mapping.width = `${latentCandidate[0]}.width`;
@@ -4721,19 +4742,10 @@ export class SettingsApp {
             const seedCandidate = entries.find(([id, node]) => /seed/i.test(`${node?.class_type || ''} ${nodeTitle(id, node)}`) && hasInput(node, 'seed') && !/ksampler/i.test(String(node?.class_type || '')))
                 || entries.find(([id, node]) => /(seed|ksampler)/i.test(`${node?.class_type || ''} ${nodeTitle(id, node)}`) && (hasInput(node, 'seed') || hasInput(node, 'noise_seed')));
             if (seedCandidate) mapping.seed = `${seedCandidate[0]}.${hasInput(seedCandidate[1], 'seed') ? 'seed' : 'noise_seed'}`;
-            const samplerCandidates = entries.filter(([, node]) => /ksampler/i.test(String(node?.class_type || '')) && hasInput(node, 'sampler_name'));
-            if (samplerCandidates.length > 0) {
-                const bindingsFor = (inputName) => samplerCandidates
-                    .filter(([, node]) => hasInput(node, inputName))
-                    .map(([id]) => `${id}.${inputName}`);
-                const stepBindings = bindingsFor('steps');
-                const cfgBindings = bindingsFor('cfg');
-                const samplerBindings = bindingsFor('sampler_name');
-                const schedulerBindings = bindingsFor('scheduler');
-                if (stepBindings.length > 0) mapping.steps = stepBindings;
-                if (cfgBindings.length > 0) mapping.cfg = cfgBindings;
-                if (samplerBindings.length > 0) mapping.sampler_name = samplerBindings;
-                if (schedulerBindings.length > 0) mapping.scheduler = schedulerBindings;
+            const cfgRescaleCandidate = entries.find(([, node]) => ['cfg_rescale', 'rescale_cfg', 'guidance_rescale'].some(input => hasInput(node, input)));
+            if (cfgRescaleCandidate) {
+                const inputName = ['cfg_rescale', 'rescale_cfg', 'guidance_rescale'].find(input => hasInput(cfgRescaleCandidate[1], input));
+                if (inputName) mapping.cfg_rescale = `${cfgRescaleCandidate[0]}.${inputName}`;
             }
             return mapping;
         };
@@ -6148,7 +6160,7 @@ export class SettingsApp {
             const saveNumberInput = async (e) => {
                 await this.storage.set(id, clampNumberInput(e.target, fallback, min, max, integer));
             };
-            if (id !== 'phone-image-seed' && !appSizeInputIds.has(id)) {
+            if (integer && id !== 'phone-image-seed' && !appSizeInputIds.has(id)) {
                 input.addEventListener('input', saveNumberInput);
             }
             input.addEventListener('change', saveNumberInput);

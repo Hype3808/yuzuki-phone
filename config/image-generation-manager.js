@@ -1990,9 +1990,10 @@ export class ImageGenerationManager {
 
     _applyComfyUINodeMappings(workflow, mappingText, values) {
         const explicitMapping = this._parseComfyUINodeMapping(mappingText);
+        const guessedMapping = this._guessComfyUINodeMapping(workflow);
         const mapping = explicitMapping && Object.keys(explicitMapping).length > 0
-            ? explicitMapping
-            : this._guessComfyUINodeMapping(workflow);
+            ? { ...guessedMapping, ...explicitMapping }
+            : guessedMapping;
         if (!mapping || Object.keys(mapping).length === 0) return workflow;
 
         const mappedValues = { ...values };
@@ -2006,12 +2007,21 @@ export class ImageGenerationManager {
             prompt: 'positivePrompt',
             positive: 'positivePrompt',
             positive_prompt: 'positivePrompt',
+            prompt_text: 'positivePrompt',
+            text: 'positivePrompt',
+            clip_l: 'positivePrompt',
+            text_l: 'positivePrompt',
+            text_g: 'positivePrompt',
+            t5xxl: 'positivePrompt',
             fixed_prompt: 'fixedPrompt',
             fixed_prompt_end: 'fixedPromptEnd',
             negative: 'negativePrompt',
             negative_prompt: 'negativePrompt',
             cfg: 'scale',
             cfg_scale: 'scale',
+            cfg_rescale: 'cfgRescale',
+            rescale_cfg: 'cfgRescale',
+            guidance_rescale: 'cfgRescale',
             sampler_name: 'sampler',
             width: 'width',
             height: 'height',
@@ -2034,6 +2044,7 @@ export class ImageGenerationManager {
             height: 'height',
             steps: 'steps',
             scale: 'cfg',
+            cfgRescale: 'cfg_rescale',
             seed: 'seed',
             sampler: 'sampler_name',
             scheduler: 'scheduler',
@@ -2060,6 +2071,8 @@ export class ImageGenerationManager {
     _guessComfyUINodeMapping(workflow = {}) {
         const entries = Object.entries(workflow || {});
         const hasInput = (node, input) => node?.inputs && Object.prototype.hasOwnProperty.call(node.inputs, input);
+        const promptInputNames = ['text', 'value', 'clip_l', 'text_l', 'text_g', 't5xxl', 'prompt', 'positive'];
+        const getPromptInputs = (node) => promptInputNames.filter(input => hasInput(node, input));
         const titleOf = (node) => String(node?._meta?.title || '').trim();
         const textOf = ([id, node]) => `${node?.class_type || ''} ${titleOf(node)} ${JSON.stringify(node?.inputs || {})}`.toLowerCase();
         const mapping = {};
@@ -2067,10 +2080,14 @@ export class ImageGenerationManager {
         const stringCandidates = entries
             .filter(([, node]) => /string|text|primitive/i.test(String(node?.class_type || '')) && hasInput(node, 'value'))
             .map(([id, node]) => ({ id, node, text: textOf([id, node]) }));
+        const encoderCandidates = entries
+            .filter(([, node]) => getPromptInputs(node).length > 0)
+            .map(([id, node]) => ({ id, node, text: textOf([id, node]), inputs: getPromptInputs(node) }));
         const scorePromptCandidate = (item) => {
             let score = 0;
             if (/prompt|提示词/.test(item.text)) score += 20;
-            if (/clip text encode|cliptextencode/.test(item.text)) score += 18;
+            if (/clip text encode|cliptextencode|conditioning|encode/i.test(item.text)) score += 18;
+            if (item.inputs?.some(input => /^(clip_l|text_l|text_g|t5xxl)$/.test(input))) score += 16;
             if (/main|primary|主提示词/.test(item.text)) score += 8;
             if (/custom|upscale|sd upscale|prefix|额外|additional|negative|负面/.test(item.text)) score -= 30;
             return score;
@@ -2081,15 +2098,27 @@ export class ImageGenerationManager {
         if (promptCandidate?.id) {
             mapping.prompt = `${promptCandidate.id}.value`;
         } else {
-            const clipPrompt = entries.find(([, node]) => /cliptextencode/i.test(String(node?.class_type || '')) && hasInput(node, 'text'));
-            if (clipPrompt) mapping.prompt = `${clipPrompt[0]}.text`;
+            const encoderPrompt = [...encoderCandidates]
+                .sort((a, b) => scorePromptCandidate(b) - scorePromptCandidate(a))
+                .find(item => scorePromptCandidate(item) > 0)
+                || encoderCandidates.find(item => /cliptextencode|encode/i.test(String(item.node?.class_type || '')));
+            if (encoderPrompt?.id) {
+                const bindings = encoderPrompt.inputs
+                    .filter(input => !/negative|负面/i.test(`${input} ${encoderPrompt.text}`))
+                    .map(input => `${encoderPrompt.id}.${input}`);
+                if (bindings.length > 0) mapping.prompt = bindings.length === 1 ? bindings[0] : bindings;
+            }
         }
 
         const fixedCandidate = stringCandidates.find(item => /prefix|额外|additional/.test(item.text));
         if (fixedCandidate?.id) mapping.fixedPrompt = `${fixedCandidate.id}.value`;
 
-        const negativeCandidate = entries.find(entry => /negative|负面/.test(textOf(entry)) && (hasInput(entry[1], 'text') || hasInput(entry[1], 'value')));
-        if (negativeCandidate) mapping.negative_prompt = `${negativeCandidate[0]}.${hasInput(negativeCandidate[1], 'text') ? 'text' : 'value'}`;
+        const negativeCandidate = entries.find(entry => /negative|负面/.test(textOf(entry)) && getPromptInputs(entry[1]).length > 0);
+        if (negativeCandidate) {
+            const inputs = getPromptInputs(negativeCandidate[1]);
+            const bindings = inputs.map(input => `${negativeCandidate[0]}.${input}`);
+            mapping.negative_prompt = bindings.length === 1 ? bindings[0] : bindings;
+        }
 
         const latentCandidate = entries.find(([, node]) => /emptylatentimage/i.test(String(node?.class_type || '')) && hasInput(node, 'width') && hasInput(node, 'height'));
         if (latentCandidate) {
@@ -2101,19 +2130,10 @@ export class ImageGenerationManager {
             || entries.find(([id, node]) => /(seed|ksampler)/i.test(`${node?.class_type || ''} ${titleOf(node)}`) && (hasInput(node, 'seed') || hasInput(node, 'noise_seed')));
         if (seedCandidate) mapping.seed = `${seedCandidate[0]}.${hasInput(seedCandidate[1], 'seed') ? 'seed' : 'noise_seed'}`;
 
-        const samplerCandidates = entries.filter(([, node]) => /ksampler/i.test(String(node?.class_type || '')) && hasInput(node, 'sampler_name'));
-        if (samplerCandidates.length > 0) {
-            const bindingsFor = (inputName) => samplerCandidates
-                .filter(([, node]) => hasInput(node, inputName))
-                .map(([id]) => `${id}.${inputName}`);
-            const stepBindings = bindingsFor('steps');
-            const cfgBindings = bindingsFor('cfg');
-            const samplerBindings = bindingsFor('sampler_name');
-            const schedulerBindings = bindingsFor('scheduler');
-            if (stepBindings.length > 0) mapping.steps = stepBindings;
-            if (cfgBindings.length > 0) mapping.cfg = cfgBindings;
-            if (samplerBindings.length > 0) mapping.sampler_name = samplerBindings;
-            if (schedulerBindings.length > 0) mapping.scheduler = schedulerBindings;
+        const cfgRescaleCandidate = entries.find(([, node]) => ['cfg_rescale', 'rescale_cfg', 'guidance_rescale'].some(input => hasInput(node, input)));
+        if (cfgRescaleCandidate) {
+            const inputName = ['cfg_rescale', 'rescale_cfg', 'guidance_rescale'].find(input => hasInput(cfgRescaleCandidate[1], input));
+            if (inputName) mapping.cfg_rescale = `${cfgRescaleCandidate[0]}.${inputName}`;
         }
 
         return mapping;
@@ -2129,6 +2149,7 @@ export class ImageGenerationManager {
         let height = Number(options.height || config.height);
         let steps = Number(options.steps || config.steps);
         let scale = Number(options.scale ?? config.scale);
+        let cfgRescale = Number(options.cfgRescale ?? config.cfgRescale);
         let seed = Number(options.seed ?? config.seed);
 
         if (appKey === 'honey') {
@@ -2143,6 +2164,7 @@ export class ImageGenerationManager {
         height = Math.max(64, Math.min(2048, Math.round(height || appDefaults.height)));
         steps = Math.max(1, Math.min(150, Math.round(steps || 28)));
         scale = Number.isFinite(scale) ? Math.max(0, Math.min(50, scale)) : 7;
+        cfgRescale = Number.isFinite(cfgRescale) ? Math.max(0, Math.min(1, cfgRescale)) : 0;
         if (!Number.isFinite(seed) || seed < 0) {
             seed = Math.floor(Math.random() * 4294967295);
         } else {
@@ -2160,6 +2182,9 @@ export class ImageGenerationManager {
             '%steps%': steps,
             '%cfg_scale%': scale,
             '%cfg%': scale,
+            '%cfg_rescale%': cfgRescale,
+            '%rescale_cfg%': cfgRescale,
+            '%guidance_rescale%': cfgRescale,
             '%seed%': seed,
             '%sampler_name%': config.comfyuiSampler,
             '%scheduler%': config.comfyuiScheduler,
@@ -2203,6 +2228,7 @@ export class ImageGenerationManager {
             height,
             steps,
             scale,
+            cfgRescale,
             seed,
             sampler: config.comfyuiSampler,
             scheduler: config.comfyuiScheduler,
@@ -2211,7 +2237,7 @@ export class ImageGenerationManager {
             clip: config.comfyuiClip,
             referenceImage: referenceImage?.filename || ''
         });
-        return { workflow, positivePrompt, negativePrompt, width, height, steps, scale, seed, requiresModel, requiresReferenceImage };
+        return { workflow, positivePrompt, negativePrompt, width, height, steps, scale, cfgRescale, seed, requiresModel, requiresReferenceImage };
     }
 
     _extractComfyUIImage(historyPayload, promptId) {

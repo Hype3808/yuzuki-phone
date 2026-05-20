@@ -337,6 +337,7 @@ export class ApiManager {
             wechat: { allowSummary: true, allowVector: true },
             weibo: { allowSummary: true, allowVector: true },
             diary: { allowSummary: true, allowVector: true },
+            games: { allowSummary: false, allowTable: false, allowVector: false, allowPrompt: false },
             honey: { allowSummary: false, allowTable: false, allowVector: false, allowPrompt: false },
             phone_online: { allowSummary: false, allowTable: false, allowVector: false, allowPrompt: false }
         };
