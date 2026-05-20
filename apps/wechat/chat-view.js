@@ -4588,16 +4588,19 @@ renderChatRoom(chat) {
             }
         }
 
-        const imageMatch = String(content || '').trim().match(/^\[(个人图片|图片|视频)\]\s*[（(]\s*([^)）]+?)\s*[)）]\s*$/);
+        const imageMatch = String(content || '').trim().match(/^(?:(.{1,40})[：:]\s*)?\[(个人图片|图片|视频)\]\s*[（(]\s*([\s\S]+?)\s*[)）]\s*$/);
         if (imageMatch) {
-            const promptText = String(imageMatch[2] || '').trim();
-            return {
+            const promptText = String(imageMatch[3] || '').trim();
+            const parsed = {
                 type: 'image_prompt',
-                mediaType: imageMatch[1],
-                usePersonalReference: imageMatch[1] === '个人图片',
+                mediaType: imageMatch[2],
+                usePersonalReference: imageMatch[2] === '个人图片',
                 imagePrompt: promptText,
                 content: promptText
             };
+            const inlineSender = String(imageMatch[1] || '').trim();
+            if (inlineSender) parsed.sender = inlineSender;
+            return parsed;
         }
 
         return null;
@@ -4614,7 +4617,18 @@ renderChatRoom(chat) {
         const rawContent = String(message.content || '');
         if (!rawContent.trim()) return [message];
 
-        const inlineSpecialRegex = /\[(?:收款|领取红包|退回转账|退回红包)\](?:\s*[（(]\s*[^）)]*\s*[）)])?|\[转账\]\s*(?:[（(]\s*(?:金额[：:]?\s*)?\d+(?:\.\d+)?\s*元?\s*[)）]|[¥￥]\s*\d+(?:\.\d+)?)|\[红包\]\s*(?:[（(]\s*(?:金额[：:]?\s*)?\d+(?:\.\d+)?\s*元?\s*[)）])?|(?:\[\s*定位\s*\]|【\s*定位\s*】)\s*[（(]\s*[^)）]+?\s*[)）]|(?:\[\s*蜜语\s*\]|【\s*蜜语\s*】)\s*(?:[（(]\s*[^）)]*\s*[）)])?|(?:\[\s*音乐\s*\]|【\s*音乐\s*】)\s*[（(]\s*[^，,）)]+?(?:\s*[，,]\s*[^）)]+?)?\s*[）)]|(?:\[\s*(?:拨打|发起)\s*(?:微信)?(?:群)?(?:语音|视频)(?:通话)?\s*\]|【\s*(?:拨打|发起)\s*(?:微信)?(?:群)?(?:语音|视频)(?:通话)?\s*】)/g;
+        const wholeSpecial = this.parseSpecialMessage(rawContent);
+        if (wholeSpecial) {
+            return [{
+                ...message,
+                from: wholeSpecial.sender || message.from,
+                sender: wholeSpecial.sender || message.sender,
+                content: wholeSpecial.content || rawContent,
+                specialMessage: wholeSpecial
+            }];
+        }
+
+        const inlineSpecialRegex = /\[(?:个人图片|图片|视频)\]\s*[（(]\s*[\s\S]+?\s*[）)]|\[(?:收款|领取红包|退回转账|退回红包)\](?:\s*[（(]\s*[^）)]*\s*[）)])?|\[转账\]\s*(?:[（(]\s*(?:金额[：:]?\s*)?\d+(?:\.\d+)?\s*元?\s*[)）]|[¥￥]\s*\d+(?:\.\d+)?)|\[红包\]\s*(?:[（(]\s*(?:金额[：:]?\s*)?\d+(?:\.\d+)?\s*元?\s*[)）])?|(?:\[\s*定位\s*\]|【\s*定位\s*】)\s*[（(]\s*[^)）]+?\s*[)）]|(?:\[\s*蜜语\s*\]|【\s*蜜语\s*】)\s*(?:[（(]\s*[^）)]*\s*[）)])?|(?:\[\s*音乐\s*\]|【\s*音乐\s*】)\s*[（(]\s*[^，,）)]+?(?:\s*[，,]\s*[^）)]+?)?\s*[）)]|(?:\[\s*(?:拨打|发起)\s*(?:微信)?(?:群)?(?:语音|视频)(?:通话)?\s*\]|【\s*(?:拨打|发起)\s*(?:微信)?(?:群)?(?:语音|视频)(?:通话)?\s*】)/g;
         let hasMatch = false;
         let lastIndex = 0;
         let usedQuote = false;
@@ -4639,6 +4653,8 @@ renderChatRoom(chat) {
             if (special) {
                 result.push({
                     ...message,
+                    from: special.sender || message.from,
+                    sender: special.sender || message.sender,
                     content: special.content || specialRaw,
                     specialMessage: special,
                     quote: null
@@ -6818,8 +6834,9 @@ renderChatRoom(chat) {
                         baseTimestamp: options?.proactiveMeta?.now || Date.now()
                     });
 
+                    const specialSender = String(special?.sender || '').trim();
                     const msgData = special
-                        ? { from: m.sender, ...special, time: m.time, avatar: senderAvatar, replyBatchId: responseBatchId }
+                        ? { from: specialSender || m.sender, ...special, time: m.time, avatar: senderAvatar, replyBatchId: responseBatchId }
                         : { from: m.sender, content: normalizedTextContent, type: 'text', time: m.time, quote: m.quote, avatar: senderAvatar, replyBatchId: responseBatchId };
                     if (special?.type === 'payment_action') {
                         this._applyWechatPaymentAction(bgChat.id, special, m.sender);
@@ -6942,9 +6959,10 @@ renderChatRoom(chat) {
                     baseTimestamp: options?.proactiveMeta?.now || Date.now()
                 });
 
+                const specialSender = String(special?.sender || '').trim();
                 const msgData = special
                     // 🔥 核心修复3：如果是群聊，禁止 fallback 到 savedChatAvatar
-                    ? { from: msg.sender, ...special, time: msg.time, avatar: senderContact?.avatar || (isGroupChat ? '' : savedChatAvatar) || '👤', replyBatchId: responseBatchId }
+                    ? { from: specialSender || msg.sender, ...special, time: msg.time, avatar: senderContact?.avatar || (isGroupChat ? '' : savedChatAvatar) || '👤', replyBatchId: responseBatchId }
                     : { from: msg.sender, content: normalizedTextContent, time: msg.time, type: 'text', avatar: senderContact?.avatar || (isGroupChat ? '' : savedChatAvatar) || '👤', quote: msg.quote, replyBatchId: responseBatchId };
                 if (special?.type === 'payment_action') {
                     this._applyWechatPaymentAction(savedChatId, special, msg.sender);

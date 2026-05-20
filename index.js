@@ -5174,12 +5174,15 @@ if (window.GGP_Loaded) {
         }
 
         // [个人图片/图片/视频](描述) / [个人图片/图片/视频]（描述）
-        const imageMatch = /^\[(个人图片|图片|视频)\]\s*[（(]\s*([^)）]+?)\s*[)）]\s*$/.exec(content);
+        // 兼容线下同步里把说话人留在正文中的格式：张三：[个人图片]（tag）
+        const imageMatch = /^(?:(.{1,40})[：:]\s*)?\[(个人图片|图片|视频)\]\s*[（(]\s*([\s\S]+?)\s*[)）]\s*$/.exec(String(content || '').trim());
         if (imageMatch) {
-            const promptText = String(imageMatch[2] || '').trim();
+            const inlineSender = String(imageMatch[1] || '').trim();
+            const promptText = String(imageMatch[3] || '').trim();
+            if (inlineSender) msgObj.sender = inlineSender;
             msgObj.type = 'image_prompt';
-            msgObj.mediaType = imageMatch[1]; // 记录是图片还是视频
-            msgObj.usePersonalReference = imageMatch[1] === '个人图片';
+            msgObj.mediaType = imageMatch[2]; // 记录是图片还是视频
+            msgObj.usePersonalReference = imageMatch[2] === '个人图片';
             msgObj.imagePrompt = promptText;
             msgObj.content = promptText;
             return;
