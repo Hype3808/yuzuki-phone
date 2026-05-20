@@ -3676,107 +3676,6 @@ input:checked + .toggle-slider:before {
     color: #666666 !important;
 }
 
-/* 微信聊天输入栏安全舱：对抗酒馆主题/移动端样式对 button、input、底栏的反向污染 */
-#phone-panel-content .phone-screen .wechat-app .chat-input-area {
-    flex: 0 0 auto !important;
-    width: 100% !important;
-    min-height: 0 !important;
-    box-sizing: border-box !important;
-    background: rgba(255, 255, 255, 0.15) !important;
-    background-image: none !important;
-    border-top: 0.5px solid rgba(0, 0, 0, 0.15) !important;
-    overflow: visible !important;
-    transform: none !important;
-}
-
-#phone-panel-content .phone-screen .wechat-app .chat-input-bar {
-    display: flex !important;
-    align-items: center !important;
-    justify-content: space-between !important;
-    width: 100% !important;
-    min-height: 48px !important;
-    padding: 8px 10px !important;
-    gap: 4px !important;
-    box-sizing: border-box !important;
-    background: transparent !important;
-    background-image: none !important;
-    border: none !important;
-    transform: none !important;
-}
-
-#phone-panel-content .phone-screen .wechat-app .chat-input-bar > div {
-    min-width: 0 !important;
-    box-sizing: border-box !important;
-}
-
-#phone-panel-content .phone-screen .wechat-app .chat-input-wrapper {
-    flex: 1 1 auto !important;
-    min-width: 0 !important;
-    height: 32px !important;
-    margin: 0 !important;
-    box-sizing: border-box !important;
-}
-
-#phone-panel-content .phone-screen .wechat-app input.chat-input {
-    display: block !important;
-    width: 100% !important;
-    height: 32px !important;
-    min-height: 32px !important;
-    max-height: 32px !important;
-    margin: 0 !important;
-    padding: 0 10px !important;
-    box-sizing: border-box !important;
-    border: 0.5px solid rgba(255, 255, 255, 0.58) !important;
-    border-radius: 8px !important;
-    background: rgba(255, 255, 255, 0.58) !important;
-    background-image: none !important;
-    color: #111111 !important;
-    font-size: 13px !important;
-    line-height: 32px !important;
-    outline: none !important;
-    box-shadow: none !important;
-    transform: none !important;
-    -webkit-appearance: none !important;
-    appearance: none !important;
-}
-
-#phone-panel-content .phone-screen .wechat-app .input-btn,
-#phone-panel-content .phone-screen .wechat-app button.input-btn {
-    flex: 0 0 32px !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    width: 32px !important;
-    min-width: 32px !important;
-    max-width: 32px !important;
-    height: 32px !important;
-    min-height: 32px !important;
-    max-height: 32px !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    box-sizing: border-box !important;
-    border: none !important;
-    border-radius: 8px !important;
-    background: transparent !important;
-    background-image: none !important;
-    box-shadow: none !important;
-    color: #666666 !important;
-    font-size: 18px !important;
-    line-height: 1 !important;
-    transform: none !important;
-    -webkit-appearance: none !important;
-    appearance: none !important;
-}
-
-#phone-panel-content .phone-screen .wechat-app .input-btn svg {
-    display: block !important;
-    flex: 0 0 auto !important;
-    width: 20px !important;
-    height: 20px !important;
-    margin: 0 !important;
-    padding: 0 !important;
-}
-
 /* 提示词折叠面板（跨 App 统一风格） */
 .phone-prompt-fold {
     border: 1px solid rgba(0, 0, 0, 0.08);
@@ -5097,7 +4996,7 @@ input:checked + .toggle-slider:before {
 }
 
 /* 2. 拯救所有表单控件 (对抗主题对裸标签 input, textarea, select 的 !important 劫持) */
-#phone-panel-content input:not(.honey-app *):not([type="checkbox"]):not([type="range"]):not([type="color"]):not(#honey-chat-input):not(#video-chat-input):not(#voice-chat-input):not(#phone-call-input),
+#phone-panel-content input:not(.honey-app *):not(.wechat-app .chat-input):not([type="checkbox"]):not([type="range"]):not([type="color"]):not(#honey-chat-input):not(#video-chat-input):not(#voice-chat-input):not(#phone-call-input),
 #phone-panel-content textarea:not(.honey-app *) {
     background: #ffffff !important;
     background-image: none !important;
