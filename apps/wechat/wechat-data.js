@@ -1820,12 +1820,14 @@ export class WechatData {
         // 🔥 动态拦截表情包与语音（线上模式）
         if ((message.type === 'text' || !message.type) && message.content) {
             const contentStr = message.content.trim();
-            const imageMatch = /^\[(个人图片|图片|视频)\]\s*[（(]\s*([^)）]+?)\s*[)）]\s*$/.exec(contentStr);
+            const imageMatch = /^\[(个人图片|图片|视频)\]\s*([\s\S]+?)\s*$/.exec(contentStr);
             if (imageMatch) {
+                const parsedImagePrompt = this._parseImagePromptText(imageMatch[2]);
                 message.type = 'image_prompt';
                 message.mediaType = imageMatch[1]; // 记录是图片还是视频
                 message.usePersonalReference = imageMatch[1] === '个人图片';
-                message.imagePrompt = imageMatch[2].trim();
+                message.imageDescription = parsedImagePrompt.description;
+                message.imagePrompt = parsedImagePrompt.prompt;
                 message.content = message.imagePrompt;
             }
             const locationMatch = /^\[定位\]\s*[（(]\s*([^)）]+?)\s*[)）]\s*$/.exec(contentStr);
@@ -2195,6 +2197,30 @@ getWeekday(date) {
             this.saveData();
         }
         return foundContact || foundChat;
+    }
+
+    _parseImagePromptText(rawValue = '') {
+        const raw = String(rawValue || '').trim();
+        const parts = [];
+        const bracketRegex = /[（(]\s*([\s\S]*?)\s*[)）]/g;
+        let match;
+        while ((match = bracketRegex.exec(raw)) !== null) {
+            const text = String(match[1] || '').trim();
+            if (text) parts.push(text);
+        }
+
+        if (parts.length >= 2) {
+            return {
+                description: parts[0],
+                prompt: parts.slice(1).join(', ')
+            };
+        }
+
+        const single = parts[0] || raw.replace(/^[（(]\s*|\s*[)）]$/g, '').trim();
+        return {
+            description: single,
+            prompt: single
+        };
     }
 
     // 🔥 通过聊天对象同步头像（更可靠）

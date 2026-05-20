@@ -3573,11 +3573,7 @@ renderChatRoom(chat) {
         if (msg.type === 'image') {
             return `[图片]（${getImageDisplayName()}）`;
         }
-        if (msg.type === 'image_prompt') {
-            const promptText = String(msg.imagePrompt || msg.content || '待生成图片').trim() || '待生成图片';
-            const mediaType = msg.usePersonalReference ? '个人图片' : (msg.mediaType || '图片');
-            return `[${mediaType}]（${promptText}）`;
-        }
+        if (msg.type === 'image_prompt') return this._formatImagePromptTagForPrompt(msg);
         if (msg.type === 'music_listen') {
             return this._formatMusicListenMessageForPrompt(msg, targetChat);
         }
@@ -3643,6 +3639,40 @@ renderChatRoom(chat) {
             return `用户邀请了“${otherName}”一起听歌。当前正在一起听${songText}${progress}。`;
         }
         return `${otherName}发起了一起听歌邀请。当前正在一起听${songText}${progress}。`;
+    }
+
+    _parseImagePromptText(rawValue = '') {
+        const raw = String(rawValue || '').trim();
+        const parts = [];
+        const bracketRegex = /[（(]\s*([\s\S]*?)\s*[)）]/g;
+        let match;
+        while ((match = bracketRegex.exec(raw)) !== null) {
+            const text = String(match[1] || '').trim();
+            if (text) parts.push(text);
+        }
+
+        if (parts.length >= 2) {
+            return {
+                description: parts[0],
+                prompt: parts.slice(1).join(', ')
+            };
+        }
+
+        const single = parts[0] || raw.replace(/^[（(]\s*|\s*[)）]$/g, '').trim();
+        return {
+            description: single,
+            prompt: single
+        };
+    }
+
+    _formatImagePromptTagForPrompt(msg = {}) {
+        const mediaType = msg.usePersonalReference ? '个人图片' : (msg.mediaType || '图片');
+        const promptText = String(msg.imagePrompt || msg.content || '待生成图片').trim() || '待生成图片';
+        const descriptionText = String(msg.imageDescription || '').trim();
+        if (descriptionText && descriptionText !== promptText) {
+            return `[${mediaType}]（${descriptionText}）（${promptText}）`;
+        }
+        return `[${mediaType}]（${promptText}）`;
     }
 
     _getDefaultMusicCover() {
@@ -4629,15 +4659,16 @@ renderChatRoom(chat) {
             }
         }
 
-        const imageMatch = String(content || '').trim().match(/^(?:(.{1,40})[：:]\s*)?\[(个人图片|图片|视频)\]\s*[（(]\s*([\s\S]+?)\s*[)）]\s*$/);
+        const imageMatch = String(content || '').trim().match(/^(?:(.{1,40})[：:]\s*)?\[(个人图片|图片|视频)\]\s*([\s\S]+?)\s*$/);
         if (imageMatch) {
-            const promptText = String(imageMatch[3] || '').trim();
+            const parsedImagePrompt = this._parseImagePromptText(imageMatch[3]);
             const parsed = {
                 type: 'image_prompt',
                 mediaType: imageMatch[2],
                 usePersonalReference: imageMatch[2] === '个人图片',
-                imagePrompt: promptText,
-                content: promptText
+                imageDescription: parsedImagePrompt.description,
+                imagePrompt: parsedImagePrompt.prompt,
+                content: parsedImagePrompt.prompt
             };
             const inlineSender = String(imageMatch[1] || '').trim();
             if (inlineSender) parsed.sender = inlineSender;
@@ -4669,7 +4700,7 @@ renderChatRoom(chat) {
             }];
         }
 
-        const inlineSpecialRegex = /\[(?:个人图片|图片|视频)\]\s*[（(]\s*[\s\S]+?\s*[）)]|\[(?:收款|领取红包|退回转账|退回红包)\](?:\s*[（(]\s*[^）)]*\s*[）)])?|\[转账\]\s*(?:[（(]\s*(?:金额[：:]?\s*)?\d+(?:\.\d+)?\s*元?\s*[)）]|[¥￥]\s*\d+(?:\.\d+)?)|\[红包\]\s*(?:[（(]\s*(?:金额[：:]?\s*)?\d+(?:\.\d+)?\s*元?\s*[)）])?|(?:\[\s*定位\s*\]|【\s*定位\s*】)\s*[（(]\s*[^)）]+?\s*[)）]|(?:\[\s*蜜语\s*\]|【\s*蜜语\s*】)\s*(?:[（(]\s*[^）)]*\s*[）)])?|(?:\[\s*音乐\s*\]|【\s*音乐\s*】)\s*[（(]\s*[^，,）)]+?(?:\s*[，,]\s*[^）)]+?)?\s*[）)]|(?:\[\s*(?:拨打|发起)\s*(?:微信)?(?:群)?(?:语音|视频)(?:通话)?\s*\]|【\s*(?:拨打|发起)\s*(?:微信)?(?:群)?(?:语音|视频)(?:通话)?\s*】)/g;
+        const inlineSpecialRegex = /\[(?:个人图片|图片|视频)\]\s*[（(]\s*[\s\S]+?\s*[）)](?:\s*[（(]\s*[\s\S]+?\s*[）)])?|\[(?:收款|领取红包|退回转账|退回红包)\](?:\s*[（(]\s*[^）)]*\s*[）)])?|\[转账\]\s*(?:[（(]\s*(?:金额[：:]?\s*)?\d+(?:\.\d+)?\s*元?\s*[)）]|[¥￥]\s*\d+(?:\.\d+)?)|\[红包\]\s*(?:[（(]\s*(?:金额[：:]?\s*)?\d+(?:\.\d+)?\s*元?\s*[)）])?|(?:\[\s*定位\s*\]|【\s*定位\s*】)\s*[（(]\s*[^)）]+?\s*[)）]|(?:\[\s*蜜语\s*\]|【\s*蜜语\s*】)\s*(?:[（(]\s*[^）)]*\s*[）)])?|(?:\[\s*音乐\s*\]|【\s*音乐\s*】)\s*[（(]\s*[^，,）)]+?(?:\s*[，,]\s*[^）)]+?)?\s*[）)]|(?:\[\s*(?:拨打|发起)\s*(?:微信)?(?:群)?(?:语音|视频)(?:通话)?\s*\]|【\s*(?:拨打|发起)\s*(?:微信)?(?:群)?(?:语音|视频)(?:通话)?\s*】)/g;
         let hasMatch = false;
         let lastIndex = 0;
         let usedQuote = false;
@@ -7860,9 +7891,7 @@ renderChatRoom(chat) {
                     }
                 } else if (msg.type === 'image_prompt') {
                     // 🔥 修复：将 [图片/视频] 标签原样包裹回去
-                    const mediaType = msg.usePersonalReference ? '个人图片' : (msg.mediaType || '图片');
-                    const promptText = msg.imagePrompt || msg.content || '';
-                    text += `${timeStr}${speaker}: ${quoteStr}[${mediaType}]（${promptText}）\n`;
+                    text += `${timeStr}${speaker}: ${quoteStr}${this._formatImagePromptTagForPrompt(msg)}\n`;
                 } else if (msg.type === 'transfer') {
                     // 🔥 修复：直接将转账状态贴在文字后面
                     const rawStatus = String(msg.status || '').trim();

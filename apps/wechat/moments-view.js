@@ -126,12 +126,13 @@ export class MomentsView {
         const parsed = this._parseMomentImageItem(rawImage);
         const state = this._getMomentImageState(moment, index);
         const promptText = state?.prompt || parsed.promptText || String(rawImage || '').trim();
-        const safePrompt = this._escapeHtml(promptText || '图片描述');
+        const descriptionText = state?.description || parsed.descriptionText || promptText;
+        const safePrompt = this._escapeHtml(descriptionText || '图片描述');
         if (parsed.isDirectImage) {
             return `
                 <div class="moment-image-generated-box">
                     <img src="${this._escapeAttr(parsed.realUrl)}" class="moment-img" data-moment-image-url="${this._escapeAttr(parsed.realUrl)}">
-                    <button class="moment-image-regenerate" data-index="${index}" data-prompt="${this._escapeAttr(promptText)}" title="重新生成">
+                    <button class="moment-image-regenerate" data-index="${index}" data-prompt="${this._escapeAttr(promptText)}" data-description="${this._escapeAttr(descriptionText)}" title="重新生成">
                         <i class="fa-solid fa-rotate"></i>
                     </button>
                     <button class="moment-image-show-desc" title="查看图片描述">描述</button>
@@ -155,11 +156,11 @@ export class MomentsView {
         const previewUrl = `https://picsum.photos/seed/${previewSeed}/480/480`;
 
         return `
-            <div class="moment-image-prompt-box" data-index="${index}" data-prompt="${this._escapeAttr(promptText)}" title="${this._escapeAttr(promptText)}">
+            <div class="moment-image-prompt-box" data-index="${index}" data-prompt="${this._escapeAttr(promptText)}" data-description="${this._escapeAttr(descriptionText)}" title="${this._escapeAttr(descriptionText)}">
                 <div class="moment-image-prompt-front">
                     <img src="${previewUrl}" alt="${this._escapeAttr(promptText)}" class="moment-img" style="filter:${status === 'failed' ? 'grayscale(0.2)' : 'none'};">
                     <div class="moment-image-prompt-mask"></div>
-                    <div class="moment-image-prompt-generate" data-index="${index}" data-prompt="${this._escapeAttr(promptText)}">
+                    <div class="moment-image-prompt-generate" data-index="${index}" data-prompt="${this._escapeAttr(promptText)}" data-description="${this._escapeAttr(descriptionText)}">
                         <div class="moment-image-prompt-icon">${icon}</div>
                         <div class="moment-image-prompt-text">${statusText}</div>
                         ${error ? `<div class="moment-image-prompt-error">${this._escapeHtml(error)}</div>` : ''}
@@ -235,7 +236,8 @@ export class MomentsView {
                 const momentId = momentEl?.dataset?.momentId || '';
                 const index = Number.parseInt(btn.dataset.index, 10);
                 const promptText = String(btn.dataset.prompt || '').trim();
-                await this.generateMomentImage({ momentId, index, promptText });
+                const descriptionText = String(btn.dataset.description || '').trim();
+                await this.generateMomentImage({ momentId, index, promptText, descriptionText });
             });
         });
 
@@ -247,7 +249,8 @@ export class MomentsView {
                 const momentId = momentEl?.dataset?.momentId || '';
                 const index = Number.parseInt(btn.dataset.index, 10);
                 const promptText = String(btn.dataset.prompt || '').trim();
-                await this.generateMomentImage({ momentId, index, promptText, clearPreviousImage: true });
+                const descriptionText = String(btn.dataset.description || '').trim();
+                await this.generateMomentImage({ momentId, index, promptText, descriptionText, clearPreviousImage: true });
             });
         });
 
@@ -635,10 +638,14 @@ export class MomentsView {
             : (this._isDirectMomentImageUrl(unwrappedBody) ? unwrappedBody : '');
 
         let promptText = '';
+        let descriptionText = '';
         if (!directUrl) {
-            promptText = unwrappedBody || body;
+            const parsedPrompt = this._parsePromptDescriptionPair(body);
+            promptText = parsedPrompt.prompt || unwrappedBody || body;
+            descriptionText = parsedPrompt.description || promptText;
             if (!taggedMatch && /^\[[^\]]+\]$/.test(imageStr)) {
                 promptText = imageStr.slice(1, -1).trim();
+                descriptionText = promptText;
             }
         }
 
@@ -646,8 +653,31 @@ export class MomentsView {
             realUrl: directUrl,
             isDirectImage: !!directUrl,
             promptText: promptText.trim(),
+            descriptionText: descriptionText.trim(),
             mediaType,
             usePersonalReference: mediaType === '个人图片'
+        };
+    }
+
+    _parsePromptDescriptionPair(rawValue = '') {
+        const raw = String(rawValue || '').trim();
+        const parts = [];
+        const bracketRegex = /[（(]\s*([\s\S]*?)\s*[)）]/g;
+        let match;
+        while ((match = bracketRegex.exec(raw)) !== null) {
+            const text = String(match[1] || '').trim();
+            if (text) parts.push(text);
+        }
+        if (parts.length >= 2) {
+            return {
+                description: parts[0],
+                prompt: parts.slice(1).join(', ')
+            };
+        }
+        const single = parts[0] || raw.replace(/^[（(]\s*|\s*[)）]$/g, '').trim();
+        return {
+            description: single,
+            prompt: single
         };
     }
 
@@ -754,7 +784,7 @@ export class MomentsView {
         }, 0);
     }
 
-    async generateMomentImage({ momentId, index, promptText, clearPreviousImage = false } = {}) {
+    async generateMomentImage({ momentId, index, promptText, descriptionText = '', clearPreviousImage = false } = {}) {
         if (!momentId || !Number.isInteger(index) || index < 0 || !promptText) return;
         const moment = this._getMomentById(momentId);
         if (!moment) return;
@@ -767,7 +797,8 @@ export class MomentsView {
             this._setMomentImageState(moment, index, {
                 status: 'failed',
                 error: '生图管理器未初始化',
-                prompt: promptText
+                prompt: promptText,
+                description: descriptionText || promptText
             });
             await this.app.wechatData.saveData();
             this._refreshMomentImageUI(momentId);
@@ -783,9 +814,12 @@ export class MomentsView {
         const previousImageUrl = this._getManagedMomentGeneratedImageUrl(moment, index);
         const parsedImage = this._parseMomentImageItem(Array.isArray(moment.images) ? moment.images[index] : '');
         const mediaType = parsedImage.mediaType || '图片';
+        const displayDescription = String(descriptionText || parsedImage.descriptionText || promptText || '').trim();
         const usePersonalReference = parsedImage.usePersonalReference === true;
         if (clearPreviousImage && Array.isArray(moment.images)) {
-            moment.images[index] = `[${mediaType}]${promptText}`;
+            moment.images[index] = displayDescription && displayDescription !== promptText
+                ? `[${mediaType}]（${displayDescription}）（${promptText}）`
+                : `[${mediaType}]（${promptText}）`;
         }
         const novelAIReferences = await this._buildMomentPersonalImageReferences(moment, index);
         const generationPrompt = this._buildMomentImagePromptWithContactTags(moment, index, promptText);
@@ -795,6 +829,7 @@ export class MomentsView {
             status: 'loading',
             error: '',
             prompt: promptText,
+            description: displayDescription,
             generationId,
             mediaType,
             usePersonalReference,
@@ -826,6 +861,7 @@ export class MomentsView {
                 status: 'done',
                 error: '',
                 prompt: promptText,
+                description: displayDescription,
                 mediaType,
                 usePersonalReference,
                 generatedImageUrl: imageUrl,
@@ -845,6 +881,7 @@ export class MomentsView {
                 status: 'failed',
                 error: friendlyMessage,
                 prompt: promptText,
+                description: displayDescription,
                 mediaType,
                 usePersonalReference,
                 generatedImageUrl: '',
@@ -1302,7 +1339,7 @@ export class MomentsView {
         const momentImages = Array.isArray(moment.images) ? moment.images : [];
         for (let i = 0; i < momentImages.length; i++) {
             const parsed = this._parseMomentImageItem(momentImages[i]);
-            const imageLabel = parsed.promptText || `图片${i + 1}`;
+            const imageLabel = parsed.descriptionText || parsed.promptText || `图片${i + 1}`;
             if (parsed.isDirectImage && parsed.realUrl) {
                 const resolvedImageData = await this._resolveMomentImageForAi(parsed.realUrl, aiImageDataCache);
                 if (resolvedImageData && resolvedImageData.startsWith('data:image')) {
@@ -1701,9 +1738,9 @@ ${contactsInfo}
 4. 时间要在当前剧情时间之前（几分钟到几小时前）
 5. 朋友圈内容要反映角色的日常生活、情感状态或与剧情相关的事件
 6. 要参考最近的剧情对话，体现角色当前的状态
-7. 如果朋友圈需要配图，images 数组只能写 [图片]（English NovelAI tags） 或 [个人图片]（English NovelAI tags）。
+7. 如果朋友圈需要配图，images 数组只能写 [图片]（中文图片描述）（English NovelAI tags） 或 [个人图片]（中文图片描述）（English NovelAI tags）。
 8. [个人图片] 只用于画面包含发布者本人脸、自拍、全身照、试衣照、生活照等自身形象；风景、食物、宠物、截图、物品、别人或无人物画面必须用 [图片]。
-9. 括号内只能写英文逗号分隔的 NAI 生图 tag，不要写中文、解释或完整句子。
+9. 第一个括号必须写中文图片描述，供朋友圈卡片背面展示；第二个括号只能写英文逗号分隔的 NAI 生图 tag，不要写中文、解释或完整句子，专门供生图使用。
 
 输出格式（只返回JSON）：
 \`\`\`json
@@ -1713,7 +1750,7 @@ ${contactsInfo}
       "name": "联系人名字",
       "avatar": "表情符号",
       "text": "朋友圈文字内容",
-      "images": ["[图片]（English NovelAI tags）"],
+      "images": ["[图片]（午后的咖啡杯放在靠窗桌边，阳光照着桌面）（coffee cup, window table, afternoon sunlight, phone photo, anime illustration）"],
       "time": "几分钟前/几小时前",
       "likeList": ["点赞的人名"],
       "commentList": [

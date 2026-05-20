@@ -1300,10 +1300,10 @@ export class WeiboData {
             if (trimmed.startsWith('配图：') || trimmed.startsWith('配图:')) {
                 if (inContent) { post.content = contentLines.join('\n'); contentLines = []; inContent = false; }
                 const imgText = trimmed.replace(/^配图[：:]/, '').trim();
-                // 支持格式：[图片]（文字描述）、[图片](文字描述)、[xxx]
-                const pairMatches = [...imgText.matchAll(/\[图片\][（(]([^）)]+)[）)]/g)];
+                // 支持格式：[图片]（中文描述）（English tags）、[图片]（描述）、[xxx]
+                const pairMatches = [...imgText.matchAll(/\[(?:个人图片|图片)\]\s*[（(]([^）)]+)[）)](?:\s*[（(]([^）)]+)[）)])?/g)];
                 if (pairMatches.length > 0) {
-                    post.images = pairMatches.map(m => m[1]);
+                    post.images = pairMatches.map(m => m[0]);
                 } else {
                     const imgMatches = imgText.match(/\[[^\]]+\]/g);
                     post.images = imgMatches || (imgText ? [imgText] : []);
@@ -1554,8 +1554,8 @@ export class WeiboData {
         let processedText = String(text || '');
         const parsedImages = [...(images || [])];
 
-        // 🔥 提取用户输入在正文里的 [图片]（描述） 或 [视频]（描述）
-        const mediaRegex = /\[(图片|视频)\]\s*[（(]\s*([^)）]+?)\s*[)）]/g;
+        // 🔥 提取用户输入在正文里的 [图片]（描述） 或 [图片]（描述）（英文tag）
+        const mediaRegex = /\[(个人图片|图片|视频)\]\s*[（(]\s*([^)）]+?)\s*[)）](?:\s*[（(]\s*([^)）]+?)\s*[)）])?/g;
         let match;
         while ((match = mediaRegex.exec(processedText)) !== null) {
             parsedImages.push(match[0]); // 将完整的 [图片/视频]（描述） 存入配图数组
@@ -1574,7 +1574,7 @@ export class WeiboData {
             // 处理附加图片
             images: parsedImages.map(img => {
                 if (img.startsWith('data:') || img.startsWith('/') || img.startsWith('http')) return img;
-                if (/^\[(图片|视频)\]/.test(img)) return img;
+                if (/^\[(个人图片|图片|视频)\]/.test(img)) return img;
                 return `[${img}]`;
             }),
             forward: 0,

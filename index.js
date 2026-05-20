@@ -16,7 +16,7 @@
 
 const ST_PHONE_BASE_URL = new URL('./', import.meta.url).href;
 const ST_PHONE_GLOBAL_CSS_URL = new URL('./phone.css', import.meta.url).href;
-const ST_PHONE_VERSION = '1.1.5';
+const ST_PHONE_VERSION = '1.1.6';
 const ST_PHONE_UPDATE_MANIFEST_URLS = [
     'https://raw.githubusercontent.com/gaigai315/yuzuki-phone/main/manifest.json',
     'https://raw.githubusercontent.com/gaigai315/yuzuki-phone/master/manifest.json'
@@ -36,18 +36,10 @@ const LOBBY_WECHAT_ONLINE_PROACTIVE_LAST_AT_KEY = 'phone_lobby_wechat_online_pro
 const LOBBY_WECHAT_ONLINE_PROACTIVE_PENDING_KEY = 'phone_lobby_wechat_online_proactive_pending_at';
 const ST_PHONE_CURRENT_UPDATE = {
     version: ST_PHONE_VERSION,
-    date: '2026-05-20',
+    date: '2026-05-21',
     items: [
         '【必做】更新后请在设置中执行一次【一键恢复默认提示词】，以同步最新全局提示词。',
-        '【新增】微信内心活动互动。',
-        '【新增】完善德州扑克加入微信好友互动，支持边聊天边进行游戏。',
-        '【新增】新增 2048 单机游戏。',
-        '【优化】日记样式优化，提示词优化。',
-        '【优化】微信背景同步改为全局微信背景，切换会话窗口后保持一致。',
-        '【优化】本地 ComfyUI 支持更复杂的工作流，ZImage/Flux 这类节点会自动识别提示词输入。',
-        '【优化】ComfyUI 工作流不再默认覆盖采样器步数、CFG、采样器和调度器，避免把网页里调好的 20 步误改成小手机设置里的数值。',
-        '【优化】NovelAI、SD、ComfyUI 的 CFG Rescale 支持 0.5 等小数输入。',
-        '【修复】微信语音/视频通话中误触关闭小手机后，再打开会保留通话界面，避免挂断记录卡片丢失。'
+        '【优化】微信单聊、群聊、朋友圈、微博配图统一支持 [图片]（中文描述）（英文生图tag） 和 [个人图片]（中文描述）（英文生图tag） 格式，图片卡片优先展示中文描述、英文 tag 仅用于生图；兼容旧版 [图片]（描述） 与 [个人图片]（描述），[表情包]（表情包名称） 规则不变。'
     ]
 };
 
