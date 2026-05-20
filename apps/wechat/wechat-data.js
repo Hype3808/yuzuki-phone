@@ -141,6 +141,31 @@ export class WechatData {
         return !!fallback;
     }
 
+    _normalizeChatList(chats = []) {
+        if (!Array.isArray(chats)) return [];
+        const seen = new Set();
+        return chats
+            .filter(chat => chat && typeof chat === 'object')
+            .map((chat, index) => {
+                const safeId = String(chat.id || chat.contactId || `chat_recovered_${index}`).trim();
+                const safeName = String(chat.name || chat.remark || chat.nickname || '未命名聊天').trim();
+                if (!safeId || !safeName || seen.has(safeId)) return null;
+                seen.add(safeId);
+                Object.assign(chat, {
+                    id: safeId,
+                    name: safeName,
+                    type: String(chat.type || '').trim() === 'group' ? 'group' : 'single',
+                    members: Array.isArray(chat.members) ? chat.members.filter(Boolean) : [],
+                    unread: Math.max(0, Number.parseInt(chat.unread || 0, 10) || 0),
+                    timestamp: Number(chat.timestamp || 0) || 0,
+                    lastMessage: String(chat.lastMessage || ''),
+                    time: String(chat.time || '')
+                });
+                return chat;
+            })
+            .filter(Boolean);
+    }
+
     isHoneyHistoryInjectionEnabledForChat(chatId) {
         const chat = this.getChat(chatId);
         if (!chat || chat.type === 'group') return false;
@@ -217,8 +242,8 @@ export class WechatData {
                     const normalizedUserInfo = this._normalizeUserInfo(data.userInfo);
 
                     // 🔥 先构建 chats 数组（迁移需要用到）
-                    const chats = data.chats || [];
-                    const contacts = data.contacts || [];
+                    const chats = this._normalizeChatList(data.chats || []);
+                    const contacts = Array.isArray(data.contacts) ? data.contacts.filter(Boolean) : [];
                     chats.forEach((chat) => {
                         if (!chat || !chat.contactId) return;
                         const contact = contacts.find(item => item?.id === chat.contactId);
@@ -1450,7 +1475,12 @@ export class WechatData {
     getChatList() {
         // 🔥 按时间排序：最新消息的聊天在最前面
         // 使用 chat.timestamp，不读取消息（保持懒加载）
-        return [...this.data.chats].sort((a, b) => {
+        const chats = this._normalizeChatList(this.data?.chats || []);
+        if (chats.length !== (Array.isArray(this.data?.chats) ? this.data.chats.length : 0)) {
+            this.data.chats = chats;
+            this.saveData();
+        }
+        return [...chats].sort((a, b) => {
             const timeA = a.timestamp || 0;
             const timeB = b.timestamp || 0;
             return timeB - timeA; // 降序排列（时间戳越大的越靠前）
@@ -1458,7 +1488,9 @@ export class WechatData {
     }
     
     getChat(chatId) {
-        return this.data.chats.find(c => c.id === chatId);
+        const safeChatId = String(chatId || '').trim();
+        if (!safeChatId) return null;
+        return this._normalizeChatList(this.data?.chats || []).find(c => String(c.id || '') === safeChatId) || null;
     }
 
     _isSameLookupName(a, b) {
