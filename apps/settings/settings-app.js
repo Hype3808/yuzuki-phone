@@ -1636,7 +1636,7 @@ export class SettingsApp {
                                 <div style="display: flex; gap: 10px; margin-bottom: 12px;">
                                     <div style="flex: 1;">
                                         <div style="font-size: 12px; color: #666; margin-bottom: 4px;">最大输出 (Tokens)</div>
-                                        <input type="number" id="phone-api-tokens" value="4096" style="width: 100%; padding: 8px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 13px; background: #fff; box-sizing: border-box;">
+                                        <input type="number" id="phone-api-tokens" value="8192" style="width: 100%; padding: 8px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 13px; background: #fff; box-sizing: border-box;">
                                     </div>
                                     <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; padding-top: 14px;">
                                         <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #333;">
@@ -6824,7 +6824,7 @@ export class SettingsApp {
             apiUrl: '',
             apiKey: '',
             model: '',
-            maxTokens: 4096,
+            maxTokens: 8192,
             useStream: true,
             profiles: [],
             activeProfileName: '',
@@ -6843,7 +6843,7 @@ export class SettingsApp {
                     apiUrl: p.apiUrl || p.url || '',
                     apiKey: p.apiKey || p.key || '',
                     model: p.model || '',
-                    maxTokens: parseInt(p.maxTokens, 10) || 4096,
+                    maxTokens: parseInt(p.maxTokens, 10) || 8192,
                     useStream: p.useStream !== false
                 }));
             const validProfileNames = new Set(merged.profiles.map(p => p.name));
@@ -6855,7 +6855,7 @@ export class SettingsApp {
                 const routeName = String(rawRoutes[appId] || '').trim();
                 merged.appProfileRoutes[appId] = validProfileNames.has(routeName) ? routeName : '';
             });
-            merged.maxTokens = parseInt(merged.maxTokens, 10) || 4096;
+            merged.maxTokens = parseInt(merged.maxTokens, 10) || 8192;
             merged.useStream = merged.useStream !== false;
             return merged;
         };
@@ -6893,7 +6893,7 @@ export class SettingsApp {
             apiUrl: document.getElementById('phone-api-url')?.value.trim() || '',
             apiKey: document.getElementById('phone-api-key')?.value.trim() || '',
             model: document.getElementById('phone-api-model')?.value.trim() || '',
-            maxTokens: parseInt(document.getElementById('phone-api-tokens')?.value, 10) || 4096,
+            maxTokens: parseInt(document.getElementById('phone-api-tokens')?.value, 10) || 8192,
             useStream: document.getElementById('phone-api-stream')?.checked !== false
         });
 
@@ -6923,7 +6923,7 @@ export class SettingsApp {
             }
 
             const tokensInput = document.getElementById('phone-api-tokens');
-            if (tokensInput) tokensInput.value = config.maxTokens || 4096;
+            if (tokensInput) tokensInput.value = config.maxTokens || 8192;
 
             const streamCb = document.getElementById('phone-api-stream');
             if (streamCb) streamCb.checked = config.useStream !== false;
@@ -7068,7 +7068,7 @@ export class SettingsApp {
                     apiUrl: profile.apiUrl || '',
                     apiKey: profile.apiKey || '',
                     model: profile.model || '',
-                    maxTokens: parseInt(profile.maxTokens, 10) || 4096,
+                    maxTokens: parseInt(profile.maxTokens, 10) || 8192,
                     useStream: profile.useStream !== false,
                     activeProfileName: profile.name
                 };

@@ -4611,7 +4611,7 @@ export class WechatApp {
             const result = await apiManager.callAI([
                 { role: 'system', content: '你是一个数据处理引擎。请严格返回要求的JSON格式。' },
                 { role: 'user', content: finalPrompt }
-            ], { max_tokens: 500, appId: 'wechat' });
+            ], { max_tokens: 8192, appId: 'wechat' });
 
             if (!result.success) throw new Error(result.error);
 

@@ -100,7 +100,7 @@ export class ApiManager {
             apiUrl: activeProfile.apiUrl || activeProfile.url || config.apiUrl || '',
             apiKey: activeProfile.apiKey || activeProfile.key || config.apiKey || '',
             model: activeProfile.model || config.model || '',
-            maxTokens: parseInt(activeProfile.maxTokens, 10) || parseInt(config.maxTokens, 10) || 4096,
+            maxTokens: parseInt(activeProfile.maxTokens, 10) || parseInt(config.maxTokens, 10) || 8192,
             useStream: activeProfile.useStream !== false
         };
     }
@@ -113,7 +113,7 @@ export class ApiManager {
             apiUrl: String(config.apiUrl || config.url || '').trim(),
             apiKey: String(config.apiKey || config.key || '').trim(),
             model: String(config.model || ''),
-            maxTokens: parseInt(config.maxTokens, 10) || 4096,
+            maxTokens: parseInt(config.maxTokens, 10) || 8192,
             useStream: config.useStream !== false
         };
     }
@@ -680,15 +680,19 @@ export class ApiManager {
         let apiUrl = this._processApiUrl(apiConfig.apiUrl || '', provider);
         const apiKey = String(apiConfig.apiKey || '').trim();
         const optionMaxTokens = Number.parseInt(options?.max_tokens, 10);
+        const minMaxTokens = Number.parseInt(options?.min_max_tokens, 10);
         const configMaxTokens = Number.parseInt(apiConfig?.maxTokens, 10);
         const hasOptionMaxTokens = Number.isFinite(optionMaxTokens) && optionMaxTokens > 0;
         const hasConfigMaxTokens = Number.isFinite(configMaxTokens) && configMaxTokens > 0;
         // 独立 API 默认优先使用手机独立配置中的 maxTokens；
         // 仅在临时覆盖配置（如设置页测试按钮）时，优先使用调用参数传入值。
         const preferOptionMaxTokens = !!options?.overrideApiConfig;
-        const maxTokens = preferOptionMaxTokens
+        const resolvedMaxTokens = preferOptionMaxTokens
             ? (hasOptionMaxTokens ? optionMaxTokens : (hasConfigMaxTokens ? configMaxTokens : 8192))
             : (hasConfigMaxTokens ? configMaxTokens : (hasOptionMaxTokens ? optionMaxTokens : 8192));
+        const maxTokens = Number.isFinite(minMaxTokens) && minMaxTokens > 0
+            ? Math.max(resolvedMaxTokens, minMaxTokens)
+            : resolvedMaxTokens;
         const temperature = apiConfig.temperature || 0.7;
         const enableStream = apiConfig.useStream !== false;
 

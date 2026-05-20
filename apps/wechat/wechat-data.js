@@ -2618,10 +2618,13 @@ async sendToAI(prompt) {
             const apiManager = window.VirtualPhone?.apiManager;
             if (!apiManager) throw new Error('API Manager 未初始化');
 
-            const resolvedMaxTokens = Number.parseInt(context?.max_response_length, 10)
-                || Number.parseInt(context?.max_length, 10)
-                || Number.parseInt(context?.amount_gen, 10);
-            const callAiOptions = { appId: 'wechat' };
+            const resolvedMaxTokens = Math.max(
+                8192,
+                Number.parseInt(context?.max_response_length, 10) || 0,
+                Number.parseInt(context?.max_length, 10) || 0,
+                Number.parseInt(context?.amount_gen, 10) || 0
+            );
+            const callAiOptions = { appId: 'wechat', min_max_tokens: 8192 };
             if (Number.isFinite(resolvedMaxTokens) && resolvedMaxTokens > 0) {
                 callAiOptions.max_tokens = resolvedMaxTokens;
             }
