@@ -2470,7 +2470,7 @@ export class WeiboView {
     }
 
     async _generateWeiboPostImage({ postId, index, promptText, descriptionText = '', mediaType = '图片', clearPreviousImage = false } = {}) {
-        if (!postId || !Number.isInteger(index) || index < 0 || !promptText) return;
+        if (!postId || !Number.isInteger(index) || index < 0) return;
 
         const { posts, post, source } = this._getPostMediaTarget(postId);
         if (!post) return;
@@ -2482,13 +2482,15 @@ export class WeiboView {
         const imageStorage = this.app?.storage || window.VirtualPhone?.storage || null;
         const safeMediaType = mediaType === '视频' ? '视频' : '图片';
         const parsedMedia = this._parseWeiboMediaItem(Array.isArray(post.images) ? post.images[index] : '');
-        const displayDescription = String(descriptionText || parsedMedia.descriptionText || promptText || '').trim();
+        const slotPromptText = String(parsedMedia.promptText || promptText || '').trim();
+        if (!slotPromptText) return;
+        const displayDescription = String(descriptionText || parsedMedia.descriptionText || slotPromptText || '').trim();
 
         if (!imageManager || typeof imageManager.generate !== 'function') {
             this._setWeiboPostImageState(post, index, {
                 status: 'failed',
                 error: '生图管理器未初始化',
-                prompt: promptText,
+                prompt: slotPromptText,
                 description: displayDescription,
                 mediaType: safeMediaType,
                 imageModel: '',
@@ -2509,15 +2511,15 @@ export class WeiboView {
         const previousImageUrl = this._getManagedWeiboGeneratedImageUrl(post, index);
         const generationId = `weibo_img_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         if (clearPreviousImage && Array.isArray(post.images)) {
-            post.images[index] = displayDescription && displayDescription !== promptText
-                ? `${pendingTag}（${displayDescription}）（${promptText}）`
-                : `${pendingTag}（${promptText}）`;
+            post.images[index] = displayDescription && displayDescription !== slotPromptText
+                ? `${pendingTag}（${displayDescription}）（${slotPromptText}）`
+                : `${pendingTag}（${slotPromptText}）`;
         }
 
         this._setWeiboPostImageState(post, index, {
             status: 'loading',
             error: '',
-            prompt: promptText,
+            prompt: slotPromptText,
             description: displayDescription,
             generationId,
             mediaType: safeMediaType,
@@ -2533,13 +2535,13 @@ export class WeiboView {
         try {
             const result = await imageManager.generate({
                 app: 'weibo',
-                prompt: promptText
+                prompt: slotPromptText
             });
             const rawImageUrl = String(result?.imageUrl || result?.imageData || '').trim();
             const imageUrl = await this._persistWeiboGeneratedImage(rawImageUrl, {
                 postId,
                 index,
-                promptText,
+                promptText: slotPromptText,
                 generationId
             });
             if (!imageUrl) throw new Error('生图成功但未返回图片URL');
@@ -2550,7 +2552,7 @@ export class WeiboView {
             this._setWeiboPostImageState(post, index, {
                 status: 'done',
                 error: '',
-                prompt: promptText,
+                prompt: slotPromptText,
                 description: displayDescription,
                 mediaType: safeMediaType,
                 generatedImageUrl: imageUrl,
@@ -2569,7 +2571,7 @@ export class WeiboView {
             this._setWeiboPostImageState(post, index, {
                 status: 'failed',
                 error: friendlyMessage,
-                prompt: promptText,
+                prompt: slotPromptText,
                 description: displayDescription,
                 mediaType: safeMediaType,
                 generatedImageUrl: '',
@@ -3838,7 +3840,7 @@ export class WeiboView {
         let mediaType = '图片';
         let body = imageStr;
 
-        const taggedMatch = imageStr.match(/^\[(图片|视频)\]\s*([\s\S]*)$/);
+        const taggedMatch = imageStr.match(/^\[(个人图片|图片|视频)\]\s*([\s\S]*)$/);
         if (taggedMatch) {
             mediaType = taggedMatch[1];
             body = String(taggedMatch[2] || '').trim();
