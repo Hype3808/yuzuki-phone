@@ -284,7 +284,7 @@ Execute output strictly in Simplified Chinese (简体中文). Render flesh, bodi
     }
 
     _getDefaultWechatOfflineNoGrabPrompt() {
-        return `当前手机时间：{{STORY_DATE}} {{STORY_TIME}}
+        return `当前手机时间（T_log）：{{STORY_DATE}} {{STORY_TIME}}
 
 {{user}}手机上的微信好友列表：{{wechatFriends}}
 {{user}}手机上的微信群聊列表：{{wechatGroups}}
@@ -379,7 +379,7 @@ date:{{STORY_DATE}}
     }
 
     _getDefaultWechatOfflineGrabPrompt() {
-        return `当前手机时间：{{STORY_DATE}} {{STORY_TIME}}
+        return `当前手机时间（T_log）：{{STORY_DATE}} {{STORY_TIME}}
 
 {{user}}手机上的微信好友列表：{{wechatFriends}}
 {{user}}手机上的微信群聊列表：{{wechatGroups}}
