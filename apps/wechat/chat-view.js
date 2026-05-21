@@ -917,12 +917,14 @@ export class ChatView {
 
     _syncChatSendButton(input = null) {
         const currentView = this.getCurrentWechatView ? this.getCurrentWechatView() : document;
+        const targetInput = input || currentView.querySelector('#chat-input') || document.getElementById('chat-input');
         const button = currentView.querySelector('#send-btn') || document.getElementById('send-btn');
         if (!button) return;
         const targetChatId = String(this.app?.currentChat?.id || '').trim();
         const isCurrentChatSending = this.isSending && String(this._activeSendingChatId || '') === targetChatId;
-        const text = String(input?.value ?? this.inputText ?? '').trim();
-        const mode = isCurrentChatSending ? 'stop' : (text ? 'send' : 'more');
+        const text = String(targetInput?.value ?? this.inputText ?? '').trim();
+        const isInputFocused = !!targetInput && document.activeElement === targetInput;
+        const mode = isCurrentChatSending ? 'stop' : ((text || isInputFocused) ? 'send' : 'more');
         if (button.dataset.mode === mode) return;
         button.dataset.mode = mode;
         button.innerHTML = this._renderChatSendButtonIcon(mode);
@@ -5538,6 +5540,7 @@ renderChatRoom(chat) {
         input?.addEventListener('focus', () => {
             clearTimeout(this.batchTimer);
             this.hideTypingStatus();
+            this._syncChatSendButton(input);
 
             if (window.innerWidth <= 500) {
                 document.body.classList.add('phone-input-active');
@@ -5571,11 +5574,13 @@ renderChatRoom(chat) {
                     if (document.activeElement !== currentInput) {
                         document.body.classList.remove('phone-input-active');
                         restartPendingTimerIfNeeded();
+                        this._syncChatSendButton(currentInput);
                     }
                 }, 100);
             } else {
                 document.body.classList.remove('phone-input-active');
                 restartPendingTimerIfNeeded();
+                this._syncChatSendButton(input);
             }
         });
 
@@ -5606,13 +5611,20 @@ renderChatRoom(chat) {
             isHandlingSend = true;
             const currentInput = query('#chat-input') || input;
             const currentSendBtn = query('#send-btn') || sendBtn;
-            if (String(currentInput?.value || '').trim() === '' && currentSendBtn?.dataset.mode === 'more') {
+            const sendMode = String(currentSendBtn?.dataset.mode || '').trim();
+            if (String(currentInput?.value || '').trim() === '' && sendMode !== 'send' && sendMode !== 'stop') {
                 this.showMore = !this.showMore;
                 this.showEmoji = false;
                 this.showQuickReplies = false;
                 this._setCustomEmojiSelectionMode(false);
                 this.app.render();
             } else {
+                if (String(currentInput?.value || '').trim() === '' && sendMode === 'send') {
+                    this.showMore = false;
+                    this.showEmoji = false;
+                    this.showQuickReplies = false;
+                    this._setCustomEmojiSelectionMode(false);
+                }
                 this.handleSendClick(currentInput);
             }
             // 300毫秒防抖，防止触屏和鼠标事件同时触发导致跳过6秒等待
