@@ -4689,6 +4689,10 @@ export class SettingsApp {
             const nodeText = (id, node) => `${node?.class_type || ''} ${nodeTitle(id, node)} ${JSON.stringify(node?.inputs || {})}`.toLowerCase();
             const hasInput = (node, input) => node?.inputs && Object.prototype.hasOwnProperty.call(node.inputs, input);
             const promptInputNames = ['text', 'value', 'clip_l', 'text_l', 'text_g', 't5xxl', 'prompt', 'positive'];
+            const isPromptTextNode = (node) => {
+                const classType = String(node?.class_type || '');
+                return !/ksampler|samplercustom|basicguider|cfgguider/i.test(classType);
+            };
             const getPromptInputs = (node) => promptInputNames.filter(input => hasInput(node, input));
             const mapping = {};
 
@@ -4696,7 +4700,7 @@ export class SettingsApp {
                 .filter(([, node]) => /string|text|primitive/i.test(String(node?.class_type || '')) && hasInput(node, 'value'))
                 .map(([id, node]) => ({ id, node, text: nodeText(id, node), value: String(node.inputs.value || '') }));
             const encoderCandidates = entries
-                .filter(([, node]) => getPromptInputs(node).length > 0)
+                .filter(([, node]) => isPromptTextNode(node) && getPromptInputs(node).length > 0)
                 .map(([id, node]) => ({ id, node, text: nodeText(id, node), inputs: getPromptInputs(node) }));
             const scorePromptCandidate = (item) => {
                 let score = 0;
@@ -4728,7 +4732,7 @@ export class SettingsApp {
             }
             const fixedCandidate = stringCandidates.find(item => /prefix|额外|additional/.test(item.text));
             if (fixedCandidate?.id) mapping.fixedPrompt = `${fixedCandidate.id}.value`;
-            const negativeCandidate = entries.find(([id, node]) => /negative|负面/.test(nodeText(id, node)) && getPromptInputs(node).length > 0);
+            const negativeCandidate = entries.find(([id, node]) => isPromptTextNode(node) && /negative|负面/.test(nodeText(id, node)) && getPromptInputs(node).length > 0);
             if (negativeCandidate) {
                 const inputs = getPromptInputs(negativeCandidate[1]);
                 const bindings = inputs.map(input => `${negativeCandidate[0]}.${input}`);

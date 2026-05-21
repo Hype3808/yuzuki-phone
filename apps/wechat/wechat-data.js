@@ -1859,6 +1859,12 @@ export class WechatData {
                 message.duration = seconds + '"';
             }
         }
+        if (message.type === 'sticker' && !message.keyword && message.content) {
+            const stickerMatch = /^\[表情包\]\s*[（(]\s*([^)）]+?)\s*[)）]\s*$/.exec(String(message.content || '').trim());
+            if (stickerMatch) {
+                message.keyword = stickerMatch[1].trim();
+            }
+        }
 
         // 🔥 防重复检测：仅用于正文标签同步，避免 AI 流式/重算导致消息重影
         // 注意：手动发送（from=me）也可能出现同内容连发，不能被这里吞掉。

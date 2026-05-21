@@ -1975,6 +1975,14 @@ export class ImageGenerationManager {
         if ((value === null || value === undefined || value === '') && normalized.skipEmpty !== false) {
             return false;
         }
+        if (this._isUnsafeComfyUITextBinding(node, normalized.input, value)) {
+            console.warn('[ComfyUI] 已跳过错误的文本映射，不能把提示词写入采样器 conditioning 输入:', {
+                nodeId: normalized.nodeId,
+                classType: node.class_type,
+                input: normalized.input
+            });
+            return false;
+        }
         const current = node.inputs[normalized.input];
         const mode = normalized.mode;
         if ((mode === 'append' || mode === 'prepend') && typeof current === 'string') {
@@ -1986,6 +1994,14 @@ export class ImageGenerationManager {
             node.inputs[normalized.input] = value;
         }
         return true;
+    }
+
+    _isUnsafeComfyUITextBinding(node, inputName, value) {
+        if (typeof value !== 'string') return false;
+        const classType = String(node?.class_type || '');
+        const input = String(inputName || '').trim().toLowerCase();
+        return /ksampler|samplercustom|basicguider|cfgguider/i.test(classType)
+            && /^(positive|negative|conditioning|positive_cond|negative_cond)$/.test(input);
     }
 
     _applyComfyUINodeMappings(workflow, mappingText, values) {
@@ -2072,6 +2088,10 @@ export class ImageGenerationManager {
         const entries = Object.entries(workflow || {});
         const hasInput = (node, input) => node?.inputs && Object.prototype.hasOwnProperty.call(node.inputs, input);
         const promptInputNames = ['text', 'value', 'clip_l', 'text_l', 'text_g', 't5xxl', 'prompt', 'positive'];
+        const isPromptTextNode = (node) => {
+            const classType = String(node?.class_type || '');
+            return !/ksampler|samplercustom|basicguider|cfgguider/i.test(classType);
+        };
         const getPromptInputs = (node) => promptInputNames.filter(input => hasInput(node, input));
         const titleOf = (node) => String(node?._meta?.title || '').trim();
         const textOf = ([id, node]) => `${node?.class_type || ''} ${titleOf(node)} ${JSON.stringify(node?.inputs || {})}`.toLowerCase();
@@ -2081,7 +2101,7 @@ export class ImageGenerationManager {
             .filter(([, node]) => /string|text|primitive/i.test(String(node?.class_type || '')) && hasInput(node, 'value'))
             .map(([id, node]) => ({ id, node, text: textOf([id, node]) }));
         const encoderCandidates = entries
-            .filter(([, node]) => getPromptInputs(node).length > 0)
+            .filter(([, node]) => isPromptTextNode(node) && getPromptInputs(node).length > 0)
             .map(([id, node]) => ({ id, node, text: textOf([id, node]), inputs: getPromptInputs(node) }));
         const scorePromptCandidate = (item) => {
             let score = 0;
@@ -2113,7 +2133,7 @@ export class ImageGenerationManager {
         const fixedCandidate = stringCandidates.find(item => /prefix|额外|additional/.test(item.text));
         if (fixedCandidate?.id) mapping.fixedPrompt = `${fixedCandidate.id}.value`;
 
-        const negativeCandidate = entries.find(entry => /negative|负面/.test(textOf(entry)) && getPromptInputs(entry[1]).length > 0);
+        const negativeCandidate = entries.find(entry => isPromptTextNode(entry[1]) && /negative|负面/.test(textOf(entry)) && getPromptInputs(entry[1]).length > 0);
         if (negativeCandidate) {
             const inputs = getPromptInputs(negativeCandidate[1]);
             const bindings = inputs.map(input => `${negativeCandidate[0]}.${input}`);
