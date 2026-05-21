@@ -8293,8 +8293,6 @@ if (window.GGP_Loaded) {
                                             });
                                             phoneHistoryContent += `\n`;
                                         });
-
-                                        phoneHistoryContent += `⚠️ 规则：\n- 新微信消息的时间必须在【正文时间】和【手机最新消息时间】两者中取较晚的，再往后递增\n- 禁止重复发送上文已有的消息内容\n- 禁止替{{user}}回复任何内容\n\n`;
                                     }
 
                                     // 3.5️⃣ 添加通话记录
