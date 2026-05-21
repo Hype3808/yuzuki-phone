@@ -448,13 +448,27 @@ export class MofoData {
 
         const lineMap = {};
         const lines = text.split(/\r?\n|[；;]+/g).map(line => line.trim()).filter(Boolean);
+        let activeBlockKey = '';
+        const blockKeys = /(?:评论区|评论|回复区|回复列表|楼中楼|内容列表|comments?|replies?)/i;
         lines.forEach(line => {
-            const match = line.match(/^([^:：=]+)\s*[:：=]\s*(.+)$/);
-            if (!match) return;
+            const match = line.match(/^([^:：=]+)\s*[:：=]\s*(.*)$/);
+            if (!match) {
+                if (activeBlockKey) {
+                    const prev = String(lineMap[activeBlockKey] ?? '').trim();
+                    lineMap[activeBlockKey] = prev ? `${prev}\n${line}` : line;
+                }
+                return;
+            }
             const key = String(match[1] || '').trim();
-            const val = this._convertPrimitive(match[2]);
+            const rawVal = String(match[2] ?? '').trim();
             if (!key) return;
-            lineMap[key] = val;
+            if (activeBlockKey && !Object.prototype.hasOwnProperty.call(nextBase, key)) {
+                const prev = String(lineMap[activeBlockKey] ?? '').trim();
+                lineMap[activeBlockKey] = prev ? `${prev}\n${line}` : line;
+                return;
+            }
+            lineMap[key] = this._convertPrimitive(rawVal);
+            activeBlockKey = (!rawVal && blockKeys.test(key)) ? key : '';
         });
 
         if (Object.keys(lineMap).length > 0) {
