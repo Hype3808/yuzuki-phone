@@ -8750,6 +8750,52 @@ if (window.GGP_Loaded) {
                                         }
                                     }
 
+                                    const appendPhoneTimeAnchorToLastUserMessage = () => {
+                                        try {
+                                            const tm = window.VirtualPhone?.timeManager;
+                                            if (!tm || typeof tm.getPhoneLastMessageTime !== 'function' || typeof tm.extractTimeFromChat !== 'function') return;
+
+                                            const storyTime = tm.extractTimeFromChat(context);
+                                            const phoneTime = tm.getPhoneLastMessageTime();
+                                            if (!storyTime?.date || !storyTime?.time || !phoneTime?.date || !phoneTime?.time) return;
+
+                                            const storyTs = Number(storyTime.timestamp || tm.parseTimeToTimestamp?.(storyTime));
+                                            const phoneTs = Number(phoneTime.timestamp || tm.parseTimeToTimestamp?.(phoneTime));
+                                            if (!Number.isFinite(storyTs) || !Number.isFinite(phoneTs) || phoneTs <= storyTs) return;
+
+                                            const formatTimeAnchor = (value) => {
+                                                const date = String(value?.date || '').trim();
+                                                const weekday = String(value?.weekday || '').trim();
+                                                const time = String(value?.time || '').trim();
+                                                return [date, weekday, time].filter(Boolean).join(' ');
+                                            };
+                                            const anchorBlock = [
+                                                '<时间提示>',
+                                                '【手机时间锚点】',
+                                                `当前手机时间：${formatTimeAnchor(phoneTime)}`,
+                                                `当前剧情时间：${formatTimeAnchor(storyTime)}`,
+                                                '说明：当前手机时间晚于剧情时间，请以当前手机时间为最晚时间推进剧情。',
+                                                '</时间提示>'
+                                            ].join('\n');
+                                            const anchorRegex = /\n*\s*(?:<时间提示>[\s\S]*?<\/时间提示>|【手机时间锚点】[\s\S]*?(?=\n{2,}|$))/g;
+
+                                            for (let i = messages.length - 1; i >= 0; i--) {
+                                                const msg = messages[i];
+                                                if (msg?.role !== 'user') continue;
+
+                                                let content = msg.content ?? msg.mes ?? msg.text ?? (Array.isArray(msg.parts) && msg.parts[0] ? msg.parts[0].text : '');
+                                                if (typeof content !== 'string') content = String(content ?? '');
+                                                const cleaned = content.replace(anchorRegex, '').trimEnd();
+                                                const nextContent = `${cleaned}\n\n${anchorBlock}`.trim();
+                                                messages[i] = cloneSplitMessage(msg, nextContent);
+                                                break;
+                                            }
+                                        } catch (e) {
+                                            console.warn('⚠️ [手机] 追加手机时间锚点失败:', e);
+                                        }
+                                    };
+                                    appendPhoneTimeAnchorToLastUserMessage();
+
                                     // ========================================
                                     // 🔥 终极防线：无条件清洗发送给大模型的数据上下文
                                     // ========================================
