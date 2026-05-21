@@ -1792,7 +1792,7 @@ export class WeiboData {
     // ========================================
     // 🤖 AI互动：AI回复用户针对某条微博的评论
     // ========================================
-    async generateReplyForUserComment(post, userComment, replyTo) {
+    async generateReplyForUserComment(post, userComment, replyTo, meta = {}) {
         return this.queueApiCall(async () => {
             const context = this._getContext();
             const userName = context?.name1 || '用户';
@@ -1827,13 +1827,20 @@ export class WeiboData {
                 postContentDisplay = '[分享了图片]';
             }
 
+            const existingCommentContext = this._buildUserCommentReplyContext(post, meta, userComment);
+
             let prompt = promptManager?.getPromptForFeature('weibo', 'commentInteraction') || '';
+            const promptHasCommentContextSlot = prompt.includes('{{existingCommentContext}}');
+            const userCommentForPrompt = promptHasCommentContextSlot
+                ? String(userComment || '')
+                : `${String(userComment || '')}${existingCommentContext ? `\n\n${existingCommentContext}` : ''}`;
             prompt = prompt
                 .replace(/\{\{userName\}\}/g, userName)
                 .replace(/\{\{currentFollowers\}\}/g, String(currentFollowers))
                 .replace(/\{\{postContentDisplay\}\}/g, postContentDisplay)
+                .replace(/\{\{existingCommentContext\}\}/g, existingCommentContext)
                 .replace(/\{\{userCommentPrefix\}\}/g, replyTo ? `回复了 ${replyTo}：` : '')
-                .replace(/\{\{userComment\}\}/g, String(userComment || ''))
+                .replace(/\{\{userComment\}\}/g, userCommentForPrompt)
                 .replace(/\{\{postBlogger\}\}/g, String(post?.blogger || '博主'));
             prompt = this._injectCurrentFollowersToPrompt(prompt);
 
@@ -1867,6 +1874,48 @@ export class WeiboData {
 
             return { comments: [] };
         });
+    }
+
+    _buildUserCommentReplyContext(post, meta = {}, userComment = '') {
+        const comments = Array.isArray(post?.commentList) ? [...post.commentList] : [];
+        if (!comments.length) return '';
+
+        const currentUserComment = String(userComment || '').trim();
+        const lastComment = comments[comments.length - 1];
+        if (currentUserComment && String(lastComment?.text || '').trim() === currentUserComment) {
+            comments.pop();
+        }
+        if (!comments.length) return '';
+
+        const normalizeName = (name) => String(name || '网友').replace(/^@/, '').trim() || '网友';
+        const formatComment = (comment, fallbackIndex) => {
+            if (!comment) return '';
+            const author = normalizeName(comment.name);
+            const replyToText = comment.replyTo ? ` 回复 ${String(comment.replyTo).replace(/^@/, '')}` : '';
+            const text = String(comment.text || '').trim();
+            return text ? `- ${author}${replyToText}：${text}` : '';
+        };
+
+        const replyCommentIndex = Number.isInteger(meta?.replyCommentIndex) ? meta.replyCommentIndex : null;
+        const replyRootIndex = Number.isInteger(meta?.replyRootIndex) ? meta.replyRootIndex : null;
+        const targetComment = replyCommentIndex !== null ? comments[replyCommentIndex] : null;
+        const rootComment = replyRootIndex !== null ? comments[replyRootIndex] : null;
+        const recentComments = comments
+            .slice(Math.max(0, comments.length - 8))
+            .map((comment, offset) => formatComment(comment, comments.length - 8 + offset))
+            .filter(Boolean);
+
+        const lines = ['已有评论区上下文：'];
+        if (rootComment) lines.push(`主楼评论：${formatComment(rootComment, replyRootIndex).replace(/^- /, '')}`);
+        if (targetComment && targetComment !== rootComment) {
+            lines.push(`用户正在回复的评论：${formatComment(targetComment, replyCommentIndex).replace(/^- /, '')}`);
+        }
+        if (recentComments.length) {
+            lines.push('最近已有评论：');
+            lines.push(...recentComments);
+        }
+
+        return lines.length > 1 ? lines.join('\n') : '';
     }
 
     // ========================================

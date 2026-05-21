@@ -962,9 +962,10 @@ label[for="weibo-settings-banner-upload"].weibo-settings-btn {
     border-radius: 12px;
     display: flex;
     flex-direction: column;
-    animation: weibo-forward-pop 0.2s ease;
     touch-action: auto;
     overflow: hidden;
+    transform: translateZ(0);
+    backface-visibility: hidden;
 }
 
 .weibo-app.weibo-forward-lock {
@@ -977,11 +978,6 @@ label[for="weibo-settings-banner-upload"].weibo-settings-btn {
 
 .weibo-forward-dialog.weibo-forward-dialog-compose {
     max-height: 86%;
-}
-
-@keyframes weibo-forward-pop {
-    from { transform: translateY(6px) scale(0.98); opacity: 0; }
-    to { transform: translateY(0) scale(1); opacity: 1; }
 }
 
 .weibo-forward-header {

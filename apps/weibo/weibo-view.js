@@ -785,6 +785,7 @@ export class WeiboView {
         
         this.currentReplyTo = null; // 初始化回复状态
         this.currentReplyRootIndex = null;
+        this.currentReplyCommentIndex = null;
         this.bindPostDetailEvents(postId, mode);
     }
 
@@ -833,6 +834,7 @@ export class WeiboView {
             document.getElementById('weibo-detail-scroll-area')?.addEventListener('click', () => {
                 this.currentReplyTo = null;
                 this.currentReplyRootIndex = null;
+                this.currentReplyCommentIndex = null;
                 input.placeholder = "写评论...";
             });
 
@@ -842,17 +844,20 @@ export class WeiboView {
 
                 const replyTo = this.currentReplyTo;
                 const replyRootIndex = Number.isInteger(this.currentReplyRootIndex) ? this.currentReplyRootIndex : null;
+                const replyCommentIndex = Number.isInteger(this.currentReplyCommentIndex) ? this.currentReplyCommentIndex : null;
+                const hotSearchTitle = mode === 'hotSearch' ? String(this.currentHotSearchTitle || '').trim() : '';
 
                 if (mode === 'recommend' || mode === 'myPosts') {
                     this.app.weiboData.addComment(postId, text, replyTo, mode === 'myPosts' ? 'user' : 'recommend', null, '本地', { replyRootIndex });
                 } else {
-                    this.app.weiboData.addCommentHotSearch(postId, text, replyTo, this.currentHotSearchTitle, null, '本地', { replyRootIndex });
+                    this.app.weiboData.addCommentHotSearch(postId, text, replyTo, hotSearchTitle, null, '本地', { replyRootIndex });
                 }
 
                 // 清空输入框和状态
                 input.value = '';
                 this.currentReplyTo = null;
                 this.currentReplyRootIndex = null;
+                this.currentReplyCommentIndex = null;
                 input.placeholder = "写评论...";
 
                 // 🔥 核心修复：直接重新渲染整个详情页，确保评论100%精准显示在正文下方，且包含正确的回复对象
@@ -867,7 +872,7 @@ export class WeiboView {
                 }
                 
                 // 🔥 触发AI自动回复用户的评论 (已静默)
-                this.triggerCommentAIReaction(postId, text, replyTo, mode, { replyRootIndex });
+                this.triggerCommentAIReaction(postId, text, replyTo, mode, { replyRootIndex, replyCommentIndex, hotSearchTitle });
             };
 
             sendBtn.addEventListener('click', (e) => {
@@ -1538,7 +1543,6 @@ export class WeiboView {
             overlay.remove();
         };
 
-        phoneScreen?.appendChild(overlay);
         overlay.addEventListener('click', (e) => {
             if (e.target === overlay) closeOverlay();
         });
@@ -1684,6 +1688,7 @@ export class WeiboView {
         };
 
         overlay.innerHTML = renderTargetList();
+        phoneScreen?.appendChild(overlay);
         bindTargetListEvents();
     }
 
@@ -1759,13 +1764,14 @@ export class WeiboView {
         const submitComment = () => {
             const text = input.value?.trim();
             if (!text) return;
+            const hotSearchTitle = mode === 'hotSearch' ? String(this.currentHotSearchTitle || '').trim() : '';
 
             if (mode === 'recommend' || mode === 'myPosts') {
                 this.app.weiboData.addComment(postId, text, replyTo, mode === 'myPosts' ? 'user' : 'recommend', null, '本地', {
                     replyRootIndex: Number.isInteger(meta?.replyRootIndex) ? meta.replyRootIndex : null
                 });
             } else {
-                this.app.weiboData.addCommentHotSearch(postId, text, replyTo, this.currentHotSearchTitle, null, '本地', {
+                this.app.weiboData.addCommentHotSearch(postId, text, replyTo, hotSearchTitle, null, '本地', {
                     replyRootIndex: Number.isInteger(meta?.replyRootIndex) ? meta.replyRootIndex : null
                 });
             }
@@ -1777,7 +1783,7 @@ export class WeiboView {
                 ? this.app.weiboData.getRecommendPosts()
                 : mode === 'myPosts'
                     ? this.app.weiboData.getUserPosts()
-                    : this.app.weiboData.getHotSearchDetail(this.currentHotSearchTitle)?.posts;
+                    : this.app.weiboData.getHotSearchDetail(hotSearchTitle)?.posts;
 
             const updatedPost = updatedPosts?.find(p => p.id === postId);
             if (updatedPost) {
@@ -1798,7 +1804,9 @@ export class WeiboView {
             
             // 🔥 触发AI自动回复用户的评论
             this.triggerCommentAIReaction(postId, text, replyTo, mode, {
-                replyRootIndex: Number.isInteger(meta?.replyRootIndex) ? meta.replyRootIndex : null
+                replyRootIndex: Number.isInteger(meta?.replyRootIndex) ? meta.replyRootIndex : null,
+                replyCommentIndex: Number.isInteger(meta?.replyCommentIndex) ? meta.replyCommentIndex : null,
+                hotSearchTitle
             });
         };
 
@@ -1903,8 +1911,8 @@ export class WeiboView {
                         </div>
                         <div class="wnc-main">
                             <!-- 🔥 主评论，添加 weibo-replyable 类用于点击回复 -->
-                            <div class="wnc-name weibo-replyable" data-author="${mainComment.cleanName}" data-root-index="${mainComment.originalIndex}">${mainComment.cleanName}</div>
-                            <div class="wnc-content weibo-replyable" data-author="${mainComment.cleanName}" data-root-index="${mainComment.originalIndex}">
+                            <div class="wnc-name weibo-replyable" data-author="${this._escapeAttr(mainComment.cleanName)}" data-root-index="${mainComment.originalIndex}" data-comment-index="${mainComment.originalIndex}">${this._escapeHtml(mainComment.cleanName)}</div>
+                            <div class="wnc-content weibo-replyable" data-author="${this._escapeAttr(mainComment.cleanName)}" data-root-index="${mainComment.originalIndex}" data-comment-index="${mainComment.originalIndex}">
                                 ${mainComment.text}
                             </div>
                             
@@ -1912,7 +1920,7 @@ export class WeiboView {
                             ${mainComment.subComments.length > 0 ? `
                                 <div class="wnc-sub-comments">
                                     ${mainComment.subComments.map(sub => `
-                                        <div class="wnc-sub-item weibo-replyable" data-author="${sub.cleanName}" data-root-index="${mainComment.originalIndex}">
+                                        <div class="wnc-sub-item weibo-replyable" data-author="${this._escapeAttr(sub.cleanName)}" data-root-index="${mainComment.originalIndex}" data-comment-index="${sub.originalIndex}">
                                             <span class="wnc-sub-content-wrap">
                                                 <span class="wnc-sub-name">${sub.cleanName}</span>
                                                 ${sub.cleanReplyTo && sub.cleanReplyTo !== mainComment.cleanName ? `
@@ -1960,13 +1968,17 @@ export class WeiboView {
     // 🔥 AI互动：当用户在微博详情页评论时，触发AI生成回复
     async triggerCommentAIReaction(postId, userText, replyTo, mode, meta = {}) {
         try {
+            const reactionMode = mode === 'myPosts' ? 'myPosts' : (mode === 'hotSearch' ? 'hotSearch' : 'recommend');
+            const reactionHotSearchTitle = reactionMode === 'hotSearch'
+                ? String(meta?.hotSearchTitle || this.currentHotSearchTitle || '').trim()
+                : '';
             let post;
-            if (mode === 'recommend') {
+            if (reactionMode === 'recommend') {
                 post = this.app.weiboData.getRecommendPosts().find(p => p.id === postId);
-            } else if (mode === 'myPosts') {
+            } else if (reactionMode === 'myPosts') {
                 post = this.app.weiboData.getUserPosts().find(p => p.id === postId);
             } else {
-                post = this.app.weiboData.getHotSearchDetail(this.currentHotSearchTitle)?.posts?.find(p => p.id === postId);
+                post = this.app.weiboData.getHotSearchDetail(reactionHotSearchTitle)?.posts?.find(p => p.id === postId);
             }
 
             if (!post) return;
@@ -1993,7 +2005,10 @@ export class WeiboView {
 
             this.app.phoneShell.showNotification('微博', '网友正在围观...', '👀');
 
-            const result = await this.app.weiboData.generateReplyForUserComment(post, userText, replyTo);
+            const result = await this.app.weiboData.generateReplyForUserComment(post, userText, replyTo, {
+                replyRootIndex: Number.isInteger(meta?.replyRootIndex) ? meta.replyRootIndex : null,
+                replyCommentIndex: Number.isInteger(meta?.replyCommentIndex) ? meta.replyCommentIndex : null
+            });
 
             if (result && result.comments && result.comments.length > 0) {
                 const context = this.app.weiboData._getContext();
@@ -2009,26 +2024,32 @@ export class WeiboView {
                     const finalReplyTo = aiReplyTo || replyTarget;
                     const replyRootIndex = Number.isInteger(meta?.replyRootIndex) ? meta.replyRootIndex : null;
 
-                    if (mode === 'recommend' || mode === 'myPosts') {
+                    if (reactionMode === 'recommend' || reactionMode === 'myPosts') {
                         this.app.weiboData.addComment(
                             postId,
                             c.text,
                             finalReplyTo,
-                            mode === 'myPosts' ? 'user' : 'recommend',
+                            reactionMode === 'myPosts' ? 'user' : 'recommend',
                             c.name || '热心网友',
                             c.location || '',
                             { replyRootIndex }
                         );
                     } else {
-                        this.app.weiboData.addCommentHotSearch(postId, c.text, finalReplyTo, this.currentHotSearchTitle, c.name || '热心网友', c.location || '', { replyRootIndex });
+                        this.app.weiboData.addCommentHotSearch(postId, c.text, finalReplyTo, reactionHotSearchTitle, c.name || '热心网友', c.location || '', { replyRootIndex });
                     }
                 }
 
                 // 取消了“收到新回复”弹窗
 
-                // 如果当前仍在这个帖子的详情页，静默刷新页面显示新回复
-                if (this.currentView === 'postDetail' && this.currentPostId === postId) {
-                    this.renderPostDetail(postId, mode);
+                // 只在用户仍停留在同一个详情上下文时刷新，避免异步回复把已切走的评论区顶回来
+                const stillSameDetail =
+                    this.currentView === 'postDetail' &&
+                    String(this.currentPostId || '') === String(postId || '') &&
+                    (this.currentPostMode || 'recommend') === reactionMode &&
+                    (reactionMode !== 'hotSearch' || String(this.currentHotSearchTitle || '').trim() === reactionHotSearchTitle);
+
+                if (stillSameDetail) {
+                    this.renderPostDetail(postId, reactionMode);
                 }
             }
         } catch (e) {
@@ -3416,6 +3437,7 @@ export class WeiboView {
                 if (fixedInput) {
                     this.currentReplyTo = null;
                     this.currentReplyRootIndex = null;
+                    this.currentReplyCommentIndex = null;
                     fixedInput.placeholder = "写评论...";
                     fixedInput.focus();
                 }
@@ -3460,12 +3482,14 @@ export class WeiboView {
                 // 直接从我们在 HTML 里埋好的 data-author 中取被回复人的名字
                 const replyTo = el.dataset.author || null;
                 const rootIndex = Number.parseInt(el.dataset.rootIndex, 10);
+                const commentIndex = Number.parseInt(el.dataset.commentIndex, 10);
                 
                 // 聚焦到底部固定输入框，并改变提示词和内部状态
                 const fixedInput = document.getElementById('fixed-comment-input');
                 if (fixedInput && replyTo) {
                     this.currentReplyTo = replyTo;
                     this.currentReplyRootIndex = Number.isInteger(rootIndex) ? rootIndex : null;
+                    this.currentReplyCommentIndex = Number.isInteger(commentIndex) ? commentIndex : null;
                     fixedInput.placeholder = `回复 ${replyTo}:`;
                     fixedInput.focus();
                 }
