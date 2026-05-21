@@ -5226,12 +5226,15 @@ renderChatRoom(chat) {
             .replace(/'/g, '&#39;');
 
         const stripName = (v) => String(v || '').trim().replace(/^@/, '');
-        const cleanImageDesc = (raw) => {
+        const parseWeiboMediaPreview = (raw) => {
             const txt = String(raw || '').trim();
-            if (!txt) return '';
-            const m = txt.match(/\[图片\]\s*[（(]([^）)]+)[）)]/);
-            if (m && m[1]) return m[1].trim();
-            return txt.replace(/^\[图片\]\s*/g, '').trim();
+            if (!txt) return null;
+            const m = txt.match(/\[(个人图片|图片|视频)\]\s*[（(]([^）)]+)[）)]/);
+            if (m && m[2]) {
+                return { type: m[1], desc: m[2].trim() };
+            }
+            const stripped = txt.replace(/^\[(个人图片|图片|视频)\]\s*/g, '').trim();
+            return stripped ? { type: '图片', desc: stripped } : null;
         };
 
         const bloggerRaw = String(weiboData.blogger || '微博').trim();
@@ -5257,7 +5260,7 @@ renderChatRoom(chat) {
         const likes = Number.parseInt(weiboData.likes, 10) || 0;
 
         const imageLines = (Array.isArray(weiboData.images) ? weiboData.images : [])
-            .map(cleanImageDesc)
+            .map(parseWeiboMediaPreview)
             .filter(Boolean)
             .slice(0, 6);
 
@@ -5362,7 +5365,7 @@ renderChatRoom(chat) {
 
                 ${imageLines.length > 0 ? `
                     <div style="margin-bottom:10px; background:#f7f7f7; border:0.5px solid #eee; border-radius:6px; padding:8px;">
-                        ${imageLines.map((line, i) => `<div style="font-size:11px; color:#666; line-height:1.5;">${i + 1}. ${esc(line)}</div>`).join('')}
+                        ${imageLines.map((item, i) => `<div style="font-size:11px; color:#666; line-height:1.5;">${i + 1}. [${esc(item.type)}]（${esc(item.desc)}）</div>`).join('')}
                     </div>
                 ` : ''}
 

@@ -2073,7 +2073,7 @@ export class WeiboData {
                 blogger: post.blogger,
                 bloggerType: post.bloggerType || '',
                 content: post.content || '',
-                images: [],
+                images: Array.isArray(post.images) ? [...post.images] : [],
                 forward: post.forward || 0,
                 comments: post.commentList?.length || post.comments || 0,
                 likes: post.likes || 0,
@@ -2126,6 +2126,11 @@ export class WeiboData {
         if (post.bloggerType) text += `（${post.bloggerType}）`;
         text += `\n${post.content || ''}`;
 
+        const imageTexts = this._buildWeiboForwardImageTexts(post);
+        if (imageTexts.length > 0) {
+            text += `\n配图：${imageTexts.join('')}`;
+        }
+
         const comments = post.commentList || [];
         if (comments.length > 0) {
             text += `\n---评论---`;
@@ -2137,6 +2142,39 @@ export class WeiboData {
             });
         }
         return text;
+    }
+
+    _buildWeiboForwardImageTexts(post) {
+        const images = Array.isArray(post?.images) ? post.images : [];
+        return images
+            .map((item, index) => this._extractWeiboImageDisplayTag(item, post?.imageGenerationStates?.[index]))
+            .filter(Boolean);
+    }
+
+    _extractWeiboImageDisplayTag(rawValue, imageState = null) {
+        const raw = String(rawValue || '').trim();
+        const stateDescription = String(imageState?.description || imageState?.prompt || '').trim();
+        if (!raw && !stateDescription) return '';
+
+        const taggedMatch = raw.match(/^\[(个人图片|图片|视频)\]\s*([\s\S]*)$/);
+        const rawTag = taggedMatch?.[1] || (String(imageState?.mediaType || '').trim() === '视频' ? '视频' : '图片');
+        const tag = ['个人图片', '图片', '视频'].includes(rawTag) ? rawTag : '图片';
+        const body = taggedMatch ? String(taggedMatch[2] || '').trim() : raw;
+        const parts = [];
+        const bracketRegex = /[（(]\s*([\s\S]*?)\s*[)）]/g;
+        let match;
+        while ((match = bracketRegex.exec(body)) !== null) {
+            const text = String(match[1] || '').trim();
+            if (text) parts.push(text);
+        }
+
+        let description = parts[0] || stateDescription;
+        if (!description && body && !/^(?:data:image|data:application\/octet-stream;base64,|https?:\/\/|\/backgrounds\/)/i.test(body)) {
+            description = body.replace(/^[（(]\s*|\s*[)）]$/g, '').trim();
+        }
+        if (!description) description = tag === '视频' ? '视频内容' : '图片内容';
+
+        return `[${tag}]（${description}）`;
     }
 
     // 获取微信好友列表（异步静默加载）
