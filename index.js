@@ -1410,7 +1410,7 @@ if (window.GGP_Loaded) {
         if (!storage?.get || !storage?.set || !window.fetch) return;
         const lastCheckAt = Number.parseInt(storage.get('phone-update-last-check-at') || '0', 10) || 0;
         const now = Date.now();
-        if (now - lastCheckAt < 6 * 60 * 60 * 1000) return;
+        if (now - lastCheckAt < 60 * 60 * 1000) return;
         await storage.set('phone-update-last-check-at', String(now));
 
         let remoteManifest = null;
