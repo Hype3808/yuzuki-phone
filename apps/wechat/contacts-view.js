@@ -473,9 +473,23 @@ export class ContactsView {
         const referencePreviewStyle = referenceImage
             ? `background-image:url('${this._escapeAttr(`${referenceImage}${referenceImage.includes('?') ? '&' : '?'}t=${Date.now()}`)}'); background-size:cover; background-position:center;`
             : '';
+        const shellBg = this.app._getMainShellBackgroundConfig?.() || {};
+        const hasShellBg = !!shellBg.contentBgStyle;
+        const glassPanelStyle = hasShellBg
+            ? 'background: rgba(255,255,255,0.34); border: 1px solid rgba(255,255,255,0.36); backdrop-filter: blur(12px) saturate(135%); -webkit-backdrop-filter: blur(12px) saturate(135%);'
+            : 'background: #fff;';
+        const fieldStyle = hasShellBg
+            ? 'background: rgba(255,255,255,0.84); border: 1px solid rgba(255,255,255,0.56); color: #111;'
+            : 'background: #fff; border: 1px solid #e5e5e5; color: #111;';
+        const softFieldStyle = hasShellBg
+            ? 'background: rgba(255,255,255,0.72); border: 1px solid rgba(255,255,255,0.48); color: #111;'
+            : 'background: #fafafa; border: 1px solid #e5e5e5; color: #111;';
+        const buttonStyle = hasShellBg
+            ? 'background: rgba(255,255,255,0.76); border: 1px solid rgba(255,255,255,0.52); color: #111;'
+            : 'background: #f0f0f0; border: none; color: #333;';
 
         const html = `
-            <div class="wechat-app">
+            <div class="${shellBg.appClass || 'wechat-app'}" style="${shellBg.appStyle || ''}">
                 <div class="wechat-header">
                     <div class="wechat-header-left">
                         <button class="wechat-back-btn" id="back-from-edit-contact">
@@ -486,8 +500,8 @@ export class ContactsView {
                     <div class="wechat-header-right"></div>
                 </div>
 
-                <div class="wechat-content" style="background: #ededed; padding: 12px;">
-                    <div style="background: #fff; border-radius: 10px; padding: 15px; margin-bottom: 10px;">
+                <div class="wechat-content" style="${shellBg.contentBgStyle || 'background: #ededed;'} padding: 12px;">
+                    <div style="${glassPanelStyle} border-radius: 10px; padding: 15px; margin-bottom: 10px;">
                         <div style="text-align: center; margin-bottom: 12px;">
                             <div id="edit-contact-avatar-preview" style="
                                 width: 56px;
@@ -507,8 +521,7 @@ export class ContactsView {
                             <input type="file" id="edit-contact-avatar-upload" accept="image/png, image/jpeg, image/gif, image/webp, image/*" style="display: none;">
                             <button id="upload-edit-contact-avatar" style="
                                 padding: 5px 10px;
-                                background: #f0f0f0;
-                                border: none;
+                                ${buttonStyle}
                                 border-radius: 4px;
                                 font-size: 11px;
                                 cursor: pointer;
@@ -523,7 +536,7 @@ export class ContactsView {
                                    value="${contact.name || ''}" style="
                                 width: 100%;
                                 padding: 8px 10px;
-                                border: 1px solid #e5e5e5;
+                                ${fieldStyle}
                                 border-radius: 6px;
                                 font-size: 13px;
                                 box-sizing: border-box;
@@ -538,10 +551,9 @@ export class ContactsView {
                                 width: 100%;
                                 height: 30px;
                                 padding: 0 8px;
-                                border: 1px solid #e5e5e5;
+                                ${softFieldStyle}
                                 border-radius: 6px;
                                 font-size: 12px;
-                                background: #fafafa;
                                 box-sizing: border-box;
                             ">
                                 <option value="female" ${contactGender !== 'male' ? 'selected' : ''}>女</option>
@@ -556,8 +568,7 @@ export class ContactsView {
                                     width: 64px;
                                     height: 64px;
                                     border-radius: 8px;
-                                    border: 1px dashed #d8d8d8;
-                                    background: #fafafa;
+                                    ${softFieldStyle}
                                     color: #999;
                                     display: flex;
                                     align-items: center;
@@ -571,7 +582,7 @@ export class ContactsView {
                                     <div style="font-size: 11px; color: #666; line-height: 1.45;">仅当 AI 回复 <b>[个人图片]（描述）</b> 时，NovelAI 生图才会使用这张参考图；普通 <b>[图片]（描述）</b> 不会使用参考图。</div>
                                     <input type="file" id="edit-contact-reference-upload" accept="image/png, image/jpeg, image/gif, image/webp, image/*" style="display: none;">
                                     <div style="display: flex; gap: 6px; margin-top: 8px;">
-                                        <button id="upload-edit-contact-reference" type="button" style="padding: 5px 9px; border: none; border-radius: 5px; background: #f0f0f0; color: #333; font-size: 11px; cursor: pointer;">${referenceImage ? '替换形象' : '上传形象'}</button>
+                                        <button id="upload-edit-contact-reference" type="button" style="padding: 5px 9px; ${buttonStyle} border-radius: 5px; font-size: 11px; cursor: pointer;">${referenceImage ? '替换形象' : '上传形象'}</button>
                                         <button id="delete-edit-contact-reference" type="button" ${referenceImage ? '' : 'disabled'} style="padding: 5px 9px; border: none; border-radius: 5px; background: #fff1f0; color: #d93025; font-size: 11px; cursor: pointer; opacity:${referenceImage ? '1' : '0.45'};">删除</button>
                                     </div>
                                 </div>
@@ -590,7 +601,7 @@ export class ContactsView {
                                     width: 100%;
                                     min-height: 54px;
                                     padding: 8px 10px;
-                                    border: 1px solid #e5e5e5;
+                                    ${fieldStyle}
                                     border-radius: 6px;
                                     font-size: 12px;
                                     line-height: 1.35;
@@ -606,7 +617,7 @@ export class ContactsView {
                         <div style="margin-top: 15px; border-top: 1px solid #f0f0f0; padding-top: 15px;">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                                 <div style="font-size: 12px; color: #000; font-weight: 500;">🎙️ 专属语音音色</div>
-                                <select id="edit-contact-tts-select" style="border:none; background:#f5f5f5; border-radius:4px; font-size:11px; padding:2px 4px; color:#666; outline:none; max-width: 100px;">
+                                <select id="edit-contact-tts-select" style="${softFieldStyle} border-radius:4px; font-size:11px; padding:2px 4px; outline:none; max-width: 100px;">
                                     <option value="">-- 历史音色 --</option>
                                     ${ttsHistoryOptions}
                                 </select>
@@ -617,10 +628,9 @@ export class ContactsView {
                                     width: 100%;
                                     height: 30px;
                                     padding: 0 8px;
-                                    border: 1px solid #e5e5e5;
+                                    ${softFieldStyle}
                                     border-radius: 6px;
                                     font-size: 12px;
-                                    background: #fafafa;
                                     box-sizing: border-box;
                                 ">
                                     <option value="" ${!contactTtsProvider ? 'selected' : ''}>跟随全局设置</option>
@@ -644,7 +654,7 @@ export class ContactsView {
                                                    value="${this._escapeAttr(value)}" style="
                                                 width: 100%;
                                                 padding: 8px 10px;
-                                                border: 1px solid #e5e5e5;
+                                                ${fieldStyle}
                                                 border-radius: 6px;
                                                 font-size: 12px;
                                                 box-sizing: border-box;

@@ -3419,10 +3419,8 @@ renderChatRoom(chat) {
                     border-radius: 10px;
                     overflow: hidden;
                     position: relative;
-                    background:
-                        linear-gradient(180deg, rgba(255,255,255,0.18), rgba(26,24,36,0.72)),
-                        linear-gradient(135deg, rgba(255, 160, 197, 0.24), rgba(130, 108, 188, 0.2));
-                    border: 1px solid rgba(255, 205, 228, 0.34);
+                    background: ${generatedImageUrl ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.02)'};
+                    border: ${generatedImageUrl ? '1px solid rgba(255,255,255,0.18)' : '2px dashed rgba(156,156,166,0.6)'};
                     box-sizing: border-box;
                     cursor: ${generationStatus === 'loading' ? 'progress' : 'pointer'};
                 ">
@@ -3456,29 +3454,29 @@ renderChatRoom(chat) {
                             box-shadow:0 2px 8px rgba(0,0,0,0.18);
                         ">描述</div>
                     ` : `
-                        <div class="message-image-prompt-generate" data-message-id="${cardId}" title="${generationStatus === 'failed' ? '点击重试' : `点击${actionText}`}" style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:8px; padding:12px; box-sizing:border-box;">
+                        <div class="message-image-prompt-generate" data-message-id="${cardId}" title="${generationStatus === 'failed' ? '点击重试' : `点击${actionText}`}" style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:8px; padding:12px; box-sizing:border-box; background:transparent;">
                             <div style="
-                                width:56px; height:56px; border-radius:18px;
+                                width:38px; height:34px; border-radius:0;
                                 display:flex; align-items:center; justify-content:center;
-                                background:rgba(255,255,255,0.18);
-                                border:1px solid rgba(255,255,255,0.26);
-                                color:#fff; font-size:22px;
-                                box-shadow:0 8px 18px rgba(0,0,0,0.12);
+                                background:transparent;
+                                border:none;
+                                color:rgba(156,156,166,0.9); font-size:25px;
+                                box-shadow:none;
                             ">${generationStatus === 'loading' ? '<i class="fa-solid fa-spinner fa-spin"></i>' : defaultIcon}</div>
-                            <div style="font-size:12px; line-height:1.35; color:#fff; text-align:center; font-weight:600;">${statusText}</div>
+                            <div style="font-size:12px; line-height:1.35; color:rgba(156,156,166,0.95); text-align:center; font-weight:600; text-shadow:0 1px 2px rgba(0,0,0,0.18);">${statusText}</div>
                         </div>
                         <div class="message-image-prompt-show-back" data-message-id="${cardId}" title="查看${msg.mediaType || '图片'}描述" style="
                             position:absolute;
                             right:6px;
                             bottom:6px;
-                            background:rgba(0,0,0,0.5);
-                            color:#fff;
+                            background:rgba(80,80,88,0.18);
+                            color:rgba(156,156,166,0.95);
                             border-radius:999px;
                             padding:4px 8px;
                             font-size:10px;
                             line-height:1;
                             cursor:pointer;
-                            box-shadow:0 2px 8px rgba(0,0,0,0.18);
+                            box-shadow:none;
                         ">描述</div>
                     `}
                 </div>
@@ -3487,8 +3485,8 @@ renderChatRoom(chat) {
                     width:156px;
                     max-width:100%;
                     aspect-ratio:1;
-                    background:#f7f7f7;
-                    border:1px dashed #e0e0e0;
+                    background:rgba(255,255,255,0.02);
+                    border:2px dashed rgba(156,156,166,0.6);
                     border-radius:10px;
                     box-sizing:border-box;
                     position:relative;
@@ -3506,21 +3504,22 @@ renderChatRoom(chat) {
                         <div style="
                             margin:auto;
                             font-size:11px;
-                            color:#666;
+                            color:rgba(156,156,166,0.95);
                             line-height:1.5;
                             word-break:break-word;
                             white-space:pre-wrap;
                             text-align:center;
                             width:100%;
+                            text-shadow:0 1px 2px rgba(0,0,0,0.18);
                         ">${promptText}</div>
                     </div>
                     <div class="message-image-prompt-restore" data-message-id="${cardId}" title="恢复卡片正面" style="
                         position:absolute;
                         bottom:4px;
                         right:4px;
-                        background:rgba(0,0,0,0.5);
-                        color:#fff;
-                        border-radius:4px;
+                        background:rgba(80,80,88,0.18);
+                        color:rgba(156,156,166,0.95);
+                        border-radius:999px;
                         padding:3px 6px;
                         font-size:10px;
                         cursor:pointer;
@@ -3528,7 +3527,7 @@ renderChatRoom(chat) {
                         display:flex;
                         align-items:center;
                         gap:3px;
-                        box-shadow:0 2px 4px rgba(0,0,0,0.2);
+                        box-shadow:none;
                     ">
                         ${defaultIcon} 恢复
                     </div>
@@ -8817,7 +8816,8 @@ renderChatRoom(chat) {
             this.app._getWechatAssetUrl('backgrounds/bg1.png'),
             this.app._getWechatAssetUrl('backgrounds/bg2.png'),
             this.app._getWechatAssetUrl('backgrounds/bg3.png'),
-            this.app._getWechatAssetUrl('backgrounds/bg4.png')
+            this.app._getWechatAssetUrl('backgrounds/bg4.png'),
+            this.app._getWechatAssetUrl('backgrounds/bg5.png')
         ];
 
         // 动态生成预设图的HTML
@@ -8954,20 +8954,24 @@ renderChatRoom(chat) {
         document.getElementById('clear-chatlist-bg')?.addEventListener('click', () => {
             const latestUserInfo = this.app.wechatData.getUserInfo?.() || {};
             const oldListBg = String(latestUserInfo.chatListBackground || '').trim();
-            if (!oldListBg) {
+            const oldGlobalBg = String(latestUserInfo.globalChatBackground || '').trim();
+            if (!oldListBg && !oldGlobalBg) {
                 this.app.phoneShell.showNotification('提示', '当前未设置全局微信背景', 'ℹ️');
                 return;
             }
 
             this.app.wechatData.setChatListBackground(null);
+            this.app.wechatData.setGlobalChatBackground(null);
             const keepSet = new Set([
                 String(this.app.currentChat?.background || '').trim(),
-                String(latestUserInfo.globalChatBackground || '').trim(),
                 String(latestUserInfo.momentsBackground || '').trim()
             ].filter(Boolean));
             tryCleanupOldListBg(oldListBg, keepSet);
+            if (oldGlobalBg && oldGlobalBg !== oldListBg) {
+                tryCleanupOldListBg(oldGlobalBg, keepSet);
+            }
 
-            this.app.phoneShell.showNotification('已清除', '全局微信背景已恢复默认', '✅');
+            this.app.phoneShell.showNotification('已清除', '全局微信背景和聊天默认背景已恢复默认', '✅');
             setTimeout(() => this.app.render(), 320);
         });
 
@@ -8993,17 +8997,24 @@ renderChatRoom(chat) {
                 const imageManager = window.VirtualPhone?.imageManager;
 
                 // 🔥 提示用户：全局还是局部？
-                const isGlobal = confirm("上传成功！\n\n点击【确定】将此图片设为「全局默认背景」\n点击【取消】仅设为「当前聊天背景」");
+                const isGlobal = confirm("上传成功！\n\n点击【确定】将此图片设为「全局微信背景」\n点击【取消】仅设为「当前聊天背景」");
                 if (isGlobal) {
-                    const oldGlobalBg = String(this.app.wechatData.getUserInfo?.()?.globalChatBackground || '').trim();
+                    const latestUserInfo = this.app.wechatData.getUserInfo?.() || {};
+                    const oldGlobalBg = String(latestUserInfo.globalChatBackground || '').trim();
+                    const oldListBg = String(latestUserInfo.chatListBackground || '').trim();
                     this.app.wechatData.setGlobalChatBackground(finalUrl);
+                    this.app.wechatData.setChatListBackground(finalUrl);
                     // 清空当前聊天的独立背景，让它跟随全局
                     this.app.wechatData.setChatBackground(this.app.currentChat.id, null); 
                     if (oldGlobalBg && oldGlobalBg !== finalUrl) {
                         const cleanupTask = imageManager?.deleteManagedBackgroundByPath?.(oldGlobalBg, { quiet: true, skipIfReferenced: true });
                         cleanupTask?.catch?.(() => { });
                     }
-                    this.app.phoneShell.showNotification('设置成功', '全局背景已更新', '✅');
+                    if (oldListBg && oldListBg !== finalUrl && oldListBg !== oldGlobalBg) {
+                        const cleanupTask = imageManager?.deleteManagedBackgroundByPath?.(oldListBg, { quiet: true, skipIfReferenced: true });
+                        cleanupTask?.catch?.(() => { });
+                    }
+                    this.app.phoneShell.showNotification('设置成功', '全局微信背景已更新', '✅');
                 } else {
                     const oldChatBg = String(this.app.currentChat?.background || '').trim();
                     this.app.wechatData.setChatBackground(this.app.currentChat.id, finalUrl);
@@ -9034,9 +9045,10 @@ renderChatRoom(chat) {
                     isLongPress = true;
                     // 长按逻辑：设置为全局
                     this.app.wechatData.setGlobalChatBackground(bg);
+                    this.app.wechatData.setChatListBackground(bg);
                     // 清空当前聊天的局部设置，跟随全局
                     this.app.wechatData.setChatBackground(this.app.currentChat.id, null);
-                    this.app.phoneShell.showNotification('设置成功', '已设为全局默认背景', '✅');
+                    this.app.phoneShell.showNotification('设置成功', '已设为全局微信背景', '✅');
                     
                     // 触觉反馈（如果设备支持）
                     if (navigator.vibrate) navigator.vibrate(50);

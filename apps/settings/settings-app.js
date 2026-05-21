@@ -617,12 +617,16 @@ export class SettingsApp {
         const homeLayout = homeLayoutRaw === 'cards' ? 'cards' : 'icons';
         // 加载壁纸和颜色设置
         const wallpaper = this.imageManager.getWallpaper();
+        const hasWallpaper = !!String(wallpaper || '').trim();
+        const wallpaperStyle = hasWallpaper
+            ? `background-image: url('${String(wallpaper).replace(/'/g, "\\'")}'); background-size: cover; background-position: center;`
+            : '';
         const cardTimeImage = this.storage.get('phone-card-time-image') || null;
         const globalTextColor = this.storage.get('phone-global-text') || '#000000';
         const phoneFrameColor = this.storage.get('phone-frame-color') || '#1a1a1a';
         const phoneShellScale = normalizePhoneShellScalePercent(this.storage.get('phone-shell-scale') || PHONE_SHELL_SCALE_DEFAULT);
         const html = `
-            <div class="settings-app">
+            <div class="settings-app ${hasWallpaper ? 'settings-has-wallpaper' : ''}" style="${wallpaperStyle}">
                 <style>
                     .settings-app {
                         box-sizing: border-box !important;
@@ -633,6 +637,8 @@ export class SettingsApp {
                         display: flex !important;
                         flex-direction: column !important;
                         overflow: hidden !important;
+                        --settings-text-color: var(--phone-global-text, #000000);
+                        color: var(--settings-text-color) !important;
                     }
                     .settings-app .app-body {
                         min-width: 0 !important;
@@ -696,6 +702,52 @@ export class SettingsApp {
                     }
                     .settings-app details > summary::-webkit-details-marker { display: none; }
                     .settings-app details > summary::marker { content: ''; }
+                    .settings-app .settings-app-header,
+                    .settings-app .settings-app-header h2,
+                    .settings-app .settings-tab-btn,
+                    .settings-app .setting-section-title,
+                    .settings-app .setting-label,
+                    .settings-app .setting-desc,
+                    .settings-app .setting-value,
+                    .settings-app .settings-subsection-title,
+                    .settings-app .phone-shell-scale-value,
+                    .settings-app .app-name-custom-label,
+                    .settings-app details[data-settings-fold-key] > summary,
+                    .settings-app details[data-settings-fold-key] > summary > span,
+                    .settings-app details[data-tts-fold-key] > summary,
+                    .settings-app details[data-tts-fold-key] > summary > span,
+                    .settings-app label:not(.toggle-switch),
+                    .settings-app :where(div, span, summary, label, p, small)[style*="color: #000"],
+                    .settings-app :where(div, span, summary, label, p, small)[style*="color:#000"],
+                    .settings-app :where(div, span, summary, label, p, small)[style*="color: #111"],
+                    .settings-app :where(div, span, summary, label, p, small)[style*="color:#111"],
+                    .settings-app :where(div, span, summary, label, p, small)[style*="color: #222"],
+                    .settings-app :where(div, span, summary, label, p, small)[style*="color:#222"],
+                    .settings-app :where(div, span, summary, label, p, small)[style*="color: #333"],
+                    .settings-app :where(div, span, summary, label, p, small)[style*="color:#333"],
+                    .settings-app :where(div, span, summary, label, p, small)[style*="color: #666"],
+                    .settings-app :where(div, span, summary, label, p, small)[style*="color:#666"],
+                    .settings-app :where(div, span, summary, label, p, small)[style*="color: #777"],
+                    .settings-app :where(div, span, summary, label, p, small)[style*="color:#777"],
+                    .settings-app :where(div, span, summary, label, p, small)[style*="color: #888"],
+                    .settings-app :where(div, span, summary, label, p, small)[style*="color:#888"],
+                    .settings-app :where(div, span, summary, label, p, small)[style*="color: #999"],
+                    .settings-app :where(div, span, summary, label, p, small)[style*="color:#999"],
+                    .settings-app :where(div, span, summary, label, p, small)[style*="color: #1d1d1f"],
+                    .settings-app :where(div, span, summary, label, p, small)[style*="color:#1d1d1f"],
+                    .settings-app :where(div, span, summary, label, p, small)[style*="color: #374151"],
+                    .settings-app :where(div, span, summary, label, p, small)[style*="color:#374151"],
+                    .settings-app :where(div, span, summary, label, p, small)[style*="color: #6b7280"],
+                    .settings-app :where(div, span, summary, label, p, small)[style*="color:#6b7280"],
+                    .settings-app :where(div, span, summary, label, p, small)[style*="color: #111827"],
+                    .settings-app :where(div, span, summary, label, p, small)[style*="color:#111827"] {
+                        color: var(--settings-text-color) !important;
+                    }
+                    .settings-app input:not([type="checkbox"]):not([type="range"]):not([type="color"]),
+                    .settings-app select,
+                    .settings-app textarea {
+                        color: #111 !important;
+                    }
                     .settings-fold-arrow {
                         width: 26px;
                         height: 26px;
@@ -1055,6 +1107,126 @@ export class SettingsApp {
                     .settings-app .phone-version-info-btn:active {
                         transform: scale(0.94);
                         background: rgba(0, 122, 255, 0.2);
+                    }
+                    .settings-app .setting-section:has(#phone-api-enabled:checked) #phone-api-details {
+                        display: block !important;
+                    }
+                    .settings-app.settings-has-wallpaper #phone-api-details {
+                        background: rgba(255,255,255,0.16) !important;
+                        border-top-color: rgba(255,255,255,0.28) !important;
+                    }
+                    .settings-app.settings-has-wallpaper #phone-api-details > div[style*="background: #fff"],
+                    .settings-app.settings-has-wallpaper #phone-api-details > div[style*="background:#fff"],
+                    .settings-app.settings-has-wallpaper #phone-api-details div[style*="background: #fff"],
+                    .settings-app.settings-has-wallpaper #phone-api-details div[style*="background:#fff"] {
+                        background: rgba(255,255,255,0.24) !important;
+                        border-color: rgba(255,255,255,0.34) !important;
+                        backdrop-filter: blur(10px) saturate(135%) !important;
+                        -webkit-backdrop-filter: blur(10px) saturate(135%) !important;
+                    }
+                    .settings-app.settings-has-wallpaper {
+                        --settings-glass-bg: rgba(255,255,255,0.34);
+                        --settings-glass-bg-strong: rgba(255,255,255,0.44);
+                        --settings-glass-border: rgba(255,255,255,0.36);
+                        background-color: #f7f7f7;
+                    }
+                    .settings-app.settings-has-wallpaper .settings-app-header,
+                    .settings-app.settings-has-wallpaper .settings-tabs {
+                        background: rgba(255,255,255,0.24) !important;
+                        border-color: var(--settings-glass-border) !important;
+                        backdrop-filter: blur(18px) saturate(140%) !important;
+                        -webkit-backdrop-filter: blur(18px) saturate(140%) !important;
+                    }
+                    .settings-app.settings-has-wallpaper .settings-tabs > div {
+                        background: rgba(255,255,255,0.2) !important;
+                    }
+                    .settings-app.settings-has-wallpaper .settings-tab-btn.active {
+                        background: rgba(255,255,255,0.78) !important;
+                    }
+                    .settings-app.settings-has-wallpaper .app-body {
+                        background: transparent !important;
+                    }
+                    .settings-app.settings-has-wallpaper .setting-section,
+                    .settings-app.settings-has-wallpaper details[data-settings-fold-key],
+                    .settings-app.settings-has-wallpaper details[data-tts-fold-key],
+                    .settings-app.settings-has-wallpaper .phone-lobby-groups-list,
+                    .settings-app.settings-has-wallpaper .phone-lobby-characters-list {
+                        background: var(--settings-glass-bg) !important;
+                        border-color: var(--settings-glass-border) !important;
+                        backdrop-filter: blur(12px) saturate(135%) !important;
+                        -webkit-backdrop-filter: blur(12px) saturate(135%) !important;
+                        box-shadow: 0 8px 22px rgba(0,0,0,0.08) !important;
+                    }
+                    .settings-app.settings-has-wallpaper details[data-settings-fold-key] > summary,
+                    .settings-app.settings-has-wallpaper details[data-tts-fold-key] > summary,
+                    .settings-app.settings-has-wallpaper #tab-general > details[data-settings-fold-key] > summary,
+                    .settings-app.settings-has-wallpaper #tab-general > details[data-settings-fold-key] > div,
+                    .settings-app.settings-has-wallpaper .setting-info {
+                        background: rgba(255,255,255,0.26) !important;
+                    }
+                    .settings-app.settings-has-wallpaper details[data-settings-fold-key] > div,
+                    .settings-app.settings-has-wallpaper details[data-tts-fold-key] > div {
+                        background: rgba(255,255,255,0.16) !important;
+                    }
+                    .settings-app.settings-has-wallpaper #tab-general > details[data-settings-fold-key],
+                    .settings-app.settings-has-wallpaper #tab-general > .setting-section {
+                        background: var(--settings-glass-bg) !important;
+                        border-color: var(--settings-glass-border) !important;
+                        backdrop-filter: blur(12px) saturate(135%) !important;
+                        -webkit-backdrop-filter: blur(12px) saturate(135%) !important;
+                    }
+                    .settings-app.settings-has-wallpaper #tab-general > details[data-settings-fold-key] > summary {
+                        background: rgba(255,255,255,0.24) !important;
+                    }
+                    .settings-app.settings-has-wallpaper #tab-general > details[data-settings-fold-key] > div {
+                        background: rgba(255,255,255,0.16) !important;
+                    }
+                    .settings-app.settings-has-wallpaper .setting-item {
+                        background: transparent !important;
+                        border-bottom-color: rgba(255,255,255,0.28) !important;
+                    }
+                    .settings-app.settings-has-wallpaper #tab-tts .tts-section-list,
+                    .settings-app.settings-has-wallpaper #tab-tts [data-tts-fold-key],
+                    .settings-app.settings-has-wallpaper #tab-tts [data-tts-fold-key] > div,
+                    .settings-app.settings-has-wallpaper #tab-tts .setting-item,
+                    .settings-app.settings-has-wallpaper #tab-tts div[style*="background: #fff"],
+                    .settings-app.settings-has-wallpaper #tab-tts div[style*="background:#fff"],
+                    .settings-app.settings-has-wallpaper #tab-tts div[style*="background: #fafafa"],
+                    .settings-app.settings-has-wallpaper #tab-tts div[style*="background:#fafafa"] {
+                        background-color: rgba(255,255,255,0.18) !important;
+                        background-image: none !important;
+                    }
+                    .settings-app.settings-has-wallpaper #tab-tts [data-tts-fold-key] > summary {
+                        background: rgba(255,255,255,0.24) !important;
+                    }
+                    .settings-app.settings-has-wallpaper #tab-tts [data-tts-fold-key] {
+                        border-color: var(--settings-glass-border) !important;
+                        backdrop-filter: blur(12px) saturate(135%) !important;
+                        -webkit-backdrop-filter: blur(12px) saturate(135%) !important;
+                        box-shadow: 0 8px 22px rgba(0,0,0,0.08) !important;
+                    }
+                    .settings-app.settings-has-wallpaper #tab-tts input:not([type="checkbox"]):not([type="range"]),
+                    .settings-app.settings-has-wallpaper #tab-tts select,
+                    .settings-app.settings-has-wallpaper #tab-tts textarea {
+                        background: rgba(255,255,255,0.72) !important;
+                        border-color: rgba(255,255,255,0.54) !important;
+                    }
+                    .settings-app.settings-has-wallpaper input:not([type="checkbox"]):not([type="range"]),
+                    .settings-app.settings-has-wallpaper select,
+                    .settings-app.settings-has-wallpaper textarea {
+                        background: rgba(255,255,255,0.84) !important;
+                        border-color: rgba(255,255,255,0.56) !important;
+                        color: #111 !important;
+                    }
+                    .settings-app.settings-has-wallpaper button:not(.settings-tab-btn),
+                    .settings-app.settings-has-wallpaper .setting-btn {
+                        background-color: rgba(255,255,255,0.72) !important;
+                        border-color: rgba(255,255,255,0.48) !important;
+                    }
+                    .settings-app.settings-has-wallpaper .toggle-switch,
+                    .settings-app.settings-has-wallpaper .toggle-switch *,
+                    .settings-app.settings-has-wallpaper .phone-version-info-btn {
+                        background-color: initial;
                     }
                 </style>
                 <div class="settings-app-header" style="background: #f7f7f7; color: #000; border-bottom: 0.5px solid #d8d8d8; display: flex; align-items: center; justify-content: center; position: sticky; top: 0; z-index: 100; height: 78px; min-height: 78px; padding: 34px 14px 0; box-sizing: border-box; flex-shrink: 0;">
@@ -3187,6 +3359,66 @@ export class SettingsApp {
             .replace(/'/g, '&#39;');
     }
 
+    _showPhoneConfirm({
+        title = '确认操作',
+        message = '',
+        confirmText = '确定',
+        cancelText = '取消',
+        danger = false,
+        host: preferredHost = null
+    } = {}) {
+        return new Promise((resolve) => {
+            const host = preferredHost
+                || document.querySelector('.phone-view-current .settings-app')
+                || document.querySelector('.settings-app')
+                || document.querySelector('.phone-view-current')
+                || document.body;
+            host.querySelector?.('#settings-phone-confirm-modal')?.remove();
+            if (host !== document.body && window.getComputedStyle(host).position === 'static') {
+                host.style.position = 'relative';
+            }
+
+            const overlay = document.createElement('div');
+            overlay.id = 'settings-phone-confirm-modal';
+            overlay.style.cssText = [
+                'position:absolute',
+                'inset:0',
+                'z-index:10040',
+                'display:flex',
+                'align-items:center',
+                'justify-content:center',
+                'padding:16px',
+                'box-sizing:border-box',
+                'background:rgba(0,0,0,0.34)',
+                'backdrop-filter:blur(8px)',
+                '-webkit-backdrop-filter:blur(8px)'
+            ].join(';');
+            overlay.innerHTML = `
+                <div role="dialog" aria-modal="true" style="width:100%; max-width:270px; background:rgba(255,255,255,0.92); color:#111; border-radius:14px; overflow:hidden; box-shadow:0 14px 34px rgba(0,0,0,0.24);">
+                    <div style="padding:16px 16px 10px; text-align:center;">
+                        <div style="font-size:15px; font-weight:700; line-height:1.35;">${this._escapeHtml(title)}</div>
+                        <div style="font-size:12px; color:#555; line-height:1.55; margin-top:8px;">${this._escapeHtml(message)}</div>
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; border-top:1px solid rgba(0,0,0,0.08);">
+                        <button type="button" data-action="cancel" style="height:42px; border:none; border-right:1px solid rgba(0,0,0,0.08); background:transparent; color:#333; font-size:14px; cursor:pointer;">${this._escapeHtml(cancelText)}</button>
+                        <button type="button" data-action="confirm" style="height:42px; border:none; background:transparent; color:${danger ? '#d93025' : '#007aff'}; font-size:14px; font-weight:700; cursor:pointer;">${this._escapeHtml(confirmText)}</button>
+                    </div>
+                </div>
+            `;
+
+            const close = (value) => {
+                overlay.remove();
+                resolve(value);
+            };
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) close(false);
+            });
+            overlay.querySelector('[data-action="cancel"]')?.addEventListener('click', () => close(false));
+            overlay.querySelector('[data-action="confirm"]')?.addEventListener('click', () => close(true));
+            host.appendChild(overlay);
+        });
+    }
+
     _extractLastAssistantRawText(context) {
         if (!context?.chat || !Array.isArray(context.chat)) return '';
 
@@ -3404,8 +3636,11 @@ export class SettingsApp {
     }
 
     bindEvents() {
+        const settingsRoot = document.querySelector('.phone-view-current .settings-app') || document.querySelector('.settings-app');
+        const $ = (selector) => settingsRoot?.querySelector(selector) || document.querySelector(selector);
+
         const bindLobbyEvents = () => {
-            const lobbyRoot = document.getElementById('tab-lobby');
+            const lobbyRoot = settingsRoot?.querySelector('#tab-lobby') || document.getElementById('tab-lobby');
             if (!lobbyRoot) return;
 
             const bindChecks = async () => {
@@ -3456,13 +3691,13 @@ export class SettingsApp {
         });
 
         // 上传壁纸 - 支持裁剪
-        document.getElementById('phone-version-info-btn')?.addEventListener('click', (e) => {
+        document.querySelectorAll('.settings-app #phone-version-info-btn').forEach((versionInfoBtn) => versionInfoBtn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
             if (typeof window.VirtualPhone?.showCurrentUpdateInfo === 'function') {
                 window.VirtualPhone.showCurrentUpdateInfo();
             }
-        });
+        }));
 
         document.getElementById('upload-wallpaper')?.addEventListener('change', async (e) => {
             const file = e.target.files[0];
@@ -3498,6 +3733,13 @@ export class SettingsApp {
                 preview.style.display = 'block';
                 img.style.display = 'block';
                 img.src = serverUrl;
+                const settingsRoot = document.querySelector('.phone-view-current .settings-app') || document.querySelector('.settings-app');
+                if (settingsRoot) {
+                    settingsRoot.classList.add('settings-has-wallpaper');
+                    settingsRoot.style.backgroundImage = `url("${serverUrl.replace(/"/g, '\\"')}")`;
+                    settingsRoot.style.backgroundSize = 'cover';
+                    settingsRoot.style.backgroundPosition = 'center';
+                }
 
                 // 通知主屏幕更新
                 window.dispatchEvent(new CustomEvent('phone:updateWallpaper', {
@@ -3513,22 +3755,54 @@ export class SettingsApp {
         });
         
         // 删除壁纸
-        document.getElementById('delete-wallpaper')?.addEventListener('click', async () => {
-            if (!confirm('确定删除壁纸吗？')) return;
-        
-            await this.imageManager.deleteWallpaper();
-            
-            const preview = document.getElementById('wallpaper-preview');
-            preview.style.display = 'none';
-            preview.querySelector('img').style.display = 'none';
-            
+        document.querySelectorAll('.settings-app #delete-wallpaper').forEach((deleteWallpaperBtn) => deleteWallpaperBtn.addEventListener('click', async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const activeSettingsRoot = event.currentTarget?.closest?.('.settings-app') || settingsRoot;
+            const ok = await this._showPhoneConfirm({
+                title: '删除壁纸',
+                message: '确定删除手机桌面壁纸吗？',
+                confirmText: '删除',
+                cancelText: '取消',
+                danger: true,
+                host: activeSettingsRoot
+            });
+            if (!ok) return;
+
+            const oldWallpaper = this.imageManager.getWallpaper?.();
+            try {
+                await this.imageManager.deleteWallpaper();
+            } catch (err) {
+                console.warn('[Settings] 删除壁纸文件失败，已继续清空本地壁纸设置:', err);
+                await this.imageManager.deleteManagedBackgroundByPath?.(oldWallpaper, { quiet: true });
+                this.imageManager.cache.wallpaper = null;
+                await this.imageManager.saveImages(this.imageManager.cache);
+            }
+
+            const preview = activeSettingsRoot?.querySelector('#wallpaper-preview') || document.getElementById('wallpaper-preview');
+            if (preview) {
+                preview.style.display = 'none';
+                const img = preview.querySelector('img');
+                if (img) {
+                    img.style.display = 'none';
+                    img.removeAttribute('src');
+                }
+            }
+
+            if (activeSettingsRoot) {
+                activeSettingsRoot.classList.remove('settings-has-wallpaper');
+                activeSettingsRoot.style.backgroundImage = '';
+                activeSettingsRoot.style.backgroundSize = '';
+                activeSettingsRoot.style.backgroundPosition = '';
+            }
+
             // 通知主屏幕更新
             window.dispatchEvent(new CustomEvent('phone:updateWallpaper', { 
                 detail: { wallpaper: null } 
             }));
             
-            alert('✅ 壁纸已删除！');
-        });
+            this.phoneShell?.showNotification?.('已删除', '手机壁纸已删除', '✅');
+        }));
 
         document.getElementById('upload-card-time-image')?.addEventListener('change', async (e) => {
             const file = e.target.files?.[0];
@@ -6737,15 +7011,23 @@ export class SettingsApp {
 
         // 🎨 颜色设置事件（新版：统一全局文字颜色）
 
+        const applyGlobalTextColor = (color) => {
+            const safeColor = String(color || '#000000').trim() || '#000000';
+            document.documentElement.style.setProperty('--phone-global-text', safeColor);
+            document.querySelectorAll('.settings-app').forEach((root) => {
+                root.style.setProperty('--settings-text-color', safeColor);
+            });
+            return safeColor;
+        };
+
         // 全局文字颜色选择器（实时预览）
         document.getElementById('global-text-color-picker')?.addEventListener('input', (e) => {
-            const color = e.target.value;
-            document.documentElement.style.setProperty('--phone-global-text', color);
+            applyGlobalTextColor(e.target.value);
         });
 
         // 全局文字颜色选择器（保存设置）
         document.getElementById('global-text-color-picker')?.addEventListener('change', async (e) => {
-            const color = e.target.value;
+            const color = applyGlobalTextColor(e.target.value);
             await this.storage.set('phone-global-text', color);
         });
 

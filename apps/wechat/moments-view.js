@@ -43,7 +43,7 @@ export class MomentsView {
                         <div class="moments-pull-refresh-inner" id="moments-pull-refresh-inner"></div>
                     </div>
                     ${moments.length === 0 ? `
-                        <div class="moments-empty-tip" style="${hasBackdrop ? 'background: rgba(255,255,255,0.8); border-radius: 12px; margin: 20px;' : ''}">
+                        <div class="moments-empty-tip" style="${hasBackdrop ? 'background: rgba(255,255,255,0.34); backdrop-filter: blur(12px) saturate(135%); -webkit-backdrop-filter: blur(12px) saturate(135%); border: 1px solid rgba(255,255,255,0.34); border-radius: 12px; margin: 20px;' : ''}">
                             <p>朋友圈空空如也</p>
                             <p class="tip-sub">下拉刷新加载朋友圈</p>
                         </div>
@@ -63,7 +63,7 @@ export class MomentsView {
 
         // 🔥 有背景图时，给每条朋友圈添加毛玻璃效果，让背景透出来
         // 使用 rgba 白色背景作为降级方案，确保移动端兼容
-        const itemStyle = hasBgImage ? 'background: rgba(255,255,255,0.75); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); margin: 8px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);' : '';
+        const itemStyle = hasBgImage ? 'background: rgba(255,255,255,0.28); backdrop-filter: blur(10px) saturate(135%); -webkit-backdrop-filter: blur(10px) saturate(135%); border: 1px solid rgba(255,255,255,0.32); margin: 8px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);' : '';
 
         return `
             <div class="moment-item" data-moment-id="${moment.id}" data-own-moment="${isOwnMoment ? '1' : '0'}" style="${itemStyle}">

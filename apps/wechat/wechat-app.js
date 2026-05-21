@@ -415,59 +415,71 @@ export class WechatApp {
     background: #ececec;
 }
 
-/* 聊天列表启用背景图时，列表卡片切换为半透明玻璃效果 */
+/* 聊天列表启用背景图时，四个主页面切换为轻透明玻璃效果 */
+.wechat-app.wechat-chatlist-bg-enabled {
+    --wechat-glass-bg: rgba(255, 255, 255, 0.24);
+    --wechat-glass-bg-strong: rgba(255, 255, 255, 0.32);
+    --wechat-glass-bg-active: rgba(255, 255, 255, 0.42);
+    --wechat-glass-border: rgba(255, 255, 255, 0.34);
+}
+
 .wechat-app.wechat-chatlist-bg-enabled .wechat-chat-list {
     background: transparent;
 }
 
 .wechat-app.wechat-chatlist-bg-enabled .chat-item {
-    background: rgba(255, 255, 255, 0.58);
-    backdrop-filter: blur(8px) saturate(125%);
-    -webkit-backdrop-filter: blur(8px) saturate(125%);
-    border-bottom: 0.5px solid rgba(255, 255, 255, 0.48);
+    background: var(--wechat-glass-bg);
+    backdrop-filter: blur(10px) saturate(135%);
+    -webkit-backdrop-filter: blur(10px) saturate(135%);
+    border-bottom: 0.5px solid var(--wechat-glass-border);
 }
 
 .wechat-app.wechat-chatlist-bg-enabled .chat-item:active {
-    background: rgba(255, 255, 255, 0.74);
+    background: var(--wechat-glass-bg-active);
 }
 
 .wechat-app.wechat-chatlist-bg-enabled .wechat-tabbar {
-    background: rgba(255, 255, 255, 0.48);
+    background: rgba(255, 255, 255, 0.22);
     backdrop-filter: blur(20px) saturate(145%);
     -webkit-backdrop-filter: blur(20px) saturate(145%);
-    border-top: 0.5px solid rgba(255, 255, 255, 0.52);
+    border-top: 0.5px solid var(--wechat-glass-border);
 }
 
 /* 微信四个主页面统一底栏玻璃风格（微信/通讯录/朋友圈/我） */
 .wechat-app.wechat-main-shell .wechat-tabbar {
-    background: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.24);
     backdrop-filter: blur(20px) saturate(145%);
     -webkit-backdrop-filter: blur(20px) saturate(145%);
-    border-top: 0.5px solid rgba(255, 255, 255, 0.5);
+    border-top: 0.5px solid rgba(255, 255, 255, 0.34);
 }
 
 /* 四页统一背景时：通讯录容器改为透明/半透明，避免遮掉主背景 */
 .wechat-app.wechat-chatlist-bg-enabled .wechat-contacts,
-.wechat-app.wechat-chatlist-bg-enabled .contacts-scrollable {
+.wechat-app.wechat-chatlist-bg-enabled .contacts-scrollable,
+.wechat-app.wechat-chatlist-bg-enabled .contacts-functions,
+.wechat-app.wechat-chatlist-bg-enabled .contacts-list {
     background: transparent;
 }
 
-.wechat-app.wechat-chatlist-bg-enabled .contacts-functions,
-.wechat-app.wechat-chatlist-bg-enabled .contacts-list {
-    background: rgba(255, 255, 255, 0.5);
+.wechat-app.wechat-chatlist-bg-enabled .function-item,
+.wechat-app.wechat-chatlist-bg-enabled .contact-item,
+.wechat-app.wechat-chatlist-bg-enabled .contact-group-item,
+.wechat-app.wechat-chatlist-bg-enabled .contacts-empty-row {
+    background: var(--wechat-glass-bg);
     backdrop-filter: blur(10px) saturate(130%);
     -webkit-backdrop-filter: blur(10px) saturate(130%);
+    border-bottom-color: var(--wechat-glass-border);
 }
 
 .wechat-app.wechat-chatlist-bg-enabled .group-letter {
-    background: rgba(255, 255, 255, 0.56);
+    background: var(--wechat-glass-bg-strong);
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
 }
 
 .wechat-app.wechat-chatlist-bg-enabled .function-item:active,
 .wechat-app.wechat-chatlist-bg-enabled .contact-item:active {
-    background: rgba(255, 255, 255, 0.72);
+    background: var(--wechat-glass-bg-active);
 }
 
 /* 四页统一背景时：我页面容器改为透明/半透明 */
@@ -478,13 +490,24 @@ export class WechatApp {
 .wechat-app.wechat-chatlist-bg-enabled .profile-card,
 .wechat-app.wechat-chatlist-bg-enabled .profile-functions,
 .wechat-app.wechat-chatlist-bg-enabled .profile-stats {
-    background: rgba(255, 255, 255, 0.56);
+    background: var(--wechat-glass-bg);
     backdrop-filter: blur(10px) saturate(130%);
     -webkit-backdrop-filter: blur(10px) saturate(130%);
 }
 
 .wechat-app.wechat-chatlist-bg-enabled .profile-function-item:active {
-    background: rgba(255, 255, 255, 0.72);
+    background: var(--wechat-glass-bg-active);
+}
+
+/* 设置页/编辑页大量使用行内白底卡片，这里在全局背景启用时统一压低不透明度 */
+.wechat-app.wechat-chatlist-bg-enabled .wechat-content > div[style*="background: #fff"],
+.wechat-app.wechat-chatlist-bg-enabled .wechat-content > div[style*="background:#fff"],
+.wechat-app.wechat-chatlist-bg-enabled .wechat-content > div[style*="background: rgba(255,255,255"],
+.wechat-app.wechat-chatlist-bg-enabled .wechat-content > div[style*="background: rgba(255, 255, 255"] {
+    background: var(--wechat-glass-bg-strong) !important;
+    backdrop-filter: blur(12px) saturate(135%);
+    -webkit-backdrop-filter: blur(12px) saturate(135%);
+    border: 1px solid var(--wechat-glass-border);
 }
 
 .chat-avatar-wrapper {
@@ -4116,20 +4139,6 @@ export class WechatApp {
         const avatarStr = String(avatar || '').trim();
         this._ensureWechatAvatarPoolLoaded();
 
-        // 用户自定义头像优先
-        if (this._isCustomAvatarValue(avatarStr)) {
-            return `<img src="${avatarStr}" style="display:block;width:100%;height:100%;object-fit:cover;border:none;outline:none;box-shadow:none;">`;
-        }
-
-        // 联系人头像池：无自定义头像时，按性别随机分配（稳定映射）
-        if (this._shouldApplyContactPoolAvatar(defaultEmoji, fallbackName)) {
-            const resolvedGender = this._resolveContactGenderByName(fallbackName);
-            const autoAvatar = this._resolveAutoAvatarForName(fallbackName, resolvedGender);
-            if (autoAvatar) {
-                return `<img src="${autoAvatar}" style="display:block;width:100%;height:100%;object-fit:cover;border:none;outline:none;box-shadow:none;border-radius:inherit;">`;
-            }
-        }
-
         const pickFirstChar = (text) => {
             const arr = Array.from(String(text || '').trim());
             return arr.length > 0 ? arr[0] : '';
@@ -4141,6 +4150,7 @@ export class WechatApp {
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
+        const escapeAttr = (text) => escapeHtml(text);
 
         // 优先使用显示名首字；其次使用非emoji头像文本首字
         let initial = pickFirstChar(fallbackName);
@@ -4156,7 +4166,29 @@ export class WechatApp {
             }
         }
 
-        return `<div style="position:relative;width:100%;height:100%;background:#fff;color:#000;border:none;outline:none;box-shadow:none;"><span style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);line-height:1;white-space:nowrap;">${escapeHtml(initial)}</span></div>`;
+        const initialHtml = `<div style="position:relative;width:100%;height:100%;background:#fff;color:#000;border:none;outline:none;box-shadow:none;"><span style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);line-height:1;white-space:nowrap;">${escapeHtml(initial)}</span></div>`;
+        const imageStyle = 'display:block;width:100%;height:100%;object-fit:cover;border:none;outline:none;box-shadow:none;border-radius:inherit;';
+
+        let autoAvatar = '';
+        if (this._shouldApplyContactPoolAvatar(defaultEmoji, fallbackName)) {
+            const resolvedGender = this._resolveContactGenderByName(fallbackName);
+            autoAvatar = this._resolveAutoAvatarForName(fallbackName, resolvedGender);
+        }
+
+        // 用户自定义头像优先；如果图片资源被删除/失效，自动回退到性别默认头像。
+        if (this._isCustomAvatarValue(avatarStr)) {
+            if (autoAvatar) {
+                return `<span style="display:block;position:relative;width:100%;height:100%;">${initialHtml}<img src="${escapeAttr(avatarStr)}" style="${imageStyle};position:absolute;inset:0;" onerror="this.onerror=function(){this.remove();};this.src='${escapeAttr(autoAvatar)}';"></span>`;
+            }
+            return `<span style="display:block;position:relative;width:100%;height:100%;">${initialHtml}<img src="${escapeAttr(avatarStr)}" style="${imageStyle};position:absolute;inset:0;" onerror="this.remove();"></span>`;
+        }
+
+        // 联系人头像池：无自定义头像时，按性别随机分配（稳定映射）
+        if (autoAvatar) {
+            return `<span style="display:block;position:relative;width:100%;height:100%;">${initialHtml}<img src="${escapeAttr(autoAvatar)}" style="${imageStyle};position:absolute;inset:0;" onerror="this.remove();"></span>`;
+        }
+
+        return initialHtml;
     }
 
     syncMusicListenHeaderIndicator(chatId = '') {
