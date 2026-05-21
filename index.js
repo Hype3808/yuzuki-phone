@@ -8756,7 +8756,39 @@ if (window.GGP_Loaded) {
                                             if (!tm || typeof tm.getPhoneLastMessageTime !== 'function' || typeof tm.extractTimeFromChat !== 'function') return;
 
                                             const storyTime = tm.extractTimeFromChat(context);
-                                            const phoneTime = tm.getPhoneLastMessageTime();
+                                            const parseDateTimeToTs = (dateText, timeText) => {
+                                                const dateRaw = String(dateText || '').trim();
+                                                const timeRaw = String(timeText || '').trim().replace('：', ':');
+                                                if (!dateRaw || !timeRaw) return NaN;
+                                                const dateMatch = dateRaw.match(/(\d{1,6})[-\/年]\s*(\d{1,2})[-\/月]\s*(\d{1,2})\s*日?/);
+                                                const timeMatch = timeRaw.match(/(\d{1,2})[:：](\d{2})/);
+                                                if (!dateMatch || !timeMatch) return NaN;
+                                                return new Date(
+                                                    Number(dateMatch[1]),
+                                                    Number(dateMatch[2]) - 1,
+                                                    Number(dateMatch[3]),
+                                                    Number(timeMatch[1]),
+                                                    Number(timeMatch[2])
+                                                ).getTime();
+                                            };
+                                            const getPhoneTimeFromOfflineChats = () => {
+                                                let latest = null;
+                                                (Array.isArray(wechatOfflineChats) ? wechatOfflineChats : []).forEach(chat => {
+                                                    (Array.isArray(chat?.messages) ? chat.messages : []).forEach(msg => {
+                                                        const ts = parseDateTimeToTs(msg?.date, msg?.time);
+                                                        if (!Number.isFinite(ts)) return;
+                                                        if (!latest || ts > latest.timestamp) {
+                                                            latest = {
+                                                                date: String(msg.date || '').trim(),
+                                                                time: String(msg.time || '').trim().replace('：', ':'),
+                                                                timestamp: ts
+                                                            };
+                                                        }
+                                                    });
+                                                });
+                                                return latest;
+                                            };
+                                            const phoneTime = tm.getPhoneLastMessageTime() || getPhoneTimeFromOfflineChats();
                                             if (!storyTime?.date || !storyTime?.time || !phoneTime?.date || !phoneTime?.time) return;
 
                                             const storyTs = Number(storyTime.timestamp || tm.parseTimeToTimestamp?.(storyTime));
@@ -8779,16 +8811,31 @@ if (window.GGP_Loaded) {
                                             ].join('\n');
                                             const anchorRegex = /\n*\s*(?:<时间提示>[\s\S]*?<\/时间提示>|【手机时间锚点】[\s\S]*?(?=\n{2,}|$))/g;
 
-                                            for (let i = messages.length - 1; i >= 0; i--) {
-                                                const msg = messages[i];
-                                                if (msg?.role !== 'user') continue;
+                                            const findTargetUserMessageIndex = () => {
+                                                for (let i = messages.length - 1; i >= 0; i--) {
+                                                    const msg = messages[i];
+                                                    const isUserMessage = msg?.role === 'user'
+                                                        || msg?.is_user === true
+                                                        || msg?.is_user === 'true';
+                                                    if (isUserMessage && !msg?.isPhoneMessage && !msg?.isMusicMessage) return i;
+                                                }
+                                                return -1;
+                                            };
+                                            const targetIndex = findTargetUserMessageIndex();
+                                            if (targetIndex < 0) return;
+
+                                            {
+                                                const msg = messages[targetIndex];
+                                                const isUserMessage = msg?.role === 'user'
+                                                    || msg?.is_user === true
+                                                    || msg?.is_user === 'true';
+                                                if (!isUserMessage && (msg?.isPhoneMessage || msg?.isMusicMessage)) return;
 
                                                 let content = msg.content ?? msg.mes ?? msg.text ?? (Array.isArray(msg.parts) && msg.parts[0] ? msg.parts[0].text : '');
                                                 if (typeof content !== 'string') content = String(content ?? '');
                                                 const cleaned = content.replace(anchorRegex, '').trimEnd();
                                                 const nextContent = `${cleaned}\n\n${anchorBlock}`.trim();
-                                                messages[i] = cloneSplitMessage(msg, nextContent);
-                                                break;
+                                                messages[targetIndex] = cloneSplitMessage(msg, nextContent);
                                             }
                                         } catch (e) {
                                             console.warn('⚠️ [手机] 追加手机时间锚点失败:', e);
