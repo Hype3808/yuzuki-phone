@@ -3761,7 +3761,8 @@ export class WechatApp {
         let appBgStyle = '';
         if (this.currentChat) {
             const globalBg = userInfo.globalChatBackground;
-            const targetBg = this.currentChat.background || globalBg || '#ededed';
+            const defaultChatBg = this._getWechatAssetUrl('backgrounds/bg1.png');
+            const targetBg = this.currentChat.background || globalBg || defaultChatBg;
             if (targetBg.startsWith('data:') || targetBg.startsWith('/') || targetBg.startsWith('http')) {
                 appBgStyle = `background-image: url('${targetBg}'); background-size: cover; background-position: center;`;
             } else {

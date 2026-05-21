@@ -8812,12 +8812,12 @@ renderChatRoom(chat) {
         // 🔥 在这里配置你的本地预设壁纸路径
         // 🔥 在这里配置你的本地预设壁纸路径
         const presetBgs = [
-            '#ffffff', // 纯白
             this.app._getWechatAssetUrl('backgrounds/bg1.png'),
             this.app._getWechatAssetUrl('backgrounds/bg2.png'),
             this.app._getWechatAssetUrl('backgrounds/bg3.png'),
             this.app._getWechatAssetUrl('backgrounds/bg4.png'),
-            this.app._getWechatAssetUrl('backgrounds/bg5.png')
+            this.app._getWechatAssetUrl('backgrounds/bg5.png'),
+            this.app._getWechatAssetUrl('backgrounds/bg6.png')
         ];
 
         // 动态生成预设图的HTML
