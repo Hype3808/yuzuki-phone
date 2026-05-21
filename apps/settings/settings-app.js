@@ -124,6 +124,42 @@ export class SettingsApp {
         return customName || String(app?.name || '');
     }
 
+    _getActiveSettingsRoot() {
+        return globalThis.document?.querySelector?.('.phone-view-current .settings-app')
+            || globalThis.document?.querySelector?.('.settings-app')
+            || null;
+    }
+
+    _escapeCssIdentifier(value) {
+        const raw = String(value || '');
+        if (globalThis.CSS?.escape) return globalThis.CSS.escape(raw);
+        return raw.replace(/["\\#.;:[\]()>+~,*='`\s]/g, '\\$&');
+    }
+
+    _createSettingsScopedDocument(root = this._getActiveSettingsRoot()) {
+        const globalDocument = globalThis.document;
+        if (!root || !globalDocument) return globalDocument;
+        const normalizeSelector = (selector) => String(selector || '').replace(/^\.settings-app\s+/, '');
+        const queryInRoot = (selector) => root.querySelector(normalizeSelector(selector));
+        const queryAllInRoot = (selector) => root.querySelectorAll(normalizeSelector(selector));
+
+        return {
+            get body() {
+                return globalDocument.body;
+            },
+            createElement: (...args) => globalDocument.createElement(...args),
+            getElementById: (id) => {
+                const escapedId = this._escapeCssIdentifier(id);
+                return root.querySelector(`#${escapedId}`) || globalDocument.getElementById(id);
+            },
+            querySelector: (selector) => queryInRoot(selector) || globalDocument.querySelector(selector),
+            querySelectorAll: (selector) => {
+                const scoped = queryAllInRoot(selector);
+                return scoped.length ? scoped : globalDocument.querySelectorAll(selector);
+            }
+        };
+    }
+
     _isLobbyMode(context = null) {
         const ctx = context || this._safeGetContext();
         const charName = String(ctx?.name2 || '').trim();
@@ -460,6 +496,7 @@ export class SettingsApp {
     }
 
     async _saveLobbySelectionFromDom() {
+        const document = this._createSettingsScopedDocument();
         const characterIds = Array.from(document.querySelectorAll('.phone-lobby-character-check:checked'))
             .map(input => String(input.getAttribute('data-character-id') || '').trim())
             .filter(Boolean);
@@ -471,6 +508,7 @@ export class SettingsApp {
     }
 
     _refreshLobbySelectionCountInDom() {
+        const document = this._createSettingsScopedDocument();
         const selectedGroupCount = document.querySelectorAll('.phone-lobby-group-check:checked').length;
         const selectedCharacterCount = document.querySelectorAll('.phone-lobby-character-check:checked').length;
         const groupCountEl = document.getElementById('phone-lobby-groups-count');
@@ -480,6 +518,7 @@ export class SettingsApp {
     }
 
     async _setAllLobbyCheckboxes(selector, checked) {
+        const document = this._createSettingsScopedDocument();
         document.querySelectorAll(selector).forEach(input => {
             input.checked = !!checked;
         });
@@ -3306,6 +3345,7 @@ export class SettingsApp {
     }
 
     bindMemoryPermissionEvents() {
+        const document = this._createSettingsScopedDocument();
         document.getElementById('phone-user-message-listener-enabled')?.addEventListener('change', async (e) => {
             await this.storage.set('phone-user-message-listener-enabled', !!e.target.checked);
         });
@@ -3500,6 +3540,7 @@ export class SettingsApp {
     }
 
     bindTagFilterEvents() {
+        const document = this._createSettingsScopedDocument();
         const enabledInput = document.getElementById('phone-tag-filter-enabled');
         const blacklistInput = document.getElementById('phone-tag-filter-blacklist');
         const whitelistInput = document.getElementById('phone-tag-filter-whitelist');
@@ -3538,6 +3579,7 @@ export class SettingsApp {
     }
 
     async runTagFilterAiDiagnosis() {
+        const document = this._createSettingsScopedDocument();
         const btn = document.getElementById('phone-tag-filter-ai-diagnose');
         const oldText = btn?.innerHTML || '🤖 AI 智能诊断标签';
 
@@ -3636,7 +3678,9 @@ export class SettingsApp {
     }
 
     bindEvents() {
-        const settingsRoot = document.querySelector('.phone-view-current .settings-app') || document.querySelector('.settings-app');
+        const globalDocument = globalThis.document;
+        const settingsRoot = this._getActiveSettingsRoot();
+        const document = this._createSettingsScopedDocument(settingsRoot);
         const $ = (selector) => settingsRoot?.querySelector(selector) || document.querySelector(selector);
 
         const bindLobbyEvents = () => {
@@ -4114,11 +4158,11 @@ export class SettingsApp {
         });
 
         // 一键更新所有提示词（恢复默认）
-        document.getElementById('setting-reset-all-prompts')?.addEventListener('click', async () => {
+        document.getElementById('setting-reset-all-prompts')?.addEventListener('click', async (e) => {
             const ok = confirm('确定将所有 APP 默认提示词一键同步为最新版本吗？\n\n若某项当前使用自定义预设，更新后会自动切回该自定义预设；已保存的自定义预设不会被覆盖。');
             if (!ok) return;
 
-            const btn = document.getElementById('setting-reset-all-prompts');
+            const btn = e.currentTarget;
             const oldText = btn?.innerHTML;
             try {
                 if (btn) {
@@ -7104,6 +7148,7 @@ export class SettingsApp {
     // 🤖 大模型 API 配置面板逻辑 (独立方法)
     // ==========================================
     bindApiConfigEvents() {
+        const document = this._createSettingsScopedDocument();
         const defaultApiConfig = () => ({
             useIndependentAPI: false,
             provider: 'openai',
