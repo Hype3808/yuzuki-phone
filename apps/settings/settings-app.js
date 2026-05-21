@@ -37,6 +37,7 @@ const WECHAT_ONLINE_PROACTIVE_ENABLED_KEY = 'wechat_online_proactive_enabled';
 const WECHAT_ONLINE_PROACTIVE_INTERVAL_KEY = 'wechat_online_proactive_interval_minutes';
 const LOBBY_WECHAT_ONLINE_PROACTIVE_ENABLED_KEY = 'phone_lobby_wechat_online_proactive_enabled';
 const LOBBY_WECHAT_ONLINE_PROACTIVE_INTERVAL_KEY = 'phone_lobby_wechat_online_proactive_interval_minutes';
+const WECHAT_MESSAGE_SOUND_ENABLED_KEY = 'wechat_message_sound_enabled';
 
 function normalizePhoneShellScalePercent(value) {
     const raw = Number.parseFloat(value);
@@ -652,6 +653,7 @@ export class SettingsApp {
         const isGeneralTextColorOpen = this.storage.get('phone-settings-general-text-color-open') === true;
         const isGeneralTimeOpen = this.storage.get('phone-settings-general-time-open') === true;
         const isGeneralDataOpen = this.storage.get('phone-settings-general-data-open') === true;
+        const isWechatMessageSoundEnabled = this._isStorageTruthy(WECHAT_MESSAGE_SOUND_ENABLED_KEY);
         const homeLayoutRaw = String(this.storage.get('phone-home-layout') || 'icons');
         const homeLayout = homeLayoutRaw === 'cards' ? 'cards' : 'icons';
         // 加载壁纸和颜色设置
@@ -1332,6 +1334,17 @@ export class SettingsApp {
                                 </div>
                                 <label class="toggle-switch">
                                     <input type="checkbox" id="setting-wechat-online-proactive-enabled" ${isWechatOnlineProactiveEnabled ? 'checked' : ''}>
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+
+                            <div class="setting-item setting-toggle" style="margin-top: 10px;">
+                                <div>
+                                    <div class="setting-label">微信消息提示音</div>
+                                    <div class="setting-desc">线下转线上或线上收到微信消息时播放 iPhone 消息提示音</div>
+                                </div>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="setting-wechat-message-sound-enabled" ${isWechatMessageSoundEnabled ? 'checked' : ''}>
                                     <span class="toggle-slider"></span>
                                 </label>
                             </div>
@@ -4133,6 +4146,13 @@ export class SettingsApp {
             }
             const key = this._getWechatOnlineProactiveEnabledStorageKey(context);
             await this.storage.set(key, !!e.target.checked);
+        });
+
+        document.getElementById('setting-wechat-message-sound-enabled')?.addEventListener('change', async (e) => {
+            const enabled = !!e.target.checked;
+            await this.storage.set(WECHAT_MESSAGE_SOUND_ENABLED_KEY, enabled);
+            this.phoneShell?.showNotification?.('微信提示音', enabled ? '已开启' : '已关闭', enabled ? '✅' : '📵');
+            if (enabled) window.VirtualPhone?.playWechatMessageSound?.({ source: 'settings_preview', throttleMs: 0 });
         });
 
         document.getElementById('setting-wechat-online-proactive-interval')?.addEventListener('change', async (e) => {

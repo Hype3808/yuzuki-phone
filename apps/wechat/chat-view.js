@@ -6991,8 +6991,10 @@ renderChatRoom(chat) {
                             timeText: '刚刚',
                             senderKey: `wechat:bg:${bgChat.id}:${Date.now()}`
                         });
+                        window.VirtualPhone.playWechatMessageSound?.({ source: 'online_background' });
                     } else {
                         this.app.phoneShell?.showNotification('新微信消息', `${targetName} 给你发了新消息`, '💬');
+                        window.VirtualPhone?.playWechatMessageSound?.({ source: 'online_background' });
                     }
                 }
             }
@@ -7105,6 +7107,7 @@ renderChatRoom(chat) {
                     this.app.currentChat && this.app.currentChat.id === savedChatId;
 
                 if (isStillViewing) {
+                    window.VirtualPhone?.playWechatMessageSound?.({ source: 'online_inline_foreground' });
                     // 如果还在当前聊天，使用智能防闪烁引擎刷新
                     const messagesDiv = document.getElementById('chat-messages');
                     if (messagesDiv) {
@@ -7132,8 +7135,10 @@ renderChatRoom(chat) {
                                 timeText: '刚刚',
                                 senderKey: `wechat:inline:${savedChatId}:${Date.now()}`
                             });
+                            window.VirtualPhone.playWechatMessageSound?.({ source: 'online_inline_background' });
                         } else {
                             this.app.phoneShell?.showNotification('新微信消息', `${savedChatName} 给你发了新消息`, '💬');
+                            window.VirtualPhone?.playWechatMessageSound?.({ source: 'online_inline_background' });
                         }
 
                         // 同步全局红点

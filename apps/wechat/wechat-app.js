@@ -792,15 +792,17 @@ export class WechatApp {
 
 .wechat-inner-os-popup {
     display: none;
-    position: absolute;
-    bottom: calc(100% + 8px);
-    right: -10px;
-    width: max-content;
+    position: relative;
+    bottom: auto;
+    right: auto;
+    left: auto;
+    width: min(230px, calc(100vw - 96px));
     min-width: 150px;
-    max-width: min(210px, 62vw);
+    max-width: calc(100vw - 96px);
     box-sizing: border-box;
+    margin-top: 6px;
     padding: 9px 12px 10px;
-    border-radius: 8px 8px 0 8px;
+    border-radius: 8px;
     border: 1px solid rgba(255, 255, 255, 0.15);
     background: rgba(40, 40, 40, 0.65);
     backdrop-filter: blur(12px);
@@ -815,29 +817,21 @@ export class WechatApp {
     gap: 5px;
     flex-direction: column;
     align-items: flex-start;
-    transform-origin: bottom right;
-    animation: wechatInnerOsPopUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    transform-origin: top left;
+    animation: wechatInnerOsPopUp 0.22s ease-out forwards;
 }
 
 .wechat-inner-os-popup::after {
-    content: '';
-    position: absolute;
-    right: 15px;
-    bottom: -7px;
-    width: 0;
-    height: 0;
-    border-left: 7px solid transparent;
-    border-right: 7px solid transparent;
-    border-top: 7px solid rgba(40, 40, 40, 0.65);
+    display: none;
+    content: none;
 }
 
 .message-left .wechat-inner-os-popup {
-    left: auto;
-    right: -10px;
+    align-self: flex-start;
 }
 
 .message-right .wechat-inner-os-popup {
-    right: -10px;
+    align-self: flex-end;
 }
 
 .wechat-inner-os-title {
@@ -867,7 +861,8 @@ export class WechatApp {
 
 @media (max-width: 500px) {
     .wechat-inner-os-popup {
-        max-width: min(190px, 58vw);
+        width: min(210px, calc(100vw - 82px));
+        max-width: calc(100vw - 82px);
         min-width: 132px;
         padding: 8px 10px 9px;
         font-size: 11px;
@@ -876,25 +871,11 @@ export class WechatApp {
     }
 
     .message-left .wechat-inner-os-popup {
-        left: 0;
-        right: auto;
-        transform-origin: bottom left;
-    }
-
-    .message-left .wechat-inner-os-popup::after {
-        left: 14px;
-        right: auto;
+        transform-origin: top left;
     }
 
     .message-right .wechat-inner-os-popup {
-        right: 0;
-        left: auto;
-        transform-origin: bottom right;
-    }
-
-    .message-right .wechat-inner-os-popup::after {
-        right: 14px;
-        left: auto;
+        transform-origin: top right;
     }
 
     .wechat-inner-os-title {

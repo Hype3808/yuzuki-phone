@@ -34,6 +34,8 @@ const LOBBY_WECHAT_ONLINE_PROACTIVE_ENABLED_KEY = 'phone_lobby_wechat_online_pro
 const LOBBY_WECHAT_ONLINE_PROACTIVE_INTERVAL_KEY = 'phone_lobby_wechat_online_proactive_interval_minutes';
 const LOBBY_WECHAT_ONLINE_PROACTIVE_LAST_AT_KEY = 'phone_lobby_wechat_online_proactive_last_trigger_at';
 const LOBBY_WECHAT_ONLINE_PROACTIVE_PENDING_KEY = 'phone_lobby_wechat_online_proactive_pending_at';
+const WECHAT_MESSAGE_SOUND_ENABLED_KEY = 'wechat_message_sound_enabled';
+const WECHAT_MESSAGE_SOUND_URL = new URL('./assets/sounds/iphone-message-notification.mp3', ST_PHONE_BASE_URL).href;
 const ST_PHONE_CURRENT_UPDATE = {
     version: ST_PHONE_VERSION,
     date: '2026-05-21',
@@ -93,6 +95,8 @@ if (window.GGP_Loaded) {
     let _phoneViewportResizeTimer = null;
     let _phoneViewportSettleTimer = null;
     let _phoneKeyboardLikelyOpenUntil = 0;
+    let _wechatMessageAudio = null;
+    let _wechatMessageSoundLastAt = 0;
     const PHONE_PANEL_DESKTOP_SIDE_KEY = 'phone-panel-desktop-side';
     const PHONE_PANEL_DESKTOP_POSITION_KEY = 'phone-panel-desktop-position';
     // 🔥 防重放护盾：仅允许被显式标记的旧楼层重新解析（用于 Swipe/Regenerate）
@@ -1140,6 +1144,36 @@ if (window.GGP_Loaded) {
             senderKey: senderKey
         });
         _drainFallbackNotificationQueue();
+    }
+
+    function playWechatMessageSound(options = {}) {
+        try {
+            const rawEnabled = storage?.get?.(WECHAT_MESSAGE_SOUND_ENABLED_KEY);
+            if (!(rawEnabled === true || rawEnabled === 'true' || rawEnabled === 1 || rawEnabled === '1')) return false;
+
+            const now = Date.now();
+            const rawThrottleMs = Number.parseInt(options.throttleMs, 10);
+            const throttleMs = Math.max(0, Number.isFinite(rawThrottleMs) ? rawThrottleMs : 450);
+            if (throttleMs && now - _wechatMessageSoundLastAt < throttleMs) return false;
+            _wechatMessageSoundLastAt = now;
+
+            if (!_wechatMessageAudio) {
+                _wechatMessageAudio = new Audio(WECHAT_MESSAGE_SOUND_URL);
+                _wechatMessageAudio.preload = 'auto';
+                _wechatMessageAudio.volume = 0.82;
+            }
+            _wechatMessageAudio.currentTime = 0;
+            const playTask = _wechatMessageAudio.play();
+            if (playTask?.catch) {
+                playTask.catch(err => {
+                    console.warn('⚠️ [微信提示音] 播放失败，可能被浏览器自动播放策略拦截:', err);
+                });
+            }
+            return true;
+        } catch (err) {
+            console.warn('⚠️ [微信提示音] 播放异常:', err);
+            return false;
+        }
     }
 
     function escapePhoneHtml(value = '') {
@@ -5734,6 +5768,7 @@ if (window.GGP_Loaded) {
                     timeText: '刚刚',
                     senderKey: `wechat:${chat?.id || data.contact || 'unknown'}:${Date.now()}`
                 });
+                playWechatMessageSound({ source: 'offline_to_online' });
             }
         }).catch(err => {
             console.error('❌ [消息存储] 导入WechatData失败:', err);
@@ -6951,6 +6986,7 @@ if (window.GGP_Loaded) {
                 mofoApp: null,
                 cachedMofoData: null,
                 notify: showUnifiedPhoneNotification,
+                playWechatMessageSound: playWechatMessageSound,
                 showCurrentUpdateInfo: async () => showPhoneUpdateModal('local', await fetchLocalUpdateNotes(ST_PHONE_VERSION), {
                     primaryText: '知道了'
                 }),
