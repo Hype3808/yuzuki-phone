@@ -262,6 +262,8 @@ export class PhoneShell {
                 '.mofo-editor-overlay', '.mofo-editor-panel', '.mofo-editor-body',
                 '.games-app', '.games-lobby-content', '.games-log', '.games-contact-list', '.games-settings-panel', '.games-worldbook-list', '.games-ai-error-message',
                 '.album-body', '.album-grid', '.album-preview-panel',
+                '.yzp-calendar-main', '.yzp-calendar-settings-body', '.yzp-calendar-prompt-editor',
+                '.yzp-calendar-memo-list', '.yzp-calendar-add-sheet', '.yzp-calendar-month-sheet', '.yzp-calendar-detail-sheet', '.yzp-calendar-detail-body', '.yzp-calendar-memo-input', '.yzp-calendar-type-menu',
                 '#phone-inline-reply-menu-pop', '.inline-reply-tabbar', '.inline-reply-page',
                 '#mofo-list-wrap', '#mofo-preview-wrap'
             ];

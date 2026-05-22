@@ -3420,11 +3420,15 @@ parseAIResponse(text) {
 
         this.data.chats.push(groupChat);
         
+        const storyTime = window.VirtualPhone?.timeManager?.getCurrentStoryTime?.() || null;
+
         // 🔥 添加系统消息：谁创建了群聊
         this.addMessage(chatId, {
             from: 'system',
             content: `你创建了群聊"${groupInfo.name}"`,
-            time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+            time: storyTime?.time || new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+            date: storyTime?.date || '',
+            weekday: storyTime?.weekday || '',
             type: 'system',
             avatar: '📢'
         });

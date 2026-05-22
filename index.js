@@ -16,7 +16,7 @@
 
 const ST_PHONE_BASE_URL = new URL('./', import.meta.url).href;
 const ST_PHONE_GLOBAL_CSS_URL = new URL('./phone.css', import.meta.url).href;
-const ST_PHONE_VERSION = '1.1.6';
+const ST_PHONE_VERSION = '1.1.7';
 const ST_PHONE_UPDATE_MANIFEST_URLS = [
     'https://raw.githubusercontent.com/gaigai315/yuzuki-phone/main/manifest.json',
     'https://raw.githubusercontent.com/gaigai315/yuzuki-phone/master/manifest.json'
@@ -38,13 +38,11 @@ const WECHAT_MESSAGE_SOUND_ENABLED_KEY = 'wechat_message_sound_enabled';
 const WECHAT_MESSAGE_SOUND_URL = new URL('./assets/sounds/iphone-message-notification.mp3', ST_PHONE_BASE_URL).href;
 const ST_PHONE_CURRENT_UPDATE = {
     version: ST_PHONE_VERSION,
-    date: '2026-05-21',
+    date: '2026-05-22',
     items: [
         '【必做】更新后请在设置中执行一次【一键恢复默认提示词】，以同步最新全局提示词。',
-        '【优化】微信单聊、群聊、朋友圈、微博配图统一支持 [图片]（中文描述）（英文生图tag） 和 [个人图片]（中文描述）（英文生图tag） 格式，图片卡片优先展示中文描述、英文 tag 仅用于生图；兼容旧版 [图片]（描述） 与 [个人图片]（描述），[表情包]（表情包名称） 规则不变。',
-        '【优化】优化线上聊天推进时间，手机时间晚于剧情时间时会自动提醒 AI 对齐时间。',
-        '【优化】微信全局背景、联系人编辑页和手机设置页适配透明玻璃效果；头像资源失效时会按性别回退默认头像。',
-        '【修复】优化平板/移动端微信输入栏样式兼容。'
+        '【新增】新增日历 App，支持日间/夜间模式，可按剧情时间手动或自动新增日程，并提供日程提醒开关。',
+        '【优化】微信群聊上下文现在会参考群成员对应的单聊记录，互通模式与线上模式均按各自单聊注入条数设置生效。'
     ]
 };
 
@@ -1144,6 +1142,28 @@ if (window.GGP_Loaded) {
             senderKey: senderKey
         });
         _drainFallbackNotificationQueue();
+    }
+
+    let _lastCalendarReminderCheckTime = null;
+    async function checkCalendarScheduleReminders(currentTime = null) {
+        try {
+            if (!storage) return;
+            const tm = timeManager || window.VirtualPhone?.timeManager || await loadTimeManager();
+            const latestTime = currentTime || tm?.getCurrentStoryTime?.();
+            if (!latestTime?.date || !latestTime?.time) return;
+
+            if (!window.VirtualPhone?._calendarReminderApp) {
+                const module = await import('./apps/calendar/calendar-app.js');
+                window.VirtualPhone._calendarReminderApp = new module.CalendarApp(null, storage);
+            }
+
+            window.VirtualPhone._calendarReminderApp.checkScheduleReminders?.(latestTime, {
+                previousTime: _lastCalendarReminderCheckTime
+            });
+            _lastCalendarReminderCheckTime = { ...latestTime };
+        } catch (e) {
+            console.warn('[Calendar] 日程提醒检测失败:', e);
+        }
     }
 
     function playWechatMessageSound(options = {}) {
@@ -5341,6 +5361,7 @@ if (window.GGP_Loaded) {
                     }
 
                     tm.setTime(baseTime, baseDate, passWeekday);
+                    checkCalendarScheduleReminders(tm.getCurrentStoryTime?.());
 
                     // 🔥 时间更新后立即刷新状态栏
                     if (phoneShell && phoneShell.updateStatusBarTime) {
@@ -5578,6 +5599,7 @@ if (window.GGP_Loaded) {
                 if (timeManager && timeManager.setTime) {
                     try {
                         timeManager.setTime(finalTime, data.date || baseDate);
+                        checkCalendarScheduleReminders(timeManager.getCurrentStoryTime?.());
                     } catch (e) {
                         // 忽略错误
                     }
@@ -6192,6 +6214,7 @@ if (window.GGP_Loaded) {
                             timelineCursor = nextStoryTime;
                             if (typeof tmForReply.setTime === 'function') {
                                 tmForReply.setTime(nextStoryTime.time, nextStoryTime.date, nextStoryTime.weekday || null);
+                                checkCalendarScheduleReminders(tmForReply.getCurrentStoryTime?.() || nextStoryTime);
                             }
                         }
                     }
@@ -6986,6 +7009,7 @@ if (window.GGP_Loaded) {
                 mofoApp: null,
                 cachedMofoData: null,
                 notify: showUnifiedPhoneNotification,
+                checkCalendarScheduleReminders: checkCalendarScheduleReminders,
                 playWechatMessageSound: playWechatMessageSound,
                 showCurrentUpdateInfo: async () => showPhoneUpdateModal('local', await fetchLocalUpdateNotes(ST_PHONE_VERSION), {
                     primaryText: '知道了'
@@ -7014,6 +7038,7 @@ if (window.GGP_Loaded) {
                     loadTimeManager(),
                     loadPromptManager()
                 ]);
+                checkCalendarScheduleReminders(window.VirtualPhone?.timeManager?.getCurrentStoryTime?.());
             } catch (bootstrapManagerErr) {
                 console.warn('⚠️ [手机插件] 预热管理器失败，后续将按需重试:', bootstrapManagerErr);
             }
@@ -7352,6 +7377,25 @@ if (window.GGP_Loaded) {
                             console.error('❌ 导入 album-app.js 失败:', importError);
                             phoneShell?.showNotification('错误', '相册模块加载失败', '❌');
                         });
+                } else if (appId === 'calendar') {
+                    import('./apps/calendar/calendar-app.js')
+                        .then(module => {
+                            try {
+                                if (!window.VirtualPhone.calendarApp || !window.VirtualPhone.calendarApp.phoneShell?.setContent) {
+                                    window.VirtualPhone.calendarApp = new module.CalendarApp(phoneShell, storage);
+                                } else {
+                                    window.VirtualPhone.calendarApp.attachPhoneShell?.(phoneShell);
+                                }
+                                window.VirtualPhone.calendarApp.render();
+                            } catch (initError) {
+                                console.error('❌ 日历APP初始化失败:', initError);
+                                phoneShell?.showNotification('错误', '日历加载失败', '❌');
+                            }
+                        })
+                        .catch(importError => {
+                            console.error('❌ 导入 calendar-app.js 失败:', importError);
+                            phoneShell?.showNotification('错误', '日历模块加载失败', '❌');
+                        });
                 } else {
                     phoneShell?.showNotification('APP', `${appId} 功能开发中...`, '🚧');
                 }
@@ -7432,6 +7476,7 @@ if (window.GGP_Loaded) {
                     window.VirtualPhone.cachedWechatData = null;
                     window.VirtualPhone.cachedMofoData = null;
                     if (window.VirtualPhone.diaryApp) window.VirtualPhone.diaryApp.clearCache();
+                    if (window.VirtualPhone.calendarApp) window.VirtualPhone.calendarApp.clearCache();
                     if (window.VirtualPhone.phoneApp) window.VirtualPhone.phoneApp.clearCache();
                     if (window.VirtualPhone.weiboApp) window.VirtualPhone.weiboApp.clearCache();
                     if (window.VirtualPhone.mofoApp) {
@@ -7439,6 +7484,7 @@ if (window.GGP_Loaded) {
                         window.VirtualPhone.mofoApp = null;
                     }
                     window.VirtualPhone.albumApp = null;
+                    window.VirtualPhone.calendarApp = null;
                     if (window.VirtualPhone.musicApp) {
                         window.VirtualPhone.musicApp.clearCache();
                         window.VirtualPhone.musicApp.view.destroyFloatingWidget();
@@ -7491,6 +7537,10 @@ if (window.GGP_Loaded) {
                     window.VirtualPhone.cachedMofoData = null;
                     window.VirtualPhone.imageManager = null;
                     if (window.VirtualPhone.diaryApp) window.VirtualPhone.diaryApp.clearCache();
+                    if (window.VirtualPhone.calendarApp) {
+                        window.VirtualPhone.calendarApp.clearCache();
+                        window.VirtualPhone.calendarApp = null;
+                    }
                     if (window.VirtualPhone.phoneApp) window.VirtualPhone.phoneApp.clearCache();
                     if (window.VirtualPhone.weiboApp) {
                         window.VirtualPhone.weiboApp.clearCache();
@@ -8125,6 +8175,13 @@ if (window.GGP_Loaded) {
                                                     wechatOfflineChats.push({
                                                         chatId: chat.id,
                                                         chatName: chat.name,
+                                                        chatType: isGroup ? 'group' : 'single',
+                                                        members: isGroup && Array.isArray(chat.members)
+                                                            ? chat.members.map(item => String(item || '').trim()).filter(Boolean)
+                                                            : [],
+                                                        aliases: !isGroup
+                                                            ? [chat.name, linkedContact?.name].map(item => String(item || '').trim()).filter(Boolean)
+                                                            : [],
                                                         messages: formattedMessages
                                                     });
                                                 }
@@ -8330,6 +8387,50 @@ if (window.GGP_Loaded) {
                                             });
                                             phoneHistoryContent += `\n`;
                                         });
+
+                                        const normalizeWechatHistoryName = (value) => String(value || '')
+                                            .trim()
+                                            .replace(/\s+/g, '')
+                                            .replace(/[（(][^（）()]*[）)]/g, '')
+                                            .toLowerCase();
+                                        const singleHistoryByName = new Map();
+                                        wechatOfflineChats
+                                            .filter(chat => chat?.chatType === 'single' && Array.isArray(chat.messages) && chat.messages.length > 0)
+                                            .forEach(chat => {
+                                                const aliases = Array.isArray(chat.aliases) && chat.aliases.length > 0 ? chat.aliases : [chat.chatName];
+                                                aliases.forEach(alias => {
+                                                    const key = normalizeWechatHistoryName(alias);
+                                                    if (key && !singleHistoryByName.has(key)) singleHistoryByName.set(key, chat);
+                                                });
+                                            });
+
+                                        const relatedLines = [];
+                                        wechatOfflineChats
+                                            .filter(chat => chat?.chatType === 'group' && Array.isArray(chat.members) && chat.members.length > 0)
+                                            .forEach(groupChat => {
+                                                const usedSingleIds = new Set();
+                                                groupChat.members.forEach(member => {
+                                                    const singleChat = singleHistoryByName.get(normalizeWechatHistoryName(member));
+                                                    if (!singleChat || usedSingleIds.has(singleChat.chatId)) return;
+                                                    usedSingleIds.add(singleChat.chatId);
+                                                    relatedLines.push(`━━━ ${groupChat.chatName} 群成员单聊参考：${singleChat.chatName} ━━━`);
+                                                    let lastDate = '';
+                                                    singleChat.messages.forEach(msg => {
+                                                        if (msg.date && msg.date !== lastDate) {
+                                                            relatedLines.push(`--- ${msg.date} ---`);
+                                                            lastDate = msg.date;
+                                                        }
+                                                        relatedLines.push(`[${msg.time}] ${msg.speaker}: ${msg.content}`);
+                                                    });
+                                                    relatedLines.push('');
+                                                });
+                                            });
+
+                                        if (relatedLines.length > 0) {
+                                            phoneHistoryContent += `【补充上下文：群成员单聊参考】\n`;
+                                            phoneHistoryContent += `以下内容只供对应群聊中同名群成员延续与{{user}}的私聊记忆；没有列出的群成员，不要假装知道私聊内容；不得参考非群成员私聊。\n`;
+                                            phoneHistoryContent += `${relatedLines.join('\n')}\n`;
+                                        }
                                     }
 
                                     // 3.5️⃣ 添加通话记录

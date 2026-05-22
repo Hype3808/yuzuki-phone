@@ -1688,6 +1688,10 @@ export class ChatView {
         return `${dateObj.getFullYear()}年${String(dateObj.getMonth() + 1).padStart(2, '0')}月${String(dateObj.getDate()).padStart(2, '0')}日`;
     }
 
+    _normalizeWechatDateDisplay(dateText = '') {
+        return String(dateText || '').replace(/^0+(\d{1,6}年)/, '$1');
+    }
+
     _parseManualTimeAdvanceCommand(text = '') {
         const raw = String(text || '').trim();
         const match = raw.match(/^\[\s*时间推进\s*[：:]\s*([^\]]+?)\s*\]$/);
@@ -1716,6 +1720,7 @@ export class ChatView {
         const timeManager = window.VirtualPhone?.timeManager;
         if (typeof timeManager?.setTime === 'function') {
             timeManager.setTime(parsedTime.time, parsedTime.date, parsedTime.weekday, { force: true });
+            window.VirtualPhone?.checkCalendarScheduleReminders?.(timeManager.getCurrentStoryTime?.() || parsedTime);
         }
 
         this.app.wechatData.addMessage(targetChatId, {
@@ -1933,6 +1938,11 @@ export class ChatView {
 
         if (typeof timeManager.setTime === 'function' && messageObj.time && messageObj.date) {
             timeManager.setTime(messageObj.time, messageObj.date, messageObj.weekday || null);
+            window.VirtualPhone?.checkCalendarScheduleReminders?.(timeManager.getCurrentStoryTime?.() || {
+                time: messageObj.time,
+                date: messageObj.date,
+                weekday: messageObj.weekday
+            });
         }
 
         this._aiReplyTimeCursor = timeManager.getCurrentStoryTime();
@@ -2017,7 +2027,7 @@ renderChatRoom(chat) {
         messages.forEach((msg, index) => {
             try {
                 const msgTimestamp = msg.timestamp || 0;
-                const msgDate = msg.date || null;
+                const msgDate = msg.date ? this._normalizeWechatDateDisplay(msg.date) : null;
                 const prevMsg = index > 0 ? messages[index - 1] : null;
                 const prevTimestamp = Number(prevMsg?.timestamp || 0);
                 const currentBatchId = String(msg?.replyBatchId || '').trim();
@@ -6455,6 +6465,10 @@ renderChatRoom(chat) {
                 .trim()
                 .replace(/\s+/g, '')
                 .toLowerCase();
+            const stripWechatSenderTimePrefix = (name) => String(name || '')
+                .trim()
+                .replace(/^(?:\[\s*[^\]\r\n]+?\s*\]|【\s*[^】\r\n]+?\s*】)\s*/, '')
+                .trim();
             const normalizeWechatSingleName = (name) => normalizeWechatWindowName(name)
                 .replace(/[（(][^（）()]*[）)]/g, '');
             const isSameWechatWindowName = (a, b) => {
@@ -6469,7 +6483,7 @@ renderChatRoom(chat) {
             };
             const singleChatAliases = isGroupChat ? [] : this._collectSingleChatAliasesForFilter(targetChat || this.app.currentChat, context);
             const isAllowedSingleChatSender = (sender, expectedSender) => {
-                const rawSender = String(sender || '').trim();
+                const rawSender = stripWechatSenderTimePrefix(sender);
                 const expected = String(expectedSender || '').trim();
                 if (!rawSender) return true;
                 const allowedNames = [expected, ...singleChatAliases]
@@ -6522,7 +6536,7 @@ renderChatRoom(chat) {
             const filterInlineSingleReply = (message) => {
                 if (!message || isGroupChat) return message;
                 const expectedSender = String(savedChatName || context.name2 || '').trim();
-                const rawSender = String(message.sender || '').trim();
+                const rawSender = stripWechatSenderTimePrefix(message.sender);
                 const content = String(message.content || message.specialMessage?.content || '').trim();
                 if (!content && !message.specialMessage) return null;
                 if (!expectedSender) return { ...message, content };
@@ -6764,7 +6778,7 @@ renderChatRoom(chat) {
                         const timedLine = this._parseTimedWechatSenderLine(line);
                         const simpleMsgMatch = /^([^:：]+)[：:]\s*(.+)$/.exec(line);
 
-                        if (isGroupChat && timedLine) {
+                        if (timedLine) {
                             quote = consumeDeferredQuote(timedLine.sender, quote);
                             parsedMessages.push({ time: timedLine.time, sender: timedLine.sender, content: timedLine.content, quote });
                         } else if (simpleMsgMatch && simpleMsgMatch[1].length < 20) {
@@ -7632,9 +7646,14 @@ renderChatRoom(chat) {
         let relatedContextStr = '';
         let commonGroupNamesForSingleChat = [];
         let commonGroupListForSingleChat = '';
+        const normalizeRelatedWechatName = (value) => String(value || '')
+            .trim()
+            .replace(/\s+/g, '')
+            .replace(/[（(][^（）()]*[）)]/g, '')
+            .toLowerCase();
 
         if (!callMode && !isGroupChat) {
-            // 单聊只补充“共同群聊”作为参考；群聊绝不读取任何私聊记录。
+            // 单聊只补充“共同群聊”作为参考。
             const normalizeCommonGroupName = (value) => String(value || '')
                 .trim()
                 .replace(/\s+/g, '')
@@ -7686,6 +7705,44 @@ renderChatRoom(chat) {
                     }
                 });
             }
+        } else if (!callMode && isGroupChat) {
+            const singleChatLimit = this._readNonNegativeLimit('wechat-single-chat-limit', 200);
+            const memberKeys = new Set(groupMembersArray.map(member => normalizeRelatedWechatName(member)).filter(Boolean));
+            if (singleChatLimit > 0 && memberKeys.size > 0) {
+                const relatedSingleChats = allChats
+                    .filter(chat => {
+                        if (chat?.type === 'group') return false;
+                        const chatNameKey = normalizeRelatedWechatName(chat?.name || '');
+                        const contact = chat?.contactId
+                            ? this.app.wechatData.getContact(chat.contactId)
+                            : this.app.wechatData.getContactByName(chat?.name || '');
+                        const contactNameKey = normalizeRelatedWechatName(contact?.name || '');
+                        return (chatNameKey && memberKeys.has(chatNameKey)) || (contactNameKey && memberKeys.has(contactNameKey));
+                    })
+                    .filter((chat, index, arr) => arr.findIndex(item => String(item?.id || '') === String(chat?.id || '')) === index);
+
+                relatedSingleChats.forEach(chat => {
+                    const msgs = this.app.wechatData.getMessages(chat.id)
+                        .filter(m => !(m?.hiddenFromPrompt === true || m?.isTimeMarker === true || m?.type === 'time_marker'))
+                        .slice(-singleChatLimit);
+                    if (!msgs.length) return;
+
+                    if (!relatedContextStr.trim()) relatedContextStr += '【补充上下文：群成员单聊参考】\n';
+                    relatedContextStr += `--- 群成员单聊参考：${chat.name} ---\n`;
+                    let lastDate = null;
+                    msgs.forEach(m => {
+                        if (m.date && m.date !== lastDate) {
+                            relatedContextStr += `[${m.date}]\n`;
+                            lastDate = m.date;
+                        }
+                        const speaker = m.from === 'me' ? userName : (m.from === 'system' ? '系统' : (m.from || chat.name || '群成员'));
+                        let text = this._formatMessageContentForPrompt(m, chat);
+                        if (m.quote) text = `「引用 ${m.quote.sender}: ${m.quote.content}」 ${text}`;
+                        relatedContextStr += `[${m.time || ''}] ${speaker}: ${text}\n`;
+                    });
+                    relatedContextStr += '\n';
+                });
+            }
         }
 
         if (relatedContextStr.trim()) {
@@ -7700,7 +7757,7 @@ renderChatRoom(chat) {
         if (isGroupChat) {
             messages.push({
                 role: 'system',
-                content: '【当前窗口隔离规则】你现在只能看到并回复当前这个微信群窗口。绝对禁止提及、猜测、影射、总结、回应任何不属于当前群聊窗口的好友、私聊、未读消息、其他对话内容。即使用户同时和多个人聊天，你也必须把其他窗口当作完全不可见。',
+                content: '【当前窗口隔离规则】你现在只能回复当前这个微信群窗口。系统若提供了【群成员单聊参考】，只表示这些群成员与{{user}}在私聊中已经发生过的共同经历，可作为该成员在群聊中的关系、记忆和语气参考；没有提供单聊参考的群成员就不要假装知道私聊内容。绝对禁止提及、猜测、影射、总结、回应任何非群成员私聊、未读消息或其他无关窗口内容。',
                 name: 'SYSTEM (窗口隔离)',
                 isPhoneMessage: true
             });
@@ -7770,32 +7827,6 @@ renderChatRoom(chat) {
                 }
             } catch (e) {
                 console.warn('⚠️ 获取微信聊天提示词失败:', e);
-            }
-        }
-
-        if (systemPrompt) {
-            messages.push({
-                role: 'system',
-                content: systemPrompt,
-                name: isGroupChat ? 'SYSTEM (👥群聊模式)' : 'SYSTEM (📱手机聊天)',
-                isPhoneMessage: true
-            });
-        }
-
-        if (isProactive && !callMode) {
-            const proactiveRules = this._buildOnlineProactiveRules({
-                userName,
-                targetChat,
-                customEmojiList,
-                proactiveMeta
-            });
-            if (proactiveRules) {
-                messages.push({
-                    role: 'system',
-                    content: proactiveRules,
-                    name: 'SYSTEM (微信线上主动触发规则)',
-                    isPhoneMessage: true
-                });
             }
         }
 
@@ -7961,6 +7992,41 @@ renderChatRoom(chat) {
             wechatTranscript += await appendWechatChatTranscript(targetChat, recentWechatMessages);
         }
 
+        if (!callMode && wechatTranscript) {
+            messages.push({
+                role: 'system',
+                content: wechatTranscript,
+                name: 'SYSTEM (微信记录)',
+                isPhoneMessage: true
+            });
+        }
+
+        if (systemPrompt) {
+            messages.push({
+                role: 'system',
+                content: systemPrompt,
+                name: isGroupChat ? 'SYSTEM (👥群聊模式)' : 'SYSTEM (📱手机聊天)',
+                isPhoneMessage: true
+            });
+        }
+
+        if (isProactive && !callMode) {
+            const proactiveRules = this._buildOnlineProactiveRules({
+                userName,
+                targetChat,
+                customEmojiList,
+                proactiveMeta
+            });
+            if (proactiveRules) {
+                messages.push({
+                    role: 'system',
+                    content: proactiveRules,
+                    name: 'SYSTEM (微信线上主动触发规则)',
+                    isPhoneMessage: true
+                });
+            }
+        }
+
         // 🔥 通话模式：将通话规则、当前微信聊天历史、本次通话输入分开注入
         if (callMode) {
             const promptManager = window.VirtualPhone?.promptManager;
@@ -8038,14 +8104,6 @@ renderChatRoom(chat) {
                     isPhoneMessage: true
                 });
             }
-            if (wechatTranscript) {
-                messages.push({
-                    role: 'system',
-                    content: wechatTranscript,
-                    name: 'SYSTEM (微信记录)',
-                    isPhoneMessage: true
-                });
-            }
         }
 
         // ========================================
@@ -8086,13 +8144,12 @@ renderChatRoom(chat) {
                 finalUserContent += `\n- 【方向锁定】当前微信单聊窗口是“${targetChat?.name || charName}”；手机主人/用户本人是“${userName}”。你只能扮演“${targetChat?.name || charName}”给“${userName}”发新增微信消息。`;
                 finalUserContent += `\n- 即使角色卡主角、酒馆 assistant 或正文叙事视角不是“${targetChat?.name || charName}”，当前微信单聊也必须以“${targetChat?.name || charName}”的身份和口吻回复；角色卡和正文只作为背景参考。`;
                 finalUserContent += `\n- 【用户最新输入】是“${userName}”刚刚发出的消息，只能作为被回复的内容；禁止把“${userName}”当成聊天对象、联系人、窗口名或回复发送者，禁止输出“${userName}:”、用户:、玩家:。`;
-                finalUserContent += '\n- 单聊输出区块必须是当前窗口名，且每条消息发送者必须是当前聊天对象；禁止让其他人或{{user}}在当前单聊里发言。';
-                finalUserContent += '\n- 微信消息内容必须是角色真实打进聊天框里的文字；禁止写动作、环境、神态、心理、写字过程、语气说明，禁止出现“顿了顿/指尖悬停/又补了一条/语气里”等叙事句。';
+                finalUserContent += '\n- 微信消息内容必须是角色真实打进聊天框里的文字；禁止写动作、环境、神态、写字过程、语气说明，禁止出现“顿了顿/指尖悬停/又补了一条/语气里”等叙事句。';
                 finalUserContent += '\n- 正文/酒馆上下文是当前现实剧情状态的依据；如果正文显示双方已经线下面对面、同处一地、正在现实互动，你必须承认这个状态，必要时用 [转线下] 结束当前单聊微信，而不是把现实剧情当作不存在。';
             }
             finalUserContent += isProactive
                 ? '\n- 只输出新的主动微信消息；不得重复任何已有微信消息，也不得把正文里刚发生的对白原样复读成微信消息。'
-                : '\n- 只输出当前微信窗口的新增回复；不得重复“手机微信已有消息”中已经存在的微信消息，也不得把正文里刚发生的对白原样复读成微信消息。';
+                : '\n- 只输出当前微信窗口的新增回复；严禁重复“手机微信已有消息”中已经存在的微信消息，严禁将正文里刚发生的对白重复成微信消息。';
             finalUserContent += '\n- 可以基于正文最新事件、情绪、地点变化作出自然回应，但回复必须是新的微信内容。';
             finalUserContent += '\n- 消息时间必须承接当前窗口最后一条已存在消息的时间并向后推进。';
         }
@@ -10790,7 +10847,9 @@ ${groupParticipants.join('、') || '暂无成员'}
 
         if (timeManager?.setTime && endTime?.time && endTime?.date) {
             timeManager.setTime(endTime.time, endTime.date, endTime.weekday || null);
-            return timeManager.getCurrentStoryTime?.() || endTime;
+            const latestTime = timeManager.getCurrentStoryTime?.() || endTime;
+            window.VirtualPhone?.checkCalendarScheduleReminders?.(latestTime);
+            return latestTime;
         }
 
         return endTime;

@@ -96,6 +96,15 @@ export const APPS = [
         }
     },
     {
+        id: 'calendar',
+        name: '日历',
+        icon: '📅',
+        color: '#5d83a8',
+        data: {
+            memos: []
+        }
+    },
+    {
         id: 'games',
         name: '游戏',
         icon: '🎮',
