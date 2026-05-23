@@ -2018,6 +2018,8 @@ getMessagePreview(message) {
             return `${icon} ${stripSpeechPrefix(message.content || '')}`;
         case 'weibo_card':
             return '[微博分享]';
+        case 'catbox_care_card':
+            return '[猫盒照顾]';
         case 'music_listen':
             return '[一起听歌]';
         case 'music_invite':

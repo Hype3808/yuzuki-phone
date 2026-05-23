@@ -12,6 +12,7 @@
 import { ImageCropper } from '../settings/image-cropper.js';
 import { captureWechatChatSnapshot } from './chat-snapshot.js';
 import { applyPhoneTagFilter } from '../../config/tag-filter.js';
+import { CatboxData } from '../games/catbox/catbox-data.js';
 
 const LOBBY_LINK_CHARACTER_IDS_KEY = 'phone-lobby-link-character-ids';
 const LOBBY_LINK_GROUP_IDS_KEY = 'phone-lobby-link-group-ids';
@@ -2676,7 +2677,31 @@ renderChatRoom(chat) {
                         <span style="font-size: 11px; color: #999; font-weight: 400;">微博</span>
                     </div>
                 </div>
-            `;
+                `;
+                break;
+            }
+
+            case 'catbox_care_card': {
+                const petName = this._escapeHtml(msg.catboxPetName || '小猫');
+                const itemName = this._escapeHtml(msg.catboxItemName || '零食');
+                const quantity = Math.max(1, Number.parseInt(msg.catboxQuantity, 10) || 1);
+                const note = String(msg.catboxNote || '').trim();
+                messageBody = `
+                    <div class="message-catbox-care-card" style="width: 220px; border-radius: 10px; overflow: hidden; background: #fff8e6; border: 1px solid #ead7aa; box-shadow: 0 1px 2px rgba(0,0,0,0.08);">
+                        <div style="display:flex; align-items:center; gap:8px; padding:10px; background:#f5d98a;">
+                            <div style="width:28px; height:28px; border-radius:8px; background:#2b2020; color:#fff; display:flex; align-items:center; justify-content:center; font-size:15px;">🐱</div>
+                            <div style="min-width:0;">
+                                <div style="font-size:13px; font-weight:700; color:#2a1c19;">猫盒照顾</div>
+                                <div style="font-size:11px; color:#6d4c27;">${this._escapeHtml(msg.from || senderName || '好友')}</div>
+                            </div>
+                        </div>
+                        <div style="padding:10px; color:#2a1c19; font-size:12px; line-height:1.45;">
+                            <div>帮你喂养了 <strong>${petName}</strong></div>
+                            <div style="margin-top:4px;">使用：${itemName} x${quantity}</div>
+                            ${note ? `<div style="margin-top:7px; padding:7px; border-radius:8px; background:rgba(255,255,255,0.62); color:#5a4028;">${this._escapeHtml(note)}</div>` : ''}
+                        </div>
+                    </div>
+                `;
                 break;
             }
 
@@ -4575,6 +4600,27 @@ renderChatRoom(chat) {
         if (!content || typeof content !== 'string') return null;
         const trimmedContent = String(content || '').trim();
 
+        const coAdoptResponseMatch = trimmedContent.match(/^\[(同意收养|拒绝收养)\]$/);
+        if (coAdoptResponseMatch) {
+            const decisionText = coAdoptResponseMatch[1];
+            return {
+                type: 'catbox_coadopt_response',
+                decision: decisionText === '同意收养' ? 'accepted' : 'rejected',
+                content: `[${decisionText}]`
+            };
+        }
+
+        const catboxUseMatch = trimmedContent.match(/^\[使用[：:]\s*([^x×\]\s]+)\s*[x×]\s*(\d+)\]\s*(?:[（(]([\s\S]*?)[）)])?$/);
+        if (catboxUseMatch) {
+            return {
+                type: 'catbox_item_use',
+                itemName: String(catboxUseMatch[1] || '').trim(),
+                quantity: Math.max(1, Number.parseInt(catboxUseMatch[2], 10) || 1),
+                note: String(catboxUseMatch[3] || '').trim(),
+                content: trimmedContent
+            };
+        }
+
         const paymentActionMatch = trimmedContent.match(/^\[(收款|领取红包|退回转账|退回红包)\](?:\s*[（(]\s*([^）)]*)\s*[）)])?$/);
         if (paymentActionMatch) {
             const marker = String(paymentActionMatch[1] || '').trim();
@@ -4711,7 +4757,7 @@ renderChatRoom(chat) {
             }];
         }
 
-        const inlineSpecialRegex = /\[(?:个人图片|图片|视频)\]\s*[（(]\s*[\s\S]+?\s*[）)](?:\s*[（(]\s*[\s\S]+?\s*[）)])?|\[(?:收款|领取红包|退回转账|退回红包)\](?:\s*[（(]\s*[^）)]*\s*[）)])?|\[转账\]\s*(?:[（(]\s*(?:金额[：:]?\s*)?\d+(?:\.\d+)?\s*元?\s*[)）]|[¥￥]\s*\d+(?:\.\d+)?)|\[红包\]\s*(?:[（(]\s*(?:金额[：:]?\s*)?\d+(?:\.\d+)?\s*元?\s*[)）])?|(?:\[\s*定位\s*\]|【\s*定位\s*】)\s*[（(]\s*[^)）]+?\s*[)）]|(?:\[\s*蜜语\s*\]|【\s*蜜语\s*】)\s*(?:[（(]\s*[^）)]*\s*[）)])?|(?:\[\s*音乐\s*\]|【\s*音乐\s*】)\s*[（(]\s*[^，,）)]+?(?:\s*[，,]\s*[^）)]+?)?\s*[）)]|(?:\[\s*(?:拨打|发起)\s*(?:微信)?(?:群)?(?:语音|视频)(?:通话)?\s*\]|【\s*(?:拨打|发起)\s*(?:微信)?(?:群)?(?:语音|视频)(?:通话)?\s*】)/g;
+        const inlineSpecialRegex = /\[(?:同意收养|拒绝收养)\]|\[使用[：:]\s*[^x×\]\s]+\s*[x×]\s*\d+\]\s*(?:[（(][\s\S]*?[）)])?|\[(?:个人图片|图片|视频)\]\s*[（(]\s*[\s\S]+?\s*[）)](?:\s*[（(]\s*[\s\S]+?\s*[）)])?|\[(?:收款|领取红包|退回转账|退回红包)\](?:\s*[（(]\s*[^）)]*\s*[）)])?|\[转账\]\s*(?:[（(]\s*(?:金额[：:]?\s*)?\d+(?:\.\d+)?\s*元?\s*[)）]|[¥￥]\s*\d+(?:\.\d+)?)|\[红包\]\s*(?:[（(]\s*(?:金额[：:]?\s*)?\d+(?:\.\d+)?\s*元?\s*[)）])?|(?:\[\s*定位\s*\]|【\s*定位\s*】)\s*[（(]\s*[^)）]+?\s*[)）]|(?:\[\s*蜜语\s*\]|【\s*蜜语\s*】)\s*(?:[（(]\s*[^）)]*\s*[）)])?|(?:\[\s*音乐\s*\]|【\s*音乐\s*】)\s*[（(]\s*[^，,）)]+?(?:\s*[，,]\s*[^）)]+?)?\s*[）)]|(?:\[\s*(?:拨打|发起)\s*(?:微信)?(?:群)?(?:语音|视频)(?:通话)?\s*\]|【\s*(?:拨打|发起)\s*(?:微信)?(?:群)?(?:语音|视频)(?:通话)?\s*】)/g;
         let hasMatch = false;
         let lastIndex = 0;
         let usedQuote = false;
@@ -4813,6 +4859,61 @@ renderChatRoom(chat) {
         }
 
         return updated;
+    }
+
+    _getCatboxData() {
+        if (window.VirtualPhone?.gamesApp?.catboxData) return window.VirtualPhone.gamesApp.catboxData;
+        if (!this._catboxData) {
+            this._catboxData = new CatboxData(this.app?.storage || window.VirtualPhone?.storage);
+        }
+        return this._catboxData;
+    }
+
+    _handleCatboxCoAdoptResponse(chatId, special = {}, senderName = '') {
+        const catboxData = this._getCatboxData();
+        const chat = this.app.wechatData.getChat?.(chatId);
+        const name = String(senderName || chat?.name || '').trim();
+        if (special.decision === 'accepted') {
+            catboxData.acceptCoAdopt?.(chatId, name);
+            window.VirtualPhone?.gamesApp?.catboxView?.render?.();
+            return { content: `${name || '好友'}同意共同收养` };
+        }
+        catboxData.rejectCoAdopt?.(chatId, name);
+        window.VirtualPhone?.gamesApp?.catboxView?.render?.();
+        return { content: `${name || '好友'}拒绝共同收养` };
+    }
+
+    _buildCatboxCareCardMessage(chatId, special = {}, senderName = '', senderAvatar = '', time = '', replyBatchId = '') {
+        const result = this._getCatboxData().applyFriendItemUse?.({
+            chatId,
+            senderName,
+            itemName: special.itemName,
+            quantity: special.quantity,
+            note: special.note
+        });
+        window.VirtualPhone?.gamesApp?.catboxView?.render?.();
+        if (!result?.success) {
+            return {
+                from: senderName,
+                type: 'text',
+                content: result?.content || '猫盒照顾失败',
+                time,
+                avatar: senderAvatar,
+                replyBatchId
+            };
+        }
+        return {
+            from: senderName,
+            type: 'catbox_care_card',
+            content: result.content,
+            catboxPetName: result.petName,
+            catboxItemName: result.itemName,
+            catboxQuantity: result.quantity,
+            catboxNote: result.note,
+            time,
+            avatar: senderAvatar,
+            replyBatchId
+        };
     }
 
     _collectIncomingCallFollowUps(messages = [], callIndex = 0) {
@@ -6960,9 +7061,14 @@ renderChatRoom(chat) {
                     });
 
                     const specialSender = String(special?.sender || '').trim();
-                    const msgData = special
+                    const senderNameForCatbox = specialSender || m.sender;
+                    const senderAvatarForCatbox = senderAvatar;
+                    let msgData = special
                         ? { from: specialSender || m.sender, ...special, time: m.time, avatar: senderAvatar, replyBatchId: responseBatchId }
                         : { from: m.sender, content: normalizedTextContent, type: 'text', time: m.time, quote: m.quote, avatar: senderAvatar, replyBatchId: responseBatchId };
+                    if (special?.type === 'catbox_item_use') {
+                        msgData = this._buildCatboxCareCardMessage(bgChat.id, special, senderNameForCatbox, senderAvatarForCatbox, m.time, responseBatchId);
+                    }
                     if (special?.type === 'payment_action') {
                         this._applyWechatPaymentAction(bgChat.id, special, m.sender);
                         continue;
@@ -6983,6 +7089,9 @@ renderChatRoom(chat) {
                             { ...special, messageId: latestMsg.id || special.messageId || '' },
                             { senderName: targetName || m.sender, chatId: bgChat.id }
                         );
+                    }
+                    if (special?.type === 'catbox_coadopt_response') {
+                        this._handleCatboxCoAdoptResponse(bgChat.id, special, senderNameForCatbox);
                     }
                     bgAddedCount++;
                     if (special?.type === 'weibo_card' && special.weiboData) {
@@ -7087,10 +7196,15 @@ renderChatRoom(chat) {
                 });
 
                 const specialSender = String(special?.sender || '').trim();
-                const msgData = special
+                const senderNameForCatbox = specialSender || msg.sender;
+                const senderAvatarForCatbox = senderContact?.avatar || (isGroupChat ? '' : savedChatAvatar) || '👤';
+                let msgData = special
                     // 🔥 核心修复3：如果是群聊，禁止 fallback 到 savedChatAvatar
-                    ? { from: specialSender || msg.sender, ...special, time: msg.time, avatar: senderContact?.avatar || (isGroupChat ? '' : savedChatAvatar) || '👤', replyBatchId: responseBatchId }
-                    : { from: msg.sender, content: normalizedTextContent, time: msg.time, type: 'text', avatar: senderContact?.avatar || (isGroupChat ? '' : savedChatAvatar) || '👤', quote: msg.quote, replyBatchId: responseBatchId };
+                    ? { from: specialSender || msg.sender, ...special, time: msg.time, avatar: senderAvatarForCatbox, replyBatchId: responseBatchId }
+                    : { from: msg.sender, content: normalizedTextContent, time: msg.time, type: 'text', avatar: senderAvatarForCatbox, quote: msg.quote, replyBatchId: responseBatchId };
+                if (special?.type === 'catbox_item_use') {
+                    msgData = this._buildCatboxCareCardMessage(savedChatId, special, senderNameForCatbox, senderAvatarForCatbox, msg.time, responseBatchId);
+                }
                 if (special?.type === 'payment_action') {
                     this._applyWechatPaymentAction(savedChatId, special, msg.sender);
                     if (isViewingThisChat) {
@@ -7111,6 +7225,9 @@ renderChatRoom(chat) {
                         { ...special, messageId: latestMsg.id || special.messageId || '' },
                         { senderName: msg.sender || savedChatName, chatId: savedChatId }
                     );
+                }
+                if (special?.type === 'catbox_coadopt_response') {
+                    this._handleCatboxCoAdoptResponse(savedChatId, special, senderNameForCatbox);
                 }
                 if (special?.type === 'weibo_card' && special.weiboData) {
                     this.syncWeiboNewsToWeiboApp(special.weiboData, msg.sender);
@@ -7873,6 +7990,9 @@ renderChatRoom(chat) {
         const musicListeningContext = !callMode
             ? this._buildMusicListeningContext(targetChat, userName)
             : '';
+        const catboxCoAdoptContext = !callMode && !isGroupChat
+            ? String(this._getCatboxData().getCoAdoptContextForChat?.(targetChat?.id, targetChat?.name || charName) || '').replace(/\{\{user\}\}/g, userName)
+            : '';
 
         const timeManager = window.VirtualPhone?.timeManager;
         const realTimeInfo = this._formatRealDateTime(proactiveMeta.now || Date.now());
@@ -7955,6 +8075,9 @@ renderChatRoom(chat) {
                 } else if (msg.type === 'location') {
                     const locationText = String(msg.locationText || msg.locationAddress || msg.content || '').trim();
                     text += `${timeStr}${speaker}: ${quoteStr}[定位]（${locationText || '未知位置'}）\n`;
+                } else if (msg.type === 'catbox_care_card') {
+                    const noteText = msg.catboxNote ? `，留言：${msg.catboxNote}` : '';
+                    text += `${timeStr}${speaker}: ${quoteStr}[猫盒照顾] 使用 ${msg.catboxItemName || '零食'}x${msg.catboxQuantity || 1}${noteText}\n`;
                 } else {
                     const lineText = this._formatMessageContentForPrompt(msg, chat);
                     text += `${timeStr}${speaker}: ${quoteStr}${lineText || ''}\n`;
@@ -8101,6 +8224,14 @@ renderChatRoom(chat) {
                     role: 'system',
                     content: musicListeningContext,
                     name: 'SYSTEM (一起听歌)',
+                    isPhoneMessage: true
+                });
+            }
+            if (catboxCoAdoptContext) {
+                messages.push({
+                    role: 'system',
+                    content: catboxCoAdoptContext,
+                    name: 'SYSTEM (猫盒共同收养)',
                     isPhoneMessage: true
                 });
             }

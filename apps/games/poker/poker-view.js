@@ -69,6 +69,19 @@ export class PokerView {
                         <i class="fa-solid fa-chevron-right games-game-chevron"></i>
                     </button>
 
+                    <button class="games-game-card games-catbox-card" id="games-open-catbox" type="button">
+                        <div class="games-game-art">
+                            <div class="games-catbox-lobby-art" aria-hidden="true">
+                                <i class="fa-solid fa-paw"></i>
+                            </div>
+                        </div>
+                        <div class="games-game-info">
+                            <div class="games-game-title">猫盒</div>
+                            <div class="games-game-desc">像素小猫 · 领养养成</div>
+                        </div>
+                        <i class="fa-solid fa-chevron-right games-game-chevron"></i>
+                    </button>
+
                     <div class="games-coming-grid">
                         <div class="games-coming-card">
                             <div class="games-coming-icon">狼</div>
@@ -448,6 +461,9 @@ export class PokerView {
         });
         document.getElementById('games-open-2048')?.addEventListener('click', () => {
             this.app.open2048();
+        });
+        document.getElementById('games-open-catbox')?.addEventListener('click', () => {
+            this.app.openCatbox();
         });
         document.getElementById('games-settings-open')?.addEventListener('click', () => {
             this._settingsOpen = true;
