@@ -103,6 +103,7 @@ export class SettingsApp {
             { id: 'mofo', name: '魔坊', icon: '🪄', color: '#1677ff' },
             { id: 'phone', name: '通话', icon: '📞', color: '#52c41a' },
             { id: 'diary', name: '日记', icon: '📔', color: '#faad14' },
+            { id: 'calendar', name: '日历', icon: '📅', color: '#5d83a8' },
             { id: 'music', name: '音乐', icon: '🎵', color: '#eb2f96' },
             { id: 'album', name: '相册', icon: '🖼️', color: '#4096ff' },
             { id: 'settings', name: '设置', icon: '⚙️', color: '#8c8c8c' }
