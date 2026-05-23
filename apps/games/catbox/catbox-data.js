@@ -317,6 +317,22 @@ export class CatboxData {
         return this.state.coAdoptInvite;
     }
 
+    updateCoAdoptInviteMessage(chatId, messageId) {
+        const safeChatId = String(chatId || '').trim();
+        const safeMessageId = String(messageId || '').trim();
+        if (!safeChatId || !safeMessageId || !this.state.coAdoptInvite) return null;
+        if (this.state.coAdoptInvite.chatId !== safeChatId) return null;
+        this.state = {
+            ...this.state,
+            coAdoptInvite: {
+                ...this.state.coAdoptInvite,
+                messageId: safeMessageId
+            }
+        };
+        this._persist();
+        return this.state.coAdoptInvite;
+    }
+
     acceptCoAdopt(chatId, name = '') {
         this._applyRealtime();
         if (!this.state.adopted) return null;
@@ -365,6 +381,21 @@ export class CatboxData {
         return this.state.coAdoptInvite;
     }
 
+    releaseCoAdopt() {
+        this._applyRealtime();
+        if (!this.state.adopted || !this.state.coAdopter) return null;
+        const name = String(this.state.coAdopter.name || '好友').trim();
+        this.state = {
+            ...this.state,
+            coAdopter: null,
+            coAdoptInvite: null,
+            lastActionText: `已解除与${name}的共养`,
+            lastActionAt: Date.now()
+        };
+        this._persist();
+        return this.state;
+    }
+
     getCoAdoptContextForChat(chatId, chatName = '') {
         this._applyRealtime();
         const safeChatId = String(chatId || '').trim();
@@ -374,10 +405,10 @@ export class CatboxData {
         if (coAdopter?.chatId === safeChatId) {
             return [
                 '【猫盒共同收养】',
-                `你和{{user}}共同养了一只电子宠物：${this.getPetSummaryText()}`,
-                `仓库零食：${this.getInventorySummaryText()}`,
-                '你可以在自然合适的时候帮忙照顾宠物。若要使用零食，必须严格输出：[使用：小鱼干x1]（想留给对方看的短留言）。',
-                '可用零食名只能是：小鱼干、猫罐头、逗猫棒、小毯子。数量必须是正整数。'
+                '你和{{user}}共同养了一只电子宠物。',
+                '若要使用零食，必须严格输出：[使用：小鱼干x1]（想留给对方看的短留言）。',
+                `可用零食与金额：${this.getItemPriceSummaryText()}。`,
+                '可用零食名必须严格使用上面的中文名称，数量必须是正整数。'
             ].join('\n');
         }
         if (invite?.chatId === safeChatId && invite.status === 'pending') {
@@ -405,6 +436,12 @@ export class CatboxData {
             .join('、');
     }
 
+    getItemPriceSummaryText() {
+        return Object.values(ITEM_DEFS)
+            .map(item => `${item.name} ¥${Number(item.price || 0).toFixed(0)}`)
+            .join('、');
+    }
+
     getUnreadLettersCount() {
         const letters = Array.isArray(this.state.letters) ? this.state.letters : [];
         return letters.filter(letter => !letter.read).length;
@@ -416,6 +453,18 @@ export class CatboxData {
         this.state = {
             ...this.state,
             letters: letters.map(letter => ({ ...letter, read: true }))
+        };
+        this._persist();
+        return this.state;
+    }
+
+    setCatPosition(position = {}) {
+        if (!this.state.adopted) return this.state;
+        const x = this._clampPercent(position.x, 50);
+        const y = this._clampPercent(position.y, 45);
+        this.state = {
+            ...this.state,
+            catPosition: { x, y }
         };
         this._persist();
         return this.state;
@@ -540,6 +589,7 @@ export class CatboxData {
             adoptedAt: Number(state.adoptedAt || 0),
             lastActionText: String(state.lastActionText || ''),
             lastActionAt: Number(state.lastActionAt || 0),
+            catPosition: this._normalizeCatPosition(state.catPosition),
             coAdopter: this._normalizeCoAdopter(state.coAdopter),
             coAdoptInvite: this._normalizeCoAdoptInvite(state.coAdoptInvite),
             letters: this._normalizeLetters(state.letters)
@@ -568,6 +618,7 @@ export class CatboxData {
             adoptedAt: 0,
             lastActionText: '',
             lastActionAt: 0,
+            catPosition: null,
             coAdopter: null,
             coAdoptInvite: null,
             letters: []
@@ -594,6 +645,12 @@ export class CatboxData {
         if (!Number.isFinite(value)) return 0;
         const max = Math.max(100, Number(maxValue || this.state?.maxStat || 100));
         return Math.max(0, Math.min(max, Math.round(value)));
+    }
+
+    _clampPercent(value, fallback) {
+        const number = Number(value);
+        if (!Number.isFinite(number)) return fallback;
+        return Math.max(8, Math.min(92, Math.round(number * 10) / 10));
     }
 
     _levelFromExp(exp) {
@@ -665,6 +722,14 @@ export class CatboxData {
         }, {});
     }
 
+    _normalizeCatPosition(value) {
+        if (!value || typeof value !== 'object') return null;
+        return {
+            x: this._clampPercent(value.x, 50),
+            y: this._clampPercent(value.y, 45)
+        };
+    }
+
     _resolveItemIdByName(itemName) {
         const raw = String(itemName || '').trim();
         if (!raw) return '';
@@ -698,7 +763,8 @@ export class CatboxData {
             name,
             status,
             at: Number(value.at || Date.now()),
-            resolvedAt: Number(value.resolvedAt || 0)
+            resolvedAt: Number(value.resolvedAt || 0),
+            messageId: String(value.messageId || '').trim()
         };
     }
 

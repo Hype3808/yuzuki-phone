@@ -2683,11 +2683,8 @@ renderChatRoom(chat) {
 
             case 'catbox_care_card': {
                 const petName = this._escapeHtml(msg.catboxPetName || '小猫');
-                const itemName = this._escapeHtml(msg.catboxItemName || '零食');
-                const quantity = Math.max(1, Number.parseInt(msg.catboxQuantity, 10) || 1);
-                const note = String(msg.catboxNote || '').trim();
                 messageBody = `
-                    <div class="message-catbox-care-card" style="width: 220px; border-radius: 10px; overflow: hidden; background: #fff8e6; border: 1px solid #ead7aa; box-shadow: 0 1px 2px rgba(0,0,0,0.08);">
+                    <div class="message-catbox-care-card" style="width: 210px; border-radius: 10px; overflow: hidden; background: #fff8e6; border: 1px solid #ead7aa; box-shadow: 0 1px 2px rgba(0,0,0,0.08);">
                         <div style="display:flex; align-items:center; gap:8px; padding:10px; background:#f5d98a;">
                             <div style="width:28px; height:28px; border-radius:8px; background:#2b2020; color:#fff; display:flex; align-items:center; justify-content:center; font-size:15px;">🐱</div>
                             <div style="min-width:0;">
@@ -2696,9 +2693,27 @@ renderChatRoom(chat) {
                             </div>
                         </div>
                         <div style="padding:10px; color:#2a1c19; font-size:12px; line-height:1.45;">
-                            <div>帮你喂养了 <strong>${petName}</strong></div>
-                            <div style="margin-top:4px;">使用：${itemName} x${quantity}</div>
-                            ${note ? `<div style="margin-top:7px; padding:7px; border-radius:8px; background:rgba(255,255,255,0.62); color:#5a4028;">${this._escapeHtml(note)}</div>` : ''}
+                            帮你喂养了 <strong>${petName}</strong>
+                        </div>
+                    </div>
+                `;
+                break;
+            }
+
+            case 'catbox_coadopt_invite': {
+                const status = String(msg.catboxInviteStatus || 'pending').trim();
+                const petName = this._escapeHtml(msg.catboxPetName || '小猫');
+                const statusText = status === 'accepted' ? '已同意' : (status === 'rejected' ? '已拒绝' : '等待中');
+                const statusColor = status === 'accepted' ? '#228b52' : (status === 'rejected' ? '#9a3b42' : '#8a6428');
+                messageBody = `
+                    <div class="message-catbox-invite-card" style="width: 190px; border-radius: 10px; overflow: hidden; background: #f5d98a; border: 1px solid #ead7aa; box-shadow: 0 1px 2px rgba(0,0,0,0.08);">
+                        <div style="display:flex; align-items:center; gap:7px; padding:8px;">
+                            <div style="width:28px; height:28px; border-radius:8px; background:#2b2020; color:#fff; display:flex; align-items:center; justify-content:center; font-size:15px;">🐱</div>
+                            <div style="min-width:0; flex:1;">
+                                <div style="font-size:12px; font-weight:700; color:#2a1c19;">猫盒共养邀请</div>
+                                <div style="font-size:10px; color:#6d4c27; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">一起照顾 ${petName}</div>
+                            </div>
+                            <span style="flex:0 0 auto; border-radius:999px; padding:3px 6px; background:rgba(255,255,255,0.66); color:${statusColor}; font-size:10px; font-weight:700;">${statusText}</span>
                         </div>
                     </div>
                 `;
@@ -4873,14 +4888,24 @@ renderChatRoom(chat) {
         const catboxData = this._getCatboxData();
         const chat = this.app.wechatData.getChat?.(chatId);
         const name = String(senderName || chat?.name || '').trim();
+        const status = special.decision === 'accepted' ? 'accepted' : 'rejected';
         if (special.decision === 'accepted') {
             catboxData.acceptCoAdopt?.(chatId, name);
-            window.VirtualPhone?.gamesApp?.catboxView?.render?.();
-            return { content: `${name || '好友'}同意共同收养` };
+        } else {
+            catboxData.rejectCoAdopt?.(chatId, name);
         }
-        catboxData.rejectCoAdopt?.(chatId, name);
+        const state = catboxData.getState?.() || {};
+        const invite = state.coAdoptInvite || {};
+        const messageId = String(invite.messageId || '').trim();
+        if (messageId) {
+            this.app.wechatData.updateMessageById?.(chatId, messageId, {
+                catboxInviteStatus: status,
+                catboxInviteResolvedBy: name,
+                catboxInviteResolvedAt: Date.now()
+            });
+        }
         window.VirtualPhone?.gamesApp?.catboxView?.render?.();
-        return { content: `${name || '好友'}拒绝共同收养` };
+        return { content: status === 'accepted' ? `${name || '好友'}同意共同收养` : `${name || '好友'}拒绝共同收养` };
     }
 
     _buildCatboxCareCardMessage(chatId, special = {}, senderName = '', senderAvatar = '', time = '', replyBatchId = '') {
@@ -7073,6 +7098,11 @@ renderChatRoom(chat) {
                         this._applyWechatPaymentAction(bgChat.id, special, m.sender);
                         continue;
                     }
+                    if (special?.type === 'catbox_coadopt_response') {
+                        this._handleCatboxCoAdoptResponse(bgChat.id, special, senderNameForCatbox);
+                        this.app.wechatData.saveData?.();
+                        continue;
+                    }
                     if (special?.type === 'redpacket') msgData.id = `rp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
                     const candidatePreview = String((special?.content || normalizedTextContent || '')).replace(/\s+/g, ' ').trim();
                     if (candidatePreview) {
@@ -7089,9 +7119,6 @@ renderChatRoom(chat) {
                             { ...special, messageId: latestMsg.id || special.messageId || '' },
                             { senderName: targetName || m.sender, chatId: bgChat.id }
                         );
-                    }
-                    if (special?.type === 'catbox_coadopt_response') {
-                        this._handleCatboxCoAdoptResponse(bgChat.id, special, senderNameForCatbox);
                     }
                     bgAddedCount++;
                     if (special?.type === 'weibo_card' && special.weiboData) {
@@ -7213,6 +7240,14 @@ renderChatRoom(chat) {
                     }
                     continue;
                 }
+                if (special?.type === 'catbox_coadopt_response') {
+                    this._handleCatboxCoAdoptResponse(savedChatId, special, senderNameForCatbox);
+                    if (isViewingThisChat) {
+                        this.hideTypingStatus();
+                        this._refreshVisibleChatMessages(savedChatId);
+                    }
+                    continue;
+                }
                 if (special?.type === 'redpacket') msgData.id = `rp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
                 const added = this.app.wechatData.addMessage(savedChatId, msgData);
                 if (!added) {
@@ -7225,9 +7260,6 @@ renderChatRoom(chat) {
                         { ...special, messageId: latestMsg.id || special.messageId || '' },
                         { senderName: msg.sender || savedChatName, chatId: savedChatId }
                     );
-                }
-                if (special?.type === 'catbox_coadopt_response') {
-                    this._handleCatboxCoAdoptResponse(savedChatId, special, senderNameForCatbox);
                 }
                 if (special?.type === 'weibo_card' && special.weiboData) {
                     this.syncWeiboNewsToWeiboApp(special.weiboData, msg.sender);
@@ -8124,6 +8156,15 @@ renderChatRoom(chat) {
             });
         }
 
+        if (!callMode && catboxCoAdoptContext) {
+            messages.push({
+                role: 'system',
+                content: catboxCoAdoptContext,
+                name: 'SYSTEM (猫盒共同收养)',
+                isPhoneMessage: true
+            });
+        }
+
         if (systemPrompt) {
             messages.push({
                 role: 'system',
@@ -8224,14 +8265,6 @@ renderChatRoom(chat) {
                     role: 'system',
                     content: musicListeningContext,
                     name: 'SYSTEM (一起听歌)',
-                    isPhoneMessage: true
-                });
-            }
-            if (catboxCoAdoptContext) {
-                messages.push({
-                    role: 'system',
-                    content: catboxCoAdoptContext,
-                    name: 'SYSTEM (猫盒共同收养)',
                     isPhoneMessage: true
                 });
             }

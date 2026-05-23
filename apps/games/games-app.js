@@ -127,10 +127,16 @@ export class GamesApp extends PokerApp {
         if (!invite) return;
         const userInfo = wechatData.getUserInfo?.() || {};
         const state = this.catboxData.getState();
+        const messageId = `catbox_invite_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+        this.catboxData.updateCoAdoptInviteMessage?.(chat.id, messageId);
         wechatData.addMessage(chat.id, {
+            id: messageId,
             from: 'me',
-            type: 'text',
-            content: `[猫盒共养邀请] 想邀请你一起照顾「${state.catName}」。愿意的话请回复 [同意收养]，不愿意请回复 [拒绝收养]。`,
+            type: 'catbox_coadopt_invite',
+            content: '[猫盒共养邀请]',
+            catboxPetName: state.catName,
+            catboxInviteStatus: 'pending',
+            catboxInviteChatId: chat.id,
             avatar: userInfo.avatar || ''
         });
         chat.lastMessage = '[猫盒共养邀请]';
@@ -138,6 +144,13 @@ export class GamesApp extends PokerApp {
         wechatData.saveData?.();
         this._syncWechatHomeBadge?.(wechatData);
         this.phoneShell?.showNotification?.('猫盒', `已邀请${chat.name}共同收养`, '🐱');
+        this.catboxView.render();
+    }
+
+    releaseCatboxCoAdopt() {
+        const state = this.catboxData.releaseCoAdopt?.();
+        if (!state) return;
+        this.phoneShell?.showNotification?.('猫盒', '已解除共同收养', '💔');
         this.catboxView.render();
     }
 

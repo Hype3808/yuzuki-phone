@@ -2018,6 +2018,10 @@ getMessagePreview(message) {
             return `${icon} ${stripSpeechPrefix(message.content || '')}`;
         case 'weibo_card':
             return '[微博分享]';
+        case 'catbox_coadopt_invite':
+            return message.catboxInviteStatus === 'accepted'
+                ? '[猫盒共养邀请：已同意]'
+                : (message.catboxInviteStatus === 'rejected' ? '[猫盒共养邀请：已拒绝]' : '[猫盒共养邀请]');
         case 'catbox_care_card':
             return '[猫盒照顾]';
         case 'music_listen':

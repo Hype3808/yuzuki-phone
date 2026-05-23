@@ -140,41 +140,36 @@ export class CatboxView {
         const catUrl = this._catUrl(state);
         const bgUrl = this._backgroundUrl(state.backgroundId);
         const hudClass = this._hudCollapsed ? ' is-collapsed' : '';
-        const toggleIcon = this._hudCollapsed ? 'fa-chevron-up' : 'fa-chevron-down';
-        const toggleTitle = this._hudCollapsed ? '展开面板' : '折叠面板';
         const sleepRemaining = this._sleepRemaining(state);
         const sleepingClass = sleepRemaining > 0 ? ' is-sleeping' : '';
         const exp = this.app.catboxData.getExpProgress?.() || { current: 0, required: 50, percent: 0 };
         const bubbleText = this._visibleBubbleText(state);
         const unreadLetters = this.app.catboxData.getUnreadLettersCount?.() || 0;
+        const catPositionStyle = this._catPositionStyle(state);
+        const hasCoAdopter = !!state.coAdopter;
         return `
             <div class="games-app games-catbox-app games-catbox-home" style="background-image: url('${bgUrl}')">
                 <div class="games-catbox-playfield">
                     <div class="games-catbox-scanlines" aria-hidden="true"></div>
-                    <img class="games-catbox-cat is-home" src="${catUrl}" alt="${this._escape(state.catName)}">
+                    <img class="games-catbox-cat is-home" id="games-catbox-cat" src="${catUrl}" alt="${this._escape(state.catName)}" style="${catPositionStyle}" draggable="false">
                     ${bubbleText ? `<div class="games-catbox-cat-bubble">${this._escape(bubbleText)}</div>` : ''}
                     ${this._renderLetterButton(unreadLetters)}
                     ${sleepRemaining > 0 ? `<div class="games-catbox-sleep-countdown">睡眠 ${this._formatRemaining(sleepRemaining)}</div>` : ''}
                     <div class="games-catbox-hud${hudClass}">
-                        <div class="games-catbox-profile">
-                            <div>
-                                <div class="games-catbox-profile-name">${this._escape(state.catName)}</div>
-                                <div class="games-catbox-profile-meta">${this._escape(this._genderLabel(state.catGender))}</div>
-                            </div>
+                        <button class="games-catbox-profile" id="games-catbox-hud-toggle" type="button" aria-expanded="${this._hudCollapsed ? 'false' : 'true'}">
                             <div class="games-catbox-exp-wrap" title="经验 ${exp.current}/${exp.required}">
+                                <div class="games-catbox-profile-main">
+                                    <div class="games-catbox-profile-name">${this._escape(state.catName)}</div>
+                                    <div class="games-catbox-level">Lv.${Number(state.level || 1)}</div>
+                                    <div class="games-catbox-profile-gender" title="${this._escape(this._genderLabel(state.catGender))}">${this._escape(this._genderIcon(state.catGender))}</div>
+                                </div>
                                 <div class="games-catbox-exp-track">
                                     <div class="games-catbox-exp-fill" style="width: ${Math.max(0, Math.min(100, Number(exp.percent || 0)))}%;"></div>
                                     <div class="games-catbox-exp-pixels" aria-hidden="true"></div>
                                 </div>
                                 <div class="games-catbox-exp-text">${Number(exp.current || 0)}/${Number(exp.required || 50)}</div>
                             </div>
-                            <div class="games-catbox-profile-side">
-                                <div class="games-catbox-level">Lv.${Number(state.level || 1)}</div>
-                                <button class="games-catbox-fold-btn" id="games-catbox-hud-toggle" type="button" title="${toggleTitle}">
-                                    <i class="fa-solid ${toggleIcon}"></i>
-                                </button>
-                            </div>
-                        </div>
+                        </button>
                         <div class="games-catbox-hud-body">
                             <div class="games-catbox-status-panel">
                                 ${this._renderStat('心情', state.mood, '#ff7aa8', state.maxStat)}
@@ -190,7 +185,10 @@ export class CatboxView {
                         <button type="button" data-catbox-action="sleep"><i class="fa-solid fa-moon"></i><span>睡觉</span></button>
                         <button type="button" id="games-catbox-bg"><i class="fa-solid fa-image"></i><span>背景</span></button>
                         <button class="games-catbox-abandon-action" type="button" id="games-catbox-abandon"><i class="fa-solid fa-heart-crack"></i><span>弃养</span></button>
-                        <button type="button" id="games-catbox-coadopt"><i class="fa-solid fa-user-plus"></i><span>共养</span></button>
+                        <button class="${hasCoAdopter ? 'games-catbox-coadopt-active' : ''}" type="button" id="games-catbox-coadopt">
+                            <i class="fa-solid ${hasCoAdopter ? 'fa-heart-circle-check' : 'fa-user-plus'}"></i>
+                            <span>${hasCoAdopter ? '解除' : '共养'}</span>
+                        </button>
                     </div>
                     ${this._renderInventoryOverlay()}
                     ${this._renderCoAdoptOverlay()}
@@ -283,7 +281,7 @@ export class CatboxView {
 
     _renderLetterButton(unreadCount = 0) {
         const letters = this.app.catboxData.getState?.()?.letters || [];
-        if (!Array.isArray(letters) || letters.length <= 0) return '';
+        if (!Array.isArray(letters) || unreadCount <= 0) return '';
         return `
             <button class="games-catbox-letter-btn${unreadCount > 0 ? ' has-unread' : ''}" id="games-catbox-letters" type="button" aria-label="好友留言">
                 <img src="${LETTER_ASSET}" alt="">
@@ -308,7 +306,7 @@ export class CatboxView {
                     <div class="games-catbox-coadopt-list">
                         ${targets.length > 0 ? targets.map(target => `
                             <button class="games-catbox-coadopt-target" type="button" data-catbox-chat-id="${this._escape(target.chatId)}">
-                                <span>${target.avatar ? this._escape(target.avatar) : '👤'}</span>
+                                <span>${this.app.renderPlayerAvatar?.({ name: target.name, avatar: target.avatar }) || '👤'}</span>
                                 <strong>${this._escape(target.name)}</strong>
                             </button>
                         `).join('') : '<div class="games-catbox-coadopt-empty">暂无可邀请的单聊好友</div>'}
@@ -394,6 +392,13 @@ export class CatboxView {
             this.render();
         });
         document.getElementById('games-catbox-coadopt')?.addEventListener('click', () => {
+            const state = this.app.catboxData.getState?.() || {};
+            if (state.coAdopter) {
+                if (confirm(`要解除与${state.coAdopter.name || '好友'}的共同收养吗？`)) {
+                    this.app.releaseCatboxCoAdopt?.();
+                }
+                return;
+            }
             this._coAdoptOpen = true;
             this.render();
         });
@@ -477,6 +482,7 @@ export class CatboxView {
                 this.app.performCatboxAction(btn.dataset.catboxAction);
             });
         });
+        this._bindCatDrag();
         this._scheduleSleepTick();
         this._scheduleBubbleTick();
     }
@@ -495,9 +501,21 @@ export class CatboxView {
         return CAT_ASSETS[catId] || '';
     }
 
+    _catPositionStyle(state) {
+        const position = state?.catPosition;
+        if (!position || typeof position !== 'object') return '';
+        const x = Math.max(8, Math.min(92, Number(position.x || 50)));
+        const y = Math.max(8, Math.min(92, Number(position.y || 45)));
+        return `left:${x}%; top:${y}%; bottom:auto;`;
+    }
+
     _genderLabel(gender) {
         const option = GENDER_OPTIONS.find(item => item.value === gender);
         return option?.label || '妹妹';
+    }
+
+    _genderIcon(gender) {
+        return gender === 'male' ? '♂️' : '♀️';
     }
 
     _adoptionTipFor(catId) {
@@ -521,6 +539,79 @@ export class CatboxView {
         const minutes = Math.floor(totalSeconds / 60);
         const seconds = totalSeconds % 60;
         return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
+
+    _bindCatDrag() {
+        const cat = document.getElementById('games-catbox-cat');
+        const field = cat?.closest?.('.games-catbox-playfield');
+        if (!cat || !field) return;
+
+        let longPressTimer = null;
+        let dragging = false;
+        let activePointerId = null;
+
+        const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+        const moveToEvent = (event, persist = false) => {
+            const rect = field.getBoundingClientRect();
+            if (!rect.width || !rect.height) return;
+            const x = clamp(((event.clientX - rect.left) / rect.width) * 100, 8, 92);
+            const y = clamp(((event.clientY - rect.top) / rect.height) * 100, 8, 92);
+            cat.style.left = `${x}%`;
+            cat.style.top = `${y}%`;
+            cat.style.bottom = 'auto';
+            if (persist) this.app.catboxData.setCatPosition?.({ x, y });
+        };
+
+        const clearTimer = () => {
+            if (!longPressTimer) return;
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+        };
+
+        cat.addEventListener('pointerdown', event => {
+            if (event.button !== undefined && event.button !== 0) return;
+            event.preventDefault();
+            event.stopPropagation();
+            activePointerId = event.pointerId;
+            clearTimer();
+            longPressTimer = setTimeout(() => {
+                dragging = true;
+                cat.classList.add('is-dragging');
+                cat.setPointerCapture?.(event.pointerId);
+                moveToEvent(event);
+            }, 350);
+        });
+
+        cat.addEventListener('pointermove', event => {
+            if (!dragging || event.pointerId !== activePointerId) return;
+            event.preventDefault();
+            event.stopPropagation();
+            moveToEvent(event);
+        });
+
+        const finish = event => {
+            event.preventDefault?.();
+            event.stopPropagation?.();
+            clearTimer();
+            if (dragging && event.pointerId === activePointerId) {
+                moveToEvent(event, true);
+                cat.classList.remove('is-dragging');
+                cat.releasePointerCapture?.(event.pointerId);
+            }
+            dragging = false;
+            activePointerId = null;
+        };
+
+        cat.addEventListener('pointerup', finish);
+        cat.addEventListener('pointercancel', finish);
+        cat.addEventListener('dragstart', event => {
+            event.preventDefault();
+            event.stopPropagation();
+        });
+        cat.addEventListener('pointerleave', event => {
+            if (!dragging) clearTimer();
+            else finish(event);
+        });
     }
 
     _visibleBubbleText(state) {

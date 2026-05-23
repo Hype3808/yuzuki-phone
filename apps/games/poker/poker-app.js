@@ -5,6 +5,7 @@
 import { PokerData } from './poker-data.js';
 import { PokerView } from './poker-view.js';
 import { WechatData } from '../../wechat/wechat-data.js';
+import { buildGameSillyTavernContextMessages } from '../common/games-ai-context.js';
 
 export class PokerApp {
     constructor(phoneShell, storage) {
@@ -507,6 +508,11 @@ export class PokerApp {
             name: 'SYSTEM (德州扑克规则)',
             isPhoneMessage: true
         });
+
+        const tavernContextMessages = await buildGameSillyTavernContextMessages('games', this.storage);
+        if (tavernContextMessages.length > 0) {
+            messages.push(...tavernContextMessages);
+        }
 
         const perspective = [
             '【德州扑克视角限制】',
