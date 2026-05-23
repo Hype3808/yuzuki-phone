@@ -2020,7 +2020,7 @@ getMessagePreview(message) {
             return '[微博分享]';
         case 'catbox_coadopt_invite':
             return message.catboxInviteStatus === 'accepted'
-                ? '[猫盒共养邀请：已同意]'
+                ? '[猫盒共养邀请：已接收]'
                 : (message.catboxInviteStatus === 'rejected' ? '[猫盒共养邀请：已拒绝]' : '[猫盒共养邀请]');
         case 'catbox_care_card':
             return '[猫盒照顾]';

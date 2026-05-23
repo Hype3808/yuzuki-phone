@@ -2684,16 +2684,13 @@ renderChatRoom(chat) {
             case 'catbox_care_card': {
                 const petName = this._escapeHtml(msg.catboxPetName || '小猫');
                 messageBody = `
-                    <div class="message-catbox-care-card" style="width: 210px; border-radius: 10px; overflow: hidden; background: #fff8e6; border: 1px solid #ead7aa; box-shadow: 0 1px 2px rgba(0,0,0,0.08);">
-                        <div style="display:flex; align-items:center; gap:8px; padding:10px; background:#f5d98a;">
-                            <div style="width:28px; height:28px; border-radius:8px; background:#2b2020; color:#fff; display:flex; align-items:center; justify-content:center; font-size:15px;">🐱</div>
+                    <div class="message-catbox-care-card" style="width: 190px; border-radius: 10px; overflow: hidden; background: #f5d98a; border: 1px solid #ead7aa; box-shadow: 0 1px 2px rgba(0,0,0,0.08);">
+                        <div style="display:flex; align-items:center; gap:7px; padding:8px; background:#f5d98a;">
+                            <div style="width:28px; height:28px; border-radius:8px; background:#fffaf0; color:#19120f; display:flex; align-items:center; justify-content:center; font-size:15px; border:1px solid rgba(42,28,25,0.14);">🐾</div>
                             <div style="min-width:0;">
-                                <div style="font-size:13px; font-weight:700; color:#2a1c19;">猫盒照顾</div>
-                                <div style="font-size:11px; color:#6d4c27;">${this._escapeHtml(msg.from || senderName || '好友')}</div>
+                                <div style="font-size:12px; font-weight:700; color:#2a1c19;">猫盒照顾</div>
+                                <div style="font-size:10px; color:#6d4c27; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">帮你喂养了 ${petName}</div>
                             </div>
-                        </div>
-                        <div style="padding:10px; color:#2a1c19; font-size:12px; line-height:1.45;">
-                            帮你喂养了 <strong>${petName}</strong>
                         </div>
                     </div>
                 `;
@@ -2703,12 +2700,12 @@ renderChatRoom(chat) {
             case 'catbox_coadopt_invite': {
                 const status = String(msg.catboxInviteStatus || 'pending').trim();
                 const petName = this._escapeHtml(msg.catboxPetName || '小猫');
-                const statusText = status === 'accepted' ? '已同意' : (status === 'rejected' ? '已拒绝' : '等待中');
+                const statusText = status === 'accepted' ? '已接收' : (status === 'rejected' ? '已拒绝' : '等待中');
                 const statusColor = status === 'accepted' ? '#228b52' : (status === 'rejected' ? '#9a3b42' : '#8a6428');
                 messageBody = `
                     <div class="message-catbox-invite-card" style="width: 190px; border-radius: 10px; overflow: hidden; background: #f5d98a; border: 1px solid #ead7aa; box-shadow: 0 1px 2px rgba(0,0,0,0.08);">
                         <div style="display:flex; align-items:center; gap:7px; padding:8px;">
-                            <div style="width:28px; height:28px; border-radius:8px; background:#2b2020; color:#fff; display:flex; align-items:center; justify-content:center; font-size:15px;">🐱</div>
+                            <div style="width:28px; height:28px; border-radius:8px; background:#fffaf0; color:#19120f; display:flex; align-items:center; justify-content:center; font-size:15px; border:1px solid rgba(42,28,25,0.14);">🐾</div>
                             <div style="min-width:0; flex:1;">
                                 <div style="font-size:12px; font-weight:700; color:#2a1c19;">猫盒共养邀请</div>
                                 <div style="font-size:10px; color:#6d4c27; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">一起照顾 ${petName}</div>
