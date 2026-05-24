@@ -3923,6 +3923,8 @@ export class SettingsApp {
                     title: '裁剪时间卡片图片',
                     outputWidth: 800,
                     outputHeight: 320,
+                    preserveTransparency: true,
+                    outputFormat: ['image/png', 'image/svg+xml', 'image/webp'].includes(file.type) ? 'image/png' : 'image/jpeg',
                     quality: 0.85,
                     maxFileSize: 5 * 1024 * 1024
                 });

@@ -1078,11 +1078,13 @@
 }
 
 #phone-panel-content .phone-screen .home-time-card.has-image::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(90deg, rgba(255,255,255,0.56) 0%, rgba(255,255,255,0.26) 44%, rgba(255,255,255,0.04) 100%);
-    pointer-events: none;
+    display: none;
+}
+
+#phone-panel-content .phone-screen .home-time-card.has-image {
+    background-color: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 
 #phone-panel-content .phone-screen .home-time-info {
