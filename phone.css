@@ -1134,10 +1134,10 @@
         inset 0 1px 0 rgba(255, 255, 255, 0.52);
     top: clamp(16px, 2.4vh, 20px);
     transform: none;
-    width: 96%;
+    width: 104%;
     height: calc(100% + clamp(8px, 1.4vh, 12px));
     align-self: center;
-    justify-self: center;
+    justify-self: end;
     overflow: hidden;
 }
 
@@ -1186,10 +1186,10 @@
         0 8px 24px rgba(24, 36, 54, 0.08),
         inset 0 1px 0 rgba(255, 255, 255, 0.58);
     overflow: hidden;
-    width: 96%;
+    width: 104%;
     height: calc(100% + clamp(8px, 1.4vh, 12px));
     align-self: center;
-    justify-self: center;
+    justify-self: start;
     top: clamp(16px, 2.4vh, 20px);
     transform: none;
 }
@@ -1276,13 +1276,12 @@
     box-shadow: none;
     padding: 0;
     align-self: center;
-    justify-self: center;
-    width: 96% !important;
+    width: 104% !important;
     height: 100%;
     max-height: none;
     gap: 0;
     overflow: hidden;
-    justify-self: center;
+    justify-self: start;
     top: clamp(50px, 7vh, 60px);
     transform: none;
 }
