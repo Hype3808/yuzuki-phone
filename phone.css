@@ -1057,7 +1057,7 @@
     grid-column: 1 / -1;
     grid-row: span 1;
     height: auto;
-    min-height: clamp(44px, 6.8vh, 52px);
+    min-height: clamp(54px, 8vh, 64px);
     display: flex;
     flex-direction: row;
     align-items: center;
@@ -2226,8 +2226,8 @@
 
     #phone-panel-content .phone-screen .home-time-card {
         height: auto;
-        min-height: clamp(40px, 6.2vh, 48px);
-        padding: clamp(3px, 1vw, 5px) clamp(10px, 3vw, 15px);
+        min-height: clamp(50px, 7.5vh, 60px);
+        padding: clamp(5px, 1.4vw, 8px) clamp(10px, 3vw, 15px);
     }
 
     #phone-panel-content .phone-screen .home-screen .time-large {
@@ -3813,6 +3813,19 @@ input:checked + .toggle-slider:before {
     #phone-panel-content .phone-screen .home-layout-cards .home-settings-card {
         transform: scale(0.9) !important;
         transform-origin: center center !important;
+    }
+
+    #phone-panel-content .phone-screen .home-layout-cards .home-app-cluster {
+        width: 118% !important;
+        justify-self: start !important;
+        transform-origin: left center !important;
+    }
+
+    #phone-panel-content .phone-screen .home-layout-cards .home-social-card,
+    #phone-panel-content .phone-screen .home-layout-cards .home-music-card {
+        width: 118% !important;
+        justify-self: end !important;
+        transform-origin: right center !important;
     }
 
     #phone-panel-content .phone-screen .home-layout-cards .home-app-cluster,
