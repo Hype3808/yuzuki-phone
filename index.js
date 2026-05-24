@@ -2248,7 +2248,7 @@ if (window.GGP_Loaded) {
         const qrWhitelistInitKey = 'phone_inline_reply_qr_whitelist_initialized';
         const qrMenuItemId = 'st-phone-inline-reply-action-item';
         const qrExtensionGroupName = '手机插件';
-        const qrExtensionButtonName = '手机快捷回复';
+        const qrExtensionButtonName = 'fa-solid fa-mobile-screen-button';
 
         const isQrAssistantAvailable = () => !!(window.quickReplyMenu || Array.isArray(window.qrAssistantExtensionApi) || document.body?.classList?.contains('qra-enabled'));
 
@@ -2272,6 +2272,27 @@ if (window.GGP_Loaded) {
             return true;
         };
 
+        const ensureQrManagedHideStyle = () => {
+            let style = document.getElementById('st-phone-inline-reply-qr-managed-style');
+            if (!style) {
+                style = document.createElement('style');
+                style.id = 'st-phone-inline-reply-qr-managed-style';
+                document.head.appendChild(style);
+            }
+            style.textContent = `
+                #script_container_st_phone_inline_reply.st-phone-inline-reply-qr-managed,
+                #st-phone-inline-reply-wrapper.st-phone-inline-reply-qr-managed,
+                .st-phone-inline-reply-wrapper.st-phone-inline-reply-qr-managed,
+                #st-phone-inline-reply-btn.st-phone-inline-reply-qr-managed {
+                    display: none !important;
+                }
+            `;
+        };
+
+        const isInlineReplyWhitelistedByQr = (qrSettings) => {
+            return Array.isArray(qrSettings?.whitelist) && qrSettings.whitelist.includes(qrScriptContainerId);
+        };
+
         // 注入基础 CSS
         if (!document.getElementById('st-phone-inline-reply-style')) {
             const style = document.createElement('style');
@@ -2281,7 +2302,7 @@ if (window.GGP_Loaded) {
                 .remote-ctrl-btn .qr--button-label { display: flex !important; align-items: center !important; justify-content: center !important; width: 100%; height: 100%; }
                 .remote-ctrl-btn.active { opacity: 1 !important; color: var(--qc-accent); }
                 .st-phone-inline-reply-wrapper { display: flex; align-items: center; }
-                body.qra-enabled .st-phone-inline-reply-wrapper.st-phone-inline-reply-qr-managed { display: none !important; }
+                .st-phone-inline-reply-wrapper.st-phone-inline-reply-qr-managed { display: none !important; }
     #phone-inline-reply-menu-pop {
     position: fixed; z-index: 2147483645;
     background: linear-gradient(180deg,
@@ -2737,12 +2758,20 @@ if (window.GGP_Loaded) {
             const isEnabled = storage.get('phone_inline_reply_btn') !== false;
             const existingBtn = document.getElementById(btnId);
             const hasQrAssistantApi = registerQrAssistantButton();
+            if (hasQrAssistantApi) {
+                ensureQrManagedHideStyle();
+            } else {
+                existingBtn?.classList?.remove?.('st-phone-inline-reply-qr-managed');
+                document.getElementById(qrScriptContainerId)?.classList?.remove?.('st-phone-inline-reply-qr-managed');
+                document.getElementById(legacyWrapperId)?.classList?.remove?.('st-phone-inline-reply-qr-managed');
+            }
             const existingWrapper =
                 document.getElementById(qrScriptContainerId) ||
                 document.getElementById(legacyWrapperId) ||
                 existingBtn?.closest('.st-phone-inline-reply-wrapper');
             const isQrAssistantEnabled = !!document.body?.classList?.contains('qra-enabled');
             const { stContext, qrSettings } = getQrAssistantContext();
+            const shouldHideInlineReplyForQr = hasQrAssistantApi && !isInlineReplyWhitelistedByQr(qrSettings);
 
             if (!hasQrAssistantApi && qrSettings) {
                 ensureQrWhitelistInitialized(qrSettings, stContext);
@@ -2783,7 +2812,8 @@ if (window.GGP_Loaded) {
                     currentWrapper.classList.remove('qr--wrapper');
                     currentWrapper.style.setProperty('--qr--color', 'rgba(0,0,0,0)');
                     currentWrapper.dataset.stPhoneInlineReply = 'true';
-                    currentWrapper.classList.toggle('st-phone-inline-reply-qr-managed', !!hasQrAssistantApi);
+                    currentWrapper.classList.toggle('st-phone-inline-reply-qr-managed', shouldHideInlineReplyForQr);
+                    existingBtn.classList.toggle('st-phone-inline-reply-qr-managed', shouldHideInlineReplyForQr);
                     if (!currentWrapper.dataset.stPhoneQrProxyBound) {
                         currentWrapper.dataset.stPhoneQrProxyBound = 'true';
                         currentWrapper.addEventListener('click', (event) => {
@@ -3910,7 +3940,8 @@ if (window.GGP_Loaded) {
             wrapper.id = qrScriptContainerId;
             wrapper.className = 'st-phone-inline-reply-wrapper qr--buttons qr--color';
             wrapper.dataset.stPhoneInlineReply = 'true';
-            wrapper.classList.toggle('st-phone-inline-reply-qr-managed', !!hasQrAssistantApi);
+            wrapper.classList.toggle('st-phone-inline-reply-qr-managed', shouldHideInlineReplyForQr);
+            btn.classList.toggle('st-phone-inline-reply-qr-managed', shouldHideInlineReplyForQr);
             wrapper.dataset.stPhoneQrProxyBound = 'true';
             wrapper.addEventListener('click', (event) => {
                 if (event.target?.closest?.(`#${btnId}`)) return;
@@ -3968,7 +3999,7 @@ if (window.GGP_Loaded) {
                          style="position:relative; ${iconStyle}"
                          tabindex="0"
                          role="button">
-                        <span id="phone-badge" class="badge-notification" style="display:none; position:absolute; top:-4px; right:-6px;">0</span>
+                        <span id="phone-badge" class="badge-notification" style="display:none; position:absolute; top:-4px; right:-6px;"></span>
                     </div>
                     <span>柚月の手机</span>
                 </div>
@@ -3981,7 +4012,7 @@ if (window.GGP_Loaded) {
                      style="position:relative; display:flex; align-items:center; justify-content:center; width:100%; height:100%; ${iconStyle}"
                      tabindex="0"
                      role="button">
-                    <span id="phone-badge" class="badge-notification" style="display:none; position:absolute; top:1px; right:1px;">0</span>
+                    <span id="phone-badge" class="badge-notification" style="display:none; position:absolute; top:1px; right:1px;"></span>
                 </div>
             </div>
         `;
@@ -4220,6 +4251,7 @@ if (window.GGP_Loaded) {
             badge.textContent = count > 99 ? '99+' : count;
         } else {
             badge.style.display = 'none';
+            badge.textContent = '';
         }
     }
 
