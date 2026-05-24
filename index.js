@@ -15,7 +15,7 @@
 // ========================================
 
 const ST_PHONE_BASE_URL = new URL('./', import.meta.url).href;
-const ST_PHONE_VERSION = '1.1.8';
+const ST_PHONE_VERSION = '1.1.9';
 const ST_PHONE_GLOBAL_CSS_URL = new URL(`./phone.css?v=${ST_PHONE_VERSION}`, import.meta.url).href;
 const ST_PHONE_UPDATE_MANIFEST_URLS = [
     'https://raw.githubusercontent.com/gaigai315/yuzuki-phone/main/manifest.json',
@@ -46,6 +46,8 @@ const ST_PHONE_CURRENT_UPDATE = {
         '【优化】快捷回复标签会直接使用当前微信用户名，避免 {{user}} 被其他插件清掉后导致线下转线上解析失败。',
         '【优化】会话样式 CSS 移到微信设置的头像管理器下方，编辑个人资料页更聚焦基础资料。',
         '【优化】优化工具栏小手机入口兼容性，增加 click 兜底，适配第三方魔法面板等工具脚本。',
+        '【优化】重新优化卡片式首页布局，支持在设置-个性化中自定义卡片式 CSS。',
+        '【新增】新增卡片式布局自定义 CSS 贴图美化。',
         '【修复】修复移动端导出 NAI 预设时，多选弹窗无法上下滑动的问题。',
         '【修复】修复移动端首次打开日历时，日历数字短暂未套样式闪烁的问题。'
     ]

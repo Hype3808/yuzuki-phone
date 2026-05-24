@@ -27,6 +27,7 @@ const PHONE_SHELL_SCALE_MAX = 120;
 const PHONE_SHELL_SCALE_DEFAULT = 100;
 const LOBBY_LINK_CHARACTER_IDS_KEY = 'phone-lobby-link-character-ids';
 const LOBBY_LINK_GROUP_IDS_KEY = 'phone-lobby-link-group-ids';
+const CARD_LAYOUT_CUSTOM_CSS_KEY = 'phone-card-layout-custom-css';
 
 const WECHAT_OFFLINE_INJECTION_TOGGLE_KEYS = [
     'offline-wechat-prompt-enabled',
@@ -118,6 +119,30 @@ export class SettingsApp {
         } catch (e) {
             return {};
         }
+    }
+
+    _getCardLayoutCssTemplate() {
+        return [
+            '/* 只会作用于卡片式首页，可按需隐藏原卡片、加贴纸或换背景 */',
+            '#phone-panel-content .phone-screen .home-layout-cards .home-time-card {',
+            '    background-image: url("你的时间卡贴图地址");',
+            '    background-size: cover;',
+            '    background-position: center;',
+            '}',
+            '',
+            '#phone-panel-content .phone-screen .home-layout-cards .home-app-cluster {',
+            '    background-image: url("你的常用应用卡片贴图地址");',
+            '    background-size: 100% 100%;',
+            '}',
+            '',
+            '#phone-panel-content .phone-screen .home-layout-cards .home-social-card {',
+            '    background-image: url("你的社交平台卡片贴图地址");',
+            '    background-size: 100% 100%;',
+            '}',
+            '',
+            '/* 隐藏某块：取消下一行注释即可 */',
+            '/* #phone-panel-content .phone-screen .home-layout-cards .home-music-card { display: none !important; } */'
+        ].join('\n');
     }
 
     _getAppDisplayName(app, customNames = null) {
@@ -657,6 +682,7 @@ export class SettingsApp {
         const isWechatMessageSoundEnabled = this._isStorageTruthy(WECHAT_MESSAGE_SOUND_ENABLED_KEY);
         const homeLayoutRaw = String(this.storage.get('phone-home-layout') || 'icons');
         const homeLayout = homeLayoutRaw === 'cards' ? 'cards' : 'icons';
+        const cardLayoutCustomCss = String(this.storage.get(CARD_LAYOUT_CUSTOM_CSS_KEY) || '');
         // 加载壁纸和颜色设置
         const wallpaper = this.imageManager.getWallpaper();
         const hasWallpaper = !!String(wallpaper || '').trim();
@@ -1635,6 +1661,31 @@ export class SettingsApp {
                                     <img src="${cardTimeImage || ''}" style="width: 100%; height: auto; display: ${cardTimeImage ? 'block' : 'none'};">
                                 </div>
                             </div>
+
+                            <details class="setting-item app-name-custom-fold">
+                                <summary>
+                                    <span>
+                                        <span class="setting-label">卡片式首页 CSS</span>
+                                        <span class="setting-desc">给卡片布局写自定义 CSS，可隐藏原卡片或套贴纸样式</span>
+                                    </span>
+                                    ${SETTINGS_FOLD_ARROW_HTML}
+                                </summary>
+                                <textarea id="phone-card-layout-custom-css"
+                                          spellcheck="false"
+                                          placeholder="在这里写卡片式首页 CSS"
+                                          style="width: 100%; min-height: 150px; max-height: 42vh; resize: vertical; box-sizing: border-box; margin-top: 10px; padding: 9px 10px; border: 1px solid #e0e0e0; border-radius: 9px; background: #fbfbfb; color: #111; font-size: 11px; line-height: 1.45; font-family: Consolas, Monaco, monospace;">${this._escapeHtml(cardLayoutCustomCss)}</textarea>
+                                <div style="margin-top: 8px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+                                    <button type="button" id="save-card-layout-css" class="setting-btn" style="padding: 6px 8px; font-size: 12px; background: #07c160; border: none; color: #fff; border-radius: 6px;">
+                                        保存
+                                    </button>
+                                    <button type="button" id="insert-card-layout-css-template" class="setting-btn" style="padding: 6px 8px; font-size: 12px; background: #f8fafc; border: 1px solid rgba(0,0,0,0.12); color: #374151; border-radius: 6px;">
+                                        示例
+                                    </button>
+                                    <button type="button" id="clear-card-layout-css" class="setting-btn" style="padding: 6px 8px; font-size: 12px; background: rgba(255,255,255,0.88); border: 1px solid rgba(255,59,48,0.22); color: #d9342b; border-radius: 6px;">
+                                        清空
+                                    </button>
+                                </div>
+                            </details>
 
                             <!-- APP图标设置 -->
                             <div class="setting-item">
@@ -3923,6 +3974,33 @@ export class SettingsApp {
             await this.storage.set('phone-home-layout', value);
             this.phoneShell?.syncHomeLayoutChromeClass?.();
             window.VirtualPhone?.home?.render?.({ forceDomRefresh: true });
+        });
+
+        document.getElementById('save-card-layout-css')?.addEventListener('click', async () => {
+            const textarea = document.getElementById('phone-card-layout-custom-css');
+            const cssText = String(textarea?.value || '').trim();
+            await this.storage.set(CARD_LAYOUT_CUSTOM_CSS_KEY, cssText);
+            window.dispatchEvent(new CustomEvent('phone:updateCardLayoutCss'));
+            window.VirtualPhone?.home?.render?.({ forceDomRefresh: true });
+            this.phoneShell?.showNotification?.('已保存', '卡片式首页 CSS 已生效', '✅');
+        });
+
+        document.getElementById('insert-card-layout-css-template')?.addEventListener('click', () => {
+            const textarea = document.getElementById('phone-card-layout-custom-css');
+            if (!textarea) return;
+            textarea.value = this._getCardLayoutCssTemplate();
+            textarea.focus();
+        });
+
+        document.getElementById('clear-card-layout-css')?.addEventListener('click', async () => {
+            const ok = confirm('确定清空卡片式首页 CSS 吗？');
+            if (!ok) return;
+            const textarea = document.getElementById('phone-card-layout-custom-css');
+            if (textarea) textarea.value = '';
+            await this.storage.set(CARD_LAYOUT_CUSTOM_CSS_KEY, '');
+            window.dispatchEvent(new CustomEvent('phone:updateCardLayoutCss'));
+            window.VirtualPhone?.home?.render?.({ forceDomRefresh: true });
+            this.phoneShell?.showNotification?.('已清空', '卡片式首页 CSS 已恢复默认', '✅');
         });
 
         const phoneShellScaleSlider = document.getElementById('phone-shell-scale-slider');

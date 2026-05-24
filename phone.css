@@ -1020,6 +1020,18 @@
     overscroll-behavior: contain;
 }
 
+#phone-panel-content .phone-screen .home-layout-cards {
+    overflow: hidden !important;
+    overscroll-behavior: none !important;
+}
+
+#phone-panel-content .phone-screen .home-layout-cards .home-dashboard {
+    height: 100% !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    overscroll-behavior: none !important;
+}
+
 #phone-panel-content .phone-screen .home-time-card,
 #phone-panel-content .phone-screen .home-widget-card,
 #phone-panel-content .phone-screen .home-social-stack,
@@ -2436,6 +2448,12 @@
     gap: clamp(6px, 1.5vw, 10px);
     padding: clamp(7px, 1.6vh, 10px) clamp(10px, 2.6vw, 15px);
     border-radius: clamp(16px, 4.5vw, 22px) !important;
+}
+
+@media (min-width: 501px) {
+    #phone-panel-content .phone-screen .home-layout-cards .dock {
+        bottom: 14% !important;
+    }
 }
 
 #phone-panel-content .phone-screen .home-layout-cards .dock-app {

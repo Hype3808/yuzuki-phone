@@ -12,6 +12,10 @@
 // 主屏幕
 import { APPS, PHONE_CONFIG } from '../config/apps.js'; // 🔥🔥🔥 这一行必须改！
 
+const CARD_LAYOUT_CUSTOM_CSS_KEY = 'phone-card-layout-custom-css';
+const CARD_LAYOUT_CUSTOM_STYLE_ID = 'phone-card-layout-custom-css-style';
+const CARD_LAYOUT_GUARD_STYLE_ID = 'phone-card-layout-guard-css-style';
+
 export class HomeScreen {
     constructor(phoneShell, apps) {
         this.phoneShell = phoneShell;
@@ -68,12 +72,52 @@ export class HomeScreen {
         `;
 
         this.phoneShell.setContent(html);
+        this.applyCardLayoutCustomCss();
         this.bindEvents();
     }
 
     getHomeLayout() {
         const layout = String(window.VirtualPhone?.storage?.get('phone-home-layout') || 'icons');
         return layout === 'cards' ? 'cards' : 'icons';
+    }
+
+    applyCardLayoutCustomCss() {
+        const existing = document.getElementById(CARD_LAYOUT_CUSTOM_STYLE_ID);
+        existing?.remove();
+        const existingGuard = document.getElementById(CARD_LAYOUT_GUARD_STYLE_ID);
+        existingGuard?.remove();
+
+        if (this.getHomeLayout() !== 'cards') return;
+        const cssText = String(window.VirtualPhone?.storage?.get?.(CARD_LAYOUT_CUSTOM_CSS_KEY) || '').trim();
+        if (cssText) {
+            const style = document.createElement('style');
+            style.id = CARD_LAYOUT_CUSTOM_STYLE_ID;
+            style.setAttribute('data-scope', 'phone-card-layout');
+            style.textContent = cssText;
+            (this.phoneShell?.screen || document.head).appendChild(style);
+        }
+
+        this.applyCardLayoutGuardCss();
+    }
+
+    applyCardLayoutGuardCss() {
+        const style = document.createElement('style');
+        style.id = CARD_LAYOUT_GUARD_STYLE_ID;
+        style.setAttribute('data-scope', 'phone-card-layout-guard');
+        style.textContent = `
+            #phone-panel-content .phone-screen .home-layout-cards .dock {
+                position: absolute !important;
+                left: 50% !important;
+                right: auto !important;
+                top: auto !important;
+                width: auto !important;
+                max-width: calc(100% - 12%) !important;
+                height: auto !important;
+                transform: translateX(-50%) !important;
+                box-sizing: border-box !important;
+            }
+        `;
+        (this.phoneShell?.screen || document.head).appendChild(style);
     }
 
     renderIconLayout() {
@@ -259,7 +303,7 @@ export class HomeScreen {
     }
 
     renderClusterApps() {
-        const clusterIds = ['honey', 'games', 'phone', 'diary', 'calendar', 'mofo', 'settings', 'album'];
+        const clusterIds = ['honey', 'games', 'phone', 'diary', 'calendar', 'mofo'];
         return clusterIds
             .map(id => this.getAppById(id))
             .filter(Boolean)
@@ -484,6 +528,13 @@ export class HomeScreen {
             this._appIconEventBound = true;
             window.addEventListener('phone:updateAppIcon', () => {
                 this.render({ forceDomRefresh: true });
+            });
+        }
+
+        if (!this._cardLayoutCssEventBound) {
+            this._cardLayoutCssEventBound = true;
+            window.addEventListener('phone:updateCardLayoutCss', () => {
+                this.applyCardLayoutCustomCss();
             });
         }
     }
