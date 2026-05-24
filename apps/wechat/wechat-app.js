@@ -5087,10 +5087,9 @@ export class WechatApp {
     /// ✅ 编辑个人资料（手机内部界面，不用弹窗）
     showEditProfile() {
         const userInfo = this.wechatData.getUserInfo();
-        const globalCss = this.storage?.get('phone_global_chat_css') || '';
         const shellBg = this._getMainShellBackgroundConfig();
         const profileContentStyle = `${shellBg.contentBgStyle || 'background: #f2f2f7;'} padding: 16px 12px;`;
-        const safeCustomCss = String(globalCss)
+        const safeNaiPromptTags = String(userInfo.naiPromptTags || userInfo.imageTags || '')
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;');
@@ -5153,47 +5152,17 @@ export class WechatApp {
                             font-size: 15px; color: #333; text-align: right; min-width: 0;
                         ">
                     </div>
-                </div>
-
-                <!-- 💅 主题管理卡片 -->
-                <div style="background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 24px;">
-                    <div style="font-size: 13px; color: #8e8e93; margin-bottom: 12px;">会话样式 CSS（主题预设）</div>
-                    
-                    <!-- 下拉框独占一行 -->
-                    <div style="position: relative; margin-bottom: 12px;">
-                        <select id="chat-css-profile-select" style="
-                            width: 100%; padding: 10px 30px 10px 12px; border: none; border-radius: 8px; 
-                            background: #f2f2f7; font-size: 14px; color: #000; 
-                            -webkit-appearance: none; outline: none; cursor: pointer;
-                        ">
-                            <option value="">-- 选择或输入CSS --</option>
-                        </select>
-                        <i class="fa-solid fa-chevron-down" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: #8e8e93; font-size: 12px; pointer-events: none;"></i>
+                    <div style="padding: 14px 0; border-top: 0.5px solid #f0f0f0;">
+                        <div style="font-size: 15px; color: #000; margin-bottom: 6px;">用户固定形象Tag</div>
+                        <textarea id="user-nai-prompt-tags-input" placeholder="例如：1girl, long black hair, brown eyes, casual outfit" style="
+                            width: 100%; min-height: 70px; padding: 10px; border: none; border-radius: 8px;
+                            background: #f9f9f9; font-size: 13px; color: #333; line-height: 1.45;
+                            font-family: inherit; resize: vertical; outline: none; box-sizing: border-box;
+                        ">${safeNaiPromptTags}</textarea>
+                        <div style="font-size: 11px; color: #8e8e93; line-height: 1.45; margin-top: 5px;">
+                            生成 [用户照片] 时会拼在 AI 图片描述前面，用于固定用户外观。
+                        </div>
                     </div>
-
-                    <!-- 操作按钮独占一行 -->
-                    <div style="display: flex; gap: 10px; margin-bottom: 12px;">
-                        <button id="save-css-profile-btn" style="
-                            flex: 1; padding: 10px; background: #f2f2f7; color: #000; 
-                            border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer;
-                        ">存为预设</button>
-                        <button id="delete-css-profile-btn" style="
-                            flex: 1; padding: 10px; background: #f2f2f7; color: #ff3b30; 
-                            border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer;
-                        ">删除配置</button>
-                    </div>
-
-                    <!-- 说明文字去除了丑陋的 code 底色 -->
-                    <div style="font-size: 12px; color: #8e8e93; margin-bottom: 8px; line-height: 1.5;">
-                        可覆盖类名: .message-avatar, .message-text 等
-                    </div>
-
-                    <textarea id="wechat-chat-custom-css" placeholder=".message-right .message-text { border-radius: 14px; background: #c9f7b9; }\n.message-avatar { border: 1px solid #dfe3ea; }" style="
-                        width: 100%; min-height: 140px; padding: 12px; border: none; border-radius: 8px; 
-                        background: #f9f9f9; font-size: 13px; color: #333; line-height: 1.5;
-                        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-                        resize: vertical; outline: none; box-sizing: border-box;
-                    ">${safeCustomCss}</textarea>
                 </div>
 
                 <!-- iOS蓝按钮 -->
@@ -5212,82 +5181,6 @@ export class WechatApp {
         // 返回按钮
         document.getElementById('back-from-profile-edit')?.addEventListener('click', () => {
             this.render();
-        });
-
-        // ==================================================
-        // 🎨 CSS 多套主题管理逻辑
-        // ==================================================
-        const profileSelect = document.getElementById('chat-css-profile-select');
-        const saveProfileBtn = document.getElementById('save-css-profile-btn');
-        const deleteProfileBtn = document.getElementById('delete-css-profile-btn');
-        const cssTextarea = document.getElementById('wechat-chat-custom-css');
-
-        const loadCssProfiles = () => {
-            try { return JSON.parse(this.storage?.get('phone_chat_css_profiles') || '[]'); } 
-            catch (e) { return []; }
-        };
-
-        const saveCssProfiles = (profiles) => {
-            this.storage?.set('phone_chat_css_profiles', JSON.stringify(profiles));
-        };
-
-        const renderCssSelect = () => {
-            const profiles = loadCssProfiles();
-            profileSelect.innerHTML = '<option value="">-- 选择或输入CSS --</option>';
-            profiles.forEach((p, idx) => {
-                profileSelect.innerHTML += `<option value="${idx}">${p.name}</option>`;
-            });
-        };
-
-        renderCssSelect(); 
-
-        profileSelect?.addEventListener('change', (e) => {
-            const idx = e.target.value;
-            if (idx === '') return;
-            const profiles = loadCssProfiles();
-            if (profiles[idx]) {
-                cssTextarea.value = profiles[idx].css;
-            }
-        });
-
-        saveProfileBtn?.addEventListener('click', () => {
-            const css = cssTextarea.value.trim();
-            if (!css) {
-                this.phoneShell.showNotification('提示', 'CSS内容为空', '⚠️');
-                return;
-            }
-            const name = prompt('请输入新主题的名称（例如：极简白）：');
-            if (!name) return;
-            
-            const profiles = loadCssProfiles();
-            const existingIdx = profiles.findIndex(p => p.name === name);
-            if (existingIdx > -1) {
-                if(confirm(`主题 "${name}" 已存在，是否覆盖更新？`)) {
-                    profiles[existingIdx].css = css;
-                } else return;
-            } else {
-                profiles.push({ name, css });
-            }
-            saveCssProfiles(profiles);
-            renderCssSelect();
-            profileSelect.value = profiles.findIndex(p => p.name === name);
-            this.phoneShell.showNotification('成功', '主题已保存', '✅');
-        });
-
-        deleteProfileBtn?.addEventListener('click', () => {
-            const idx = profileSelect.value;
-            if (idx === '') {
-                this.phoneShell.showNotification('提示', '请先在下拉框选择一个要删除的主题', '⚠️');
-                return;
-            }
-            const profiles = loadCssProfiles();
-            if (confirm(`确定要删除主题 "${profiles[idx].name}" 吗？`)) {
-                profiles.splice(idx, 1);
-                saveCssProfiles(profiles);
-                renderCssSelect();
-                cssTextarea.value = '';
-                this.phoneShell.showNotification('成功', '主题已删除', '🗑️');
-            }
         });
 
         // ==================================================
@@ -5356,7 +5249,7 @@ export class WechatApp {
 
             const newName = document.getElementById('user-name-input').value.trim();
             const newSignature = document.getElementById('user-signature-input').value.trim();
-            const customCss = document.getElementById('wechat-chat-custom-css')?.value || '';
+            const naiPromptTags = document.getElementById('user-nai-prompt-tags-input')?.value?.trim() || '';
 
             if (!newName) {
                 this.phoneShell.showNotification('提示', '请输入昵称', '⚠️');
@@ -5365,12 +5258,10 @@ export class WechatApp {
 
             this.wechatData.updateUserInfo({
                 name: newName,
-                signature: newSignature
+                signature: newSignature,
+                naiPromptTags
             });
             
-            await this.storage?.set('phone_global_chat_css', customCss);
-            this._applyCustomChatStyle(customCss);
-
             setTimeout(() => this.render(), 200);
         });
     }
@@ -5385,6 +5276,11 @@ export class WechatApp {
         const useWechatWorldbook = window.VirtualPhone?.worldbookManager?.getEnabled?.('wechat') ?? true;
         const userInfo = this.wechatData.getUserInfo();
         const momentsBackground = String(userInfo?.momentsBackground || '').trim();
+        const globalCss = this.storage?.get('phone_global_chat_css') || '';
+        const safeCustomCss = String(globalCss)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
         const momentsBackgroundPreview = momentsBackground
             ? `background-image:url('${momentsBackground}');background-size:cover;background-position:center;`
             : 'background:linear-gradient(135deg,#f3f4f6,#e9edf2);';
@@ -5419,44 +5315,6 @@ export class WechatApp {
     </div>
 </div>
 
-                <!-- 外观背景设置 -->
-                <div style="background: #fff; border-radius: 12px; margin: 15px; padding: 15px;">
-                    <div style="font-size: 14px; font-weight: 600; color: #333; margin-bottom: 12px;">
-                        外观背景
-                    </div>
-                    <input type="file" id="wechat-settings-moments-bg-upload" accept="image/png, image/jpeg, image/gif, image/webp, image/*" style="display: none;">
-                    <div style="display: flex; align-items: center; gap: 12px;">
-                        <div style="width: 54px; height: 78px; border-radius: 10px; overflow: hidden; flex: 0 0 auto; border: 1px solid #e7e7e7; ${momentsBackgroundPreview}">
-                        </div>
-                        <div style="min-width: 0; flex: 1;">
-                            <div style="font-size: 14px; color: #222;">朋友圈背景</div>
-                            <div style="font-size: 12px; color: #888; line-height: 1.45; margin-top: 4px;">
-                                设置朋友圈列表页背景图，适合放角色、场景或主题图。
-                            </div>
-                        </div>
-                    </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px;">
-                        <button id="wechat-settings-change-moments-bg" style="
-                            padding: 9px 10px;
-                            border: 1px solid #e7e7e7;
-                            border-radius: 8px;
-                            background: #fafafa;
-                            color: #222;
-                            font-size: 13px;
-                            cursor: pointer;
-                        ">更换背景</button>
-                        <button id="wechat-settings-clear-moments-bg" ${momentsBackground ? '' : 'disabled'} style="
-                            padding: 9px 10px;
-                            border: 1px solid ${momentsBackground ? '#ffd0d0' : '#ececec'};
-                            border-radius: 8px;
-                            background: ${momentsBackground ? '#fff7f7' : '#f7f7f7'};
-                            color: ${momentsBackground ? '#d93025' : '#aaa'};
-                            font-size: 13px;
-                            cursor: ${momentsBackground ? 'pointer' : 'default'};
-                        ">清除背景</button>
-                    </div>
-                </div>
-                
                 <!-- 生成上下文设置 -->
                 <div style="background: #fff; border-radius: 12px; margin: 15px; padding: 15px;">
                     <div style="font-size: 14px; font-weight: 600; color: #333; margin-bottom: 12px;">
@@ -5815,6 +5673,87 @@ export class WechatApp {
                     ">打开头像管理器</button>
                 </div>
 
+                <!-- 外观背景设置 -->
+                <div style="background: #fff; border-radius: 12px; margin: 15px; padding: 15px;">
+                    <div style="font-size: 14px; font-weight: 600; color: #333; margin-bottom: 12px;">
+                        外观背景
+                    </div>
+                    <input type="file" id="wechat-settings-moments-bg-upload" accept="image/png, image/jpeg, image/gif, image/webp, image/*" style="display: none;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <div style="width: 54px; height: 78px; border-radius: 10px; overflow: hidden; flex: 0 0 auto; border: 1px solid #e7e7e7; ${momentsBackgroundPreview}">
+                        </div>
+                        <div style="min-width: 0; flex: 1;">
+                            <div style="font-size: 14px; color: #222;">朋友圈背景</div>
+                            <div style="font-size: 12px; color: #888; line-height: 1.45; margin-top: 4px;">
+                                设置朋友圈列表页背景图，适合放角色、场景或主题图。
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px;">
+                        <button id="wechat-settings-change-moments-bg" style="
+                            padding: 9px 10px;
+                            border: 1px solid #e7e7e7;
+                            border-radius: 8px;
+                            background: #fafafa;
+                            color: #222;
+                            font-size: 13px;
+                            cursor: pointer;
+                        ">更换背景</button>
+                        <button id="wechat-settings-clear-moments-bg" ${momentsBackground ? '' : 'disabled'} style="
+                            padding: 9px 10px;
+                            border: 1px solid ${momentsBackground ? '#ffd0d0' : '#ececec'};
+                            border-radius: 8px;
+                            background: ${momentsBackground ? '#fff7f7' : '#f7f7f7'};
+                            color: ${momentsBackground ? '#d93025' : '#aaa'};
+                            font-size: 13px;
+                            cursor: ${momentsBackground ? 'pointer' : 'default'};
+                        ">清除背景</button>
+                    </div>
+                </div>
+
+                <!-- 会话样式 -->
+                <div style="background: #fff; border-radius: 12px; margin: 15px; padding: 15px;">
+                    <div style="font-size: 14px; font-weight: 600; color: #333; margin-bottom: 10px;">
+                        💬 会话样式
+                    </div>
+                    <div style="font-size: 12px; color: #888; line-height: 1.45; margin-bottom: 10px;">
+                        自定义微信聊天气泡、头像框等会话显示样式。
+                    </div>
+                    <div style="position: relative; margin-bottom: 10px;">
+                        <select id="chat-css-profile-select" style="
+                            width: 100%; padding: 9px 30px 9px 10px; border: 1px solid #e7e7e7; border-radius: 8px;
+                            background: #fafafa; font-size: 13px; color: #000;
+                            -webkit-appearance: none; outline: none; cursor: pointer;
+                        ">
+                            <option value="">-- 选择或输入CSS --</option>
+                        </select>
+                        <i class="fa-solid fa-chevron-down" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: #8e8e93; font-size: 12px; pointer-events: none;"></i>
+                    </div>
+                    <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                        <button id="save-css-profile-btn" style="
+                            flex: 1; padding: 8px 10px; background: #fafafa; color: #333;
+                            border: 1px solid #e7e7e7; border-radius: 8px; font-size: 12px; cursor: pointer;
+                        ">存为预设</button>
+                        <button id="delete-css-profile-btn" style="
+                            flex: 1; padding: 8px 10px; background: #fff; color: #ff3b30;
+                            border: 1px solid #f1c6c2; border-radius: 8px; font-size: 12px; cursor: pointer;
+                        ">删除配置</button>
+                    </div>
+                    <div style="font-size: 11px; color: #999; margin-bottom: 6px; line-height: 1.45;">
+                        可覆盖类名：.message-avatar、.message-text 等
+                    </div>
+                    <textarea id="wechat-chat-custom-css" placeholder=".message-right .message-text { border-radius: 14px; background: #c9f7b9; }\n.message-avatar { border: 1px solid #dfe3ea; }" style="
+                        width: 100%; min-height: 120px; padding: 10px; border: 1px solid #e7e7e7; border-radius: 8px;
+                        background: #fbfbfb; font-size: 12px; color: #333; line-height: 1.45;
+                        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+                        resize: vertical; outline: none; box-sizing: border-box; touch-action: pan-y; overscroll-behavior: contain;
+                    ">${safeCustomCss}</textarea>
+                    <button id="apply-chat-css-btn" style="
+                        width: 100%; margin-top: 10px; padding: 9px 12px; border: none; border-radius: 8px;
+                        background: #07c160; color: #fff; font-size: 13px; cursor: pointer;
+                    ">应用会话样式</button>
+                </div>
+
                 <!-- 数据管理 -->
                 <div style="background: #fff3cd; border-radius: 12px; padding: 15px; margin: 15px; border: 1px solid #ffc107;">
                     <div style="font-size: 14px; font-weight: 600; color: #856404; margin-bottom: 12px;">
@@ -5961,6 +5900,100 @@ export class WechatApp {
         if (avatarManagerBtn) avatarManagerBtn.onclick = () => {
             this.showAvatarManager();
         };
+
+        const profileSelect = document.getElementById('chat-css-profile-select');
+        const saveProfileBtn = document.getElementById('save-css-profile-btn');
+        const deleteProfileBtn = document.getElementById('delete-css-profile-btn');
+        const applyCssBtn = document.getElementById('apply-chat-css-btn');
+        const cssTextarea = document.getElementById('wechat-chat-custom-css');
+        const loadCssProfiles = () => {
+            try {
+                const parsed = JSON.parse(this.storage?.get('phone_chat_css_profiles') || '[]');
+                if (!Array.isArray(parsed)) return [];
+                return parsed
+                    .map((profile) => ({
+                        name: String(profile?.name || '').trim(),
+                        css: String(profile?.css || '')
+                    }))
+                    .filter(profile => profile.name || profile.css);
+            } catch (e) {
+                return [];
+            }
+        };
+        const saveCssProfiles = (profiles) => {
+            const safeProfiles = Array.isArray(profiles) ? profiles : [];
+            this.storage?.set('phone_chat_css_profiles', JSON.stringify(safeProfiles));
+        };
+        const renderCssSelect = () => {
+            if (!profileSelect) return;
+            const profiles = loadCssProfiles();
+            profileSelect.innerHTML = '<option value="">-- 选择或输入CSS --</option>';
+            profiles.forEach((p, idx) => {
+                profileSelect.innerHTML += `<option value="${idx}">${String(p?.name || `预设 ${idx + 1}`).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</option>`;
+            });
+        };
+        renderCssSelect();
+        profileSelect?.addEventListener('change', (e) => {
+            const idx = e.target.value;
+            if (idx === '') return;
+            const profiles = loadCssProfiles();
+            const profile = profiles[Number(idx)];
+            if (profile && cssTextarea) {
+                cssTextarea.value = profile.css || '';
+            }
+        });
+        saveProfileBtn?.addEventListener('click', () => {
+            const css = String(cssTextarea?.value || '').trim();
+            if (!css) {
+                this.phoneShell.showNotification('提示', 'CSS内容为空', '⚠️');
+                return;
+            }
+            const name = prompt('请输入新主题的名称（例如：极简白）：');
+            if (!name) return;
+            const profiles = loadCssProfiles();
+            const safeName = String(name || '').trim();
+            if (!safeName) return;
+            const existingIdx = profiles.findIndex(p => p.name === safeName);
+            if (existingIdx > -1) {
+                if (confirm(`主题 "${safeName}" 已存在，是否覆盖更新？`)) {
+                    profiles[existingIdx].css = css;
+                } else return;
+            } else {
+                profiles.push({ name: safeName, css });
+            }
+            saveCssProfiles(profiles);
+            renderCssSelect();
+            if (profileSelect) profileSelect.value = String(profiles.findIndex(p => p.name === safeName));
+            this.phoneShell.showNotification('成功', '主题已保存', '✅');
+        });
+        deleteProfileBtn?.addEventListener('click', () => {
+            const idx = profileSelect?.value || '';
+            if (idx === '') {
+                this.phoneShell.showNotification('提示', '请先在下拉框选择一个要删除的主题', '⚠️');
+                return;
+            }
+            const profiles = loadCssProfiles();
+            const profileIndex = Number(idx);
+            const profile = profiles[profileIndex];
+            if (!profile) {
+                renderCssSelect();
+                this.phoneShell.showNotification('提示', '未找到要删除的主题', '⚠️');
+                return;
+            }
+            if (confirm(`确定要删除主题 "${profile.name || `预设 ${profileIndex + 1}`}" 吗？`)) {
+                profiles.splice(profileIndex, 1);
+                saveCssProfiles(profiles);
+                renderCssSelect();
+                if (cssTextarea) cssTextarea.value = '';
+                this.phoneShell.showNotification('成功', '主题已删除', '🗑️');
+            }
+        });
+        applyCssBtn?.addEventListener('click', async () => {
+            const customCss = cssTextarea?.value || '';
+            await this.storage?.set('phone_global_chat_css', customCss);
+            this._applyCustomChatStyle(customCss);
+            this.phoneShell.showNotification('成功', '会话样式已应用', '✅');
+        });
 
         document.getElementById('wechat-use-worldbook')?.addEventListener('change', async (e) => {
             const enabled = !!e.target.checked;

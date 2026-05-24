@@ -4794,9 +4794,9 @@ export class SettingsApp {
                 : new Set(normalizedPresets.map(preset => preset.id));
             const overlay = document.createElement('div');
             overlay.id = 'phone-image-preset-export-chooser';
-            overlay.style.cssText = 'position:absolute; inset:0; z-index:10020; background:rgba(0,0,0,0.38); display:flex; align-items:center; justify-content:center; padding:14px; box-sizing:border-box;';
+            overlay.style.cssText = 'position:absolute; inset:0; z-index:10020; background:rgba(0,0,0,0.38); display:flex; align-items:center; justify-content:center; padding:14px; box-sizing:border-box; touch-action:pan-y; overscroll-behavior:contain;';
             overlay.innerHTML = `
-                <div style="width:100%; max-width:320px; max-height:82%; background:#fff; border-radius:12px; box-shadow:0 12px 28px rgba(0,0,0,0.22); display:flex; flex-direction:column; overflow:hidden;">
+                <div class="phone-image-preset-export-dialog" style="width:100%; max-width:320px; max-height:82%; background:#fff; border-radius:12px; box-shadow:0 12px 28px rgba(0,0,0,0.22); display:flex; flex-direction:column; overflow:hidden; touch-action:pan-y; overscroll-behavior:contain;">
                     <div style="padding:12px 14px 8px; border-bottom:1px solid #eee;">
                         <div style="font-size:15px; font-weight:700; color:#111;">${this._escapeHtml(title)}</div>
                         <div style="font-size:11px; line-height:1.45; color:#666; margin-top:4px;">${this._escapeHtml(desc)}</div>
@@ -4805,7 +4805,7 @@ export class SettingsApp {
                         <button type="button" id="phone-image-preset-export-all" style="height:28px; border:1px solid #d8d8d8; border-radius:8px; background:#f7f7f7; color:#333; font-size:12px; cursor:pointer;">全选</button>
                         <button type="button" id="phone-image-preset-export-none" style="height:28px; border:1px solid #d8d8d8; border-radius:8px; background:#fff; color:#333; font-size:12px; cursor:pointer;">清空</button>
                     </div>
-                    <div style="overflow:auto; max-height:42vh; padding:6px 12px; background:#fbfbfb;">
+                    <div class="phone-image-preset-export-list" style="flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; max-height:42vh; padding:6px 12px; background:#fbfbfb; -webkit-overflow-scrolling:touch; touch-action:pan-y; overscroll-behavior:contain;">
                         ${normalizedPresets.map((preset, index) => `
                             <label style="display:flex; align-items:flex-start; gap:8px; padding:9px 0; border-bottom:${index === normalizedPresets.length - 1 ? 'none' : '1px solid #eee'}; cursor:pointer;">
                                 <input type="checkbox" class="phone-image-preset-export-choice" value="${this._escapeHtml(preset.id)}" ${defaultSelected.has(preset.id) ? 'checked' : ''} style="margin-top:1px; width:16px; height:16px; flex:0 0 16px;">

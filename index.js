@@ -15,8 +15,8 @@
 // ========================================
 
 const ST_PHONE_BASE_URL = new URL('./', import.meta.url).href;
-const ST_PHONE_GLOBAL_CSS_URL = new URL('./phone.css', import.meta.url).href;
-const ST_PHONE_VERSION = '1.1.7';
+const ST_PHONE_VERSION = '1.1.8';
+const ST_PHONE_GLOBAL_CSS_URL = new URL(`./phone.css?v=${ST_PHONE_VERSION}`, import.meta.url).href;
 const ST_PHONE_UPDATE_MANIFEST_URLS = [
     'https://raw.githubusercontent.com/gaigai315/yuzuki-phone/main/manifest.json',
     'https://raw.githubusercontent.com/gaigai315/yuzuki-phone/master/manifest.json'
@@ -38,11 +38,16 @@ const WECHAT_MESSAGE_SOUND_ENABLED_KEY = 'wechat_message_sound_enabled';
 const WECHAT_MESSAGE_SOUND_URL = new URL('./assets/sounds/iphone-message-notification.mp3', ST_PHONE_BASE_URL).href;
 const ST_PHONE_CURRENT_UPDATE = {
     version: ST_PHONE_VERSION,
-    date: '2026-05-22',
+    date: '2026-05-24',
     items: [
         '【必做】更新后请在设置中执行一次【一键恢复默认提示词】，以同步最新全局提示词。',
-        '【新增】新增日历 App，支持日间/夜间模式，可按剧情时间手动或自动新增日程，并提供日程提醒开关。',
-        '【优化】微信群聊上下文现在会参考群成员对应的单聊记录，互通模式与线上模式均按各自单聊注入条数设置生效。'
+        '【新增】微信个人资料可设置用户固定形象 Tag，微信、朋友圈、微博、日记生图支持 [用户照片] 标签。',
+        '【优化】线上模式下 AI 回复 [转线下] 不再自动请求酒馆正文，避免误触发剧情推进。',
+        '【优化】快捷回复标签会直接使用当前微信用户名，避免 {{user}} 被其他插件清掉后导致线下转线上解析失败。',
+        '【优化】会话样式 CSS 移到微信设置的头像管理器下方，编辑个人资料页更聚焦基础资料。',
+        '【优化】优化工具栏小手机入口兼容性，增加 click 兜底，适配第三方魔法面板等工具脚本。',
+        '【修复】修复移动端导出 NAI 预设时，多选弹窗无法上下滑动的问题。',
+        '【修复】修复移动端首次打开日历时，日历数字短暂未套样式闪烁的问题。'
     ]
 };
 
@@ -2846,6 +2851,22 @@ if (window.GGP_Loaded) {
                         div.textContent = String(text ?? '');
                         return div.innerHTML;
                     };
+                    const getInlineReplyWechatUserName = () => {
+                        try {
+                            const runtimeName = String(window.VirtualPhone?.wechatApp?.wechatData?.getUserInfo?.()?.name || '').trim();
+                            if (runtimeName) return runtimeName;
+                        } catch (e) { }
+                        try {
+                            const cachedName = String(window.VirtualPhone?.cachedWechatData?.getUserInfo?.()?.name || '').trim();
+                            if (cachedName) return cachedName;
+                        } catch (e) { }
+                        try {
+                            const context = getContext();
+                            const userName = String(context?.name1 || '').trim();
+                            if (userName) return userName;
+                        } catch (e) { }
+                        return '用户';
+                    };
 
                     const stringifyState = (value) => {
                         if (value === null) return 'null';
@@ -3604,8 +3625,10 @@ if (window.GGP_Loaded) {
                                 const name = String(el.dataset.name || '').trim();
                                 if (!name) return;
                                 const currentDateTime = formatWechatInlineReplyDateTime();
-                                const tagStr = `\n<wechat><!--\n---{{user}}---\n接收人：${name}\ndate:${currentDateTime}\n\n--></wechat>\n`;
-                                const cursorPos = `\n<wechat><!--\n---{{user}}---\n接收人：${name}\ndate:${currentDateTime}\n`.length;
+                                const wechatUserName = getInlineReplyWechatUserName();
+                                const tagPrefix = `\n<wechat><!--\n---${wechatUserName}---\n接收人：${name}\ndate:${currentDateTime}\n`;
+                                const tagStr = `${tagPrefix}\n--></wechat>\n`;
+                                const cursorPos = tagPrefix.length;
                                 insertTextToSendTextarea(tagStr, cursorPos);
                                 closeMenuSafely();
                             });
@@ -3931,6 +3954,16 @@ if (window.GGP_Loaded) {
         if (triggerTarget && drawerIcon && drawerPanel) {
             let pressTimer;
             let isLongPress = false;
+            let suppressNextClickUntil = 0;
+
+            const openOrNotifyPhone = () => {
+                if (isPhoneFeatureEnabled()) {
+                    if (!drawerPanel.classList.contains('phone-panel-open') && !checkBetaLock()) return;
+                    toggleDrawer(drawerIcon, drawerPanel);
+                } else {
+                    showUnifiedPhoneNotification('提示', '手机已休眠，请长按图标开启', '⚠️');
+                }
+            };
 
             const startPress = (e) => {
                 isLongPress = false;
@@ -3968,32 +4001,30 @@ if (window.GGP_Loaded) {
                 // 如果是短按，且是鼠标抬起或手指抬起事件
                 if (!isLongPress && (e.type === 'mouseup' || e.type === 'touchend')) {
                     e.preventDefault();
-                    if (isPhoneFeatureEnabled()) {
-                        if (!drawerPanel.classList.contains('phone-panel-open') && !checkBetaLock()) return;
-                        toggleDrawer(drawerIcon, drawerPanel);
-                    } else {
-                        showUnifiedPhoneNotification('提示', '手机已休眠，请长按图标开启', '⚠️');
-                    }
+                    suppressNextClickUntil = Date.now() + 350;
+                    openOrNotifyPhone();
                 }
             };
 
             const cancelPress = () => clearTimeout(pressTimer);
 
+            const onClick = (e) => {
+                if (Date.now() < suppressNextClickUntil) return;
+                e.preventDefault();
+                openOrNotifyPhone();
+            };
+
             const onKeyDown = (e) => {
                 if (e.key !== 'Enter' && e.key !== ' ') return;
                 e.preventDefault();
-                if (isPhoneFeatureEnabled()) {
-                    if (!drawerPanel.classList.contains('phone-panel-open') && !checkBetaLock()) return;
-                    toggleDrawer(drawerIcon, drawerPanel);
-                } else {
-                    showUnifiedPhoneNotification('提示', '手机已休眠，请长按图标开启', '⚠️');
-                }
+                openOrNotifyPhone();
             };
 
             // 绑定鼠标和触摸事件
             triggerTarget.addEventListener('mousedown', startPress);
             triggerTarget.addEventListener('touchstart', startPress, { passive: true });
             triggerTarget.addEventListener('mouseup', endPress);
+            triggerTarget.addEventListener('click', onClick);
             triggerTarget.addEventListener('mouseleave', cancelPress);
             triggerTarget.addEventListener('touchend', endPress);
             triggerTarget.addEventListener('touchcancel', cancelPress);
@@ -4771,6 +4802,42 @@ if (window.GGP_Loaded) {
             .filter(Boolean);
     }
 
+    function getCurrentWechatRecipientFallbackName() {
+        try {
+            const runtimeName = String(window.VirtualPhone?.wechatApp?.wechatData?.getUserInfo?.()?.name || '').trim();
+            if (runtimeName) return runtimeName;
+        } catch (e) { }
+
+        try {
+            const cachedName = String(window.VirtualPhone?.cachedWechatData?.getUserInfo?.()?.name || '').trim();
+            if (cachedName) return cachedName;
+        } catch (e) { }
+
+        try {
+            const rawData = storage?.get?.('wechat_data', false);
+            if (rawData) {
+                const parsed = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
+                const storedName = String(parsed?.userInfo?.name || '').trim();
+                if (storedName) return storedName;
+            }
+        } catch (e) { }
+
+        try {
+            const context = getContext();
+            const userName = String(context?.name1 || '').trim();
+            if (userName) return userName;
+        } catch (e) { }
+
+        return '用户';
+    }
+
+    function normalizeWechatRecipientOrFallback(value) {
+        const raw = String(value || '')
+            .replace(/\{\{\s*user\s*\}\}/gi, '')
+            .trim();
+        return raw || getCurrentWechatRecipientFallbackName();
+    }
+
     function isWechatRecipientCurrentUser(recipient) {
         const key = normalizeWechatRecipientKey(recipient);
         if (!key) return false;
@@ -5035,12 +5102,13 @@ if (window.GGP_Loaded) {
                 // 🔥🔥🔥 检测联系人/群名分隔行
                 // 兼容：---张三--- / ——张三—— / －－张三－－ / ──张三── / ___张三___
                 const contactHeaderMatch = /^(?:-{3,}|—{2,}|－{2,}|─{2,}|━{2,}|_{3,})\s*(.+?)\s*(?:-{3,}|—{2,}|－{2,}|─{2,}|━{2,}|_{3,})$/.exec(trimmedLine);
-                if (contactHeaderMatch) {
+                const emptyContactHeaderMatch = /^(?:-{3,}|—{2,}|－{2,}|─{2,}|━{2,}|_{3,})$/.exec(trimmedLine);
+                if (contactHeaderMatch || emptyContactHeaderMatch) {
                     // 先保存之前的联系人
                     saveCurrentContact();
 
                     // 开始新联系人/群
-                    currentContact = contactHeaderMatch[1].trim();
+                    currentContact = contactHeaderMatch ? contactHeaderMatch[1].trim() : getCurrentWechatRecipientFallbackName();
                     currentChatType = 'single'; // 默认单聊，等解析到 type:group 再改
                     currentChatTypeSource = 'inferred';
                     currentDate = null;
@@ -5078,9 +5146,9 @@ if (window.GGP_Loaded) {
                 }
 
                 // 解析接收人：线下转线上时只允许同步发给 user/酒馆用户名/小手机微信里用户自己的昵称的消息
-                const recipientMatch = /^(?:接收人|收信人|recipient|receiver)\s*[:：]\s*(.+)$/i.exec(trimmedLine);
+                const recipientMatch = /^(?:接收人|收信人|recipient|receiver)\s*[:：]\s*(.*)$/i.exec(trimmedLine);
                 if (recipientMatch) {
-                    currentRecipient = recipientMatch[1].trim();
+                    currentRecipient = normalizeWechatRecipientOrFallback(recipientMatch[1]);
                     currentRecipientExplicit = true;
                     continue;
                 }
@@ -5234,9 +5302,9 @@ if (window.GGP_Loaded) {
             return;
         }
 
-        // [个人图片/图片/视频](描述) / [个人图片/图片/视频]（描述）
+        // [用户照片/个人图片/图片/视频](描述) / [用户照片/个人图片/图片/视频]（描述）
         // 兼容线下同步里把说话人留在正文中的格式：张三：[个人图片]（tag）
-        const imageMatch = /^(?:(.{1,40})[：:]\s*)?\[(个人图片|图片|视频)\]\s*[（(]\s*([\s\S]+?)\s*[)）]\s*$/.exec(String(content || '').trim());
+        const imageMatch = /^(?:(.{1,40})[：:]\s*)?\[(用户照片|个人图片|图片|视频)\]\s*[（(]\s*([\s\S]+?)\s*[)）]\s*$/.exec(String(content || '').trim());
         if (imageMatch) {
             const inlineSender = String(imageMatch[1] || '').trim();
             const promptText = String(imageMatch[3] || '').trim();
@@ -5244,6 +5312,7 @@ if (window.GGP_Loaded) {
             msgObj.type = 'image_prompt';
             msgObj.mediaType = imageMatch[2]; // 记录是图片还是视频
             msgObj.usePersonalReference = imageMatch[2] === '个人图片';
+            msgObj.useUserReference = imageMatch[2] === '用户照片';
             msgObj.imagePrompt = promptText;
             msgObj.content = promptText;
             return;
@@ -6936,7 +7005,7 @@ if (window.GGP_Loaded) {
     async function ensureGlobalPhoneCSS() {
         const styleId = 'st-phone-global-css';
         const existing = document.getElementById(styleId);
-        if (existing) return;
+        if (existing?.getAttribute('data-version') === ST_PHONE_VERSION) return;
 
         if (_globalCssLoadingPromise) {
             await _globalCssLoadingPromise;
@@ -6956,7 +7025,9 @@ if (window.GGP_Loaded) {
                 const style = document.createElement('style');
                 style.id = styleId;
                 style.setAttribute('data-source', ST_PHONE_GLOBAL_CSS_URL);
+                style.setAttribute('data-version', ST_PHONE_VERSION);
                 style.textContent = finalCssText;
+                existing?.remove();
                 document.head.appendChild(style);
             } catch (err) {
                 console.error('❌ phone.css 动态注入失败:', err);
@@ -8284,6 +8355,12 @@ if (window.GGP_Loaded) {
                                                         const contactNames = [];
                                                         const personalImageTagRows = [];
                                                         const groupItems = [];
+                                                        const userTags = String(wechatDataParsed?.userInfo?.naiPromptTags || wechatDataParsed?.userInfo?.imageTags || '')
+                                                            .split(/[,，\n]+/)
+                                                            .map(tag => tag.trim())
+                                                            .filter(Boolean)
+                                                            .join(', ');
+                                                        if (userTags) personalImageTagRows.push(`{{user}}：${userTags}`);
                                                         const contacts = wechatDataParsed.contacts || [];
                                                         contacts.forEach(c => {
                                                             const name = String(c?.name || '').trim();

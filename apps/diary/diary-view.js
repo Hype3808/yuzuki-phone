@@ -1758,7 +1758,7 @@ export class DiaryView {
             return `<del class="diary-strike">${text}</del>`;
         });
 
-        const photoRegex = this.app?.diaryData?._getPhotoPromptTagRegex?.() || /\[(个人图片|图片)\]\s*[（(]([\s\S]*?)[）)](?:\s*[（(]([\s\S]*?)[）)])?/g;
+        const photoRegex = this.app?.diaryData?._getPhotoPromptTagRegex?.() || /\[(用户照片|个人图片|图片)\]\s*[（(]([\s\S]*?)[）)](?:\s*[（(]([\s\S]*?)[）)])?/g;
         const parts = [];
         let lastIndex = 0;
         let match;

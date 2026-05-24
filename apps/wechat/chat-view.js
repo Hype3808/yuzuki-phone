@@ -1591,17 +1591,25 @@ export class ChatView {
 
     _buildWechatPersonalImageTagInfo({ targetChat = null, isGroupChat = false } = {}) {
         const contacts = this.app?.wechatData?.getContacts?.() || [];
-        if (!Array.isArray(contacts) || contacts.length === 0) return '暂无';
+        const userInfo = this.app?.wechatData?.getUserInfo?.() || {};
+        const userTags = String(userInfo?.naiPromptTags || userInfo?.imageTags || '').trim();
+        const userRow = userTags ? [{ name: '{{user}}', tags: userTags }] : [];
+        if (!Array.isArray(contacts) || contacts.length === 0) {
+            return this._formatPersonalImageTagRows(userRow);
+        }
 
         if (isGroupChat) {
             const participants = this._collectGroupParticipantsForFilter(targetChat || this.app.currentChat, this._safeGetContext());
             const participantKeys = new Set(participants.map(name => this._normalizeLookupName(name)).filter(Boolean));
-            return this._formatPersonalImageTagRows(contacts
+            return this._formatPersonalImageTagRows([
+                ...userRow,
+                ...contacts
                 .filter(contact => participantKeys.has(this._normalizeLookupName(contact?.name)))
                 .map(contact => ({
                     name: contact?.name,
                     tags: contact?.naiPromptTags || contact?.imageTags
-                })));
+                }))
+            ]);
         }
 
         const chatName = String(targetChat?.name || '').trim();
@@ -1609,10 +1617,13 @@ export class ChatView {
         const contact = (contactId ? this.app.wechatData?.getContact?.(contactId) : null)
             || this.app.wechatData?.findContactByNameLoose?.(chatName, { includeChats: false })
             || contacts.find(item => this._normalizeLookupName(item?.name) === this._normalizeLookupName(chatName));
-        return this._formatPersonalImageTagRows(contact ? [{
-            name: contact.name || chatName,
-            tags: contact.naiPromptTags || contact.imageTags
-        }] : []);
+        return this._formatPersonalImageTagRows([
+            ...userRow,
+            ...(contact ? [{
+                name: contact.name || chatName,
+                tags: contact.naiPromptTags || contact.imageTags
+            }] : [])
+        ]);
     }
 
     _renderGroupCallParticipantsStrip(chat = null) {
@@ -3407,6 +3418,17 @@ renderChatRoom(chat) {
 
     _buildWechatImagePromptWithContactTags(message = {}, promptText = '') {
         const basePrompt = String(promptText || '').trim();
+        if (message?.useUserReference === true || String(message?.mediaType || '').trim() === '用户照片') {
+            const userInfo = this.app?.wechatData?.getUserInfo?.() || {};
+            const userTags = String(userInfo?.naiPromptTags || userInfo?.imageTags || '')
+                .split(/[,，\n]+/)
+                .map(tag => tag.trim())
+                .filter(Boolean)
+                .join(', ');
+            if (!userTags) return basePrompt;
+            if (!basePrompt) return userTags;
+            return `${userTags}, ${basePrompt}`;
+        }
         const contact = this._resolveWechatPersonalReferenceContact(message);
         const contactTags = String(contact?.naiPromptTags || contact?.imageTags || '')
             .split(',')
@@ -3714,7 +3736,7 @@ renderChatRoom(chat) {
     }
 
     _formatImagePromptTagForPrompt(msg = {}) {
-        const mediaType = msg.usePersonalReference ? '个人图片' : (msg.mediaType || '图片');
+        const mediaType = msg.useUserReference ? '用户照片' : (msg.usePersonalReference ? '个人图片' : (msg.mediaType || '图片'));
         const promptText = String(msg.imagePrompt || msg.content || '待生成图片').trim() || '待生成图片';
         const descriptionText = String(msg.imageDescription || '').trim();
         if (descriptionText && descriptionText !== promptText) {
@@ -4728,13 +4750,14 @@ renderChatRoom(chat) {
             }
         }
 
-        const imageMatch = String(content || '').trim().match(/^(?:(.{1,40})[：:]\s*)?\[(个人图片|图片|视频)\]\s*([\s\S]+?)\s*$/);
+        const imageMatch = String(content || '').trim().match(/^(?:(.{1,40})[：:]\s*)?\[(用户照片|个人图片|图片|视频)\]\s*([\s\S]+?)\s*$/);
         if (imageMatch) {
             const parsedImagePrompt = this._parseImagePromptText(imageMatch[3]);
             const parsed = {
                 type: 'image_prompt',
                 mediaType: imageMatch[2],
                 usePersonalReference: imageMatch[2] === '个人图片',
+                useUserReference: imageMatch[2] === '用户照片',
                 imageDescription: parsedImagePrompt.description,
                 imagePrompt: parsedImagePrompt.prompt,
                 content: parsedImagePrompt.prompt
@@ -4769,7 +4792,7 @@ renderChatRoom(chat) {
             }];
         }
 
-        const inlineSpecialRegex = /\[(?:同意收养|拒绝收养)\]|\[使用[：:]\s*[^x×\]\s]+\s*[x×]\s*\d+\]\s*(?:[（(][\s\S]*?[）)])?|\[(?:个人图片|图片|视频)\]\s*[（(]\s*[\s\S]+?\s*[）)](?:\s*[（(]\s*[\s\S]+?\s*[）)])?|\[(?:收款|领取红包|退回转账|退回红包)\](?:\s*[（(]\s*[^）)]*\s*[）)])?|\[转账\]\s*(?:[（(]\s*(?:金额[：:]?\s*)?\d+(?:\.\d+)?\s*元?\s*[)）]|[¥￥]\s*\d+(?:\.\d+)?)|\[红包\]\s*(?:[（(]\s*(?:金额[：:]?\s*)?\d+(?:\.\d+)?\s*元?\s*[)）])?|(?:\[\s*定位\s*\]|【\s*定位\s*】)\s*[（(]\s*[^)）]+?\s*[)）]|(?:\[\s*蜜语\s*\]|【\s*蜜语\s*】)\s*(?:[（(]\s*[^）)]*\s*[）)])?|(?:\[\s*音乐\s*\]|【\s*音乐\s*】)\s*[（(]\s*[^，,）)]+?(?:\s*[，,]\s*[^）)]+?)?\s*[）)]|(?:\[\s*(?:拨打|发起)\s*(?:微信)?(?:群)?(?:语音|视频)(?:通话)?\s*\]|【\s*(?:拨打|发起)\s*(?:微信)?(?:群)?(?:语音|视频)(?:通话)?\s*】)/g;
+        const inlineSpecialRegex = /\[(?:同意收养|拒绝收养)\]|\[使用[：:]\s*[^x×\]\s]+\s*[x×]\s*\d+\]\s*(?:[（(][\s\S]*?[）)])?|\[(?:用户照片|个人图片|图片|视频)\]\s*[（(]\s*[\s\S]+?\s*[）)](?:\s*[（(]\s*[\s\S]+?\s*[）)])?|\[(?:收款|领取红包|退回转账|退回红包)\](?:\s*[（(]\s*[^）)]*\s*[）)])?|\[转账\]\s*(?:[（(]\s*(?:金额[：:]?\s*)?\d+(?:\.\d+)?\s*元?\s*[)）]|[¥￥]\s*\d+(?:\.\d+)?)|\[红包\]\s*(?:[（(]\s*(?:金额[：:]?\s*)?\d+(?:\.\d+)?\s*元?\s*[)）])?|(?:\[\s*定位\s*\]|【\s*定位\s*】)\s*[（(]\s*[^)）]+?\s*[)）]|(?:\[\s*蜜语\s*\]|【\s*蜜语\s*】)\s*(?:[（(]\s*[^）)]*\s*[）)])?|(?:\[\s*音乐\s*\]|【\s*音乐\s*】)\s*[（(]\s*[^，,）)]+?(?:\s*[，,]\s*[^）)]+?)?\s*[）)]|(?:\[\s*(?:拨打|发起)\s*(?:微信)?(?:群)?(?:语音|视频)(?:通话)?\s*\]|【\s*(?:拨打|发起)\s*(?:微信)?(?:群)?(?:语音|视频)(?:通话)?\s*】)/g;
         let hasMatch = false;
         let lastIndex = 0;
         let usedQuote = false;
@@ -5364,11 +5387,11 @@ renderChatRoom(chat) {
         const parseWeiboMediaPreview = (raw) => {
             const txt = String(raw || '').trim();
             if (!txt) return null;
-            const m = txt.match(/\[(个人图片|图片|视频)\]\s*[（(]([^）)]+)[）)]/);
+            const m = txt.match(/\[(用户照片|个人图片|图片|视频)\]\s*[（(]([^）)]+)[）)]/);
             if (m && m[2]) {
                 return { type: m[1], desc: m[2].trim() };
             }
-            const stripped = txt.replace(/^\[(个人图片|图片|视频)\]\s*/g, '').trim();
+            const stripped = txt.replace(/^\[(用户照片|个人图片|图片|视频)\]\s*/g, '').trim();
             return stripped ? { type: '图片', desc: stripped } : null;
         };
 
@@ -6560,6 +6583,17 @@ renderChatRoom(chat) {
             let aiRawText = this._extractWechatTagPayloadOrSelf(aiResponse);
             
             let triggerOffline = false;
+            const isWechatInteropModeEnabledForOfflineTransfer = () => {
+                const storage = window.VirtualPhone?.storage;
+                if (!storage) return false;
+                const interopKey = this.app?.wechatData?.getOnlineModeStorageKey?.(context) || 'wechat_online_mode';
+                const onlineOnlyKey = this.app?.wechatData?.getOnlineOnlyModeStorageKey?.(context) || 'wechat_online_only_mode';
+                const isEnabled = (key) => {
+                    const val = storage.get(key);
+                    return val === true || val === 'true' || val === 1;
+                };
+                return isEnabled(interopKey) && !isEnabled(onlineOnlyKey);
+            };
             const hasOfflineTransferTag = (value = '') => /\[转线下\]/.test(String(value || ''));
             const stripOfflineTransferTag = (value = '') => String(value || '').replace(/\[转线下\]/g, '').trim();
             const messageHasOfflineTransferTag = (message) => hasOfflineTransferTag(message?.content) || hasOfflineTransferTag(message?.specialMessage?.content);
@@ -6934,7 +6968,7 @@ renderChatRoom(chat) {
                     .map(filterInlineSingleReply)
                     .filter(Boolean)
                     .map(normalizeInlineSingleReply);
-                triggerOffline = parsedMessages.some(messageHasOfflineTransferTag);
+                triggerOffline = isWechatInteropModeEnabledForOfflineTransfer() && parsedMessages.some(messageHasOfflineTransferTag);
             } else {
                 parsedMessages = this._filterGroupMessagesByParticipants(parsedMessages, currentGroupParticipants, savedChatName, {
                     keepAllWhenAllDropped: keepLobbyGroupRepliesOnMismatch

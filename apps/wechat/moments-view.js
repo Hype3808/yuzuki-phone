@@ -629,7 +629,7 @@ export class MomentsView {
     _parseMomentImageItem(rawValue) {
         const imageStr = String(rawValue || '').trim();
         let body = imageStr;
-        const taggedMatch = imageStr.match(/^\[(个人图片|图片|视频)\]\s*([\s\S]*)$/);
+        const taggedMatch = imageStr.match(/^\[(用户照片|个人图片|图片|视频)\]\s*([\s\S]*)$/);
         const mediaType = taggedMatch ? String(taggedMatch[1] || '').trim() : '图片';
         if (taggedMatch) body = String(taggedMatch[2] || '').trim();
         const unwrappedBody = body.replace(/^[（(]\s*|\s*[)）]$/g, '').trim();
@@ -655,7 +655,8 @@ export class MomentsView {
             promptText: promptText.trim(),
             descriptionText: descriptionText.trim(),
             mediaType,
-            usePersonalReference: mediaType === '个人图片'
+            usePersonalReference: mediaType === '个人图片',
+            useUserReference: mediaType === '用户照片'
         };
     }
 
@@ -816,6 +817,7 @@ export class MomentsView {
         const mediaType = parsedImage.mediaType || '图片';
         const displayDescription = String(descriptionText || parsedImage.descriptionText || promptText || '').trim();
         const usePersonalReference = parsedImage.usePersonalReference === true;
+        const useUserReference = parsedImage.useUserReference === true;
         if (clearPreviousImage && Array.isArray(moment.images)) {
             moment.images[index] = displayDescription && displayDescription !== promptText
                 ? `[${mediaType}]（${displayDescription}）（${promptText}）`
@@ -833,6 +835,7 @@ export class MomentsView {
             generationId,
             mediaType,
             usePersonalReference,
+            useUserReference,
             generatedImageUrl: '',
             imageProvider: resolvedImageProvider
         });
@@ -864,6 +867,7 @@ export class MomentsView {
                 description: displayDescription,
                 mediaType,
                 usePersonalReference,
+                useUserReference,
                 generatedImageUrl: imageUrl,
                 imageModel: String(result?.model || '').trim(),
                 imageProvider: String(result?.provider || '').trim(),
@@ -884,6 +888,7 @@ export class MomentsView {
                 description: displayDescription,
                 mediaType,
                 usePersonalReference,
+                useUserReference,
                 generatedImageUrl: '',
                 imageProvider: resolvedImageProvider
             });
@@ -1024,6 +1029,22 @@ export class MomentsView {
 
     _buildMomentImagePromptWithContactTags(moment = null, index = 0, promptText = '') {
         const basePrompt = String(promptText || '').trim();
+        const parsed = this._parseMomentImageItem(Array.isArray(moment?.images) ? moment.images[index] : '');
+        const state = this._getMomentImageState(moment, index);
+        const useUserReference = parsed.useUserReference === true
+            || state?.useUserReference === true
+            || String(state?.mediaType || '').trim() === '用户照片';
+        if (useUserReference) {
+            const userInfo = this.app?.wechatData?.getUserInfo?.() || {};
+            const userTags = String(userInfo?.naiPromptTags || userInfo?.imageTags || '')
+                .split(/[,，\n]+/)
+                .map(tag => tag.trim())
+                .filter(Boolean)
+                .join(', ');
+            if (!userTags) return basePrompt;
+            if (!basePrompt) return userTags;
+            return `${userTags}, ${basePrompt}`;
+        }
         const contact = this._resolveMomentPersonalReferenceContact(moment, index);
         const contactTags = String(contact?.naiPromptTags || contact?.imageTags || '')
             .split(',')
@@ -1654,6 +1675,13 @@ ${replyTo ? `- 回复对象：${replyTo}` : ''}
                 return name && tags ? `${name}：${tags}` : '';
             })
             .filter(Boolean);
+        const userInfo = this.app?.wechatData?.getUserInfo?.() || {};
+        const userTags = String(userInfo?.naiPromptTags || userInfo?.imageTags || '')
+            .split(/[,，\n]+/)
+            .map(tag => tag.trim())
+            .filter(Boolean)
+            .join(', ');
+        if (userTags) rows.unshift(`{{user}}：${userTags}`);
         return rows.length > 0 ? rows.join('\n') : '暂无';
     }
 
@@ -1738,8 +1766,8 @@ ${contactsInfo}
 4. 时间要在当前剧情时间之前（几分钟到几小时前）
 5. 朋友圈内容要反映角色的日常生活、情感状态或与剧情相关的事件
 6. 要参考最近的剧情对话，体现角色当前的状态
-7. 如果朋友圈需要配图，images 数组只能写 [图片]（中文图片描述）（English NovelAI tags） 或 [个人图片]（中文图片描述）（English NovelAI tags）。
-8. [个人图片] 只用于画面包含发布者本人脸、自拍、全身照、试衣照、生活照等自身形象；风景、食物、宠物、截图、物品、别人或无人物画面必须用 [图片]。
+7. 如果朋友圈需要配图，images 数组只能写 [图片]（中文图片描述）（English NovelAI tags）、[个人图片]（中文图片描述）（English NovelAI tags）或 [用户照片]（中文图片描述）（English NovelAI tags）。
+8. [个人图片] 只用于画面包含发布者本人脸、自拍、全身照、试衣照、生活照等自身形象；[用户照片] 只用于画面包含{{user}}本人，标签名不要写用户姓名；风景、食物、宠物、截图、物品、别人或无人物画面必须用 [图片]。
 9. 第一个括号必须写中文图片描述，供朋友圈卡片背面展示；第二个括号只能写英文逗号分隔的 NAI 生图 tag，不要写中文、解释或完整句子，专门供生图使用。
 
 输出格式（只返回JSON）：

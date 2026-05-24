@@ -74,8 +74,20 @@ export class PromptManager {
                 if (parsed.wechat?.online?.content && !String(parsed.wechat.online.content).includes('[内心]（未说出口的一句话内容）')) {
                     parsed.wechat.online.content = this._appendWechatOnlineInnerThoughtRule(parsed.wechat.online.content);
                 }
+                if (parsed.wechat?.online?.content && !String(parsed.wechat.online.content).includes('[用户照片]')) {
+                    parsed.wechat.online.content = defaults.wechat.online.content;
+                }
                 if (parsed.wechat?.groupChat?.content && !String(parsed.wechat.groupChat.content).includes('好友名后带“（已拉黑）”')) {
                     parsed.wechat.groupChat.content = this._appendWechatGroupBlockedRule(parsed.wechat.groupChat.content);
+                }
+                if (parsed.wechat?.groupChat?.content && !String(parsed.wechat.groupChat.content).includes('[用户照片]')) {
+                    parsed.wechat.groupChat.content = defaults.wechat.groupChat.content;
+                }
+                if (parsed.wechat?.offline?.content && !String(parsed.wechat.offline.content).includes('[用户照片]')) {
+                    parsed.wechat.offline.content = defaults.wechat.offline.content;
+                }
+                if (parsed.wechat?.moments?.content && !String(parsed.wechat.moments.content).includes('[用户照片]')) {
+                    parsed.wechat.moments.content = defaults.wechat.moments.content;
                 }
                 const obsoleteMomentsLine = '本提示词只负责约束朋友圈动态的风格、互动和输出质量；角色卡、用户信息、世界书和最近剧情会由系统自动注入，不要在这里重复填写这些背景变量。';
                 if (parsed.wechat?.moments?.content && String(parsed.wechat.moments.content).includes(obsoleteMomentsLine)) {
@@ -93,6 +105,15 @@ export class PromptManager {
                         || diaryPromptContent.includes('[图片]（English NAI tags）'));
                 if (parsed.diary?.generate && (isOldDefaultDiaryPrompt || isPreviousBuiltInDiaryPrompt)) {
                     parsed.diary.generate.content = defaults.diary.generate.content;
+                }
+                if (parsed.diary?.generate?.content && !String(parsed.diary.generate.content).includes('[用户照片]')) {
+                    parsed.diary.generate.content = defaults.diary.generate.content;
+                }
+                if (parsed.weibo?.generate?.content && !String(parsed.weibo.generate.content).includes('[用户照片]')) {
+                    parsed.weibo.generate.content = defaults.weibo.generate.content;
+                }
+                if (parsed.weibo?.hotSearch?.content && !String(parsed.weibo.hotSearch.content).includes('[用户照片]')) {
+                    parsed.weibo.hotSearch.content = defaults.weibo.hotSearch.content;
                 }
                 Object.keys(defaults).forEach(app => {
                     const appConfig = defaults[app];
@@ -344,6 +365,7 @@ date:{{STORY_DATE}}
 [HH:MM] 直接发送emoji（如 ）
 [HH:MM] [图片]（中文图片描述）（English NovelAI tags）
 [HH:MM] [个人图片]（中文图片描述）（English NovelAI tags）
+[HH:MM] [用户照片]（中文图片描述）（English NovelAI tags）
 [HH:MM] [表情包]（表情包中文名称）
 [HH:MM] [定位]（地点位置）
 [HH:MM] [拨打微信视频]
@@ -353,7 +375,7 @@ date:{{STORY_DATE}}
 
 【当前可用个人图片固定tag】
 {{personalImageTagInfo}}
-图片描述规则：如果发送的是风景、食物、宠物、截图、物品、别人或无人物画面，使用 [图片]（中文图片描述）（English NovelAI tags）；如果图片画面包含发送者自己的脸、自拍、全身照、试衣照、生活照等自身形象，使用 [个人图片]（中文图片描述）（English NovelAI tags），系统只会在这个标签下调用该好友的个人形象参考图。第一个括号必须写中文图片描述，供聊天界面展示；第二个括号必须只写英文逗号分隔 NAI 生图 tag，供生图使用。若上方列出了该好友的专属生图Tag/固定tag，系统会在实际生图时自动拼接这些固定外观tag；[个人图片] 第二个括号内不要重复固定外貌、发色、眼睛、体型等tag，只补充本次照片的动作、表情、服装变化、构图、场景、光线、镜头等动态画面tag。
+图片描述规则：如果发送的是风景、食物、宠物、截图、物品、别人或无人物画面，使用 [图片]（中文图片描述）（English NovelAI tags）；如果图片画面包含发送者自己的脸、自拍、全身照、试衣照、生活照等自身形象，使用 [个人图片]（中文图片描述）（English NovelAI tags）；如果图片画面包含{{user}}本人，必须使用 [用户照片]（中文图片描述）（English NovelAI tags），不要在标签名里写{{user}}姓名。第一个括号必须写中文图片描述，供聊天界面展示；第二个括号必须只写英文逗号分隔 NAI 生图 tag，供生图使用。若上方列出了对应对象的专属生图Tag/固定tag，系统会在实际生图时自动拼接这些固定外观tag；[个人图片]/[用户照片] 第二个括号内不要重复固定外貌、发色、眼睛、体型等tag，只补充本次照片的动作、表情、服装变化、构图、场景、光线、镜头等动态画面tag。
 
 【特殊微信代发格式规则】
 1.触发条件：当且仅当剧情中出现“其他角色拿走或使用user的手机，以user的身份代替user给其他人发送微信消息”的情节时，才可使用以下特定格式。
@@ -443,6 +465,7 @@ date:{{STORY_DATE}}
 [HH:MM] 直接发送emoji（如 ）
 [HH:MM] [图片]（中文图片描述）（English NovelAI tags）
 [HH:MM] [个人图片]（中文图片描述）（English NovelAI tags）
+[HH:MM] [用户照片]（中文图片描述）（English NovelAI tags）
 [HH:MM] [表情包]（表情包中文名称）
 [HH:MM] [定位]（地点位置）
 [HH:MM] [拨打微信视频]
@@ -452,7 +475,7 @@ date:{{STORY_DATE}}
 
 【当前可用个人图片固定tag】
 {{personalImageTagInfo}}
-图片描述规则：如果发送的是风景、食物、宠物、截图、物品、别人或无人物画面，使用 [图片]（中文图片描述）（English NovelAI tags）；如果图片画面包含发送者自己的脸、自拍、全身照、试衣照、生活照等自身形象，使用 [个人图片]（中文图片描述）（English NovelAI tags），系统只会在这个标签下调用该好友的个人形象参考图。第一个括号必须写中文图片描述，供聊天界面展示；第二个括号必须只写英文逗号分隔 NAI 生图 tag，供生图使用。若上方列出了该好友的专属生图Tag/固定tag，系统会在实际生图时自动拼接这些固定外观tag；[个人图片] 第二个括号内不要重复固定外貌、发色、眼睛、体型等tag，只补充本次照片的动作、表情、服装变化、构图、场景、光线、镜头等动态画面tag。
+图片描述规则：如果发送的是风景、食物、宠物、截图、物品、别人或无人物画面，使用 [图片]（中文图片描述）（English NovelAI tags）；如果图片画面包含发送者自己的脸、自拍、全身照、试衣照、生活照等自身形象，使用 [个人图片]（中文图片描述）（English NovelAI tags）；如果图片画面包含{{user}}本人，必须使用 [用户照片]（中文图片描述）（English NovelAI tags），不要在标签名里写{{user}}姓名。第一个括号必须写中文图片描述，供聊天界面展示；第二个括号必须只写英文逗号分隔 NAI 生图 tag，供生图使用。若上方列出了对应对象的专属生图Tag/固定tag，系统会在实际生图时自动拼接这些固定外观tag；[个人图片]/[用户照片] 第二个括号内不要重复固定外貌、发色、眼睛、体型等tag，只补充本次照片的动作、表情、服装变化、构图、场景、光线、镜头等动态画面tag。
 
 【微信趣味代发格式规则】
 1. 触发条件：当且仅当剧情中出现“其他角色拿走且使用user的手机，以user的身份代替user给其他人发送微信消息”的情节时，也可使用以下<wechat>格式：
@@ -557,6 +580,7 @@ getDefaultPrompts() {
 {{chatName}}: [语音条]（语音转化出的文字内容）
 {{chatName}}: [图片]（中文图片描述）（English NovelAI tags）
 {{chatName}}: [个人图片]（中文图片描述）（English NovelAI tags）
+{{chatName}}: [用户照片]（中文图片描述）（English NovelAI tags）
 {{chatName}}: [表情包]（表情包中文名称）
 {{chatName}}: 「引用 {{user}}: 今晚吃什么」火锅怎么样？
 {{chatName}}: 没事，我很快就到。[内心]（其实我已经在门外站了很久。）
@@ -581,7 +605,7 @@ getDefaultPrompts() {
 发送者: 「引用 原发送者: 被引用内容」你的回复
 例如：{{chatName}}: 「引用 {{user}}: 今晚吃什么」火锅怎么样？
 💡 当角色主动给{{user}}打微信语音时，先输出：发送者: [拨打微信语音]。如果你要补充“接通后会说的话”，就在后续继续按普通消息行输出（系统会在接通界面展示；若对方拒绝则不会展示这些后续行）。
-💡 图片描述规则：当你要发送图片时，必须使用 [图片]（中文图片描述）（English NovelAI tags） 或 [个人图片]（中文图片描述）（English NovelAI tags） 格式。第一个括号必须写中文图片描述，供聊天界面展示；第二个括号只能写英文逗号分隔的 NAI 生图 tag，不要写中文、解释或完整句子，专门供生图使用；必须描述可见画面细节，如 subject count, gender, adult character, anime illustration, pose, expression, clothing, setting, camera angle, lighting。若图片画面包含当前微信好友自己的脸、自拍、全身照、试衣照、生活照等自身形象，必须使用 [个人图片]，系统会在 NovelAI 生图时附带该好友的个人形象参考图；若【当前好友个人图片固定tag】列出了当前好友的专属生图Tag/固定tag，系统会在实际生图时自动拼接这些固定外观tag，[个人图片] 第二个括号内不要重复固定外貌、发色、眼睛、体型等tag，只补充本次照片的动作、表情、服装变化、构图、场景、光线、镜头等动态画面tag；若图片不包含发送者自身形象，例如风景、食物、宠物、截图、物品、别人或无人物画面，必须使用 [图片]，即使好友设置了个人形象也不会使用参考图。若内容涉及人物或拟人对象，必须用 1girl/1boy/2girls/2boys、female focus/male focus 等英文 tag 明确主体。
+💡 图片描述规则：当你要发送图片时，必须使用 [图片]（中文图片描述）（English NovelAI tags）、[个人图片]（中文图片描述）（English NovelAI tags）或 [用户照片]（中文图片描述）（English NovelAI tags）格式。第一个括号必须写中文图片描述，供聊天界面展示；第二个括号只能写英文逗号分隔的 NAI 生图 tag，不要写中文、解释或完整句子，专门供生图使用；必须描述可见画面细节，如 subject count, gender, adult character, anime illustration, pose, expression, clothing, setting, camera angle, lighting。若图片画面包含当前微信好友自己的脸、自拍、全身照、试衣照、生活照等自身形象，必须使用 [个人图片]；若图片画面包含{{user}}本人，必须使用 [用户照片]，不要写成“[{{user}}照片]”或带用户姓名的标签。若【当前好友个人图片固定tag】列出了专属生图Tag/固定tag，系统会在实际生图时自动拼接固定外观tag，[个人图片]/[用户照片] 第二个括号内不要重复固定外貌、发色、眼睛、体型等tag，只补充本次照片的动作、表情、服装变化、构图、场景、光线、镜头等动态画面tag；若图片不包含发送者或{{user}}自身形象，例如风景、食物、宠物、截图、物品、别人或无人物画面，必须使用 [图片]。若内容涉及人物或拟人对象，必须用 1girl/1boy/2girls/2boys、female focus/male focus 等英文 tag 明确主体。
 💡 通话社交反应规则：如果{{user}}刚才拨打语音/视频后很快挂断、接通后十几秒内没有说话、或通话记录没有有效对话，必须把它当成社交事件自然承接。根据关系表现担心、疑惑、试探、生气、委屈、以为手滑/信号不好/在赌气，必要时可回拨或发微信追问，例如“刚才怎么打了又不说话？”、“你是不是不高兴了？”。
 
 ❤️ 蜜语APP联动：
@@ -703,10 +727,10 @@ from:林晓雨: 在呢
 【联系人个人图片固定tag】
 {{personalImageTagInfo}}
 
-- 如果需要配图，images 数组只能写 [图片]（中文图片描述）（English NovelAI tags） 或 [个人图片]（中文图片描述）（English NovelAI tags）。
-- [图片] 用于风景、食物、宠物、截图、物品、别人或无人物画面；[个人图片] 用于包含发布者本人脸、自拍、全身照、试衣照、生活照等自身形象的画面。
-- 第一个括号必须写中文图片描述，供朋友圈卡片背面展示；第二个括号只能写英文逗号分隔 NAI 生图 tag，不要写中文、解释或完整句子，专门供生图使用；如果上方列出了该联系人的专属生图Tag/固定tag，系统会在实际生图时自动拼接这些固定外观tag，生成该联系人 [个人图片] 时不要重复固定外貌、发色、眼睛、体型等tag，只写本次动态需要的动作、表情、服装变化、构图、场景、光线、镜头等画面tag。
-- 例如：["[图片]（傍晚街口的落日把路面照成金色）（sunset sky, city street, warm light, phone photo, anime illustration）", "[个人图片]（她在卧室镜前随手拍了一张自拍）（1girl, selfie, casual outfit, bedroom mirror, phone photo, anime illustration）"]`,
+- 如果需要配图，images 数组只能写 [图片]（中文图片描述）（English NovelAI tags）、[个人图片]（中文图片描述）（English NovelAI tags）或 [用户照片]（中文图片描述）（English NovelAI tags）。
+- [图片] 用于风景、食物、宠物、截图、物品、别人或无人物画面；[个人图片] 用于包含发布者本人脸、自拍、全身照、试衣照、生活照等自身形象的画面；[用户照片] 用于包含{{user}}本人被拍到的画面，标签名不要写用户姓名。
+- 第一个括号必须写中文图片描述，供朋友圈卡片背面展示；第二个括号只能写英文逗号分隔 NAI 生图 tag，不要写中文、解释或完整句子，专门供生图使用；如果上方列出了对应对象的专属生图Tag/固定tag，系统会在实际生图时自动拼接这些固定外观tag，生成 [个人图片]/[用户照片] 时不要重复固定外貌、发色、眼睛、体型等tag，只写本次动态需要的动作、表情、服装变化、构图、场景、光线、镜头等画面tag。
+- 例如：["[图片]（傍晚街口的落日把路面照成金色）（sunset sky, city street, warm light, phone photo, anime illustration）", "[个人图片]（她在卧室镜前随手拍了一张自拍）（1girl, selfie, casual outfit, bedroom mirror, phone photo, anime illustration）", "[用户照片]（她拍到用户站在门口回头）（1boy, looking back, doorway, casual outfit, phone photo, anime illustration）"]`,
         order: 3
     },
 
@@ -966,6 +990,7 @@ from:林晓雨: 在呢
 群友D: [语音条]（语音转化出的文字内容）
 群友B: [图片]（中文图片描述）（English NovelAI tags）
 群友B: [个人图片]（中文图片描述）（English NovelAI tags）
+群友B: [用户照片]（中文图片描述）（English NovelAI tags）
 群友B: 直接发送emoji（如 😀😭😅）
 群友B: [表情包](表情包中文名称) （直接发送表情包）
 群友A: [拨打微信群语音]
@@ -979,7 +1004,7 @@ from:林晓雨: 在呢
 【当前群成员个人图片固定tag】
 {{personalImageTagInfo}}
 
-💡 图片描述规则：当你要发送图片时，必须使用 [图片]（中文图片描述）（English NovelAI tags） 或 [个人图片]（中文图片描述）（English NovelAI tags） 格式。第一个括号必须写中文图片描述，供聊天界面展示；第二个括号只能写英文逗号分隔的 NAI 生图 tag，不要写中文、解释或完整句子，专门供生图使用；必须描述可见画面细节，如 subject count, gender, adult character, anime illustration, pose, expression, clothing, setting, camera angle, lighting。若图片画面包含发送该图片的群成员本人形象，必须使用 [个人图片]，系统会按该发送者的个人形象参考图生成；若【当前群成员个人图片固定tag】列出了该群成员的专属生图Tag/固定tag，系统会在实际生图时自动拼接这些固定外观tag，[个人图片] 第二个括号内不要重复固定外貌、发色、眼睛、体型等tag，只补充本次照片的动作、表情、服装变化、构图、场景、光线、镜头等动态画面tag；若图片不包含发送者自身形象，例如风景、食物、宠物、截图、物品、别人或无人物画面，必须使用 [图片]，即使该成员设置了个人形象也不会使用参考图。若内容涉及人物或拟人对象，必须用 1girl/1boy/2girls/2boys、female focus/male focus 等英文 tag 明确主体。
+💡 图片描述规则：当你要发送图片时，必须使用 [图片]（中文图片描述）（English NovelAI tags）、[个人图片]（中文图片描述）（English NovelAI tags）或 [用户照片]（中文图片描述）（English NovelAI tags）格式。第一个括号必须写中文图片描述，供聊天界面展示；第二个括号只能写英文逗号分隔的 NAI 生图 tag，不要写中文、解释或完整句子，专门供生图使用；必须描述可见画面细节，如 subject count, gender, adult character, anime illustration, pose, expression, clothing, setting, camera angle, lighting。若图片画面包含发送该图片的群成员本人形象，必须使用 [个人图片]；若图片画面包含{{user}}本人，必须使用 [用户照片]，不要写成带用户姓名的标签。若【当前群成员个人图片固定tag】列出了专属生图Tag/固定tag，系统会在实际生图时自动拼接这些固定外观tag，[个人图片]/[用户照片] 第二个括号内不要重复固定外貌、发色、眼睛、体型等tag，只补充本次照片的动作、表情、服装变化、构图、场景、光线、镜头等动态画面tag；若图片不包含发送者或{{user}}自身形象，例如风景、食物、宠物、截图、物品、别人或无人物画面，必须使用 [图片]。若内容涉及人物或拟人对象，必须用 1girl/1boy/2girls/2boys、female focus/male focus 等英文 tag 明确主体。
 
 💬 引用消息格式（严禁引用后的内容留空）：
 群友B: 「引用 群友A: 被引用内容」回复内容
@@ -1084,7 +1109,8 @@ from:林晓雨: 在呢
 7. 照片不是正式摄影，而是手机里私藏的生活碎片；必须让画面说明主角为什么拍下它，例如为了记住某个瞬间、藏起某种心情、确认某个人留下过的痕迹。照片标签格式只能使用以下两种。第一个括号必须写中文照片说明，说明写日记的角色为什么拍下这张照片、照片承载了什么隐秘心情；第二个括号必须写英文生图 tags，供生图使用，不要中文：
    [图片]（中文照片说明/拍摄原因）（English NAI tags）
    [个人图片]（中文照片说明/拍摄原因）（English NAI tags）
-   [图片]用于风景、物品、房间、天空、食物、他人（{{user}}/npc）或无人物画面；[个人图片]仅包含{{char}}本人脸、自拍、身体局部、全身照、生活照等自身形象的画面。若下方【角色形象固定tag】列出了专属生图Tag/固定tag，系统会在实际生图时自动拼接这些固定外观tag；[个人图片] 第二个括号里不要重复固定外貌、发色、眼睛、体型等tag，只写本次照片的动作、表情、服装变化、构图、场景、光线、镜头等动态画面tag。第二个括号的英文 tags 中必须包含 phone photo / casual snapshot / private diary photo 等手机拍摄感，并用英文视觉 tags 配合中文说明。
+   [用户照片]（中文照片说明/拍摄原因）（English NAI tags）
+   [图片]用于风景、物品、房间、天空、食物、npc或无人物画面；[个人图片]仅包含{{char}}本人脸、自拍、身体局部、全身照、生活照等自身形象的画面；[用户照片]用于照片画面包含{{user}}本人，标签名固定写[用户照片]，不要写用户角色姓名。若下方【角色形象固定tag】列出了专属生图Tag/固定tag，系统会在实际生图时自动拼接这些固定外观tag；[个人图片]/[用户照片] 第二个括号里不要重复固定外貌、发色、眼睛、体型等tag，只写本次照片的动作、表情、服装变化、构图、场景、光线、镜头等动态画面tag。第二个括号的英文 tags 中必须包含 phone photo / casual snapshot / private diary photo 等手机拍摄感，并用英文视觉 tags 配合中文说明。
 
 【角色形象固定tag】
 {{personalImageTagInfo}}
@@ -1098,6 +1124,7 @@ from:林晓雨: 在呢
 第一段正文。
 [图片]（中文照片说明/拍摄原因）（English NAI tags）
 [个人图片]（中文照片说明/拍摄原因）（English NAI tags）
+[用户照片]（中文照片说明/拍摄原因）（English NAI tags）
 图片之后继续写正文，补足情绪转折和留白。
 落款：姓名
 
@@ -1110,6 +1137,7 @@ from:林晓雨: 在呢
 第一段正文。
 [图片]（中文照片说明/拍摄原因）（English NAI tags）
 [个人图片]（中文照片说明/拍摄原因）（English NAI tags）
+[用户照片]（中文照片说明/拍摄原因）（English NAI tags）
 图片之后继续写正文，补足情绪转折和留白。
 落款：姓名
 
@@ -1176,7 +1204,7 @@ from:林晓雨: 在呢
 平台真实感：
 必须使用真实的微博网感语言（如：吃瓜、塌房、抱走不约、kswl、绝绝子、蹲一个回应、纯路人等），并带有符合情境的 Emoji表情，另需体现地域IP属性。
 微博的内容不得仅围绕剧情和历史记录，可推送更多有趣好玩的社交活动和好玩的地点及八卦，内容可以是与剧情相关的衍生话题，也可以是一些个人博主的日常动态，但必须符合微博平台的内容生态和用户兴趣。
-配图占位：格式为[图片]（中文图片描述）（English NovelAI tags），第一个括号写中文图片描述供微博卡片背面展示，第二个括号只能写英文逗号分隔 NAI 生图 tag，不要写中文、解释或完整句子；例如：[图片]（两个女生穿着便装并肩走在街边，背景是虚化的城市灯光）（2girls, adult character, street snapshot, casual outfits, walking side by side, blurred city background, anime illustration）。
+配图占位：格式为[图片]（中文图片描述）（English NovelAI tags）或[用户照片]（中文图片描述）（English NovelAI tags），第一个括号写中文图片描述供微博卡片背面展示，第二个括号只能写英文逗号分隔 NAI 生图 tag，不要写中文、解释或完整句子；当公开图片画面里确实包含{{user}}本人时使用[用户照片]，标签名不要写用户姓名；例如：[图片]（两个女生穿着便装并肩走在街边，背景是虚化的城市灯光）（2girls, adult character, street snapshot, casual outfits, walking side by side, blurred city background, anime illustration）。
 【微博账号与内容分布】
 官方微博： 命名格式如"XX工作室"、"XX游戏官方微博"、"各类新闻"。语气需官方、冷硬或带有公关话术。
 各大超话（明星/游戏/CP/社会等）：
@@ -1241,7 +1269,7 @@ ${this._getWeiboPublicBoundaryRule()}
 平台真实感：
 必须使用真实的微博网感语言（如：吃瓜、塌房、抱走不约、kswl、绝绝子、蹲一个回应、纯路人等），并带有符合情境的 Emoji
 表情。需体现地域IP属性。
-配图占位：格式为[图片]（中文图片描述）（English NovelAI tags），第一个括号写中文图片描述供微博卡片背面展示，第二个括号只能写英文逗号分隔 NAI 生图 tag，不要写中文、解释或完整句子；例如：[图片]（两个女生穿着便装并肩走在街边，背景是虚化的城市灯光）（2girls, adult character, street snapshot, casual outfits, walking side by side, blurred city background, anime illustration）。
+配图占位：格式为[图片]（中文图片描述）（English NovelAI tags）或[用户照片]（中文图片描述）（English NovelAI tags），第一个括号写中文图片描述供微博卡片背面展示，第二个括号只能写英文逗号分隔 NAI 生图 tag，不要写中文、解释或完整句子；当公开图片画面里确实包含{{user}}本人时使用[用户照片]，标签名不要写用户姓名；例如：[图片]（两个女生穿着便装并肩走在街边，背景是虚化的城市灯光）（2girls, adult character, street snapshot, casual outfits, walking side by side, blurred city background, anime illustration）。
 【账号与内容分布】（需涵盖以下类型）
 官方微博： 命名格式如"XX工作室"、"XX游戏官方微博"。语气需官方、冷硬或带有公关话术。
 各大超话（明星/游戏/CP/社会等）：

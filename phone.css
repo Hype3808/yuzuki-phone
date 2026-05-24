@@ -1004,12 +1004,16 @@
     z-index: 1;
     min-height: 100%;
     box-sizing: border-box;
-    padding: clamp(48px, 12.5%, 68px) 6% clamp(76px, 18%, 108px);
+    --home-card-row: clamp(39px, 6.7vh, 48px);
+    --home-dashboard-gap: clamp(8px, 2.2vw, 11px);
+    padding: clamp(50px, 13%, 72px) 6% clamp(78px, 18%, 108px);
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    grid-template-rows: clamp(64px, 10vh, 78px);
-    grid-auto-rows: clamp(48px, 9.2vh, 66px);
-    gap: clamp(7px, 2.1vw, 10px);
+    grid-template-rows:
+        clamp(48px, 7.2vh, 56px)
+        repeat(7, var(--home-card-row));
+    grid-auto-rows: var(--home-card-row);
+    gap: var(--home-dashboard-gap);
     overflow-y: auto;
     scrollbar-width: none;
     touch-action: pan-y;
@@ -1019,6 +1023,7 @@
 #phone-panel-content .phone-screen .home-time-card,
 #phone-panel-content .phone-screen .home-widget-card,
 #phone-panel-content .phone-screen .home-social-stack,
+#phone-panel-content .phone-screen .home-social-card,
 #phone-panel-content .phone-screen .home-app-cluster,
 #phone-panel-content .phone-screen .home-diary-card,
 #phone-panel-content .phone-screen .home-settings-card {
@@ -1040,12 +1045,12 @@
     grid-column: 1 / -1;
     grid-row: span 1;
     height: auto;
-    min-height: clamp(64px, 10vh, 78px);
+    min-height: clamp(44px, 6.8vh, 52px);
     display: flex;
     flex-direction: row;
     align-items: center;
     justify-content: center;
-    padding: clamp(8px, 2.2vw, 12px) clamp(12px, 3.4vw, 18px);
+    padding: clamp(4px, 1.1vw, 6px) clamp(13px, 3.6vw, 19px);
     border: 1px solid rgba(255, 255, 255, 0.42);
     background: rgba(255, 255, 255, 0.18);
     background-size: cover;
@@ -1069,28 +1074,17 @@
 }
 
 #phone-panel-content .phone-screen .home-time-info {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
+    position: relative;
     z-index: 1;
     min-width: 0;
-    flex: 0 0 auto;
+    width: min(82%, 248px);
+    flex: 0 1 auto;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
     justify-content: center;
-    text-align: center;
-}
-
-#phone-panel-content .phone-screen .home-time-art {
-    display: none;
-}
-
-#phone-panel-content .phone-screen .home-time-card:not(.has-image) .home-time-art {
-    background: transparent;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
+    gap: clamp(8px, 2.6vw, 13px);
+    text-align: left;
 }
 
 #phone-panel-content .phone-screen .home-top-grid,
@@ -1114,8 +1108,9 @@
 }
 
 #phone-panel-content .phone-screen .home-app-cluster {
+    position: relative;
     grid-column: 1 / span 2;
-    grid-row: 2 / span 4;
+    grid-row: 2 / span 5;
     display: block;
     padding: clamp(8px, 2.4vw, 12px) clamp(7px, 2.2vw, 10px);
     min-height: 0;
@@ -1123,9 +1118,10 @@
     box-shadow:
         0 8px 24px rgba(24, 36, 54, 0.08),
         inset 0 1px 0 rgba(255, 255, 255, 0.52);
+    top: clamp(16px, 2.4vh, 20px);
     transform: none;
-    width: 86%;
-    height: 92%;
+    width: 96%;
+    height: calc(100% + clamp(8px, 1.4vh, 12px));
     align-self: center;
     justify-self: center;
     overflow: hidden;
@@ -1140,7 +1136,7 @@
     grid-auto-rows: calc((100% - (clamp(5px, 1.45vh, 9px) * 2)) / 3);
     align-items: center;
     justify-items: center;
-    gap: clamp(5px, 1.45vh, 9px) clamp(7px, 2.2vw, 10px);
+    gap: clamp(6px, 1.4vh, 9px) clamp(7px, 2.2vw, 10px);
     overflow-y: auto;
     overflow-x: hidden;
     scrollbar-width: none;
@@ -1156,32 +1152,41 @@
 }
 
 #phone-panel-content .phone-screen .home-social-stack {
-    grid-column: 3 / span 2;
-    grid-row: 2 / span 4;
-    display: grid;
-    grid-template-columns: repeat(2, max-content);
-    align-items: end;
-    justify-content: center;
-    justify-items: center;
-    gap: 8px;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    box-shadow: none;
-    overflow: visible;
-    height: 92%;
-    align-self: center;
-    transform: translateY(clamp(50px, 8vh, 66px));
+    display: none;
 }
 
+#phone-panel-content .phone-screen .home-social-card {
+    position: relative;
+    grid-column: 3 / span 2;
+    grid-row: 2 / span 3;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    align-items: center;
+    justify-content: center;
+    justify-items: center;
+    gap: clamp(7px, 1.8vh, 10px) clamp(7px, 2.2vw, 10px);
+    padding: clamp(10px, 2.7vw, 13px) clamp(9px, 2.5vw, 12px);
+    background: rgba(255, 255, 255, 0.34);
+    box-shadow:
+        0 8px 24px rgba(24, 36, 54, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.58);
+    overflow: hidden;
+    width: 96%;
+    height: calc(100% + clamp(8px, 1.4vh, 12px));
+    align-self: center;
+    justify-self: center;
+    top: clamp(16px, 2.4vh, 20px);
+    transform: none;
+}
+
+#phone-panel-content .phone-screen .home-social-app,
 #phone-panel-content .phone-screen .home-social-pill {
     min-width: 0;
-    width: 46px !important;
-    max-width: 46px !important;
-    flex: 0 0 46px !important;
-    height: clamp(118px, 18vh, 136px) !important;
+    width: auto !important;
+    max-width: none !important;
+    flex: 0 1 auto !important;
+    height: auto !important;
     min-height: 0;
     max-height: none;
     align-self: center;
@@ -1189,32 +1194,26 @@
     flex-direction: column !important;
     align-items: center !important;
     justify-content: center !important;
-    gap: 8px;
-    padding: 10px 4px;
-    border-radius: 999px !important;
-    border: 1px solid rgba(255, 255, 255, 0.58);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.34) 48%, rgba(255, 255, 255, 0.58) 100%) !important;
-    backdrop-filter: blur(24px) saturate(170%);
-    -webkit-backdrop-filter: blur(24px) saturate(170%);
-    box-shadow:
-        0 8px 24px rgba(24, 36, 54, 0.08),
-        inset 0 1px 0 rgba(255, 255, 255, 0.54);
+    gap: clamp(4px, 1vh, 6px);
+    padding: 0;
+    border-radius: 0 !important;
+    border: 0;
+    background: transparent !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
     overflow: visible !important;
 }
 
-#phone-panel-content .phone-screen .home-social-pill > * {
-    transform: none;
-}
-
 #phone-panel-content .phone-screen .home-social-icon {
-    width: 30px;
-    height: 30px;
-    border-radius: 50% !important;
+    width: clamp(31px, 9vw, 40px);
+    height: clamp(31px, 9vw, 40px);
+    border-radius: 12px !important;
     display: flex;
     align-items: center;
     justify-content: center;
     color: #fff;
-    font-size: 16px;
+    font-size: clamp(15px, 4.6vw, 19px);
     line-height: 1;
     background-size: cover;
     background-position: center;
@@ -1228,26 +1227,34 @@
 }
 
 #phone-panel-content .phone-screen .home-social-name {
-    max-width: 1.2em;
+    max-width: 100%;
     overflow: hidden;
-    text-overflow: clip;
-    white-space: normal;
-    writing-mode: vertical-rl;
-    text-orientation: upright;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    writing-mode: horizontal-tb;
+    text-orientation: mixed;
     display: flex;
     align-items: center;
     justify-content: center;
     color: var(--phone-global-text);
-    font-size: clamp(10px, 2.8vw, 11px);
+    font-size: clamp(9px, 2.55vw, 10px);
     font-weight: 400;
     line-height: 1;
-    letter-spacing: 3px;
+    letter-spacing: 0;
     text-align: center;
 }
 
 #phone-panel-content .phone-screen .home-music-card {
+    position: relative;
     grid-column: 3 / span 2;
-    grid-row: 2 / span 2;
+    grid-row: 5 / span 4;
+    display: grid !important;
+    grid-template-rows:
+        minmax(0, 2.35fr)
+        minmax(var(--home-card-row), 1fr);
+    row-gap: 0;
+    align-items: center;
+    justify-items: center;
     border: 0;
     background: transparent;
     backdrop-filter: none;
@@ -1256,9 +1263,30 @@
     padding: 0;
     align-self: center;
     justify-self: center;
-    width: 84% !important;
-    max-height: 100%;
-    gap: 3px;
+    width: 96% !important;
+    height: 100%;
+    max-height: none;
+    gap: 0;
+    overflow: hidden;
+    justify-self: center;
+    top: clamp(50px, 7vh, 60px);
+    transform: none;
+}
+
+#phone-panel-content .phone-screen .home-music-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    height: auto;
+    min-height: 0;
+    border-radius: clamp(15px, 4.8vw, 20px);
+    background: linear-gradient(180deg, rgba(255,255,255,0.58), rgba(255,255,255,0.38));
+    border: 1px solid rgba(255, 255, 255, 0.62);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.72),
+        0 6px 18px rgba(24, 36, 54, 0.12);
+    pointer-events: none;
+    z-index: 0;
 }
 
 #phone-panel-content .phone-screen .home-card-main {
@@ -1301,13 +1329,15 @@
 
 #phone-panel-content .phone-screen .home-vinyl-player {
     position: relative;
-    width: clamp(58px, 62%, 82px);
+    grid-row: 1;
+    z-index: 1;
+    width: clamp(80px, 78%, 108px);
     height: auto;
     aspect-ratio: 1;
-    margin-top: 1px;
+    margin-top: clamp(8px, 1.7vh, 12px);
     flex: 0 0 auto;
     min-height: 0;
-    max-height: 82px;
+    max-height: 108px;
     margin-bottom: 0;
 }
 
@@ -1317,8 +1347,13 @@
     aspect-ratio: 1;
     flex: 0 0 auto;
     border-radius: 50%;
-    background: radial-gradient(circle, transparent 0 24%, #111318 25% 100%);
-    box-shadow: 0 8px 16px rgba(15, 23, 42, 0.24), inset 0 0 0 2px #272b32;
+    background:
+        radial-gradient(circle at center, transparent 0 24%, #111318 25% 100%),
+        conic-gradient(from 28deg, #08090c 0deg, #242832 42deg, #0b0d11 96deg, #111318 180deg, #2a2f39 230deg, #08090c 306deg, #111318 360deg);
+    box-shadow:
+        0 6px 12px rgba(15, 23, 42, 0.22),
+        inset 0 0 0 2px rgba(255,255,255,0.06),
+        inset 0 0 0 5px rgba(0,0,0,0.22);
     position: relative;
     display: flex;
     align-items: center;
@@ -1342,8 +1377,8 @@
 }
 
 #phone-panel-content .phone-screen .home-vinyl-cover {
-    width: 40%;
-    height: 40%;
+    width: 38%;
+    height: 38%;
     border-radius: 50% !important;
     z-index: 2;
     position: relative;
@@ -1355,8 +1390,11 @@
     background-position: center;
     background-repeat: no-repeat;
     color: var(--phone-global-text);
-    box-shadow: 0 0 0 2px #0a0a0a, 0 2px 6px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,255,255,0.6);
-    font-size: clamp(14px, 4vw, 20px);
+    box-shadow:
+        0 0 0 2px #0a0a0a,
+        0 2px 6px rgba(0,0,0,0.34),
+        inset 0 1px 0 rgba(255,255,255,0.66);
+    font-size: clamp(11px, 3.2vw, 15px);
     line-height: 1;
 }
 
@@ -1373,10 +1411,10 @@
 
 #phone-panel-content .phone-screen .home-tonearm {
     position: absolute;
-    top: -7%;
-    right: -11%;
-    width: clamp(24px, 8vw, 32px);
-    height: clamp(40px, 11vw, 52px);
+    top: -8%;
+    right: -8%;
+    width: clamp(24px, 7.2vw, 31px);
+    height: clamp(39px, 10.4vw, 50px);
     z-index: 5;
     transform-origin: top right;
     transform: rotate(31deg);
@@ -1387,8 +1425,8 @@
     position: absolute;
     top: 0;
     right: 0;
-    width: 15px;
-    height: 15px;
+    width: clamp(13px, 3.8vw, 16px);
+    height: clamp(13px, 3.8vw, 16px);
     border-radius: 50%;
     background: radial-gradient(circle at 30% 30%, #fff, #aaa, #444);
     box-shadow: 0 4px 6px rgba(0,0,0,0.32);
@@ -1398,23 +1436,23 @@
 #phone-panel-content .phone-screen .home-tonearm-curve {
     position: absolute;
     top: 7px;
-    right: 7px;
+    right: 6px;
     width: 20px;
-    height: 43px;
-    border-top: 2.5px solid #dedede;
-    border-left: 2.5px solid #b4b4b4;
-    border-top-left-radius: 15px;
+    height: 40px;
+    border-top: 2.4px solid rgba(238, 242, 247, 0.95);
+    border-left: 2.4px solid rgba(170, 184, 202, 0.95);
+    border-top-left-radius: 12px;
     box-shadow: -1px 1px 2px rgba(0,0,0,0.25);
     z-index: 5;
 }
 
 #phone-panel-content .phone-screen .home-tonearm-head {
     position: absolute;
-    bottom: -12px;
+    bottom: -11px;
     left: -6px;
     width: 7px;
-    height: 16px;
-    background: linear-gradient(135deg, #4b4b4b, #111);
+    height: 15px;
+    background: linear-gradient(135deg, rgba(255,255,255,0.92), rgba(156,170,190,0.95));
     border-radius: 2px;
     transform: rotate(-15deg);
     box-shadow: 2px 4px 6px rgba(0,0,0,0.3);
@@ -1430,6 +1468,31 @@
     height: min(34px, 9.6vw, 4.3vh);
 }
 
+#phone-panel-content .phone-screen .home-music-panel {
+    width: 96%;
+    position: relative;
+    grid-row: 2;
+    z-index: 2;
+    min-height: 0;
+    height: calc(100% + clamp(8px, 1.8vh, 12px));
+    align-self: stretch;
+    margin-top: calc(clamp(8px, 1.8vh, 12px) * -1);
+    border-radius: clamp(16px, 5vw, 22px) !important;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.56), rgba(255, 255, 255, 0.32));
+    border: 1px solid rgba(255, 255, 255, 0.62);
+    box-shadow:
+        0 -8px 18px rgba(24, 36, 54, 0.08),
+        0 10px 22px rgba(24, 36, 54, 0.10),
+        inset 0 1px 0 rgba(255,255,255,0.78);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    padding: clamp(7px, 1.8vw, 9px) clamp(10px, 2.8vw, 13px);
+    box-sizing: border-box;
+    gap: clamp(4px, 0.9vh, 6px);
+}
+
 #phone-panel-content .phone-screen .home-widget-icon.custom-icon,
 #phone-panel-content .phone-screen .home-mini-icon.custom-icon,
 #phone-panel-content .phone-screen .home-diary-icon.custom-icon,
@@ -1443,20 +1506,27 @@
 #phone-panel-content .phone-screen .home-music-controls {
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: space-between;
     gap: clamp(4px, 1.1vw, 6px);
-    color: #000000 !important;
+    color: rgba(38, 50, 65, 0.78) !important;
     line-height: 1;
-    margin-top: 1px;
+    margin-top: 0;
+    width: 100%;
+    max-width: 102px;
 }
 
 #phone-panel-content .phone-screen .home-music-controls .home-music-control {
     position: relative;
-    width: clamp(7px, 2vw, 9px);
-    height: clamp(8px, 2.2vw, 10px);
+    width: clamp(17px, 4.7vw, 21px);
+    height: clamp(17px, 4.7vw, 21px);
     flex: 0 0 auto;
     color: inherit !important;
-    background: transparent !important;
+    background: linear-gradient(180deg, rgba(255,255,255,0.86), rgba(255,255,255,0.46)) !important;
+    border: 1px solid rgba(255, 255, 255, 0.68);
+    border-radius: 50%;
+    box-shadow:
+        0 5px 12px rgba(24, 36, 54, 0.14),
+        inset 0 1px 0 rgba(255,255,255,0.88);
     display: inline-block;
 }
 
@@ -1467,19 +1537,21 @@
     top: 50%;
     width: 0;
     height: 0;
-    border-top: clamp(3px, 0.9vw, 4px) solid transparent;
-    border-bottom: clamp(3px, 0.9vw, 4px) solid transparent;
+    border-top: clamp(3px, 0.85vw, 4px) solid transparent;
+    border-bottom: clamp(3px, 0.85vw, 4px) solid transparent;
     transform: translateY(-50%);
 }
 
 #phone-panel-content .phone-screen .home-music-control-prev::before {
-    left: 1px;
-    border-right: clamp(4px, 1.15vw, 5.5px) solid currentColor;
+    left: 50%;
+    border-right: clamp(4px, 1.1vw, 5.5px) solid currentColor;
+    transform: translate(-35%, -50%);
 }
 
 #phone-panel-content .phone-screen .home-music-control-next::before {
-    right: 1px;
-    border-left: clamp(4px, 1.15vw, 5.5px) solid currentColor;
+    right: 50%;
+    border-left: clamp(4px, 1.1vw, 5.5px) solid currentColor;
+    transform: translate(35%, -50%);
 }
 
 #phone-panel-content .phone-screen .home-music-control-prev::after,
@@ -1487,28 +1559,32 @@
     content: '';
     position: absolute;
     top: 50%;
-    width: 0.8px;
-    height: clamp(7px, 1.9vw, 9px);
+    width: 1px;
+    height: clamp(6px, 1.65vw, 8px);
     background: currentColor;
     border-radius: 1px;
     transform: translateY(-50%);
 }
 
 #phone-panel-content .phone-screen .home-music-control-prev::after {
-    left: 0;
+    left: calc(50% - 6px);
 }
 
 #phone-panel-content .phone-screen .home-music-control-next::after {
-    right: 0;
+    right: calc(50% - 6px);
 }
 
 #phone-panel-content .phone-screen .home-music-controls .home-music-control.home-music-control-pause {
-    width: clamp(8px, 2.2vw, 10px);
-    height: clamp(7px, 1.9vw, 9px);
+    width: clamp(23px, 6.1vw, 28px);
+    height: clamp(23px, 6.1vw, 28px);
     background:
-        linear-gradient(currentColor, currentColor) left 18% center / 22% 100% no-repeat,
-        linear-gradient(currentColor, currentColor) right 18% center / 22% 100% no-repeat !important;
-    border-radius: 1px;
+        linear-gradient(currentColor, currentColor) left 38% center / 9% 42% no-repeat,
+        linear-gradient(currentColor, currentColor) right 38% center / 9% 42% no-repeat,
+        linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.56)) !important;
+    border-radius: 50%;
+    box-shadow:
+        0 7px 16px rgba(24, 36, 54, 0.16),
+        inset 0 1px 0 rgba(255,255,255,0.9);
 }
 
 #phone-panel-content .phone-screen .home-quick-card {
@@ -1671,32 +1747,47 @@
 }
 
 #phone-panel-content .phone-screen .home-settings-card {
-    grid-column: 3 / span 2;
-    grid-row: auto / span 1;
+    position: relative;
+    grid-column: 1 / span 2;
+    grid-row: 6 / span 3;
     min-height: 0;
-    height: clamp(40px, 6.7vh, 48px);
-    padding: 0 clamp(24px, 6.8vw, 32px) 0 clamp(9px, 2.7vw, 12px);
+    height: auto;
+    aspect-ratio: 1 / 1.04;
+    padding: clamp(10px, 2.7vw, 13px);
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: center;
     cursor: pointer;
     align-self: center;
-    background: rgba(255, 255, 255, 0.58);
-    transform: translateY(clamp(10px, 2.1vh, 16px));
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(255, 255, 255, 0.46));
+    border: 1px solid rgba(255, 255, 255, 0.66);
+    box-shadow:
+        0 8px 24px rgba(24, 36, 54, 0.14),
+        inset 0 1px 0 rgba(255, 255, 255, 0.76);
+    backdrop-filter: blur(24px) saturate(170%);
+    -webkit-backdrop-filter: blur(24px) saturate(170%);
+    top: clamp(70px, 8.7vh, 80px);
+    transform: none;
+    width: clamp(96px, 80%, 124px) !important;
+    justify-self: center;
+    text-align: center;
 }
 
 #phone-panel-content .phone-screen .home-settings-left {
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: min(7px, 2vw);
-    flex: 1 1 auto;
+    flex-direction: column;
+    justify-content: center;
+    gap: min(6px, 1.6vh);
+    flex: 0 1 auto;
+    width: 100%;
 }
 
 #phone-panel-content .phone-screen .home-settings-icon {
-    width: clamp(24px, 7.2vw, 30px);
-    height: clamp(24px, 7.2vw, 30px);
-    font-size: clamp(15px, 4.4vw, 18px);
+    width: clamp(34px, 9.4vw, 42px);
+    height: clamp(34px, 9.4vw, 42px);
+    font-size: clamp(19px, 5vw, 22px);
     background-color: transparent;
     box-shadow: none;
 }
@@ -1713,6 +1804,7 @@
 }
 
 #phone-panel-content .phone-screen .home-settings-chevron {
+    display: none !important;
     width: clamp(10px, 3vw, 14px);
     height: auto;
     border-radius: 0;
@@ -1771,6 +1863,35 @@
 
 #phone-panel-content .phone-screen .home-layout-cards .home-time-card {
     text-shadow: none;
+}
+
+#phone-panel-content .phone-screen .home-layout-cards .home-time-card .time-large {
+    flex: 0 0 auto;
+    font-size: clamp(28px, 8.6vw, 38px);
+    line-height: 0.94;
+    margin-bottom: 0;
+    font-weight: 230;
+    color: rgba(38, 50, 65, 0.92);
+}
+
+#phone-panel-content .phone-screen .home-layout-cards .home-time-date {
+    flex: 0 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    color: rgba(38, 50, 65, 0.82);
+    white-space: nowrap;
+}
+
+#phone-panel-content .phone-screen .home-layout-cards .home-time-card .date,
+#phone-panel-content .phone-screen .home-layout-cards .home-time-weekday {
+    font-size: clamp(7.5px, 2.05vw, 9px);
+    line-height: 1.08;
+    margin-top: 0;
+    font-weight: 500;
+    color: inherit;
 }
 
 #phone-panel-content .phone-screen .home-layout-icons .home-time .time-large {
@@ -1936,6 +2057,19 @@
     width: auto !important;
 }
 
+#phone-panel-content .phone-screen .home-dashboard .home-widget-card.home-music-card {
+    display: grid !important;
+    grid-template-rows:
+        minmax(0, 2.35fr)
+        minmax(var(--home-card-row), 1fr) !important;
+    row-gap: 0 !important;
+    align-items: center !important;
+    justify-items: center !important;
+    justify-content: stretch !important;
+    width: 96% !important;
+    height: 100% !important;
+}
+
 #phone-panel-content .phone-screen .home-dashboard .home-diary-card {
     display: flex !important;
     flex-direction: column !important;
@@ -1954,23 +2088,23 @@
 
 #phone-panel-content .phone-screen .home-dashboard .home-settings-card {
     display: flex !important;
-    flex-direction: row !important;
+    flex-direction: column !important;
     align-items: center !important;
-    justify-content: space-between !important;
-    width: auto !important;
+    justify-content: center !important;
+    width: clamp(96px, 80%, 124px) !important;
 }
 
 #phone-panel-content .phone-screen .home-screen .home-dashboard .home-settings-card {
-    flex-direction: row !important;
+    flex-direction: column !important;
     align-items: center !important;
-    justify-content: space-between !important;
-    text-align: left !important;
+    justify-content: center !important;
+    text-align: center !important;
 }
 
 #phone-panel-content .phone-screen .home-screen .home-dashboard .home-settings-left {
     flex: 1 1 auto !important;
-    justify-content: flex-start !important;
-    text-align: left !important;
+    justify-content: center !important;
+    text-align: center !important;
 }
 
 #phone-panel-content .phone-screen .home-screen .home-dashboard .home-settings-chevron {
@@ -1993,6 +2127,33 @@
     border-radius: clamp(18px, 6vw, 24px) !important;
 }
 
+#phone-panel-content .phone-screen .home-dashboard .app-icon.home-settings-card {
+    width: clamp(96px, 80%, 124px) !important;
+}
+
+#phone-panel-content .phone-screen .home-dashboard .app-icon.home-settings-card,
+#phone-panel-content .phone-screen .home-layout-cards .home-settings-card {
+    background: rgba(255, 255, 255, 0.34) !important;
+    border: 1px solid rgba(255, 255, 255, 0.58) !important;
+    box-shadow:
+        0 8px 24px rgba(24, 36, 54, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.58) !important;
+    backdrop-filter: blur(26px) saturate(180%) !important;
+    -webkit-backdrop-filter: blur(26px) saturate(180%) !important;
+}
+
+#phone-panel-content .phone-screen .home-layout-cards .home-music-card::before {
+    inset: 0 !important;
+    height: auto !important;
+    background: rgba(255, 255, 255, 0.34) !important;
+    border: 1px solid rgba(255, 255, 255, 0.58) !important;
+    box-shadow:
+        0 8px 24px rgba(24, 36, 54, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.58) !important;
+    backdrop-filter: blur(26px) saturate(180%) !important;
+    -webkit-backdrop-filter: blur(26px) saturate(180%) !important;
+}
+
 #phone-panel-content .phone-screen .home-dashboard .home-widget-icon,
 #phone-panel-content .phone-screen .home-dashboard .home-mini-icon,
 #phone-panel-content .phone-screen .home-dashboard .home-diary-icon,
@@ -2003,25 +2164,42 @@
 
 @media (max-width: 520px), (max-height: 760px) {
     #phone-panel-content .phone-screen .home-dashboard {
+        --home-card-row: clamp(37px, 6.3vh, 46px);
+        --home-dashboard-gap: clamp(6px, 2vw, 9px);
         padding: clamp(46px, 12.2%, 64px) 5.5% clamp(74px, 18%, 104px);
-        grid-template-rows: clamp(62px, 9.8vh, 76px);
-        grid-auto-rows: clamp(46px, 8.9vh, 64px);
-        gap: clamp(6px, 2vw, 9px);
+        grid-template-rows:
+            clamp(46px, 7vh, 54px)
+            repeat(7, var(--home-card-row));
+        grid-auto-rows: var(--home-card-row);
+        gap: var(--home-dashboard-gap);
     }
 
     #phone-panel-content .phone-screen .home-time-card {
         height: auto;
-        min-height: clamp(62px, 9.8vh, 76px);
-        padding: clamp(7px, 2vw, 10px) clamp(10px, 3vw, 15px);
+        min-height: clamp(40px, 6.2vh, 48px);
+        padding: clamp(3px, 1vw, 5px) clamp(10px, 3vw, 15px);
     }
 
     #phone-panel-content .phone-screen .home-screen .time-large {
-        font-size: clamp(30px, 9.5vw, 42px);
+        font-size: clamp(25px, 7.7vw, 34px);
     }
 
     #phone-panel-content .phone-screen .home-screen .date {
-        font-size: clamp(10.5px, 3vw, 12px);
-        margin-top: 4px;
+        font-size: clamp(9.5px, 2.65vw, 11px);
+        margin-top: 2px;
+    }
+
+    #phone-panel-content .phone-screen .home-layout-cards .home-time-card .time-large {
+        font-size: clamp(27px, 8.2vw, 36px);
+        line-height: 0.94;
+        margin-bottom: 0;
+    }
+
+    #phone-panel-content .phone-screen .home-layout-cards .home-time-card .date,
+    #phone-panel-content .phone-screen .home-layout-cards .home-time-weekday {
+        font-size: clamp(7px, 1.95vw, 8.5px);
+        line-height: 1.08;
+        margin-top: 0;
     }
 
     #phone-panel-content .phone-screen .home-top-grid,
@@ -2095,14 +2273,15 @@
 
     #phone-panel-content .phone-screen .home-settings-card {
         min-height: 0;
-        height: clamp(40px, 6.7vh, 48px);
-        padding: 0 clamp(24px, 6.8vw, 32px) 0 clamp(10px, 3.4vw, 14px);
+        height: auto;
+        aspect-ratio: 1 / 1.04;
+        padding: clamp(9px, 2.5vw, 12px);
     }
 
     #phone-panel-content .phone-screen .home-settings-icon {
-        width: clamp(24px, 7.2vw, 30px);
-        height: clamp(24px, 7.2vw, 30px);
-        font-size: clamp(15px, 4.4vw, 18px);
+        width: clamp(31px, 8.8vw, 38px);
+        height: clamp(31px, 8.8vw, 38px);
+        font-size: clamp(18px, 4.8vw, 21px);
     }
 
     #phone-panel-content .phone-screen .home-settings-title {
@@ -2117,25 +2296,38 @@
 
     #phone-panel-content .phone-screen .home-time-card {
         height: auto;
-        min-height: clamp(62px, 9.8vh, 76px);
-        padding: clamp(7px, 2vw, 10px) clamp(10px, 3vw, 15px);
+        min-height: clamp(40px, 6.2vh, 48px);
+        padding: clamp(3px, 1vw, 5px) clamp(10px, 3vw, 15px);
     }
 
     #phone-panel-content .phone-screen .home-screen .time-large {
-        font-size: clamp(30px, 9.5vw, 42px);
+        font-size: clamp(25px, 7.7vw, 34px);
         line-height: 1;
     }
 
     #phone-panel-content .phone-screen .home-screen .date {
-        font-size: clamp(10.5px, 3vw, 12px);
+        font-size: clamp(9.5px, 2.65vw, 11px);
         line-height: 1;
-        margin-top: 4px;
+        margin-top: 2px;
+    }
+
+    #phone-panel-content .phone-screen .home-layout-cards .home-time-card .time-large {
+        font-size: clamp(27px, 8.2vw, 36px);
+        line-height: 0.94;
+        margin-bottom: 0;
+    }
+
+    #phone-panel-content .phone-screen .home-layout-cards .home-time-card .date,
+    #phone-panel-content .phone-screen .home-layout-cards .home-time-weekday {
+        font-size: clamp(7px, 1.95vw, 8.5px);
+        line-height: 1.08;
+        margin-top: 0;
     }
 
     #phone-panel-content .phone-screen .home-settings-icon {
-        width: clamp(24px, 7.2vw, 30px);
-        height: clamp(24px, 7.2vw, 30px);
-        font-size: clamp(15px, 4.4vw, 18px);
+        width: clamp(31px, 8.8vw, 38px);
+        height: clamp(31px, 8.8vw, 38px);
+        font-size: clamp(18px, 4.8vw, 21px);
     }
 
     #phone-panel-content .phone-screen .home-settings-title {
@@ -2238,6 +2430,19 @@
 
 #phone-panel-content .phone-screen .dock-app:active {
     transform: translateY(-6px) scale(1.06);
+}
+
+#phone-panel-content .phone-screen .home-layout-cards .dock {
+    gap: clamp(6px, 1.5vw, 10px);
+    padding: clamp(7px, 1.6vh, 10px) clamp(10px, 2.6vw, 15px);
+    border-radius: clamp(16px, 4.5vw, 22px) !important;
+}
+
+#phone-panel-content .phone-screen .home-layout-cards .dock-app {
+    width: clamp(34px, 8.5vw, 44px);
+    height: clamp(34px, 8.5vw, 44px);
+    font-size: clamp(19px, 4.8vw, 25px);
+    border-radius: clamp(10px, 2.8vw, 14px) !important;
 }
 
 /* 🎨 Dock自定义图标 - 移除背景效果，支持PNG透明 */
@@ -3506,6 +3711,36 @@ input:checked + .toggle-slider:before {
         width: min(52px, 14vw, 6.5vh) !important;
         height: min(52px, 14vw, 6.5vh) !important;
         font-size: min(28px, 7.5vw, 3.5vh) !important;
+    }
+
+    #phone-panel-content .phone-screen .home-layout-cards .dock {
+        bottom: 5.2% !important;
+    }
+
+    #phone-panel-content .phone-screen .home-layout-cards .home-time-card,
+    #phone-panel-content .phone-screen .home-layout-cards .home-app-cluster,
+    #phone-panel-content .phone-screen .home-layout-cards .home-social-card,
+    #phone-panel-content .phone-screen .home-layout-cards .home-music-card,
+    #phone-panel-content .phone-screen .home-layout-cards .home-settings-card {
+        transform: scale(0.9) !important;
+        transform-origin: center center !important;
+    }
+
+    #phone-panel-content .phone-screen .home-layout-cards .home-app-cluster,
+    #phone-panel-content .phone-screen .home-layout-cards .home-social-card {
+        top: clamp(14px, 2.1vh, 18px);
+    }
+
+    #phone-panel-content .phone-screen .home-layout-cards .home-social-card {
+        top: clamp(20px, 2.8vh, 24px);
+    }
+
+    #phone-panel-content .phone-screen .home-layout-cards .home-music-card {
+        top: clamp(30px, 4.6vh, 38px);
+    }
+
+    #phone-panel-content .phone-screen .home-layout-cards .home-settings-card {
+        top: clamp(46px, 6vh, 56px);
     }
 
     /* 聊天消息区域允许滚动 */

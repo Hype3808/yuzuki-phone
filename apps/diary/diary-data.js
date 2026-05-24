@@ -450,7 +450,7 @@ export class DiaryData {
     }
 
     _getPhotoPromptTagRegex() {
-        return /\[(个人图片|图片)\]\s*[（(]([\s\S]*?)[）)](?:\s*[（(]([\s\S]*?)[）)])?/g;
+        return /\[(用户照片|个人图片|图片)\]\s*[（(]([\s\S]*?)[）)](?:\s*[（(]([\s\S]*?)[）)])?/g;
     }
 
     parseDiaryContent(content = {}) {
@@ -799,11 +799,30 @@ export class DiaryData {
                 return name && tags ? `${name}：${tags}` : '';
             })
             .filter(Boolean);
+        const userInfo = wechatData?.getUserInfo?.() || {};
+        const userTags = String(userInfo?.naiPromptTags || userInfo?.imageTags || '')
+            .split(/[,，\n]+/)
+            .map(tag => tag.trim())
+            .filter(Boolean)
+            .join(', ');
+        if (userTags) rows.unshift(`{{user}}：${userTags}`);
         return rows.length > 0 ? rows.join('\n') : '暂无';
     }
 
     async _buildDiaryImagePrompt(photo = {}, entry = null) {
         const basePrompt = String(photo.prompt || '').trim();
+        if (String(photo.type || '') === '用户照片') {
+            const wechatData = await this._getWechatDataForDiaryPhotos();
+            const userInfo = wechatData?.getUserInfo?.() || {};
+            const userTags = String(userInfo?.naiPromptTags || userInfo?.imageTags || '')
+                .split(/[,，\n]+/)
+                .map(tag => tag.trim())
+                .filter(Boolean)
+                .join(', ');
+            if (!userTags) return basePrompt;
+            if (!basePrompt) return userTags;
+            return `${userTags}, ${basePrompt}`;
+        }
         if (String(photo.type || '') !== '个人图片') return basePrompt;
 
         const contact = await this._resolveDiaryPhotoContact(photo, entry);

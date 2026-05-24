@@ -1043,6 +1043,7 @@ export class WechatData {
             wxid: 'wxid_' + Math.random().toString(36).substr(2, 9),
             avatar: '',
             signature: '',
+            naiPromptTags: '',
             chatCustomCss: '',
             coverImage: null,
             momentsBackground: null,
@@ -1820,12 +1821,13 @@ export class WechatData {
         // 🔥 动态拦截表情包与语音（线上模式）
         if ((message.type === 'text' || !message.type) && message.content) {
             const contentStr = message.content.trim();
-            const imageMatch = /^\[(个人图片|图片|视频)\]\s*([\s\S]+?)\s*$/.exec(contentStr);
+            const imageMatch = /^\[(用户照片|个人图片|图片|视频)\]\s*([\s\S]+?)\s*$/.exec(contentStr);
             if (imageMatch) {
                 const parsedImagePrompt = this._parseImagePromptText(imageMatch[2]);
                 message.type = 'image_prompt';
                 message.mediaType = imageMatch[1]; // 记录是图片还是视频
                 message.usePersonalReference = imageMatch[1] === '个人图片';
+                message.useUserReference = imageMatch[1] === '用户照片';
                 message.imageDescription = parsedImagePrompt.description;
                 message.imagePrompt = parsedImagePrompt.prompt;
                 message.content = message.imagePrompt;

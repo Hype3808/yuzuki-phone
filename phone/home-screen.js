@@ -93,23 +93,27 @@ export class HomeScreen {
         const timeCardImageStyle = timeCardImage
             ? ` style="background-image:url('${timeCardImage}');"`
             : '';
+        const cardDate = this.getCurrentDateParts();
         return `
             <div class="home-dashboard yzp-home-dashboard">
                 <section class="home-time-card yzp-home-time-card yzp-home-floating-time${timeCardImage ? ' has-image' : ''}"${timeCardImageStyle}>
                     <div class="home-time-info yzp-home-time-info">
                         <div class="time-large yzp-home-time-large">${this.getCurrentTime()}</div>
-                        <div class="date yzp-home-date">${this.getCurrentDate()}</div>
+                        <div class="home-time-date yzp-home-time-date">
+                            <div class="date yzp-home-date">${this._escapeHtml(cardDate.date)}</div>
+                            <div class="home-time-weekday yzp-home-time-weekday">${this._escapeHtml(cardDate.weekday)}</div>
+                        </div>
                     </div>
-                    <div class="home-time-art yzp-home-time-art"></div>
                 </section>
 
-                ${this.renderMusicCard()}
-                ${this.renderSocialPills()}
                 <section class="home-app-cluster yzp-home-app-cluster">
                     <div class="home-app-cluster-scroll yzp-home-app-cluster-scroll">
                         ${this.renderClusterApps()}
                     </div>
                 </section>
+                ${this.renderSocialCard()}
+                ${this.renderSettingsCard()}
+                ${this.renderMusicCard()}
             </div>
         `;
     }
@@ -211,34 +215,31 @@ export class HomeScreen {
                         </div>
                     </div>
                 </div>
-                <div class="home-card-title yzp-home-card-title">${this._escapeHtml(this._getAppDisplayName(app))}</div>
-                <div class="home-music-controls yzp-home-music-controls" aria-hidden="true">
-                    <span class="home-music-control home-music-control-prev"></span>
-                    <span class="home-music-control home-music-control-pause"></span>
-                    <span class="home-music-control home-music-control-next"></span>
+                <div class="home-music-panel yzp-home-music-panel">
+                    <div class="home-card-title yzp-home-card-title">${this._escapeHtml(this._getAppDisplayName(app))}</div>
+                    <div class="home-music-controls yzp-home-music-controls" aria-hidden="true">
+                        <span class="home-music-control home-music-control-prev"></span>
+                        <span class="home-music-control home-music-control-pause"></span>
+                        <span class="home-music-control home-music-control-next"></span>
+                    </div>
                 </div>
                 ${this.renderAppBadge(app)}
             </section>
         `;
     }
 
-    renderQuickAppsCard() {
-        const quickIds = ['wechat', 'weibo', 'honey', 'phone'];
-        const quickApps = quickIds.map(id => this.getAppById(id)).filter(Boolean);
-        return quickApps.map(app => this.renderFreeAppIcon(app)).join('');
-    }
-
-    renderSocialPills() {
-        const socialApps = ['wechat', 'weibo'].map(id => this.getAppById(id)).filter(Boolean);
+    renderSocialCard() {
+        const socialIds = ['wechat', 'weibo', 'album'];
+        const socialApps = socialIds.map(id => this.getAppById(id)).filter(Boolean);
         if (socialApps.length === 0) return '';
         return `
-            <section class="home-social-stack yzp-home-social-stack">
-                ${socialApps.map(app => this.renderSocialPill(app)).join('')}
+            <section class="home-social-card yzp-home-social-card">
+                ${socialApps.map(app => this.renderSocialApp(app)).join('')}
             </section>
         `;
     }
 
-    renderSocialPill(app) {
+    renderSocialApp(app) {
         if (!app) return '';
         const customIcon = this._getCustomIcon(app.id);
         const iconStyle = customIcon
@@ -247,7 +248,7 @@ export class HomeScreen {
         const iconContent = customIcon ? '' : this._escapeHtml(app.icon);
         const customClass = customIcon ? 'custom-icon' : '';
         return `
-            <div class="app-icon yzp-home-app-action home-social-pill yzp-home-social-pill" data-app="${app.id}" style="--app-color:${app.color};">
+            <div class="app-icon yzp-home-app-action home-social-app yzp-home-social-app" data-app="${app.id}" style="--app-color:${app.color};">
                 <div class="home-social-icon yzp-home-social-icon ${customClass}" style="${iconStyle}">
                     ${iconContent}
                 </div>
@@ -533,5 +534,20 @@ export class HomeScreen {
     const weekday = weekdays[now.getDay()];
     return `${year}年${month}月${day}日 ${weekday}`;
 }
+
+    getCurrentDateParts() {
+        const dateText = this.getCurrentDate() || '';
+        const match = dateText.match(/^(.+?日)\s*(.+)$/);
+        if (match) {
+            return {
+                date: match[1],
+                weekday: match[2],
+            };
+        }
+        return {
+            date: dateText,
+            weekday: '',
+        };
+    }
 
 }

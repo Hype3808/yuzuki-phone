@@ -7,6 +7,7 @@ export class CalendarView {
     constructor(app) {
         this.app = app;
         this._cssLoaded = false;
+        this._cssLoadingPromise = null;
         this.selectedDate = this.getStoryDateParts();
         this.visibleYear = this.selectedDate.year;
         this.visibleMonth = this.selectedDate.month;
@@ -26,18 +27,35 @@ export class CalendarView {
         this.currentView = 'main';
     }
 
-    loadCSS() {
-        if (this._cssLoaded) return;
-        if (document.getElementById('yzp-calendar-css')) {
+    async loadCSS() {
+        if (this._cssLoaded) return true;
+        if (this._cssLoadingPromise) return this._cssLoadingPromise;
+
+        const existingLink = document.getElementById('yzp-calendar-css');
+        if (existingLink?.dataset?.loaded === '1' || existingLink?.sheet) {
             this._cssLoaded = true;
-            return;
+            return true;
         }
-        const link = document.createElement('link');
+
+        const link = existingLink || document.createElement('link');
         link.id = 'yzp-calendar-css';
         link.rel = 'stylesheet';
         link.href = new URL('./calendar.css?v=1.0.0', import.meta.url).href;
-        document.head.appendChild(link);
-        this._cssLoaded = true;
+        this._cssLoadingPromise = new Promise(resolve => {
+            let settled = false;
+            const finish = () => {
+                if (settled) return;
+                settled = true;
+                link.dataset.loaded = '1';
+                this._cssLoaded = true;
+                resolve(true);
+            };
+            link.addEventListener('load', finish, { once: true });
+            link.addEventListener('error', finish, { once: true });
+            setTimeout(finish, 1200);
+        });
+        if (!existingLink) document.head.appendChild(link);
+        return this._cssLoadingPromise;
     }
 
     getHeroImageUrl(theme = 'light') {
@@ -49,8 +67,8 @@ export class CalendarView {
         return new URL(`./assets/${filename}`, import.meta.url).href;
     }
 
-    render(options = {}) {
-        this.loadCSS();
+    async render(options = {}) {
+        await this.loadCSS();
         const storyDate = this.getStoryDateParts();
         if (options.syncStoryDate || !this.selectedDate) {
             this.selectedDate = storyDate;

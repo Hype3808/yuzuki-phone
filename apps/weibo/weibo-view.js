@@ -2501,8 +2501,9 @@ export class WeiboView {
 
         const imageManager = window.VirtualPhone?.imageGenerationManager;
         const imageStorage = this.app?.storage || window.VirtualPhone?.storage || null;
-        const safeMediaType = mediaType === '视频' ? '视频' : '图片';
         const parsedMedia = this._parseWeiboMediaItem(Array.isArray(post.images) ? post.images[index] : '');
+        const effectiveMediaType = String(parsedMedia.mediaType || mediaType || '').trim();
+        const safeMediaType = effectiveMediaType === '视频' ? '视频' : (effectiveMediaType === '用户照片' ? '用户照片' : '图片');
         const slotPromptText = String(parsedMedia.promptText || promptText || '').trim();
         if (!slotPromptText) return;
         const displayDescription = String(descriptionText || parsedMedia.descriptionText || slotPromptText || '').trim();
@@ -2528,7 +2529,7 @@ export class WeiboView {
         }
         const resolvedImageProvider = String(imageManager.resolveProvider?.({ app: 'weibo' }) || imageStorage?.get?.('phone-image-provider') || '').trim();
 
-        const pendingTag = safeMediaType === '视频' ? '[视频]' : '[图片]';
+        const pendingTag = safeMediaType === '视频' ? '[视频]' : (safeMediaType === '用户照片' ? '[用户照片]' : '[图片]');
         const previousImageUrl = this._getManagedWeiboGeneratedImageUrl(post, index);
         const generationId = `weibo_img_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         if (clearPreviousImage && Array.isArray(post.images)) {
@@ -2556,7 +2557,7 @@ export class WeiboView {
         try {
             const result = await imageManager.generate({
                 app: 'weibo',
-                prompt: slotPromptText
+                prompt: this._buildWeiboImagePromptWithUserTags(parsedMedia, slotPromptText)
             });
             const rawImageUrl = String(result?.imageUrl || result?.imageData || '').trim();
             const imageUrl = await this._persistWeiboGeneratedImage(rawImageUrl, {
@@ -2568,7 +2569,7 @@ export class WeiboView {
             if (!imageUrl) throw new Error('生图成功但未返回图片URL');
 
             // 替换原有的图片数组中的 prompt 为真实 URL，保留图片/视频前缀。
-            const finalTag = safeMediaType === '视频' ? '[视频]' : '[图片]';
+            const finalTag = safeMediaType === '视频' ? '[视频]' : (safeMediaType === '用户照片' ? '[用户照片]' : '[图片]');
             post.images[index] = `${finalTag}${imageUrl}`;
             this._setWeiboPostImageState(post, index, {
                 status: 'done',
@@ -3864,7 +3865,7 @@ export class WeiboView {
         let mediaType = '图片';
         let body = imageStr;
 
-        const taggedMatch = imageStr.match(/^\[(个人图片|图片|视频)\]\s*([\s\S]*)$/);
+        const taggedMatch = imageStr.match(/^\[(用户照片|个人图片|图片|视频)\]\s*([\s\S]*)$/);
         if (taggedMatch) {
             mediaType = taggedMatch[1];
             body = String(taggedMatch[2] || '').trim();
@@ -3892,9 +3893,28 @@ export class WeiboView {
             realUrl: directUrl,
             isDirectImage: !!directUrl,
             isVideoProcessed: mediaType === '视频' && !!directUrl,
+            useUserReference: mediaType === '用户照片',
             promptText: promptText.trim(),
             descriptionText: descriptionText.trim()
         };
+    }
+
+    _buildWeiboImagePromptWithUserTags(parsedMedia = {}, promptText = '') {
+        const basePrompt = String(promptText || '').trim();
+        if (String(parsedMedia?.mediaType || '').trim() !== '用户照片' && parsedMedia?.useUserReference !== true) {
+            return basePrompt;
+        }
+        const userInfo = window.VirtualPhone?.wechatApp?.wechatData?.getUserInfo?.()
+            || window.VirtualPhone?.cachedWechatData?.getUserInfo?.()
+            || {};
+        const userTags = String(userInfo?.naiPromptTags || userInfo?.imageTags || '')
+            .split(/[,，\n]+/)
+            .map(tag => tag.trim())
+            .filter(Boolean)
+            .join(', ');
+        if (!userTags) return basePrompt;
+        if (!basePrompt) return userTags;
+        return `${userTags}, ${basePrompt}`;
     }
 
     _parsePromptDescriptionPair(rawValue = '') {
