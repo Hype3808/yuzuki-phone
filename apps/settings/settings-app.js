@@ -3234,8 +3234,8 @@ export class SettingsApp {
             const customIcon = this.imageManager.getAppIcon(app.id);
             const displayName = this._getAppDisplayName(app, customNames);
             return `
-                <div class="upload-app-icon-item" data-app="${app.id}" style="text-align: center; position: relative; touch-action: manipulation;">
-                    <label for="upload-icon-${app.id}" style="cursor: pointer; display: block; pointer-events: none;">
+                <div class="upload-app-icon-item" data-app="${app.id}" data-upload-icon-target="upload-icon-${app.id}" role="button" tabindex="0" style="text-align: center; position: relative; touch-action: manipulation;">
+                    <div style="display: block;">
                         <div style="width: 40px; height: 40px; border-radius: 10px;
                                     ${customIcon ? `background-image: url('${customIcon}'); background-size: contain; background-position: center; background-repeat: no-repeat; background-color: transparent;` : `background: ${app.color};`}
                                     display: flex; align-items: center; justify-content: center; margin: 0 auto;
@@ -3243,8 +3243,8 @@ export class SettingsApp {
                             ${customIcon ? '' : app.icon}
                         </div>
                         <div style="font-size: 9px; margin-top: 3px; color: #666;">${this._escapeHtml(displayName)}</div>
-                    </label>
-                    <input type="file" id="upload-icon-${app.id}" accept="image/png, image/jpeg, image/gif, image/webp, image/svg+xml, image/*" style="position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 3; font-size: 0;" class="app-icon-upload" data-app-id="${app.id}">
+                    </div>
+                    <input type="file" id="upload-icon-${app.id}" accept="image/png, image/jpeg, image/gif, image/webp, image/svg+xml, image/*" style="position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; overflow: hidden;" class="app-icon-upload" data-app-id="${app.id}" tabindex="-1">
                 </div>
             `;
         }).join('');
@@ -4045,7 +4045,23 @@ export class SettingsApp {
         });
         
         // APP图标上传 - 支持裁剪和PNG透明
+        document.querySelectorAll('.upload-app-icon-item[data-upload-icon-target]').forEach(item => {
+            const openPicker = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const inputId = item.dataset.uploadIconTarget;
+                const input = inputId ? document.getElementById(inputId) : null;
+                input?.click?.();
+            };
+            item.addEventListener('click', openPicker);
+            item.addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                openPicker(e);
+            });
+        });
+
         document.querySelectorAll('.app-icon-upload').forEach(input => {
+            input.addEventListener('click', (e) => e.stopPropagation());
             input.addEventListener('change', async (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
