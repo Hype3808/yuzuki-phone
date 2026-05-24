@@ -3787,6 +3787,24 @@ input:checked + .toggle-slider:before {
         height: min(52px, 14vw, 6.5vh) !important;
     }
 
+    #phone-panel-content .phone-screen .home-layout-cards .home-app-squircle {
+        width: clamp(34px, 10.8vw, 44px) !important;
+        height: clamp(34px, 10.8vw, 44px) !important;
+        font-size: clamp(17px, 5.4vw, 22px) !important;
+    }
+
+    #phone-panel-content .phone-screen .home-layout-cards .home-social-icon {
+        width: clamp(35px, 10.6vw, 44px) !important;
+        height: clamp(35px, 10.6vw, 44px) !important;
+        font-size: clamp(17px, 5.2vw, 22px) !important;
+    }
+
+    #phone-panel-content .phone-screen .home-layout-cards .home-settings-icon {
+        width: clamp(36px, 10.2vw, 44px) !important;
+        height: clamp(36px, 10.2vw, 44px) !important;
+        font-size: clamp(20px, 5.4vw, 24px) !important;
+    }
+
     #phone-panel-content .phone-screen .app-icon-emoji {
         font-size: min(28px, 7.5vw, 3.5vh) !important;
     }
