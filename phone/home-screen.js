@@ -62,6 +62,7 @@ export class HomeScreen {
         const homeLayout = this.getHomeLayout();
         const hasCardCustomCss = homeLayout === 'cards' && !!this.getCardLayoutCustomCssText();
         const cardCustomClass = hasCardCustomCss ? ' home-card-custom-css-active yzp-home-card-custom-css-active' : '';
+        this.preloadCardLayoutCustomCss();
 
         const html = `
             <div class="home-screen yzp-home-screen home-layout-${homeLayout} yzp-home-layout-${homeLayout}${cardCustomClass}"${renderKeyAttr}>
@@ -76,7 +77,6 @@ export class HomeScreen {
         `;
 
         this.phoneShell.setContent(html);
-        this.applyCardLayoutCustomCss();
         this.bindEvents();
     }
 
@@ -108,7 +108,24 @@ export class HomeScreen {
         this.applyCardLayoutGuardCss();
     }
 
-    applyCardLayoutGuardCss() {
+    preloadCardLayoutCustomCss() {
+        document.getElementById(CARD_LAYOUT_CUSTOM_STYLE_ID)?.remove();
+        document.getElementById(CARD_LAYOUT_GUARD_STYLE_ID)?.remove();
+        if (this.getHomeLayout() !== 'cards') return;
+
+        const cssText = this.getCardLayoutCustomCssText();
+        if (cssText) {
+            const style = document.createElement('style');
+            style.id = CARD_LAYOUT_CUSTOM_STYLE_ID;
+            style.setAttribute('data-scope', 'phone-card-layout');
+            style.setAttribute('data-owner', 'document-head');
+            style.textContent = cssText;
+            document.head.appendChild(style);
+        }
+        this.applyCardLayoutGuardCss(document.head);
+    }
+
+    applyCardLayoutGuardCss(host = null) {
         const style = document.createElement('style');
         style.id = CARD_LAYOUT_GUARD_STYLE_ID;
         style.setAttribute('data-scope', 'phone-card-layout-guard');
@@ -132,7 +149,7 @@ export class HomeScreen {
                 }
             }
         `;
-        (this.phoneShell?.screen || document.head).appendChild(style);
+        (host || this.phoneShell?.screen || document.head).appendChild(style);
     }
 
     renderIconLayout() {
