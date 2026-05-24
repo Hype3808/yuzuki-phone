@@ -2247,6 +2247,30 @@ if (window.GGP_Loaded) {
         const qrWhitelistItemId = 'st-phone-inline-reply-whitelist-item';
         const qrWhitelistInitKey = 'phone_inline_reply_qr_whitelist_initialized';
         const qrMenuItemId = 'st-phone-inline-reply-action-item';
+        const qrExtensionGroupName = '手机插件';
+        const qrExtensionButtonName = '手机快捷回复';
+
+        const isQrAssistantAvailable = () => !!(window.quickReplyMenu || Array.isArray(window.qrAssistantExtensionApi) || document.body?.classList?.contains('qra-enabled'));
+
+        const registerQrAssistantButton = () => {
+            if (!isQrAssistantAvailable()) return false;
+            if (!Array.isArray(window.qrAssistantExtensionApi)) {
+                window.qrAssistantExtensionApi = [];
+            }
+            const existing = window.qrAssistantExtensionApi.find(item => item?.dom_id === qrScriptContainerId);
+            if (existing) {
+                existing.group_name = qrExtensionGroupName;
+                existing.button_name = qrExtensionButtonName;
+            } else {
+                window.qrAssistantExtensionApi.push({
+                    dom_id: qrScriptContainerId,
+                    group_name: qrExtensionGroupName,
+                    button_name: qrExtensionButtonName
+                });
+            }
+            applyQrWhitelist();
+            return true;
+        };
 
         // 注入基础 CSS
         if (!document.getElementById('st-phone-inline-reply-style')) {
@@ -2711,6 +2735,7 @@ if (window.GGP_Loaded) {
             if (!storage) return;
             const isEnabled = storage.get('phone_inline_reply_btn') !== false;
             const existingBtn = document.getElementById(btnId);
+            const hasQrAssistantApi = registerQrAssistantButton();
             const existingWrapper =
                 document.getElementById(qrScriptContainerId) ||
                 document.getElementById(legacyWrapperId) ||
@@ -2718,11 +2743,17 @@ if (window.GGP_Loaded) {
             const isQrAssistantEnabled = !!document.body?.classList?.contains('qra-enabled');
             const { stContext, qrSettings } = getQrAssistantContext();
 
-            if (qrSettings) {
+            if (!hasQrAssistantApi && qrSettings) {
                 ensureQrWhitelistInitialized(qrSettings, stContext);
                 syncQrWhitelistListItem();
             }
-            syncQrMenuActionItem(isEnabled, qrSettings);
+            if (!hasQrAssistantApi) {
+                syncQrMenuActionItem(isEnabled, qrSettings);
+            } else {
+                document.getElementById(qrMenuItemId)?.remove();
+                document.getElementById(qrWhitelistItemId)?.remove();
+                applyQrWhitelist();
+            }
 
             // 如果开关关闭，移除按钮
             if (!isEnabled) {
@@ -2751,6 +2782,15 @@ if (window.GGP_Loaded) {
                     currentWrapper.classList.remove('qr--wrapper');
                     currentWrapper.style.setProperty('--qr--color', 'rgba(0,0,0,0)');
                     currentWrapper.dataset.stPhoneInlineReply = 'true';
+                    if (!currentWrapper.dataset.stPhoneQrProxyBound) {
+                        currentWrapper.dataset.stPhoneQrProxyBound = 'true';
+                        currentWrapper.addEventListener('click', (event) => {
+                            if (event.target?.closest?.(`#${btnId}`)) return;
+                            event.preventDefault();
+                            event.stopPropagation();
+                            currentWrapper.querySelector(`#${btnId}`)?.click?.();
+                        });
+                    }
 
                     if (!isQrAssistantEnabled) {
                         currentWrapper.classList.remove('qrq-hidden-by-plugin');
@@ -2763,6 +2803,9 @@ if (window.GGP_Loaded) {
                         } else {
                             host.prepend(currentWrapper);
                         }
+                    }
+                    if (hasQrAssistantApi) {
+                        applyQrWhitelist();
                     }
                 }
                 return;
@@ -3865,6 +3908,13 @@ if (window.GGP_Loaded) {
             wrapper.id = qrScriptContainerId;
             wrapper.className = 'st-phone-inline-reply-wrapper qr--buttons qr--color';
             wrapper.dataset.stPhoneInlineReply = 'true';
+            wrapper.dataset.stPhoneQrProxyBound = 'true';
+            wrapper.addEventListener('click', (event) => {
+                if (event.target?.closest?.(`#${btnId}`)) return;
+                event.preventDefault();
+                event.stopPropagation();
+                wrapper.querySelector(`#${btnId}`)?.click?.();
+            });
             if (!isQrAssistantEnabled) {
                 wrapper.classList.remove('qrq-hidden-by-plugin');
             }
@@ -3876,6 +3926,9 @@ if (window.GGP_Loaded) {
                 rocketButton.insertAdjacentElement('afterend', wrapper);
             } else {
                 host.prepend(wrapper); // 插入到可见容器最左侧
+            }
+            if (hasQrAssistantApi) {
+                applyQrWhitelist();
             }
         };
 
