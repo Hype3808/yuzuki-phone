@@ -3821,7 +3821,12 @@ input:checked + .toggle-slider:before {
         transform-origin: left center !important;
     }
 
-    #phone-panel-content .phone-screen .home-layout-cards .home-social-card,
+    #phone-panel-content .phone-screen .home-layout-cards .home-social-card {
+        width: 104% !important;
+        justify-self: end !important;
+        transform-origin: right center !important;
+    }
+
     #phone-panel-content .phone-screen .home-layout-cards .home-music-card {
         width: 118% !important;
         justify-self: end !important;

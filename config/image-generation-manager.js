@@ -2746,6 +2746,8 @@ export class ImageGenerationManager {
     _buildOpenAIErrorMessage(status, result, text) {
         const rawText = String(text || '').trim();
         const parsedMessage = String(result?.error?.message || result?.message || result?.error || '').trim();
+        const safetyMessage = this._buildOpenAISafetyErrorMessage(result, rawText);
+        if (safetyMessage) return safetyMessage;
         const isHtmlError = /<html[\s>]|<!doctype\s+html/i.test(rawText);
         if (status === 524) {
             return 'GPT 生图上游超时 (524)，通常是公益站或其代理等待官方生图太久。可以稍后重试，或换模型/质量/站点。';
@@ -2756,6 +2758,33 @@ export class ImageGenerationManager {
         if (parsedMessage) return parsedMessage;
         if (isHtmlError) return `GPT 生图接口返回了 HTML 错误页 (${status})，请检查站点或中转服务。`;
         return rawText.slice(0, 180);
+    }
+
+    _buildOpenAISafetyErrorMessage(result, rawText = '') {
+        const parts = [];
+        const push = (value) => {
+            const text = String(value || '').trim();
+            if (text) parts.push(text);
+        };
+        push(result?.error?.message);
+        push(result?.error?.code);
+        push(result?.error?.type);
+        push(result?.error?.param);
+        push(result?.message);
+        push(result?.detail);
+        push(result?.code);
+        push(result?.type);
+        push(rawText);
+        const joined = parts.join(' ').replace(/\s+/g, ' ').trim();
+        if (!this._looksLikeOpenAISafetyRefusal(joined)) return '';
+        const detail = String(result?.error?.message || result?.message || '').replace(/\s+/g, ' ').trim();
+        return detail
+            ? `GPT 生图被安全策略拒绝：${detail.slice(0, 180)}`
+            : 'GPT 生图被安全策略拒绝：提示词包含模型不允许生成的内容，请调整后重试。';
+    }
+
+    _looksLikeOpenAISafetyRefusal(text = '') {
+        return /content[_\s-]?policy|content[_\s-]?filter|safety|moderation|policy[_\s-]?violation|unsafe|disallowed|not allowed|blocked|rejected|refus|violate|sexual|explicit|nsfw|安全|策略|政策|审核|违规|拒绝|拦截|敏感|露骨|色情|成人内容/i.test(String(text || ''));
     }
 
     _normalizeSdLoraPrompt(value) {

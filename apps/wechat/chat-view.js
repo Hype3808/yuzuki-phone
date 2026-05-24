@@ -3275,7 +3275,9 @@ renderChatRoom(chat) {
             this._refreshVisibleChatMessages(chatId);
         } catch (error) {
             const rawMessage = String(error?.message || '').trim();
-            const friendlyMessage = /failed to fetch|networkerror|load failed/i.test(rawMessage)
+            const friendlyMessage = /安全策略拒绝|content[_\s-]?policy|content[_\s-]?filter|policy[_\s-]?violation|moderation|safety/i.test(rawMessage)
+                ? rawMessage
+                : /failed to fetch|networkerror|load failed/i.test(rawMessage)
                 ? '请求失败，可能是网络异常或浏览器跨域拦截'
                 : (rawMessage || '未知错误');
 
