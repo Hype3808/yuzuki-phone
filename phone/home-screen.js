@@ -116,6 +116,13 @@ export class HomeScreen {
                 transform: translateX(-50%) !important;
                 box-sizing: border-box !important;
             }
+
+            @media (min-width: 501px) {
+                #phone-panel-content .phone-screen .home-layout-cards .dock {
+                    width: calc(100% - 12%) !important;
+                    bottom: 11.5% !important;
+                }
+            }
         `;
         (this.phoneShell?.screen || document.head).appendChild(style);
     }
