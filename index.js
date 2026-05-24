@@ -2281,6 +2281,7 @@ if (window.GGP_Loaded) {
                 .remote-ctrl-btn .qr--button-label { display: flex !important; align-items: center !important; justify-content: center !important; width: 100%; height: 100%; }
                 .remote-ctrl-btn.active { opacity: 1 !important; color: var(--qc-accent); }
                 .st-phone-inline-reply-wrapper { display: flex; align-items: center; }
+                body.qra-enabled .st-phone-inline-reply-wrapper.st-phone-inline-reply-qr-managed { display: none !important; }
     #phone-inline-reply-menu-pop {
     position: fixed; z-index: 2147483645;
     background: linear-gradient(180deg,
@@ -2782,6 +2783,7 @@ if (window.GGP_Loaded) {
                     currentWrapper.classList.remove('qr--wrapper');
                     currentWrapper.style.setProperty('--qr--color', 'rgba(0,0,0,0)');
                     currentWrapper.dataset.stPhoneInlineReply = 'true';
+                    currentWrapper.classList.toggle('st-phone-inline-reply-qr-managed', !!hasQrAssistantApi);
                     if (!currentWrapper.dataset.stPhoneQrProxyBound) {
                         currentWrapper.dataset.stPhoneQrProxyBound = 'true';
                         currentWrapper.addEventListener('click', (event) => {
@@ -3908,6 +3910,7 @@ if (window.GGP_Loaded) {
             wrapper.id = qrScriptContainerId;
             wrapper.className = 'st-phone-inline-reply-wrapper qr--buttons qr--color';
             wrapper.dataset.stPhoneInlineReply = 'true';
+            wrapper.classList.toggle('st-phone-inline-reply-qr-managed', !!hasQrAssistantApi);
             wrapper.dataset.stPhoneQrProxyBound = 'true';
             wrapper.addEventListener('click', (event) => {
                 if (event.target?.closest?.(`#${btnId}`)) return;
