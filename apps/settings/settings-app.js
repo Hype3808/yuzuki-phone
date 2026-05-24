@@ -3234,8 +3234,8 @@ export class SettingsApp {
             const customIcon = this.imageManager.getAppIcon(app.id);
             const displayName = this._getAppDisplayName(app, customNames);
             return `
-                <div class="upload-app-icon-item" data-app="${app.id}" style="text-align: center;">
-                    <label for="upload-icon-${app.id}" style="cursor: pointer; display: block;">
+                <div class="upload-app-icon-item" data-app="${app.id}" style="text-align: center; position: relative; touch-action: manipulation;">
+                    <label for="upload-icon-${app.id}" style="cursor: pointer; display: block; pointer-events: none;">
                         <div style="width: 40px; height: 40px; border-radius: 10px;
                                     ${customIcon ? `background-image: url('${customIcon}'); background-size: contain; background-position: center; background-repeat: no-repeat; background-color: transparent;` : `background: ${app.color};`}
                                     display: flex; align-items: center; justify-content: center; margin: 0 auto;
@@ -3244,7 +3244,7 @@ export class SettingsApp {
                         </div>
                         <div style="font-size: 9px; margin-top: 3px; color: #666;">${this._escapeHtml(displayName)}</div>
                     </label>
-                    <input type="file" id="upload-icon-${app.id}" accept="image/png, image/jpeg, image/gif, image/webp, image/svg+xml, image/*" style="display: none;" class="app-icon-upload" data-app-id="${app.id}">
+                    <input type="file" id="upload-icon-${app.id}" accept="image/png, image/jpeg, image/gif, image/webp, image/svg+xml, image/*" style="position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 3; font-size: 0;" class="app-icon-upload" data-app-id="${app.id}">
                 </div>
             `;
         }).join('');
