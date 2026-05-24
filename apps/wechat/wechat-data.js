@@ -2020,6 +2020,8 @@ getMessagePreview(message) {
             return `${icon} ${stripSpeechPrefix(message.content || '')}`;
         case 'weibo_card':
             return '[微博分享]';
+        case 'poker_card':
+            return '[德州扑克分享]';
         case 'catbox_coadopt_invite':
             return message.catboxInviteStatus === 'accepted'
                 ? '[猫盒共养邀请：已接收]'

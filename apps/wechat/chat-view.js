@@ -2692,6 +2692,31 @@ renderChatRoom(chat) {
                 break;
             }
 
+            case 'poker_card': {
+                const poker = msg.pokerData || {};
+                const title = this._escapeHtml(poker.title || '德州扑克牌局记录');
+                const desc = this._escapeHtml(poker.desc || poker.content || '点击查看完整牌局内容');
+                messageBody = `
+                <div class="message-poker-card" data-msg-id="${this._escapeHtml(msg.id || '')}" style="background:#fff; border:1px solid #e8e8e8; border-radius:8px; overflow:hidden; max-width:228px; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+                    <div style="padding:11px 11px 10px;">
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:7px;">
+                            <div style="width:28px; height:28px; border-radius:7px; background:linear-gradient(135deg,#2563eb,#0f172a); color:#fff; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700; flex-shrink:0;">♠</div>
+                            <div style="min-width:0; flex:1;">
+                                <div style="font-size:13px; font-weight:700; color:#1a1a1a; line-height:1.25; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${title}</div>
+                                <div style="font-size:10px; color:#999; line-height:1.25; margin-top:2px;">牌局分享</div>
+                            </div>
+                        </div>
+                        <div style="font-size:12px; color:#666; line-height:1.45; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; word-break:break-word;">${desc}</div>
+                    </div>
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:7px 10px; background:#f6f6f6; border-top:1px solid #eee;">
+                        <span style="font-size:11px; color:#999;">德州扑克</span>
+                        <span style="font-size:10px; color:#b0b0b0;">查看详情</span>
+                    </div>
+                </div>
+                `;
+                break;
+            }
+
             case 'catbox_care_card': {
                 const petName = this._escapeHtml(msg.catboxPetName || '小猫');
                 messageBody = `
@@ -3644,6 +3669,12 @@ renderChatRoom(chat) {
             return `[图片]（${getImageDisplayName()}）`;
         }
         if (msg.type === 'image_prompt') return this._formatImagePromptTagForPrompt(msg);
+        if (msg.type === 'poker_card') {
+            const poker = msg.pokerData || {};
+            const title = String(poker.title || '德州扑克牌局记录').trim();
+            const desc = String(poker.desc || '').trim();
+            return `[德州扑克分享]${title ? ` ${title}` : ''}${desc ? `：${desc}` : ''}`;
+        }
         if (msg.type === 'music_listen') {
             return this._formatMusicListenMessageForPrompt(msg, targetChat);
         }
@@ -5014,6 +5045,18 @@ renderChatRoom(chat) {
                 if (messageId) this.openWeiboCard(messageId);
             });
         });
+        currentView.querySelectorAll('.message-poker-card').forEach(card => {
+            card.addEventListener('click', (e) => {
+                if (this._isMessageSelectionActiveForCurrentChat()) return;
+                if (Date.now() < (this._suppressPokerCardClickUntil || 0)) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                }
+                const messageId = e.currentTarget.dataset.msgId;
+                if (messageId) this.openPokerCard(messageId);
+            });
+        });
         currentView.querySelectorAll('.message-music-listen-cancel').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 if (this._isMessageSelectionActiveForCurrentChat()) return;
@@ -5373,6 +5416,77 @@ renderChatRoom(chat) {
             console.error('打开微博卡片失败:', error);
             this.app.phoneShell?.showNotification('提示', '微博卡片打开失败', '⚠️');
         }
+    }
+
+    openPokerCard(messageId) {
+        try {
+            const chatId = this.app.currentChat?.id;
+            if (!chatId) return;
+
+            const messages = this.app.wechatData.getMessages(chatId) || [];
+            const target = messages.find(m => m.id === messageId);
+            if (!target || target.type !== 'poker_card' || !target.pokerData) return;
+
+            this.showPokerCardPreviewModal(target.pokerData);
+        } catch (error) {
+            console.error('打开德州扑克卡片失败:', error);
+            this.app.phoneShell?.showNotification('提示', '德州扑克卡片打开失败', '⚠️');
+        }
+    }
+
+    showPokerCardPreviewModal(pokerData = {}) {
+        const title = this._escapeHtml(pokerData.title || '德州扑克牌局记录');
+        const content = this._escapeHtml(pokerData.content || pokerData.desc || '暂无牌局内容');
+        const sharedAt = Number(pokerData.sharedAt) || 0;
+        const timeText = sharedAt
+            ? this._escapeHtml(new Date(sharedAt).toLocaleString('zh-CN', { hour12: false }))
+            : '';
+
+        const currentView = document.querySelector('.phone-view-current') || document;
+        const host = currentView.querySelector('.wechat-app') || currentView;
+        if (!host) return;
+
+        const old = currentView.querySelector('#wechat-poker-preview-modal');
+        if (old) old.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'wechat-poker-preview-modal';
+        modal.style.cssText = `
+            position:absolute; inset:0; z-index:9999;
+            background:rgba(0,0,0,0.5);
+            display:flex; align-items:center; justify-content:center;
+            padding:12px; box-sizing:border-box;
+        `;
+
+        modal.innerHTML = `
+            <div style="
+                background:#fff; border-radius:10px;
+                width:100%; max-width:320px; max-height:82%;
+                overflow:hidden; display:flex; flex-direction:column;
+                box-sizing:border-box;
+            ">
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:13px 14px 10px; border-bottom:0.5px solid #eee;">
+                    <div style="min-width:0;">
+                        <div style="font-size:14px; color:#111; font-weight:700; line-height:1.3; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${title}</div>
+                        ${timeText ? `<div style="font-size:10px; color:#999; margin-top:3px;">${timeText}</div>` : ''}
+                    </div>
+                    <button id="wechat-poker-preview-close" style="border:none; background:none; color:#999; font-size:14px; cursor:pointer; line-height:1; flex:0 0 auto;">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <div style="padding:12px 14px 14px; overflow-y:auto; -webkit-overflow-scrolling:touch;">
+                    <div style="font-size:12px; line-height:1.65; color:#333; text-align:left; white-space:pre-wrap; word-break:break-word; font-family:inherit;">${content}</div>
+                </div>
+            </div>
+        `;
+
+        host.appendChild(modal);
+
+        const close = () => modal.remove();
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) close();
+        });
+        modal.querySelector('#wechat-poker-preview-close')?.addEventListener('click', close);
     }
 
     showWeiboCardPreviewModal(weiboData = {}) {
@@ -6173,7 +6287,7 @@ renderChatRoom(chat) {
         const currentView = this.getCurrentWechatView();
         const messagesDiv = currentView?.querySelector('#chat-messages');
         if (!messagesDiv) return;
-        const longPressBubbleSelector = '.message-text, .message-voice, .message-image-box, .message-redpacket, .message-transfer, .message-location, .message-call-record, .message-call-text, .message-sticker-box, .message-weibo-card, .message-music-card, .message-music-listen-card';
+        const longPressBubbleSelector = '.message-text, .message-voice, .message-image-box, .message-redpacket, .message-transfer, .message-location, .message-call-record, .message-call-text, .message-sticker-box, .message-weibo-card, .message-poker-card, .message-music-card, .message-music-listen-card';
 
         // 🔥 性能核武器：确保整个聊天列表只绑定 1 次事件
         // 不再随消息数量增多而造成几何级卡顿！
@@ -6213,6 +6327,9 @@ renderChatRoom(chat) {
                     longPressTriggered = true;
                     if (targetBubble.closest('.message-weibo-card')) {
                         this._suppressWeiboCardClickUntil = Date.now() + 800;
+                    }
+                    if (targetBubble.closest('.message-poker-card')) {
+                        this._suppressPokerCardClickUntil = Date.now() + 800;
                     }
                     this.showMessageMenu(index);
                 }
@@ -9387,7 +9504,7 @@ renderChatRoom(chat) {
         if (!contentEl) return;
 
         // 找到气泡元素（包括图片）
-        const bubbleEl = contentEl.querySelector('.message-text, .message-voice, .message-redpacket, .message-image-box, .message-transfer, .message-location, .message-call-record, .message-call-text, .message-sticker-box, .message-weibo-card, .message-music-card, .message-music-listen-card');
+        const bubbleEl = contentEl.querySelector('.message-text, .message-voice, .message-redpacket, .message-image-box, .message-transfer, .message-location, .message-call-record, .message-call-text, .message-sticker-box, .message-weibo-card, .message-poker-card, .message-music-card, .message-music-listen-card');
         if (!bubbleEl) return;
 
         // 设置气泡为相对定位（用于菜单绝对定位的参考）

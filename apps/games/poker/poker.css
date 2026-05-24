@@ -53,6 +53,11 @@
     color: #ffffff !important;
 }
 
+#games-share-poker,
+#games-share-poker i {
+    color: #ffffff !important;
+}
+
 .games-title {
     color: #fff8e5 !important;
     font-size: 17px;
@@ -971,7 +976,8 @@
     bottom: calc(100% + 4px);
     z-index: 8;
     width: max-content;
-    max-width: 132px;
+    max-width: 176px;
+    max-height: 4.2em;
     transform: translateX(-50%);
     padding: 6px 8px;
     box-sizing: border-box;
@@ -986,6 +992,10 @@
     box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28);
     pointer-events: none;
     word-break: break-word;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
     animation: gamesSeatSpeechIn 0.16s ease;
 }
 
@@ -1365,6 +1375,8 @@
     box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
     z-index: 6;
     pointer-events: auto;
+    touch-action: pan-y;
+    overscroll-behavior: contain;
 }
 
 .games-log-sheet.is-open {
@@ -1705,8 +1717,11 @@
 }
 
 .games-log {
-    max-height: 92px;
-    overflow: auto;
+    min-height: 178px;
+    max-height: 260px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
     margin-top: 0;
     padding: 0 1px;
     color: rgba(255, 248, 229, 0.82);
@@ -1714,6 +1729,7 @@
     line-height: 1.45;
     touch-action: pan-y;
     overscroll-behavior: contain;
+    scrollbar-width: thin;
 }
 
 @media (max-height: 760px) {
@@ -1790,7 +1806,8 @@
     }
 
     .games-log {
-        max-height: 72px;
+        min-height: 156px;
+        max-height: 220px;
     }
 
     .games-wager-modal {

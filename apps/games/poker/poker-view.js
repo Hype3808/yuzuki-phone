@@ -553,6 +553,13 @@ export class PokerView {
         });
         actionInput?.addEventListener('input', () => {
             this._pendingChatInput = String(actionInput.value || '');
+            this.app.handlePokerComposerChanged?.();
+        });
+        actionInput?.addEventListener('focus', () => {
+            this.app.handlePokerComposerChanged?.();
+        });
+        actionInput?.addEventListener('blur', () => {
+            setTimeout(() => this.app.handlePokerComposerChanged?.(), 0);
         });
         actionInput?.addEventListener('keydown', e => {
             if (e.key !== 'Enter') return;
@@ -571,6 +578,7 @@ export class PokerView {
             if (nextOpen) this._logPanelOpen = false;
             this._wagerModalOpen = false;
             this.renderPoker();
+            this.app.handlePokerComposerChanged?.();
         });
         document.querySelectorAll('.games-action-btn[data-action]').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -719,11 +727,26 @@ export class PokerView {
         this._pendingChatInput = '';
     }
 
+    isPokerComposing() {
+        if (this._actionPanelOpen || this._wagerModalOpen || this._shareOverlayOpen || this._settingsOpen) return true;
+        const input = document.querySelector('.phone-view-current #games-action-input') || document.getElementById('games-action-input');
+        const inputText = String(input?.value || this._pendingChatInput || '').trim();
+        const inputFocused = !!input && document.activeElement === input;
+        return inputFocused || inputText !== '';
+    }
+
     _syncSeatSpeechFromState(state) {
-        const speech = state?.lastSpeech;
-        if (!speech || !speech.content || !speech.at || speech.at === this._lastSpeechAt) return;
-        this._lastSpeechAt = speech.at;
-        this._enqueueSeatSpeech(speech);
+        const speeches = Array.isArray(state?.speechEvents) && state.speechEvents.length
+            ? state.speechEvents
+            : (state?.lastSpeech ? [state.lastSpeech] : []);
+        const pending = speeches
+            .filter(speech => speech?.content && speech?.at && Number(speech.at) > Number(this._lastSpeechAt || 0))
+            .sort((a, b) => Number(a.at || 0) - Number(b.at || 0));
+        if (!pending.length) return;
+        pending.forEach(speech => {
+            this._lastSpeechAt = Math.max(Number(this._lastSpeechAt || 0), Number(speech.at || 0));
+            this._enqueueSeatSpeech(speech);
+        });
     }
 
     syncLatestSeatSpeechFromState() {
@@ -736,7 +759,7 @@ export class PokerView {
         this._speechQueue.push({
             playerId,
             sender: String(speech.sender || '').trim(),
-            content: String(speech.content || '').trim().slice(0, 80),
+            content: String(speech.content || '').trim(),
             at: Number(speech.at || Date.now())
         });
         if (!this._activeSeatSpeech) this._showNextSeatSpeech();

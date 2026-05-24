@@ -4880,6 +4880,12 @@ export class SettingsApp {
                 link.remove();
             }, 0);
         };
+        const buildImagePresetExportFilename = (presets = []) => {
+            const list = Array.isArray(presets) ? presets : [];
+            const firstName = String(list[0]?.name || 'NAI预设').trim() || 'NAI预设';
+            if (list.length <= 1) return `${firstName}.json`;
+            return `${firstName}等${list.length}个文件.json`;
+        };
         const showImagePresetExportChooser = ({ title, desc, presets = [], selectedIds = [], onConfirm = null }) => {
             document.getElementById('phone-image-preset-export-chooser')?.remove();
             const normalizedPresets = (Array.isArray(presets) ? presets : []).filter(preset => preset?.id);
@@ -5913,7 +5919,7 @@ export class SettingsApp {
                     const selectedSet = new Set(selectedIds);
                     const exportPresets = presets.filter(preset => selectedSet.has(preset.id));
                     const payload = buildImagePromptPresetSharePayload(appKey, exportPresets);
-                    downloadJsonFile(payload, `yuzuki-nai-presets-${appName}-${new Date().toISOString().slice(0, 10)}.json`);
+                    downloadJsonFile(payload, buildImagePresetExportFilename(exportPresets));
                     this.phoneShell?.showNotification?.('导出完成', `已导出 ${payload.presets.length} 套 NAI 预设文件`, '✅');
                 }
             });

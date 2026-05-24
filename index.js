@@ -7305,6 +7305,7 @@ if (window.GGP_Loaded) {
             window.addEventListener('phone:goHome', () => {
                 currentApp = null;
                 window.currentWechatApp = null;
+                window.VirtualPhone?.gamesApp?.clearPokerSession?.();
                 window.VirtualPhone?.gamesApp?.removePhoneChromeTheme?.();
                 if (homeScreen) homeScreen.render({ forceDomRefresh: true });
             });
@@ -7326,6 +7327,7 @@ if (window.GGP_Loaded) {
                 }
                 currentApp = appId;
                 if (appId !== 'games') {
+                    window.VirtualPhone?.gamesApp?.clearPokerSession?.();
                     window.VirtualPhone?.gamesApp?.removePhoneChromeTheme?.();
                 }
 
@@ -8217,6 +8219,9 @@ if (window.GGP_Loaded) {
                                                     } else if (msg.type === 'weibo_card') {
                                                         // 微博转发卡片：直接使用完整content（含正文+评论）
                                                         content = msg.content || '[微博分享]';
+                                                    } else if (msg.type === 'poker_card') {
+                                                        const poker = msg.pokerData || {};
+                                                        content = poker.content || poker.desc || msg.content || '[德州扑克分享]';
                                                     } else if (msg.type === 'call_record') {
                                                         const callTypeName = msg.callType === 'video' ? '视频' : '语音';
                                                         const callStatusText = msg.status === 'answered'

@@ -19,6 +19,10 @@ export class PokerApp {
         this._pokerStatusMode = 'idle';
         this._activeSendingPlayerId = null;
         this.abortController = null;
+        this._pendingPokerChatMessages = [];
+        this._pokerChatReplyTimer = null;
+        this._pokerChatReplyDelay = 6000;
+        this._pokerChatHasPendingReply = false;
 
         window.addEventListener('phone:swipeBack', () => this.handleSwipeBack());
     }
@@ -33,16 +37,35 @@ export class PokerApp {
             '发言可以与真实牌力不完全一致，但行动必须符合角色性格、筹码压力和牌局策略。',
             '不要直接暴露自己的真实手牌，也不要声称看到了其他玩家暗牌。',
             '如果用户在牌桌聊天中说话，角色可以用牌桌话术回应；如果同时轮到自己行动，仍然必须继续给出合法行动，聊天不能替代下注/跟注/弃牌等牌局行动。',
-            '牌桌聊天和牌局行动发生在同一场游戏里，需要承接用户刚才的发言、每局出牌情况、最近行动记录和当前牌桌气氛。',
-            '必须只返回<德州扑克>标签包裹内容和行动，不要使用 Markdown，不要解释及其他旁边。',
+            '牌桌聊天和牌局行动发生在同一场游戏里，需要承接用户刚才的发言、每局出牌情况、最近行动记录和当前牌桌气氛。多人牌局时，不同角色之间可互相试探，不要仅围绕用户回复。',
+            '必须只返回<德州扑克>标签包裹内容和行动，不要使用 Markdown，不要解释及其他旁白。',
+            '每次只输出当前轮到行动/回复的一个角色；牌桌发言/表现每行显示为一个气泡，每段建议 1-3 行。',
+            '',
+            '双人牌桌发言格式为：',
+            '',
             '<德州扑克>',
             '--角色A姓名--',
             '牌桌发言：',
+            '第一句',
+            '第二句',
+            '第三句',
+            '行动：弃牌/加注xx/跟注',
+            '</德州扑克>',
+            '',
+            '多人牌桌发言格式为：',
+            '<德州扑克>',
+            '--角色A姓名--',
+            '牌桌发言：',
+            '第一句',
+            '第二句',
             '行动：弃牌/加注xx/跟注',
             '--角色B姓名--',
             '牌桌发言：',
+            '第一句',
+            '第二句',
+            '第三句',
             '行动：弃牌/加注xx/跟注',
-            '<德州扑克>'
+            '</德州扑克>'
         ].join('\n');
     }
 
@@ -105,6 +128,24 @@ export class PokerApp {
         return this.gamesData.exportPokerShareText();
     }
 
+    buildPokerShareCardData(shareText = '') {
+        const content = String(shareText || '').trim();
+        const lines = content
+            .split(/\r?\n/)
+            .map(line => line.trim())
+            .filter(Boolean);
+        const summaryLines = lines
+            .filter(line => !/^\[[^\]]+\]$/.test(line))
+            .slice(0, 3);
+
+        return {
+            title: '德州扑克牌局记录',
+            desc: summaryLines.join(' / ') || '点击查看完整牌局内容',
+            content,
+            sharedAt: Date.now()
+        };
+    }
+
     async sharePokerToWechat(targetName, options = {}) {
         const friendName = String(targetName || '').trim();
         if (!friendName) throw new Error('未选择微信好友');
@@ -136,10 +177,12 @@ export class PokerApp {
         }
 
         const userInfo = wechatData.getUserInfo?.() || {};
+        const pokerData = this.buildPokerShareCardData(shareText);
         wechatData.addMessage(chat.id, {
             from: 'me',
-            content: shareText,
-            type: 'text',
+            content: '[德州扑克分享]',
+            type: 'poker_card',
+            pokerData,
             avatar: userInfo.avatar || ''
         });
 
@@ -168,12 +211,36 @@ export class PokerApp {
     }
 
     getWechatData() {
+        const fresh = this._refreshWechatDataForCurrentContext();
+        if (fresh) return fresh;
         if (window.VirtualPhone?.cachedWechatData) return window.VirtualPhone.cachedWechatData;
         if (window.VirtualPhone?.wechatApp?.wechatData) return window.VirtualPhone.wechatApp.wechatData;
         if (!this._wechatData) {
             this._wechatData = new WechatData(this.storage);
         }
         return this._wechatData;
+    }
+
+    _refreshWechatDataForCurrentContext() {
+        try {
+            const contextKey = String(this.storage?.getStorageKey?.(this._wechatData?.getStorageKey?.() || 'wechat_data') || '').trim();
+            if (contextKey && this._wechatDataContextKey === contextKey && this._wechatData) {
+                return this._wechatData;
+            }
+            const nextData = new WechatData(this.storage);
+            this._wechatDataContextKey = String(this.storage?.getStorageKey?.(nextData.getStorageKey?.() || 'wechat_data') || contextKey || '').trim();
+            this._wechatData = nextData;
+            if (window.VirtualPhone) {
+                window.VirtualPhone.cachedWechatData = nextData;
+                if (window.VirtualPhone.wechatApp) {
+                    window.VirtualPhone.wechatApp.wechatData = nextData;
+                }
+            }
+            return nextData;
+        } catch (error) {
+            console.warn('[Games] 刷新当前会话微信数据失败:', error);
+            return null;
+        }
     }
 
     getWechatContactsForPoker() {
@@ -295,6 +362,37 @@ export class PokerApp {
         this.drivePokerAi();
     }
 
+    clearPokerSession() {
+        if (this._pokerChatReplyTimer) {
+            clearTimeout(this._pokerChatReplyTimer);
+            this._pokerChatReplyTimer = null;
+        }
+        this._pendingPokerChatMessages = [];
+        this._pokerChatHasPendingReply = false;
+        this._pokerStatusMode = 'idle';
+        this._activeSendingPlayerId = null;
+        this.isSending = false;
+        this._aiDriving = false;
+        if (this.abortController) {
+            this.abortController.abort();
+            this.abortController = null;
+        }
+        if (this.gamesData) {
+            this.gamesData.state = null;
+            this.gamesData.sessionLog = [];
+            this.gamesData.sessionStartedAt = 0;
+        }
+        if (this.gamesView) {
+            this.gamesView._speechQueue = [];
+            this.gamesView._activeSeatSpeech = null;
+            this.gamesView._lastSpeechAt = 0;
+            if (this.gamesView._speechTimer) {
+                clearTimeout(this.gamesView._speechTimer);
+                this.gamesView._speechTimer = null;
+            }
+        }
+    }
+
     async handleUserPokerAction(action, amount = 0) {
         if (this.isPokerBusy()) {
             this.phoneShell?.showNotification?.('德州扑克', '正在等待牌桌回复，请稍后行动', '⏳');
@@ -308,21 +406,64 @@ export class PokerApp {
     async sendPokerTableChat(message = '') {
         const text = String(message || '').trim();
         if (!text) return;
-        if (this.isPokerBusy()) {
-            this.phoneShell?.showNotification?.('德州扑克', '正在等待牌桌回复，请稍后发言', '⏳');
+        this.gamesData.addTableSpeech(this.gamesData.getState()?.players?.find(p => p.id === 'user')?.name || '你', text);
+        this._pendingPokerChatMessages.push(text);
+        this._pokerChatHasPendingReply = true;
+        this.gamesView.clearPendingChatInput?.();
+        this.gamesView.renderPoker();
+        this._schedulePokerTableChatReplies();
+    }
+
+    _schedulePokerTableChatReplies() {
+        if (this._pokerChatReplyTimer) {
+            clearTimeout(this._pokerChatReplyTimer);
+            this._pokerChatReplyTimer = null;
+        }
+        if (!this._pokerChatHasPendingReply || this._pendingPokerChatMessages.length === 0) {
+            if (!this.isSending && !this._aiDriving) this._setPokerStatus('idle');
             return;
         }
-        this.gamesData.addTableSpeech(this.gamesData.getState()?.players?.find(p => p.id === 'user')?.name || '你', text);
-        this.gamesView.clearPendingChatInput?.();
-        if (this.isPokerAiSpeechEnabled()) {
-            this._setPokerStatus('waiting', 'table_chat');
+        if (!this.isPokerAiSpeechEnabled()) {
+            this.drivePokerAi();
+            return;
         }
-        this.gamesView.renderPoker();
-        if (this.isPokerAiSpeechEnabled()) {
+        if (this.isPokerComposing()) {
+            this._setPokerStatus('idle');
+            this.gamesView.updateStatusDot?.();
+            return;
+        }
+        this._setPokerStatus('waiting', 'table_chat');
+        this._pokerChatReplyTimer = setTimeout(() => {
+            this._pokerChatReplyTimer = null;
+            this._flushPokerTableChatReplies();
+        }, this._pokerChatReplyDelay);
+    }
+
+    async _flushPokerTableChatReplies() {
+        const messages = this._pendingPokerChatMessages.splice(0);
+        const text = messages.map(item => String(item || '').trim()).filter(Boolean).join('\n');
+        if (!text) {
+            this._pokerChatHasPendingReply = false;
+            if (!this.isSending && !this._aiDriving) this._setPokerStatus('idle');
+            return;
+        }
+        this._pokerChatHasPendingReply = false;
+        try {
             await this._requestPokerChatReplies(text);
+            this.gamesView.renderPoker();
+            await this.drivePokerAi();
+        } finally {
+            if (!this.isSending && !this._aiDriving) this._setPokerStatus('idle');
         }
-        this.gamesView.renderPoker();
-        await this.drivePokerAi();
+    }
+
+    isPokerComposing() {
+        return !!this.gamesView?.isPokerComposing?.();
+    }
+
+    handlePokerComposerChanged() {
+        if (!this._pokerChatHasPendingReply) return;
+        this._schedulePokerTableChatReplies();
     }
 
     async drivePokerAi() {
@@ -366,7 +507,7 @@ export class PokerApp {
             }), {
                 appId: 'games',
                 temperature: 0.8,
-                max_tokens: 300
+                max_tokens: 520
             });
             if (result?.success === false) {
                 throw new Error(result.error || 'AI 请求失败');
@@ -378,7 +519,7 @@ export class PokerApp {
             const legal = this.gamesData.getLegalActionsForPlayer(player.id);
             const normalized = this._normalizePokerDecision(decision, legal);
             this.gamesData.applyPlayerAction(player.id, normalized.action, normalized.amount, {
-                speech: this.isPokerAiSpeechEnabled() ? normalized.speech : ''
+                speech: this.isPokerAiSpeechEnabled() ? normalized.speechLines : ''
             });
             return true;
         } catch (err) {
@@ -394,30 +535,36 @@ export class PokerApp {
         if (!wechatPlayers.length) return;
         const apiManager = window.VirtualPhone?.apiManager;
         if (!apiManager?.callAI) return;
-        for (const player of wechatPlayers.slice(0, 3)) {
-            try {
-                const context = this.gamesData.buildAiChatContextForPlayer(player.id, userMessage);
-                const result = await this._callPokerAi(player, () => this._buildPokerAiMessages(player, {
-                    ...context,
-                    replyAs: player.name
-                }, {
-                    mode: 'chat',
-                    extraInstruction: `现在只需要以 ${player.name} 的口吻回复牌桌聊天，仍然只返回<德州扑克>标签；行动可写“无行动”。`
-                }), { appId: 'games', temperature: 0.9, max_tokens: 180 });
-                if (result?.success === false) {
-                    throw new Error(result.error || 'AI 请求失败');
-                }
-                const parsed = this._parsePokerAiDecision(result?.summary || result?.content || result?.text || '', player.name);
-                const speech = String(parsed?.speech || '').trim();
-                if (speech) {
-                    this.gamesData.addTableSpeech(player.name, speech.slice(0, 80));
-                    this.gamesView.syncLatestSeatSpeechFromState?.();
-                }
-            } catch (e) {
-                console.warn('[Games] 牌桌聊天 AI 回复失败:', e);
-                this._showPokerAiError(player?.name || 'AI', e);
-                break;
+        const tablePlayer = { id: 'table_chat', name: '牌桌' };
+        try {
+            const context = this.gamesData.buildAiChatContext(userMessage);
+            const result = await this._callPokerAi(tablePlayer, () => this._buildPokerAiMessages(tablePlayer, context, {
+                mode: 'chat',
+                allowMulti: true,
+                extraInstruction: '现在是多人牌桌聊天，可按当前气氛输出 1-3 个微信好友角色段落；不同角色可以互相试探、接话或回应用户。每个角色行动写“无行动”。'
+            }), { appId: 'games', temperature: 0.9, max_tokens: 640 });
+            if (result?.success === false) {
+                throw new Error(result.error || 'AI 请求失败');
             }
+            const sections = this._parsePokerAiSections(result?.summary || result?.content || result?.text || '');
+            const validNames = new Set(wechatPlayers.map(player => String(player.name || '').trim()).filter(Boolean));
+            const speeches = sections
+                .map(section => ({
+                    name: this._resolvePokerSectionPlayerName(section.name, validNames),
+                    speeches: this._extractPokerFieldLines(section.body, '牌桌发言')
+                }))
+                .filter(item => item.name && item.speeches.length);
+            const speechQueue = speeches.flatMap(item => item.speeches.map(speech => ({
+                name: item.name,
+                speech
+            })));
+            for (const item of speechQueue.slice(0, 8)) {
+                this.gamesData.addTableSpeech(item.name, item.speech);
+                this.gamesView.syncLatestSeatSpeechFromState?.();
+            }
+        } catch (e) {
+            console.warn('[Games] 牌桌聊天 AI 回复失败:', e);
+            this._showPokerAiError('牌桌', e);
         }
     }
 
@@ -516,12 +663,14 @@ export class PokerApp {
 
         const perspective = [
             '【德州扑克视角限制】',
-            `本次主要扮演：${player?.name || '未知玩家'}。如果任务要求多个玩家发言，请分别按各自姓名输出。`,
+            options.allowMulti
+                ? '本次是多人牌桌聊天，可输出多个角色段落；段落顺序就是牌桌发言气泡显示顺序。'
+                : `本次只扮演并只输出：${player?.name || '未知玩家'}。不要输出其他玩家段落。`,
             '系统简报会提供所有非用户玩家的手牌，用户手牌不会提供。',
             '这些手牌是系统裁判信息，用于帮每个 AI 玩家按自己的牌做合理决策；牌桌发言里不要声称看到了其他玩家暗牌。',
             options.mode === 'chat'
-                ? '本次任务是牌桌聊天，不要推动下注行动。'
-                : '本次任务是行动决策，只能从 legalActions 里选择一个合法行动。行动文字请写成：弃牌、过牌、跟注、下注xx、加注xx、全下。'
+                ? '本次任务是牌桌聊天，不要推动下注行动。牌桌发言最多 1-2 句。'
+                : '本次任务是行动决策，只能从 legalActions 里选择一个合法行动。牌桌发言最多 1-2 句；行动文字请写成：弃牌、过牌、跟注、下注xx、加注xx、全下。'
         ].join('\n');
         messages.push({
             role: 'system',
@@ -577,8 +726,8 @@ export class PokerApp {
         const lines = [
             options.mode === 'chat' ? '【德州扑克牌桌聊天简报】' : '【德州扑克行动简报】',
             `当前第 ${table.handNo || '?'} 局，阶段：${table.street || '未知'}。`,
-            `现在轮到：${table.activePlayer || player.name || '未知玩家'}。你正在扮演：${player.name || table.activePlayer || '未知玩家'}。`,
-            `当前行动/回复玩家手牌：${privateHand}。`,
+            `现在轮到：${table.activePlayer || player.name || '未知玩家'}。${options.allowMulti ? '本次可由多个微信好友按牌桌气氛发言。' : `你正在扮演：${player.name || table.activePlayer || '未知玩家'}。`}`,
+            options.allowMulti ? '各微信好友手牌见下方“系统可见非用户玩家手牌”。' : `当前行动/回复玩家手牌：${privateHand}。`,
             '系统可见非用户玩家手牌：',
             visibleHandLines,
             '用户手牌：未提供。',
@@ -660,12 +809,14 @@ export class PokerApp {
     _parsePokerAiDecision(text, playerName = '') {
         const block = this._extractPokerTagBlock(text);
         const section = this._extractPokerPlayerSection(block, playerName);
-        const speech = this._extractPokerLine(section, '牌桌发言');
+        const speechLines = this._extractPokerFieldLines(section, '牌桌发言');
+        const speech = speechLines.join(' ').trim();
         const actionText = this._extractPokerLine(section, '行动');
         const parsedAction = this._parsePokerActionText(actionText);
         return {
             ...parsedAction,
-            speech
+            speech,
+            speechLines
         };
     }
 
@@ -686,6 +837,22 @@ export class PokerApp {
     _extractPokerPlayerSection(block, playerName = '') {
         const source = String(block || '').trim();
         const name = String(playerName || '').trim();
+        const sections = this._extractPokerSections(source);
+        if (sections.length <= 0) return source;
+        const exact = sections.find(item => item.name === name);
+        if (exact) return exact.body;
+        const fuzzy = sections.find(item => item.name.includes(name) || name.includes(item.name));
+        return (fuzzy || sections[0]).body;
+    }
+
+    _parsePokerAiSections(text) {
+        const block = this._extractPokerTagBlock(text);
+        const sections = this._extractPokerSections(block);
+        return sections.length ? sections : [{ name: '', body: block }];
+    }
+
+    _extractPokerSections(sourceText) {
+        const source = String(sourceText || '').trim();
         const sections = [];
         const pattern = /--([^-]+?)--([\s\S]*?)(?=--[^-]+?--|$)/g;
         let match = null;
@@ -695,17 +862,36 @@ export class PokerApp {
                 body: String(match[2] || '').trim()
             });
         }
-        if (sections.length <= 0) return source;
-        const exact = sections.find(item => item.name === name);
-        if (exact) return exact.body;
-        const fuzzy = sections.find(item => item.name.includes(name) || name.includes(item.name));
-        return (fuzzy || sections[0]).body;
+        return sections;
+    }
+
+    _resolvePokerSectionPlayerName(name, validNames = new Set()) {
+        const raw = String(name || '').trim();
+        if (!raw) return '';
+        if (validNames.has(raw)) return raw;
+        for (const valid of validNames) {
+            if (raw.includes(valid) || valid.includes(raw)) return valid;
+        }
+        return '';
     }
 
     _extractPokerLine(section, label) {
         const escaped = String(label || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const match = String(section || '').match(new RegExp(`${escaped}\\s*[:：]\\s*([^\\n\\r]*)`));
         return String(match?.[1] || '').trim();
+    }
+
+    _extractPokerField(section, label) {
+        return this._extractPokerFieldLines(section, label).join(' ').trim();
+    }
+
+    _extractPokerFieldLines(section, label) {
+        const escaped = String(label || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const match = String(section || '').match(new RegExp(`${escaped}\\s*[:：]\\s*([\\s\\S]*?)(?=\\n\\s*(?:牌桌发言|行动)\\s*[:：]|\\n\\s*--[^-]+?--|$)`));
+        return String(match?.[1] || '')
+            .split(/\r?\n/)
+            .map(line => line.trim())
+            .filter(Boolean);
     }
 
     _parsePokerActionText(actionText) {
@@ -744,11 +930,13 @@ export class PokerApp {
         return {
             action,
             amount,
-            speech: String(decision?.speech || '').trim().slice(0, 80)
+            speech: String(decision?.speech || '').trim(),
+            speechLines: Array.isArray(decision?.speechLines) ? decision.speechLines.map(line => String(line || '').trim()).filter(Boolean) : []
         };
     }
 
     backToLobby() {
+        this.clearPokerSession();
         this.applyPhoneChromeTheme();
         this.currentView = 'lobby';
         this.gamesView.renderLobby();

@@ -102,7 +102,9 @@ export class PokerData {
             phase: 'playing',
             message: '新牌局开始，底牌已发出。',
             dealerMessage: '',
-            log: []
+            log: [],
+            speechSeq: 0,
+            speechEvents: []
         };
 
         this.state.players.forEach(player => {
@@ -209,8 +211,13 @@ export class PokerData {
         } else {
             return this.getState();
         }
-        const speech = String(options.speech || '').trim();
-        if (speech) this.addTableSpeech(player.name, speech);
+        const speeches = Array.isArray(options.speech)
+            ? options.speech
+            : String(options.speech || '').split(/\r?\n/);
+        speeches
+            .map(line => String(line || '').trim())
+            .filter(Boolean)
+            .forEach(line => this.addTableSpeech(player.name, line));
         this._afterAction(player);
         this._updatePromptForActivePlayer();
         this._persistUserChips();
@@ -251,12 +258,20 @@ export class PokerData {
         this._pushLog(line);
         this.state.dealerMessage = line;
         const speaker = this.state.players.find(player => player.name === safeSender || player.id === safeSender);
-        this.state.lastSpeech = {
+        const speechSeq = Number(this.state.speechSeq || 0) + 1;
+        this.state.speechSeq = speechSeq;
+        const speechEvent = {
             sender: safeSender,
             playerId: speaker?.id || '',
             content: safeSpeech,
-            at: Date.now()
+            at: Date.now() + speechSeq
         };
+        if (!Array.isArray(this.state.speechEvents)) this.state.speechEvents = [];
+        this.state.speechEvents.push(speechEvent);
+        if (this.state.speechEvents.length > 80) {
+            this.state.speechEvents = this.state.speechEvents.slice(-80);
+        }
+        this.state.lastSpeech = speechEvent;
     }
 
     buildAiDecisionContext(playerId) {
@@ -304,9 +319,26 @@ export class PokerData {
         lines.push('整场记录：');
         const events = Array.isArray(this.sessionLog) ? this.sessionLog : [];
         if (events.length) {
-            events.forEach(item => lines.push(item));
+            let lastHandNo = '';
+            events.forEach(item => {
+                const raw = String(item || '').trim();
+                const match = raw.match(/^第\s*(\d+)\s*局[｜|]\s*(.*)$/);
+                if (!match) {
+                    lines.push(raw);
+                    return;
+                }
+                const handNo = match[1];
+                const content = String(match[2] || '').trim();
+                if (handNo !== lastHandNo) {
+                    if (lastHandNo) lines.push('');
+                    lines.push(`第 ${handNo} 局`);
+                    lastHandNo = handNo;
+                }
+                if (content) lines.push(content);
+            });
         } else if (state?.log?.length) {
-            state.log.forEach(item => lines.push(`第 ${state.handNo} 局｜${item}`));
+            lines.push(`第 ${state.handNo} 局`);
+            state.log.forEach(item => lines.push(item));
         } else {
             lines.push('暂无记录');
         }
