@@ -59,11 +59,15 @@ export class HomeScreen {
             ? `background-image: url('${customWallpaper}'); background-size: cover; background-position: center;`
             : '';
 
+        const homeLayout = this.getHomeLayout();
+        const hasCardCustomCss = homeLayout === 'cards' && !!this.getCardLayoutCustomCssText();
+        const cardCustomClass = hasCardCustomCss ? ' home-card-custom-css-active yzp-home-card-custom-css-active' : '';
+
         const html = `
-            <div class="home-screen yzp-home-screen home-layout-${this.getHomeLayout()} yzp-home-layout-${this.getHomeLayout()}"${renderKeyAttr}>
+            <div class="home-screen yzp-home-screen home-layout-${homeLayout} yzp-home-layout-${homeLayout}${cardCustomClass}"${renderKeyAttr}>
                 <div class="wallpaper" style="${wallpaperStyle}"></div>
 
-                ${this.getHomeLayout() === 'cards' ? this.renderCardLayout() : this.renderIconLayout()}
+                ${homeLayout === 'cards' ? this.renderCardLayout() : this.renderIconLayout()}
 
                 <div class="dock yzp-home-dock">
                     ${this.renderDock()}
@@ -81,6 +85,10 @@ export class HomeScreen {
         return layout === 'cards' ? 'cards' : 'icons';
     }
 
+    getCardLayoutCustomCssText() {
+        return String(window.VirtualPhone?.storage?.get?.(CARD_LAYOUT_CUSTOM_CSS_KEY) || '').trim();
+    }
+
     applyCardLayoutCustomCss() {
         const existing = document.getElementById(CARD_LAYOUT_CUSTOM_STYLE_ID);
         existing?.remove();
@@ -88,7 +96,7 @@ export class HomeScreen {
         existingGuard?.remove();
 
         if (this.getHomeLayout() !== 'cards') return;
-        const cssText = String(window.VirtualPhone?.storage?.get?.(CARD_LAYOUT_CUSTOM_CSS_KEY) || '').trim();
+        const cssText = this.getCardLayoutCustomCssText();
         if (cssText) {
             const style = document.createElement('style');
             style.id = CARD_LAYOUT_CUSTOM_STYLE_ID;

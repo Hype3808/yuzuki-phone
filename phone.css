@@ -2168,6 +2168,43 @@
     -webkit-backdrop-filter: blur(26px) saturate(180%) !important;
 }
 
+#phone-panel-content .phone-screen .home-layout-cards.home-card-custom-css-active .home-time-card,
+#phone-panel-content .phone-screen .home-layout-cards.home-card-custom-css-active .home-app-cluster,
+#phone-panel-content .phone-screen .home-layout-cards.home-card-custom-css-active .home-social-card,
+#phone-panel-content .phone-screen .home-layout-cards.home-card-custom-css-active .home-music-card,
+#phone-panel-content .phone-screen .home-layout-cards.home-card-custom-css-active .home-settings-card,
+#phone-panel-content .phone-screen .home-layout-cards.home-card-custom-css-active .dock {
+    background-color: transparent !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+#phone-panel-content .phone-screen .home-layout-cards.home-card-custom-css-active .home-time-card::before,
+#phone-panel-content .phone-screen .home-layout-cards.home-card-custom-css-active .home-app-cluster::before,
+#phone-panel-content .phone-screen .home-layout-cards.home-card-custom-css-active .home-social-card::before,
+#phone-panel-content .phone-screen .home-layout-cards.home-card-custom-css-active .home-settings-card::before,
+#phone-panel-content .phone-screen .home-layout-cards.home-card-custom-css-active .dock::before,
+#phone-panel-content .phone-screen .home-layout-cards.home-card-custom-css-active .home-time-card::after,
+#phone-panel-content .phone-screen .home-layout-cards.home-card-custom-css-active .home-app-cluster::after,
+#phone-panel-content .phone-screen .home-layout-cards.home-card-custom-css-active .home-social-card::after,
+#phone-panel-content .phone-screen .home-layout-cards.home-card-custom-css-active .home-settings-card::after,
+#phone-panel-content .phone-screen .home-layout-cards.home-card-custom-css-active .dock::after {
+    border-color: transparent !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+#phone-panel-content .phone-screen .home-layout-cards.home-card-custom-css-active .home-music-card::before {
+    background-color: transparent !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
 #phone-panel-content .phone-screen .home-dashboard .home-widget-icon,
 #phone-panel-content .phone-screen .home-dashboard .home-mini-icon,
 #phone-panel-content .phone-screen .home-dashboard .home-diary-icon,
