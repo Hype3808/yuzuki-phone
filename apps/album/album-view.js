@@ -14,6 +14,8 @@ export class AlbumView {
         this.selectionMode = false;
         this.selectedPaths = new Set();
         this._missingImagePaths = new Set();
+        this.isDeleting = false;
+        this.isBulkDeleting = false;
     }
 
     loadCSS() {
@@ -227,9 +229,13 @@ export class AlbumView {
     }
 
     async deleteImage(image) {
-        if (!image) return;
+        if (!image || this.isDeleting || this.isBulkDeleting) return;
+        this.isDeleting = true;
         const ok = window.confirm('删除这张图片吗？引用它的壁纸、图标或记录也会清空。');
-        if (!ok) return;
+        if (!ok) {
+            this.isDeleting = false;
+            return;
+        }
 
         const deleteBtn = document.querySelector('.album-preview-delete');
         if (deleteBtn) deleteBtn.disabled = true;
@@ -239,12 +245,15 @@ export class AlbumView {
         } catch (e) {
             console.error('删除相册图片失败:', e);
             this.app.phoneShell?.showNotification?.('相册', '删除失败', '⚠️');
+        } finally {
+            this.isDeleting = false;
         }
         this.previewOpen = false;
         this.render();
     }
 
     async deleteSelectedImages() {
+        if (this.isBulkDeleting || this.isDeleting) return;
         const selected = this.images.filter(image => this.selectedPaths.has(image.path));
         if (selected.length === 0) return;
         const ok = window.confirm(`删除选中的 ${selected.length} 张图片吗？引用它们的壁纸、图标或记录也会清空。`);
@@ -252,19 +261,19 @@ export class AlbumView {
 
         const deleteBtn = document.getElementById('album-delete-selected');
         if (deleteBtn) deleteBtn.disabled = true;
-        let successCount = 0;
-        for (const image of selected) {
-            try {
-                await this.app.albumData.deleteImage(image.path);
-                successCount += 1;
-            } catch (e) {
-                console.error('批量删除相册图片失败:', image.path, e);
-            }
+        this.isBulkDeleting = true;
+        try {
+            const result = await this.app.albumData.deleteImages(selected.map(image => image.path));
+            this.app.phoneShell?.showNotification?.('相册', `已删除 ${result.successCount} 张图片`, '🖼️');
+        } catch (e) {
+            console.error('批量删除相册图片失败:', e);
+            this.app.phoneShell?.showNotification?.('相册', '批量删除失败', '⚠️');
+        } finally {
+            this.isBulkDeleting = false;
+            this.selectionMode = false;
+            this.selectedPaths.clear();
+            this.render();
         }
-        this.app.phoneShell?.showNotification?.('相册', `已删除 ${successCount} 张图片`, '🖼️');
-        this.selectionMode = false;
-        this.selectedPaths.clear();
-        this.render();
     }
 
     getPrimarySource(image) {

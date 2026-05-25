@@ -36,6 +36,7 @@ export class AlbumApp {
     }
 
     refreshIfVisible() {
+        if (this.albumView?.isBulkDeleting) return;
         const domCurrentView = document.querySelector('.phone-view-current');
         if (!domCurrentView?.querySelector?.('.album-app')) return;
         this.albumView.render();

@@ -876,11 +876,45 @@ export class CalendarView {
     }
 
     getWeekdayIndex(year, month, day) {
+        const mathIndex = this.getCalculatedWeekdayIndex(year, month, day);
+        const storyAnchor = this.getStoryWeekdayAnchor();
+        if (storyAnchor) {
+            const storyMathIndex = this.getCalculatedWeekdayIndex(storyAnchor.year, storyAnchor.month, storyAnchor.day);
+            if (storyMathIndex >= 0) {
+                const delta = ((mathIndex - storyMathIndex) % 7 + 7) % 7;
+                return (storyAnchor.weekdayIndex + delta) % 7;
+            }
+        }
+        return mathIndex;
+    }
+
+    getCalculatedWeekdayIndex(year, month, day) {
         const tm = window.VirtualPhone?.timeManager;
         const weekday = tm?.calculateWeekdayFromDate
             ? tm.calculateWeekdayFromDate(year, month, day)
             : this.calculateWeekdayFromDate(year, month, day);
         return ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'].indexOf(weekday);
+    }
+
+    getStoryWeekdayAnchor() {
+        const storyTime = this.getStoryTime();
+        const weekdayIndex = this.getWeekdayIndexFromText(storyTime?.weekday);
+        if (weekdayIndex < 0) return null;
+
+        const match = String(storyTime?.date || '').match(/(\d{1,6})[-\/年]\s*(\d{1,2})[-\/月]\s*(\d{1,2})\s*日?/);
+        if (!match) return null;
+
+        return {
+            year: Number.parseInt(match[1], 10),
+            month: Number.parseInt(match[2], 10),
+            day: Number.parseInt(match[3], 10),
+            weekdayIndex
+        };
+    }
+
+    getWeekdayIndexFromText(weekday = '') {
+        const normalized = String(weekday || '').trim().replace(/^周/, '星期').replace('星期天', '星期日');
+        return ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'].indexOf(normalized);
     }
 
     calculateWeekdayFromDate(year, month, day) {
@@ -925,10 +959,9 @@ export class CalendarView {
     }
 
     getWeekdayLabel(dateParts) {
-        const tm = window.VirtualPhone?.timeManager;
-        if (tm?.calculateWeekdayFromDate) {
-            return tm.calculateWeekdayFromDate(dateParts.year, dateParts.month, dateParts.day);
-        }
+        const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+        const weekdayIndex = this.getWeekdayIndex(dateParts.year, dateParts.month, dateParts.day);
+        if (weekdayIndex >= 0) return weekdays[weekdayIndex];
         return this.calculateWeekdayFromDate(dateParts.year, dateParts.month, dateParts.day);
     }
 

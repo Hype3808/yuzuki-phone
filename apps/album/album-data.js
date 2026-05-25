@@ -73,6 +73,41 @@ export class AlbumData {
         };
     }
 
+    async deleteImages(pathLikes = []) {
+        const normalizedPaths = Array.from(new Set(
+            (Array.isArray(pathLikes) ? pathLikes : [])
+                .map(path => this.normalizePath(path))
+                .filter(Boolean)
+        ));
+        if (normalizedPaths.length === 0) {
+            return { successCount: 0, failCount: 0, results: [] };
+        }
+
+        const imageManager = window.VirtualPhone?.imageManager;
+        const results = [];
+        let successCount = 0;
+        let failCount = 0;
+
+        for (const path of normalizedPaths) {
+            let deleteResult = { attempted: false, success: false };
+            try {
+                if (imageManager?.deleteManagedBackgroundByPath) {
+                    deleteResult = await imageManager.deleteManagedBackgroundByPath(path, { quiet: true });
+                }
+                await this.cleanupReferences(path);
+                await this._markDeleted(path);
+                await this._removeUploadIndexPath(path);
+                successCount += 1;
+                results.push({ path, success: true, fileDeleted: !!deleteResult.success, attempted: !!deleteResult.attempted });
+            } catch (e) {
+                failCount += 1;
+                results.push({ path, success: false, error: e });
+            }
+        }
+
+        return { successCount, failCount, results };
+    }
+
     async markMissingImage(pathLike) {
         const normalized = this.normalizePath(pathLike);
         if (!normalized || !this.isManagedImagePath(normalized)) return false;
