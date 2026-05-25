@@ -1757,7 +1757,7 @@ export class ChatView {
 
         const messages = this.app.wechatData.getMessages(targetChatId);
         const userInfo = this.app.wechatData.getUserInfo();
-        this.smartUpdateMessages(messages, userInfo);
+        this.smartUpdateMessages(messages, userInfo, { chatId: targetChatId });
 
         this.app.phoneShell?.updateStatusBarTime?.();
         window.VirtualPhone?.home?.render?.({ forceDomRefresh: true });
@@ -2372,24 +2372,39 @@ renderChatRoom(chat) {
     }
 
     // 🔥 智能局部刷新消息列表（移动端安全版防闪烁）
-    smartUpdateMessages(messages, userInfo) {
-        const container = document.getElementById('chat-messages');
+    smartUpdateMessages(messages, userInfo, options = {}) {
+        const container = this._getVisibleChatMessagesContainer?.(options.chatId) || document.getElementById('chat-messages');
         if (!container) return;
 
         // 1. 记录更新前的滚动状态
         const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
 
         // 2. 生成新 HTML
-        const newHtml = this.renderMessagesWithDateDividers(messages, userInfo);
+        let newHtml = '';
+        try {
+            newHtml = this.renderMessagesWithDateDividers(messages, userInfo);
+        } catch (error) {
+            console.error('微信消息列表 HTML 生成失败:', error);
+            return;
+        }
 
         // 3. 移动端安全替换：抛弃危险的 outerHTML，使用原生 innerHTML 替换
-        container.innerHTML = newHtml;
+        try {
+            container.innerHTML = newHtml;
+        } catch (error) {
+            console.error('微信消息列表刷新失败:', error);
+            return;
+        }
 
-        // 4. 重新绑定事件
-        this.bindMessageLongPressEvents();
-        this.bindSpecialMessageEvents();
-        this.bindInnerThoughtEvents();
-        this.bindMessageSelectionEvents();
+        // 4. 重新绑定事件。这里不能影响发送主流程，否则会出现 API 已完成但微信一直黄灯。
+        try {
+            this.bindMessageLongPressEvents();
+            this.bindSpecialMessageEvents();
+            this.bindInnerThoughtEvents();
+            this.bindMessageSelectionEvents();
+        } catch (error) {
+            console.error('微信消息列表事件绑定失败:', error);
+        }
 
         // 5. 恢复滚动状态（如果本来在底部，就继续贴底）
         if (isNearBottom) {
@@ -3172,6 +3187,17 @@ renderChatRoom(chat) {
         return parts.filter(Boolean).join('，');
     }
 
+    _getVisibleChatMessagesContainer(chatId = null) {
+        const targetChatId = String(chatId || '').trim();
+        const activeChatId = String(this.app.currentChat?.id || '').trim();
+        if (targetChatId && activeChatId && activeChatId !== targetChatId) return null;
+
+        const currentView = this.getCurrentWechatView ? this.getCurrentWechatView() : null;
+        return currentView?.querySelector?.('#chat-messages')
+            || document.querySelector('.phone-view-current #chat-messages')
+            || document.getElementById('chat-messages');
+    }
+
     _refreshVisibleChatMessages(chatId) {
         const activeChatId = String(this.app.currentChat?.id || '').trim();
         const targetChatId = String(chatId || '').trim();
@@ -3179,7 +3205,7 @@ renderChatRoom(chat) {
 
         const messages = this.app.wechatData.getMessages(targetChatId);
         const userInfo = this.app.wechatData.getUserInfo();
-        this.smartUpdateMessages(messages, userInfo);
+        this.smartUpdateMessages(messages, userInfo, { chatId: targetChatId });
     }
 
     _toggleImagePromptCard(cardEl, showBack) {
@@ -3840,7 +3866,7 @@ renderChatRoom(chat) {
             }
         });
         this.app.syncMusicListenHeaderIndicator?.(chatId);
-        this.smartUpdateMessages(this.app.wechatData.getMessages(chatId), this.app.wechatData.getUserInfo());
+        this.smartUpdateMessages(this.app.wechatData.getMessages(chatId), this.app.wechatData.getUserInfo(), { chatId });
     }
 
     rejectMusicInvite(messageId = '') {
@@ -3855,7 +3881,7 @@ renderChatRoom(chat) {
             musicInviteStatus: 'rejected',
             content: `已拒绝一起听《${songName}》${artist ? ` - ${artist}` : ''}`
         });
-        this.smartUpdateMessages(this.app.wechatData.getMessages(chatId), this.app.wechatData.getUserInfo());
+        this.smartUpdateMessages(this.app.wechatData.getMessages(chatId), this.app.wechatData.getUserInfo(), { chatId });
     }
 
     renderTwemojiEmoji(emoji, size = 24, inline = true) {
@@ -5253,11 +5279,11 @@ renderChatRoom(chat) {
     _refreshChatMessagesIfVisible(chatId = '') {
         const safeChatId = String(chatId || '').trim();
         if (!safeChatId || String(this.app.currentChat?.id || '').trim() !== safeChatId) return;
-        const messagesDiv = document.getElementById('chat-messages');
+        const messagesDiv = this._getVisibleChatMessagesContainer(safeChatId);
         if (!messagesDiv) return;
         const messages = this.app.wechatData.getMessages(safeChatId) || [];
         const userInfo = this.app.wechatData.getUserInfo();
-        this.smartUpdateMessages(messages, userInfo);
+        this.smartUpdateMessages(messages, userInfo, { chatId: safeChatId });
     }
 
     _updateHoneyInviteMessageStatus(chatId = '', messageId = '', status = '') {
@@ -6452,11 +6478,11 @@ renderChatRoom(chat) {
             if (quoteBar) quoteBar.remove();
 
             // 🔥 只更新消息列表，不重新渲染整个界面（防止键盘收回）
-            const messagesDiv = document.getElementById('chat-messages');
+            const messagesDiv = this._getVisibleChatMessagesContainer(targetChatId);
             if (messagesDiv) {
                 const messages = this.app.wechatData.getMessages(targetChatId);
                 const userInfo = this.app.wechatData.getUserInfo();
-                this.smartUpdateMessages(messages, userInfo);
+                this.smartUpdateMessages(messages, userInfo, { chatId: targetChatId });
             }
 
             this._enqueuePendingChat(targetChatId, {
@@ -7422,11 +7448,11 @@ renderChatRoom(chat) {
                 if (isStillViewing) {
                     window.VirtualPhone?.playWechatMessageSound?.({ source: 'online_inline_foreground' });
                     // 如果还在当前聊天，使用智能防闪烁引擎刷新
-                    const messagesDiv = document.getElementById('chat-messages');
+                    const messagesDiv = this._getVisibleChatMessagesContainer(savedChatId);
                     if (messagesDiv) {
-                        const messages = this.app.wechatData.getMessages(this.app.currentChat.id);
+                        const messages = this.app.wechatData.getMessages(savedChatId);
                         const userInfo = this.app.wechatData.getUserInfo();
-                        this.smartUpdateMessages(messages, userInfo);
+                        this.smartUpdateMessages(messages, userInfo, { chatId: savedChatId });
                     }
                 } else {
                     // 🔥 核心修复：如果用户切到了别的窗口或退到了列表，将此消息视为"后台新消息"处理
@@ -7522,6 +7548,9 @@ renderChatRoom(chat) {
                 this._dequeuePendingChat(savedChatId);
             }
         } finally {
+            if (success) {
+                this._dequeuePendingChat(savedChatId);
+            }
             // 🔥 无论成功还是失败，都重置状态
             this.isSending = false;
             if (String(this._activeSendingChatId || '') === String(savedChatId || '')) {
@@ -7530,7 +7559,8 @@ renderChatRoom(chat) {
             this.abortController = null;
             this._aiReplyRequestStartedAt = 0;
             this._resetAiReplyTimeCursor();
-            this.hideTypingStatus();
+            this.syncHeaderStatusDot(savedChatId);
+            this._refreshVisibleChatMessages(savedChatId);
             // 🔥 只有手机还开着才刷新界面（需要更新发送按钮状态）
             if (this.app.currentChat) {
                 // 🔥 只更新发送按钮区域，避免整个界面重绘
@@ -9029,6 +9059,7 @@ renderChatRoom(chat) {
             document.getElementById('clear-confirm')?.addEventListener('click', () => {
                 // 清空当前聊天的所有消息
                 this.app.wechatData.clearMessages(chat.id);
+                this._clearPendingStateForChat(chat.id);
                 document.getElementById('clear-confirm-modal')?.remove();
 
                 // 🔥🔥🔥 核心修复：通知手机外壳立即刷新左上角状态栏时间
@@ -9080,8 +9111,22 @@ renderChatRoom(chat) {
         this._setHeaderStatusDot('yellow', targetChatId);
     }
 
-    hideTypingStatus() {
-        this.syncHeaderStatusDot();
+    hideTypingStatus(targetChatId = null) {
+        this.syncHeaderStatusDot(targetChatId);
+    }
+
+    _clearPendingStateForChat(chatId = null) {
+        const safeChatId = String(chatId || '').trim();
+        if (!safeChatId) return;
+
+        this._dequeuePendingChat(safeChatId);
+        if (this.pendingChatIds.size === 0) {
+            clearTimeout(this.batchTimer);
+        } else {
+            this._restartPendingTimerIfNeeded(this.app.currentChat?.id);
+        }
+
+        this.syncHeaderStatusDot(safeChatId);
     }
     // 🔧 显示聊天设置菜单
     showChatMenu() {
@@ -9186,6 +9231,7 @@ renderChatRoom(chat) {
 
                 // 🔥 改用底层封装好的 clearMessages 方法，它内置了清空时间缓存的逻辑
                 this.app.wechatData.clearMessages(chatId);
+                this._clearPendingStateForChat(chatId);
 
                 // 🔥🔥🔥 核心修复：通知手机外壳立即刷新左上角状态栏时间
                 if (this.app.phoneShell && typeof this.app.phoneShell.updateStatusBarTime === 'function') {
@@ -10033,9 +10079,9 @@ renderChatRoom(chat) {
         const updatedMessages = this.app.wechatData.getMessages(currentChatId);
         const currentView = document.querySelector('.phone-view-current .wechat-app');
         if (currentView && this.app.currentChat?.id === currentChatId) {
-            const messagesDiv = document.getElementById('chat-messages');
+            const messagesDiv = this._getVisibleChatMessagesContainer(currentChatId);
             if (messagesDiv) {
-                this.smartUpdateMessages(updatedMessages, userInfo);
+                this.smartUpdateMessages(updatedMessages, userInfo, { chatId: currentChatId });
             } else {
                 this.app.render();
             }

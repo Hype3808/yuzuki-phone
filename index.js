@@ -15,7 +15,7 @@
 // ========================================
 
 const ST_PHONE_BASE_URL = new URL('./', import.meta.url).href;
-const ST_PHONE_VERSION = '1.2.0';
+const ST_PHONE_VERSION = '1.2.1';
 const ST_PHONE_GLOBAL_CSS_URL = new URL(`./phone.css?v=${ST_PHONE_VERSION}`, import.meta.url).href;
 const ST_PHONE_UPDATE_MANIFEST_URLS = [
     'https://raw.githubusercontent.com/gaigai315/yuzuki-phone/main/manifest.json',
@@ -38,10 +38,9 @@ const WECHAT_MESSAGE_SOUND_ENABLED_KEY = 'wechat_message_sound_enabled';
 const WECHAT_MESSAGE_SOUND_URL = new URL('./assets/sounds/iphone-message-notification.mp3', ST_PHONE_BASE_URL).href;
 const ST_PHONE_CURRENT_UPDATE = {
     version: ST_PHONE_VERSION,
-    date: '2026-05-25',
+    date: '2026-05-26',
     items: [
-        '【必做】更新后请在设置中执行一次【一键恢复默认提示词】，以同步最新全局提示词。',
-        '【新增】NAI 新增 Vibe 氛围转移设置，支持 Vibe 组管理、强度归一化，并在 NAI v4 / 4.5 生图时随请求发送。'
+        '【修复】修复微信好友聊天设置里清空聊天记录后，新发送的用户消息和 AI 回复不显示、状态灯卡住的问题。'
     ]
 };
 

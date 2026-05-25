@@ -1796,7 +1796,8 @@ export class WechatData {
 
         // 🔥🔥🔥 核心防御：亡灵拦截结界 🔥🔥🔥
         let chat = this.getChat(chatId);
-        if (chat && chat.clearedAt_tavernIndex !== undefined && message.tavernMessageIndex !== undefined) {
+        const shouldApplyClearFloorGuard = !!message.fromMainChatTag;
+        if (shouldApplyClearFloorGuard && chat && chat.clearedAt_tavernIndex !== undefined && message.tavernMessageIndex !== undefined) {
             // 如果这条消息的楼层小于用户点击清空时的楼层，直接拒收
             if (message.tavernMessageIndex < chat.clearedAt_tavernIndex) {
                 return false; 
