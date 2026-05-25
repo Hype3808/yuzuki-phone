@@ -1136,7 +1136,7 @@
     transform: none;
     width: 104%;
     height: calc(100% + clamp(8px, 1.4vh, 12px));
-    align-self: center;
+    align-self: start;
     justify-self: end;
     overflow: hidden;
 }
@@ -1187,8 +1187,8 @@
         inset 0 1px 0 rgba(255, 255, 255, 0.58);
     overflow: hidden;
     width: 104%;
-    height: calc(100% + clamp(8px, 1.4vh, 12px));
-    align-self: center;
+    height: calc(100% + clamp(24px, 3.2vh, 34px));
+    align-self: start;
     justify-self: start;
     top: clamp(16px, 2.4vh, 20px);
     transform: none;
