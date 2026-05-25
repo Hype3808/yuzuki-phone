@@ -278,6 +278,135 @@ export class ImageGenerationManager {
             .slice(0, 4);
     }
 
+    _normalizeNovelAIVibeItems(items = []) {
+        return (Array.isArray(items) ? items : [])
+            .map((item) => {
+                const image = typeof item === 'string'
+                    ? this._normalizeNovelAIReferenceImage(item)
+                    : this._normalizeNovelAIReferenceImage(item?.image || item?.imageData || item?.dataUrl || item?.base64);
+                if (!image) return null;
+                return {
+                    image,
+                    cacheSecretKey: String(item?.cacheSecretKey || item?.cache_secret_key || '').trim()
+                        || this._buildNovelAIReferenceCacheKey(image),
+                    strength: this._clampReferenceValue(item?.strength ?? item?.referenceStrength, 0.6, 0, 1),
+                    informationExtracted: this._clampReferenceValue(
+                        item?.informationExtracted ?? item?.referenceInformationExtracted,
+                        1,
+                        0,
+                        1
+                    )
+                };
+            })
+            .filter(Boolean)
+            .slice(0, 4);
+    }
+
+    _normalizeNovelAIVibeGroups(groups = []) {
+        const seen = new Set();
+        return (Array.isArray(groups) ? groups : [])
+            .map((group) => {
+                const id = String(group?.id || '').trim();
+                const name = String(group?.name || '').trim();
+                if (!id || !name || seen.has(id)) return null;
+                seen.add(id);
+                const items = (Array.isArray(group?.items) ? group.items : (Array.isArray(group?.vibes) ? group.vibes : group?.references))
+                    ?.map?.((item) => {
+                        const image = typeof item === 'string'
+                            ? String(item || '').trim()
+                            : String(item?.image || item?.imageData || item?.dataUrl || item?.base64 || item?.imageUrl || item?.url || '').trim();
+                        if (!image) return null;
+                        return {
+                            image,
+                            cacheSecretKey: String(item?.cacheSecretKey || item?.cache_secret_key || '').trim(),
+                            strength: this._clampReferenceValue(item?.strength ?? item?.referenceStrength, 0.6, 0, 1),
+                            informationExtracted: this._clampReferenceValue(
+                                item?.informationExtracted ?? item?.referenceInformationExtracted,
+                                1,
+                                0,
+                                1
+                            )
+                        };
+                    })
+                    .filter(Boolean)
+                    .slice(0, 4) || [];
+                if (!items.length) return null;
+                return {
+                    id,
+                    name,
+                    items,
+                    updatedAt: Number(group?.updatedAt || 0) || Date.now()
+                };
+            })
+            .filter(Boolean);
+    }
+
+    _getNovelAIVibeGroups() {
+        const raw = this._get('phone-image-novelai-vibe-groups', '[]');
+        let groups = [];
+        try {
+            groups = typeof raw === 'string' ? JSON.parse(raw || '[]') : raw;
+        } catch (e) {
+            groups = [];
+        }
+        return this._normalizeNovelAIVibeGroups(groups);
+    }
+
+    async _imageUrlToNovelAIReferenceDataUrl(url) {
+        const safeUrl = String(url || '').trim();
+        if (!safeUrl) return '';
+        if (safeUrl.startsWith('data:image/')) return safeUrl;
+        const response = await fetch(safeUrl, {
+            credentials: 'include',
+            cache: 'no-store'
+        });
+        if (!response.ok) {
+            throw new Error(`Vibe 参考图读取失败 (${response.status})`);
+        }
+        const blob = await response.blob();
+        const dataUrl = await this._blobToDataUrl(blob);
+        return dataUrl.startsWith('data:image/') ? dataUrl : '';
+    }
+
+    async _resolveNovelAIVibeReferences(options = {}) {
+        const explicit = this._normalizeNovelAIVibeItems(options.novelAIVibes || options.vibeReferences || []);
+        if (explicit.length) return explicit;
+        const enabled = this._getBool('phone-image-novelai-vibe-enabled', false);
+        if (!enabled) return [];
+        const activeId = String(this._get('phone-image-novelai-active-vibe-group', '') || '').trim();
+        if (!activeId) return [];
+        const group = this._getNovelAIVibeGroups().find(item => item.id === activeId);
+        if (!group?.items?.length) return [];
+
+        const resolved = [];
+        for (const item of group.items.slice(0, 4)) {
+            const source = String(item.image || '').trim();
+            let image = this._normalizeNovelAIReferenceImage(source);
+            if (!image && source) {
+                try {
+                    image = this._normalizeNovelAIReferenceImage(await this._imageUrlToNovelAIReferenceDataUrl(source));
+                } catch (err) {
+                    console.warn('[NovelAI] Vibe 参考图读取失败，已跳过:', err);
+                }
+            }
+            if (!image) continue;
+            resolved.push({
+                image,
+                cacheSecretKey: item.cacheSecretKey || this._buildNovelAIReferenceCacheKey(image),
+                strength: item.strength,
+                informationExtracted: item.informationExtracted
+            });
+        }
+        if (!this._getBool('phone-image-novelai-vibe-normalize-strength', false)) return resolved;
+
+        const total = resolved.reduce((sum, item) => sum + Math.max(0, Number(item.strength) || 0), 0);
+        if (total <= 0) return resolved;
+        return resolved.map(item => ({
+            ...item,
+            strength: this._clampReferenceValue((Number(item.strength) || 0) / total, item.strength, 0, 1)
+        }));
+    }
+
     _normalizeSdReferenceImages(options = {}) {
         const rawList = Array.isArray(options.novelAIReferences)
             ? options.novelAIReferences
@@ -607,15 +736,14 @@ export class ImageGenerationManager {
             translatedPrompt,
             positivePrompt: payload?.input || '',
             negativePrompt: payload?.parameters?.negative_prompt || '',
-            referenceCount: Array.isArray(payload?.parameters?.reference_image_multiple_cached)
-                ? payload.parameters.reference_image_multiple_cached.length
-                : (Array.isArray(payload?.parameters?.director_reference_images_cached)
-                    ? payload.parameters.director_reference_images_cached.length
-                    : (Array.isArray(payload?.parameters?.director_reference_images)
-                        ? payload.parameters.director_reference_images.length
-                        : (Array.isArray(payload?.parameters?.reference_image_multiple)
-                            ? payload.parameters.reference_image_multiple.length
-                            : 0))),
+            referenceCount: Array.isArray(payload?.parameters?.director_reference_images_cached)
+                ? payload.parameters.director_reference_images_cached.length
+                : (Array.isArray(payload?.parameters?.director_reference_images)
+                    ? payload.parameters.director_reference_images.length
+                    : 0),
+            vibeCount: Array.isArray(payload?.parameters?.reference_image_multiple)
+                ? payload.parameters.reference_image_multiple.length
+                : 0,
             payload: debugPayload
         };
         try {
@@ -636,6 +764,7 @@ export class ImageGenerationManager {
                 `CFG Rescale: ${debugInfo.cfgRescale}`,
                 `Seed: ${debugInfo.seed}`,
                 `参考图: ${debugInfo.referenceCount} 张`,
+                `Vibe: ${debugInfo.vibeCount} 个`,
                 '',
                 'AI 画面 tag（原样）:',
                 debugInfo.originalPrompt || '(空)',
@@ -667,7 +796,8 @@ export class ImageGenerationManager {
                 scale: debugInfo.scale,
                 cfgRescale: debugInfo.cfgRescale,
                 seed: debugInfo.seed,
-                referenceCount: debugInfo.referenceCount
+                referenceCount: debugInfo.referenceCount,
+                vibeCount: debugInfo.vibeCount
             });
             console.info('AI 画面 tag（原样）', debugInfo.originalPrompt);
             if (debugInfo.translatedPrompt) console.info('自动转英文后的 NAI tag', debugInfo.translatedPrompt);
@@ -1249,7 +1379,7 @@ export class ImageGenerationManager {
         }
     }
 
-    _buildNovelAIPayload(options, config) {
+    async _buildNovelAIPayload(options, config) {
         const appKey = String(options.app || '').trim().toLowerCase();
         const rawPrompt = this._joinPrompt([
             config.fixedPrompt,
@@ -1270,6 +1400,7 @@ export class ImageGenerationManager {
         let steps = Number(options.steps || config.steps);
         const cfgRescale = Number(options.cfgRescale ?? config.cfgRescale);
         const novelAIReferences = this._normalizeNovelAIReferences(options);
+        const novelAIVibes = await this._resolveNovelAIVibeReferences(options);
         if (appKey === 'honey') {
             if (!Number.isFinite(width) || !Number.isFinite(height) || width < 512 || height < 768) {
                 width = appDefaults.width;
@@ -1348,6 +1479,15 @@ export class ImageGenerationManager {
                     director_reference_information_extracted: novelAIReferences.map(item => item.informationExtracted),
                     director_reference_strength_values: novelAIReferences.map(item => item.strength),
                     director_reference_secondary_strength_values: novelAIReferences.map(() => 0)
+                });
+            }
+
+            if (novelAIVibes.length > 0) {
+                Object.assign(parameters, {
+                    reference_image_multiple: novelAIVibes.map(item => item.image),
+                    reference_information_extracted_multiple: novelAIVibes.map(item => item.informationExtracted),
+                    reference_strength_multiple: novelAIVibes.map(item => item.strength),
+                    normalize_reference_strength_multiple: this._getBool('phone-image-novelai-vibe-normalize-strength', false)
                 });
             }
         }
@@ -3063,7 +3203,7 @@ export class ImageGenerationManager {
         if (!prompt) throw new Error('缺少生图提示词');
 
         const endpoint = `${this._resolveNovelAIEndpoint(config)}/ai/generate-image`;
-        const payload = this._buildNovelAIPayload(options, config);
+        const payload = await this._buildNovelAIPayload(options, config);
         this._debugNovelAIRequest({ endpoint, payload, config, options });
         const queueInfo = await this._waitForNovelAIQueueTurn(config, options);
         try {

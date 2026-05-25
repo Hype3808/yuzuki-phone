@@ -15,7 +15,7 @@
 // ========================================
 
 const ST_PHONE_BASE_URL = new URL('./', import.meta.url).href;
-const ST_PHONE_VERSION = '1.1.9';
+const ST_PHONE_VERSION = '1.2.0';
 const ST_PHONE_GLOBAL_CSS_URL = new URL(`./phone.css?v=${ST_PHONE_VERSION}`, import.meta.url).href;
 const ST_PHONE_UPDATE_MANIFEST_URLS = [
     'https://raw.githubusercontent.com/gaigai315/yuzuki-phone/main/manifest.json',
@@ -38,18 +38,10 @@ const WECHAT_MESSAGE_SOUND_ENABLED_KEY = 'wechat_message_sound_enabled';
 const WECHAT_MESSAGE_SOUND_URL = new URL('./assets/sounds/iphone-message-notification.mp3', ST_PHONE_BASE_URL).href;
 const ST_PHONE_CURRENT_UPDATE = {
     version: ST_PHONE_VERSION,
-    date: '2026-05-24',
+    date: '2026-05-25',
     items: [
         '【必做】更新后请在设置中执行一次【一键恢复默认提示词】，以同步最新全局提示词。',
-        '【新增】微信个人资料可设置用户固定形象 Tag，微信、朋友圈、微博、日记生图支持 [用户照片] 标签。',
-        '【优化】线上模式下 AI 回复 [转线下] 不再自动请求酒馆正文，避免误触发剧情推进。',
-        '【优化】快捷回复标签会直接使用当前微信用户名，避免 {{user}} 被其他插件清掉后导致线下转线上解析失败。',
-        '【优化】会话样式 CSS 移到微信设置的头像管理器下方，编辑个人资料页更聚焦基础资料。',
-        '【优化】优化工具栏小手机入口兼容性，增加 click 兜底，适配第三方魔法面板等工具脚本。',
-        '【优化】重新优化卡片式首页布局，支持在设置-个性化中自定义卡片式 CSS。',
-        '【新增】新增卡片式布局自定义 CSS 贴图美化。',
-        '【修复】修复移动端导出 NAI 预设时，多选弹窗无法上下滑动的问题。',
-        '【修复】修复移动端首次打开日历时，日历数字短暂未套样式闪烁的问题。'
+        '【新增】NAI 新增 Vibe 氛围转移设置，支持 Vibe 组管理、强度归一化，并在 NAI v4 / 4.5 生图时随请求发送。'
     ]
 };
 

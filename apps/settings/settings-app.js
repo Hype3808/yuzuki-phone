@@ -2500,6 +2500,58 @@ export class SettingsApp {
         await this.storage.set('phone-image-comfyui-workflows', JSON.stringify(this._normalizeComfyUIWorkflows(workflows)));
     }
 
+    _clampNovelAIVibeValue(value, fallback = 0.7) {
+        const num = Number.parseFloat(value);
+        if (!Number.isFinite(num)) return fallback;
+        return Math.round(Math.max(0, Math.min(1, num)) * 100) / 100;
+    }
+
+    _normalizeNovelAIVibeGroups(groups = []) {
+        const seen = new Set();
+        return (Array.isArray(groups) ? groups : []).map((group) => {
+            const id = String(group?.id || '').trim();
+            const name = String(group?.name || '').trim();
+            if (!id || !name || seen.has(id)) return null;
+            seen.add(id);
+            const items = (Array.isArray(group?.items) ? group.items : (Array.isArray(group?.vibes) ? group.vibes : []))
+                .map((item) => {
+                    const image = String(item?.image || item?.imageUrl || item?.url || '').trim();
+                    if (!image) return null;
+                    return {
+                        id: String(item?.id || `vibe-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`).trim(),
+                        name: String(item?.name || item?.title || 'Vibe').trim() || 'Vibe',
+                        image,
+                        strength: this._clampNovelAIVibeValue(item?.strength ?? item?.referenceStrength, 0.6),
+                        informationExtracted: this._clampNovelAIVibeValue(item?.informationExtracted ?? item?.referenceInformationExtracted, 1),
+                        cacheSecretKey: String(item?.cacheSecretKey || item?.cache_secret_key || '').trim()
+                    };
+                })
+                .filter(Boolean)
+                .slice(0, 4);
+            return {
+                id,
+                name,
+                items,
+                updatedAt: Number(group?.updatedAt || 0) || Date.now()
+            };
+        }).filter(group => group && group.items.length > 0);
+    }
+
+    _getNovelAIVibeGroups() {
+        const raw = this.storage.get('phone-image-novelai-vibe-groups');
+        let groups = [];
+        try {
+            groups = typeof raw === 'string' ? JSON.parse(raw || '[]') : raw;
+        } catch (e) {
+            groups = [];
+        }
+        return this._normalizeNovelAIVibeGroups(groups);
+    }
+
+    async _saveNovelAIVibeGroups(groups) {
+        await this.storage.set('phone-image-novelai-vibe-groups', JSON.stringify(this._normalizeNovelAIVibeGroups(groups)));
+    }
+
     renderImageGenerationSection() {
         const provider = String(this.storage.get('phone-image-provider') || 'novelai').trim() || 'novelai';
         const enabled = this.storage.get('phone-image-enabled') === true || this.storage.get('phone-image-enabled') === 'true';
@@ -2649,6 +2701,36 @@ export class SettingsApp {
             const safeName = this._escapeHtml(workflow.name);
             return `<option value="${safeId}" ${workflow.id === activeComfyUIWorkflowId ? 'selected' : ''}>${safeName}</option>`;
         }).join('');
+        const novelaiVibeGroups = this._getNovelAIVibeGroups();
+        const activeNovelAIVibeGroupId = String(this.storage.get('phone-image-novelai-active-vibe-group') || '').trim();
+        const activeNovelAIVibeGroup = novelaiVibeGroups.find(group => group.id === activeNovelAIVibeGroupId) || null;
+        const activeNovelAIVibeGroupName = this._escapeHtml(activeNovelAIVibeGroup?.name || '');
+        const novelaiVibeGroupOptions = novelaiVibeGroups.map((group) => {
+            const safeId = this._escapeHtml(group.id);
+            const safeName = this._escapeHtml(group.name);
+            return `<option value="${safeId}" ${group.id === activeNovelAIVibeGroupId ? 'selected' : ''}>${safeName}</option>`;
+        }).join('');
+        const novelaiVibeEnabled = this.storage.get('phone-image-novelai-vibe-enabled') === true || this.storage.get('phone-image-novelai-vibe-enabled') === 'true';
+        const novelaiVibeNormalizeStrength = this.storage.get('phone-image-novelai-vibe-normalize-strength') === true || this.storage.get('phone-image-novelai-vibe-normalize-strength') === 'true';
+        const novelaiVibeGroupItemsHtml = activeNovelAIVibeGroup?.items?.length
+            ? activeNovelAIVibeGroup.items.map((item, index) => `
+                <div class="phone-image-vibe-item" data-vibe-id="${this._escapeHtml(item.id)}" style="display:grid; grid-template-columns:44px 1fr 34px; gap:8px; align-items:center; padding:8px; border:1px solid #eee; border-radius:8px; background:#fafafa; margin-top:8px;">
+                    <div style="width:44px; height:44px; border-radius:6px; overflow:hidden; background:#e5e7eb;">
+                        <img src="${this._escapeHtml(item.image)}" alt="" style="width:100%; height:100%; object-fit:cover; display:block;">
+                    </div>
+                    <div style="min-width:0;">
+                        <input type="text" class="phone-image-vibe-name" value="${this._escapeHtml(item.name || `Vibe ${index + 1}`)}" placeholder="Vibe 名称" style="width:100%; height:28px; padding:0 8px; border:1px solid #e0e0e0; border-radius:7px; font-size:12px; background:#fff; box-sizing:border-box;">
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:6px;">
+                            <input type="number" class="phone-image-vibe-strength" min="0" max="1" step="0.01" value="${this._escapeHtml(item.strength)}" title="Reference Strength" style="width:100%; height:26px; padding:0 6px; border:1px solid #e0e0e0; border-radius:7px; font-size:11px; background:#fff; box-sizing:border-box;">
+                            <input type="number" class="phone-image-vibe-info" min="0" max="1" step="0.01" value="${this._escapeHtml(item.informationExtracted)}" title="Information Extracted" style="width:100%; height:26px; padding:0 6px; border:1px solid #e0e0e0; border-radius:7px; font-size:11px; background:#fff; box-sizing:border-box;">
+                        </div>
+                    </div>
+                    <button type="button" class="phone-image-vibe-remove" aria-label="删除 Vibe" title="删除 Vibe" style="width:34px; height:34px; border:1px solid rgba(211,51,51,0.25); border-radius:8px; background:#fff; color:#d33; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0;">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                </div>
+            `).join('')
+            : '<div class="setting-desc" style="margin-top:8px;">当前组还没有 Vibe 图片。</div>';
         const imageProviderAppBindings = this._getImageProviderAppBindings();
         const novelaiDisplay = provider === 'novelai' ? '' : 'display: none;';
         const openaiDisplay = provider === 'openai' ? '' : 'display: none;';
@@ -2752,6 +2834,56 @@ export class SettingsApp {
                     </div>
                     <label class="toggle-switch">
                         <input type="checkbox" id="phone-image-debug-payload" ${debugPayload ? 'checked' : ''}>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-label">氛围转移设置</div>
+                    <div class="setting-desc">对应 NovelAI 官网的 Vibe Transfer。每组最多 4 张 Vibe 图，所有 App 的 NAI v4 / 4.5 生图共用当前启用组。</div>
+                    <div style="display:grid; grid-template-columns:1fr 84px; gap:8px; margin-top:8px;">
+                        <select id="phone-image-novelai-vibe-group-select" style="width:100%; height:30px; padding:0 8px; border:1px solid #e0e0e0; border-radius:8px; font-size:12px; background:#fafafa; box-sizing:border-box;">
+                            <option value="">未选择 Vibe 组</option>
+                            ${novelaiVibeGroupOptions}
+                        </select>
+                        <button type="button" id="phone-image-novelai-vibe-upload" style="height:30px; border:none; border-radius:8px; background:#7c3aed !important; color:#fff !important; font-size:12px; font-weight:600; cursor:pointer;">
+                            <i class="fa-solid fa-upload"></i> 添加
+                        </button>
+                    </div>
+                    <input type="text" id="phone-image-novelai-vibe-group-name"
+                           value="${activeNovelAIVibeGroupName}"
+                           placeholder="Vibe 组名称，例如：官网漫画风 / 暖色电影感"
+                           style="width:100%; height:30px; padding:0 8px; border:1px solid #e0e0e0; border-radius:8px; font-size:12px; background:#fafafa; box-sizing:border-box; margin-top:6px;">
+                    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:8px;">
+                        <button type="button" id="phone-image-novelai-vibe-save" style="height:30px; padding:0 8px; font-size:12px; background:#fff; color:#078a46; border:1px solid rgba(7,138,70,0.36); border-radius:8px; cursor:pointer;">保存组</button>
+                        <button type="button" id="phone-image-novelai-vibe-new" style="height:30px; padding:0 8px; font-size:12px; background:#f2f2f2; color:#222; border:1px solid #d8d8d8; border-radius:8px; cursor:pointer;">新建组</button>
+                        <button type="button" id="phone-image-novelai-vibe-delete" style="height:30px; padding:0 8px; font-size:12px; background:#fff; color:#d33; border:1px solid rgba(211,51,51,0.28); border-radius:8px; cursor:pointer;">删除组</button>
+                    </div>
+                    <div id="phone-image-novelai-vibe-list" style="margin-top:8px;">
+                        ${novelaiVibeGroupItemsHtml}
+                    </div>
+                    <input type="file" id="phone-image-novelai-vibe-file" accept="image/png,image/jpeg,image/webp,image/*" multiple style="display:none;">
+                    <div class="setting-desc" id="phone-image-novelai-vibe-status" style="margin-top:8px;">下方开关启用后，当前 Vibe 组会随 NAI v4 / 4.5 生图一起发送。</div>
+                </div>
+
+                <div class="setting-item setting-toggle">
+                    <div>
+                        <div class="setting-label">启用 Vibe 组氛围转移</div>
+                        <div class="setting-desc">使用当前 Vibe 组进行氛围转移；最多同时使用 4 个 Vibe。</div>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="phone-image-novelai-vibe-enabled" ${novelaiVibeEnabled ? 'checked' : ''}>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="setting-item setting-toggle">
+                    <div>
+                        <div class="setting-label">Normalize Reference Strength Values</div>
+                        <div class="setting-desc">开启后会把当前组内 Vibe 强度归一化为总和 1.0。</div>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="phone-image-novelai-vibe-normalize-strength" ${novelaiVibeNormalizeStrength ? 'checked' : ''}>
                         <span class="toggle-slider"></span>
                     </label>
                 </div>
@@ -4511,6 +4643,17 @@ export class SettingsApp {
         const imageOpenaiPresetSaveBtn = document.getElementById('phone-image-openai-preset-save');
         const imageOpenaiPresetNewBtn = document.getElementById('phone-image-openai-preset-new');
         const imageOpenaiPresetDeleteBtn = document.getElementById('phone-image-openai-preset-delete');
+        const imageNovelAIVibeGroupSelect = document.getElementById('phone-image-novelai-vibe-group-select');
+        const imageNovelAIVibeGroupName = document.getElementById('phone-image-novelai-vibe-group-name');
+        const imageNovelAIVibeUploadBtn = document.getElementById('phone-image-novelai-vibe-upload');
+        const imageNovelAIVibeFile = document.getElementById('phone-image-novelai-vibe-file');
+        const imageNovelAIVibeSaveBtn = document.getElementById('phone-image-novelai-vibe-save');
+        const imageNovelAIVibeNewBtn = document.getElementById('phone-image-novelai-vibe-new');
+        const imageNovelAIVibeDeleteBtn = document.getElementById('phone-image-novelai-vibe-delete');
+        const imageNovelAIVibeList = document.getElementById('phone-image-novelai-vibe-list');
+        const imageNovelAIVibeEnabled = document.getElementById('phone-image-novelai-vibe-enabled');
+        const imageNovelAIVibeNormalizeStrength = document.getElementById('phone-image-novelai-vibe-normalize-strength');
+        const imageNovelAIVibeStatus = document.getElementById('phone-image-novelai-vibe-status');
         const imageComfyUIWorkflowSelect = document.getElementById('phone-image-comfyui-workflow-select');
         const imageComfyUIAppSelect = document.getElementById('phone-image-comfyui-app-select');
         const imageComfyUIWorkflowName = document.getElementById('phone-image-comfyui-workflow-name');
@@ -4817,6 +4960,72 @@ export class SettingsApp {
             });
         };
         const createImagePromptPresetId = () => `preset-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+        const createNovelAIVibeId = () => `vibe-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+        const getNovelAIVibeGroups = () => this._getNovelAIVibeGroups();
+        const getActiveNovelAIVibeGroupId = () => String(imageNovelAIVibeGroupSelect?.value || this.storage.get('phone-image-novelai-active-vibe-group') || '').trim();
+        const setNovelAIVibeStatus = (text, color = '#666') => {
+            if (imageNovelAIVibeStatus) {
+                imageNovelAIVibeStatus.textContent = text;
+                imageNovelAIVibeStatus.style.color = color;
+            }
+        };
+        const getNovelAIVibeDraftItems = () => {
+            if (!imageNovelAIVibeList) return [];
+            return Array.from(imageNovelAIVibeList.querySelectorAll('.phone-image-vibe-item'))
+                .map((row, index) => ({
+                    id: String(row.dataset.vibeId || createNovelAIVibeId()).trim(),
+                    name: String(row.querySelector('.phone-image-vibe-name')?.value || `Vibe ${index + 1}`).trim() || `Vibe ${index + 1}`,
+                    image: String(row.dataset.vibeImage || row.querySelector('img')?.getAttribute('src') || '').trim(),
+                    strength: this._clampNovelAIVibeValue(row.querySelector('.phone-image-vibe-strength')?.value, 0.6),
+                    informationExtracted: this._clampNovelAIVibeValue(row.querySelector('.phone-image-vibe-info')?.value, 1),
+                    cacheSecretKey: String(row.dataset.vibeCacheKey || '').trim()
+                }))
+                .filter(item => item.image)
+                .slice(0, 4);
+        };
+        const renderNovelAIVibeList = (items = []) => {
+            if (!imageNovelAIVibeList) return;
+            const normalizedItems = (Array.isArray(items) ? items : []).slice(0, 4);
+            if (!normalizedItems.length) {
+                imageNovelAIVibeList.innerHTML = '<div class="setting-desc" style="margin-top:8px;">当前组还没有 Vibe 图片。</div>';
+                return;
+            }
+            imageNovelAIVibeList.innerHTML = normalizedItems.map((item, index) => `
+                <div class="phone-image-vibe-item" data-vibe-id="${this._escapeHtml(item.id || createNovelAIVibeId())}" data-vibe-image="${this._escapeHtml(item.image || '')}" data-vibe-cache-key="${this._escapeHtml(item.cacheSecretKey || '')}" style="display:grid; grid-template-columns:44px 1fr 34px; gap:8px; align-items:center; padding:8px; border:1px solid #eee; border-radius:8px; background:#fafafa; margin-top:8px;">
+                    <div style="width:44px; height:44px; border-radius:6px; overflow:hidden; background:#e5e7eb;">
+                        <img src="${this._escapeHtml(item.image || '')}" alt="" style="width:100%; height:100%; object-fit:cover; display:block;">
+                    </div>
+                    <div style="min-width:0;">
+                        <input type="text" class="phone-image-vibe-name" value="${this._escapeHtml(item.name || `Vibe ${index + 1}`)}" placeholder="Vibe 名称" style="width:100%; height:28px; padding:0 8px; border:1px solid #e0e0e0; border-radius:7px; font-size:12px; background:#fff; box-sizing:border-box;">
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:6px;">
+                            <input type="number" class="phone-image-vibe-strength" min="0" max="1" step="0.01" value="${this._escapeHtml(this._clampNovelAIVibeValue(item.strength, 0.6))}" title="Reference Strength" style="width:100%; height:26px; padding:0 6px; border:1px solid #e0e0e0; border-radius:7px; font-size:11px; background:#fff; box-sizing:border-box;">
+                            <input type="number" class="phone-image-vibe-info" min="0" max="1" step="0.01" value="${this._escapeHtml(this._clampNovelAIVibeValue(item.informationExtracted, 1))}" title="Information Extracted" style="width:100%; height:26px; padding:0 6px; border:1px solid #e0e0e0; border-radius:7px; font-size:11px; background:#fff; box-sizing:border-box;">
+                        </div>
+                    </div>
+                    <button type="button" class="phone-image-vibe-remove" aria-label="删除 Vibe" title="删除 Vibe" style="width:34px; height:34px; border:1px solid rgba(211,51,51,0.25); border-radius:8px; background:#fff; color:#d33; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0;">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                </div>
+            `).join('');
+        };
+        const fillNovelAIVibeGroupSelect = (groups, activeId = '') => {
+            if (!imageNovelAIVibeGroupSelect) return;
+            imageNovelAIVibeGroupSelect.innerHTML = '<option value="">未选择 Vibe 组</option>';
+            groups.forEach((group) => {
+                const opt = document.createElement('option');
+                opt.value = group.id;
+                opt.textContent = group.name;
+                opt.selected = group.id === activeId;
+                imageNovelAIVibeGroupSelect.appendChild(opt);
+            });
+        };
+        const refreshNovelAIVibePanel = (activeId = getActiveNovelAIVibeGroupId()) => {
+            const groups = getNovelAIVibeGroups();
+            const group = groups.find(item => item.id === activeId) || null;
+            fillNovelAIVibeGroupSelect(groups, group?.id || '');
+            if (imageNovelAIVibeGroupName) imageNovelAIVibeGroupName.value = group?.name || '';
+            renderNovelAIVibeList(group?.items || []);
+        };
         const getImagePromptAppName = (appKey) => {
             const normalizedApp = this._normalizeImagePromptApp(appKey);
             return this._getImagePromptAppDefs().find(def => def.id === normalizedApp)?.name || normalizedApp;
@@ -5491,6 +5700,130 @@ export class SettingsApp {
 
         document.getElementById('phone-image-debug-payload')?.addEventListener('change', async (e) => {
             await this.storage.set('phone-image-debug-payload', !!e.target.checked);
+        });
+
+        imageNovelAIVibeEnabled?.addEventListener('change', async (e) => {
+            await this.storage.set('phone-image-novelai-vibe-enabled', !!e.target.checked);
+        });
+
+        imageNovelAIVibeNormalizeStrength?.addEventListener('change', async (e) => {
+            await this.storage.set('phone-image-novelai-vibe-normalize-strength', !!e.target.checked);
+        });
+
+        imageNovelAIVibeGroupSelect?.addEventListener('change', async (e) => {
+            const groupId = String(e.target.value || '').trim();
+            await this.storage.set('phone-image-novelai-active-vibe-group', groupId);
+            refreshNovelAIVibePanel(groupId);
+        });
+
+        imageNovelAIVibeList?.addEventListener('click', (e) => {
+            const btn = e.target?.closest?.('.phone-image-vibe-remove');
+            if (!btn) return;
+            btn.closest('.phone-image-vibe-item')?.remove();
+            if (getNovelAIVibeDraftItems().length === 0) renderNovelAIVibeList([]);
+        });
+
+        imageNovelAIVibeUploadBtn?.addEventListener('click', () => {
+            if (!imageNovelAIVibeFile) {
+                this.phoneShell?.showNotification?.('添加失败', '当前环境不支持文件选择', '⚠️');
+                return;
+            }
+            imageNovelAIVibeFile.value = '';
+            imageNovelAIVibeFile.click();
+        });
+
+        imageNovelAIVibeFile?.addEventListener('change', async () => {
+            const files = Array.from(imageNovelAIVibeFile.files || []).filter(file => /^image\//i.test(String(file.type || '')));
+            if (!files.length) return;
+            const existing = getNovelAIVibeDraftItems();
+            const slots = Math.max(0, 4 - existing.length);
+            if (slots <= 0) {
+                this.phoneShell?.showNotification?.('添加失败', '每个 Vibe 组最多 4 张图片', '⚠️');
+                imageNovelAIVibeFile.value = '';
+                return;
+            }
+            try {
+                setNovelAIVibeStatus('正在上传 Vibe 图片...', '#7c3aed');
+                const uploader = window.VirtualPhone?.imageManager || this.imageManager;
+                if (!uploader?.uploadBlob) throw new Error('图片上传器未初始化');
+                const uploaded = [];
+                for (const file of files.slice(0, slots)) {
+                    const image = await uploader.uploadBlob(file, 'nai_vibe');
+                    uploaded.push({
+                        id: createNovelAIVibeId(),
+                        name: String(file.name || `Vibe ${existing.length + uploaded.length + 1}`).replace(/\.[^.]+$/, '').slice(0, 40) || `Vibe ${existing.length + uploaded.length + 1}`,
+                        image,
+                        strength: 0.6,
+                        informationExtracted: 1,
+                        cacheSecretKey: ''
+                    });
+                }
+                renderNovelAIVibeList([...existing, ...uploaded]);
+                setNovelAIVibeStatus(`已添加 ${uploaded.length} 张 Vibe 图片，记得保存组。`, '#0f9f6e');
+            } catch (err) {
+                const message = err?.message || String(err || '上传失败');
+                setNovelAIVibeStatus(`上传失败：${message}`, '#d33');
+                this.phoneShell?.showNotification?.('Vibe 图片上传失败', message, '⚠️');
+            } finally {
+                imageNovelAIVibeFile.value = '';
+            }
+        });
+
+        imageNovelAIVibeSaveBtn?.addEventListener('click', async () => {
+            const name = String(imageNovelAIVibeGroupName?.value || '').trim();
+            const items = getNovelAIVibeDraftItems();
+            if (!name) {
+                this.phoneShell?.showNotification?.('保存失败', '请先填写 Vibe 组名称', '⚠️');
+                imageNovelAIVibeGroupName?.focus?.();
+                return;
+            }
+            if (!items.length) {
+                this.phoneShell?.showNotification?.('保存失败', '请先添加至少 1 张 Vibe 图片', '⚠️');
+                return;
+            }
+            const groups = getNovelAIVibeGroups();
+            let activeId = getActiveNovelAIVibeGroupId();
+            let target = groups.find(group => group.id === activeId);
+            if (!target) {
+                activeId = createImagePromptPresetId();
+                target = { id: activeId, name, items: [], updatedAt: Date.now() };
+                groups.push(target);
+            }
+            Object.assign(target, { name, items, updatedAt: Date.now() });
+            await this._saveNovelAIVibeGroups(groups);
+            await this.storage.set('phone-image-novelai-active-vibe-group', activeId);
+            fillNovelAIVibeGroupSelect(getNovelAIVibeGroups(), activeId);
+            if (imageNovelAIVibeGroupSelect) imageNovelAIVibeGroupSelect.value = activeId;
+            setNovelAIVibeStatus(`已保存 Vibe 组：${name}`, '#0f9f6e');
+            this.phoneShell?.showNotification?.('已保存 Vibe 组', name, '✅');
+        });
+
+        imageNovelAIVibeNewBtn?.addEventListener('click', async () => {
+            if (imageNovelAIVibeGroupSelect) imageNovelAIVibeGroupSelect.value = '';
+            if (imageNovelAIVibeGroupName) {
+                imageNovelAIVibeGroupName.value = '';
+                imageNovelAIVibeGroupName.focus();
+            }
+            renderNovelAIVibeList([]);
+            await this.storage.set('phone-image-novelai-active-vibe-group', '');
+            setNovelAIVibeStatus('已新建空 Vibe 组，添加图片后保存。', '#666');
+        });
+
+        imageNovelAIVibeDeleteBtn?.addEventListener('click', async () => {
+            const activeId = getActiveNovelAIVibeGroupId();
+            if (!activeId) {
+                this.phoneShell?.showNotification?.('删除失败', '请先选择要删除的 Vibe 组', '⚠️');
+                return;
+            }
+            const groups = getNovelAIVibeGroups();
+            const target = groups.find(group => group.id === activeId);
+            if (!target) return;
+            if (!confirm(`删除 Vibe 组「${target.name}」？`)) return;
+            const nextGroups = groups.filter(group => group.id !== activeId);
+            await this._saveNovelAIVibeGroups(nextGroups);
+            await this.storage.set('phone-image-novelai-active-vibe-group', '');
+            refreshNovelAIVibePanel('');
+            setNovelAIVibeStatus(`已删除 Vibe 组：${target.name}`, '#666');
         });
 
         document.getElementById('phone-image-test-novelai')?.addEventListener('click', async (e) => {
