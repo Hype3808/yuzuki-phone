@@ -7078,6 +7078,66 @@ if (window.GGP_Loaded) {
         return percent;
     }
 
+    function ensureGlobalTextColorOverrideStyle(color = null) {
+        const safeColor = String(color || storage.get('phone-global-text') || '#000000').trim() || '#000000';
+        const styleId = 'st-phone-global-text-color-override';
+        const existing = document.getElementById(styleId);
+        const style = existing || document.createElement('style');
+        style.id = styleId;
+        style.setAttribute('data-owner', 'yuzuki-phone');
+        style.textContent = `
+            #phone-panel-content,
+            #phone-panel-content .phone-screen,
+            #phone-panel-content .phone-body-panel,
+            #phone-panel-content .settings-app {
+                --phone-global-text: ${safeColor} !important;
+                --settings-text-color: ${safeColor} !important;
+                --settings-muted-text-color: ${safeColor} !important;
+            }
+
+            #phone-panel-content .phone-screen:not(:has(.honey-app)):not(:has(.games-app)):not(:has(.music-app)) :is(
+                .app-name, .home-social-name, .home-mini-name,
+                .home-card-title, .home-card-desc, .home-settings-title, .home-settings-chevron,
+                .home-time, .time-large, .date, .home-time-date, .home-time-weekday,
+                .setting-label, .setting-desc, .setting-value, .setting-info,
+                .settings-subsection-title, .phone-shell-scale-value, .app-name-custom-label,
+                .wechat-chat-name, .wechat-chat-last, .wechat-chat-time,
+                .wechat-contact-name, .wechat-contact-signature,
+                .message-text, .message-time, .chat-time,
+                .album-title, .album-subtitle, .album-empty-title, .album-empty-copy,
+                .album-preview-name, .album-preview-path, .album-source,
+                .mofo-app, .yzp-calendar-settings-label, .yzp-calendar-settings-desc,
+                .yzp-calendar-add-title, .yzp-calendar-add-date,
+                .yzp-calendar-memo-text, .yzp-calendar-memo-time-inline,
+                .yzp-calendar-detail-date, .yzp-calendar-detail-body
+            ):not(
+                .app-icon-emoji, .app-badge, .phone-punch-hole,
+                .phone-statusbar *, .statusbar-left *, .statusbar-right *,
+                .phone-call-active *, .phone-call-incoming *,
+                .setting-btn[style*="color: #ff"], .setting-btn[style*="color:#ff"],
+                .setting-btn[style*="color: #d9"], .setting-btn[style*="color:#d9"],
+                .album-danger-btn, .yzp-calendar-delete-btn
+            ) {
+                color: ${safeColor} !important;
+                text-shadow: none !important;
+            }
+        `;
+        if (existing) existing.remove();
+        document.head.appendChild(style);
+    }
+
+    function applyGlobalTextColor(color = null) {
+        const safeColor = String(color || storage.get('phone-global-text') || '#000000').trim() || '#000000';
+        document.documentElement.style.setProperty('--phone-global-text', safeColor);
+        document.querySelectorAll('#phone-panel-content, #phone-panel-content .phone-screen, .phone-body-panel, .settings-app').forEach((root) => {
+            root.style.setProperty('--phone-global-text', safeColor);
+            root.style.setProperty('--settings-text-color', safeColor);
+            root.style.setProperty('--settings-muted-text-color', safeColor);
+        });
+        ensureGlobalTextColorOverrideStyle(safeColor);
+        return safeColor;
+    }
+
     // 🎨 初始化颜色设置（新版：统一全局文字颜色）
     function initColors() {
         // 只读取全局文字颜色（默认黑色）
@@ -7086,7 +7146,7 @@ if (window.GGP_Loaded) {
         const phoneShellScale = storage.get('phone-shell-scale') || 100;
 
         // 设置CSS变量
-        document.documentElement.style.setProperty('--phone-global-text', globalTextColor);
+        applyGlobalTextColor(globalTextColor);
         document.documentElement.style.setProperty('--phone-frame-color', phoneFrameColor);
         applyPhoneShellScale(phoneShellScale);
 
@@ -7165,6 +7225,8 @@ if (window.GGP_Loaded) {
                 imageGenerationManager: imageGenerationManager,
                 worldbookManager: worldbookManager,
                 applyPhoneShellScale: applyPhoneShellScale,
+                applyGlobalTextColor: applyGlobalTextColor,
+                refreshGlobalTextColorStyle: ensureGlobalTextColorOverrideStyle,
                 home: null,
                 wechatApp: null,
                 mofoApp: null,

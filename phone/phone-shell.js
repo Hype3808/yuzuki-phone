@@ -941,6 +941,7 @@ export class PhoneShell {
                 v.remove(); // 连同背景图缓存一起彻底销毁
             }
         });
+        window.VirtualPhone?.refreshGlobalTextColorStyle?.();
     }
 
     syncHomeLayoutChromeClass() {

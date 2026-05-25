@@ -3886,18 +3886,62 @@ input:checked + .toggle-slider:before {
    🔥 全局文字颜色强制覆盖（新版统一颜色系统）
    ======================================== */
 
-/* 强制覆盖手机面板内文字颜色（仅文本节点，避免 currentColor 染色背景/装饰） */
-.phone-body-panel :where(
-    p, span, strong, em, small, label, a,
-    li, dt, dd, h1, h2, h3, h4, h5, h6,
-    button, input, textarea, select, option
-),
+/* 强制覆盖明确支持全局色的常规文字，避免误伤蜜语/游戏等主题化页面 */
 .phone-body-panel :where(
     .setting-label, .setting-desc, .setting-value,
     .wechat-chat-name, .wechat-chat-last, .wechat-chat-time,
     .wechat-contact-name, .wechat-contact-signature,
     .message-text, .message-time, .chat-time,
     .app-name, .home-layout-icons .yzp-home-time, .home-layout-icons .yzp-home-date
+) {
+    color: var(--phone-global-text) !important;
+    text-shadow: none !important;
+}
+
+/* 主题/用户 CSS 兜底：让小手机“全局文字颜色”压过外部暴力 !important */
+#phone-panel-content .phone-screen:not(:has(.honey-app)):not(:has(.games-app)):not(:has(.music-app)) :is(
+    .app-name,
+    .home-social-name,
+    .home-mini-name,
+    .home-card-title,
+    .home-card-desc,
+    .home-settings-title,
+    .home-settings-chevron,
+    .home-time,
+    .time-large,
+    .date,
+    .home-time-date,
+    .home-time-weekday,
+    .setting-label,
+    .setting-desc,
+    .setting-value,
+    .settings-subsection-title,
+    .phone-shell-scale-value,
+    .app-name-custom-label,
+    .wechat-chat-name,
+    .wechat-chat-last,
+    .wechat-chat-time,
+    .wechat-contact-name,
+    .wechat-contact-signature,
+    .message-text,
+    .message-time,
+    .chat-time,
+    .phone-call-transcript-info-text,
+    .album-title,
+    .album-subtitle,
+    .album-empty-title,
+    .album-empty-copy,
+    .album-preview-name,
+    .album-preview-path,
+    .mofo-app,
+    .yzp-calendar-settings-label,
+    .yzp-calendar-settings-desc,
+    .yzp-calendar-add-title,
+    .yzp-calendar-add-date,
+    .yzp-calendar-memo-text,
+    .yzp-calendar-memo-time-inline,
+    .yzp-calendar-detail-date,
+    .yzp-calendar-detail-body
 ) {
     color: var(--phone-global-text) !important;
     text-shadow: none !important;

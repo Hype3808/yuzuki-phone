@@ -904,7 +904,7 @@ export class SettingsApp {
                         border-bottom: 1px solid transparent !important;
                         font-size: 13px !important;
                         font-weight: 700 !important;
-                        color: #1d1d1f !important;
+                        color: var(--settings-text-color) !important;
                     }
                     #tab-general > details[data-settings-fold-key][open] > summary {
                         border-bottom-color: rgba(18, 24, 38, 0.07) !important;
@@ -939,7 +939,7 @@ export class SettingsApp {
                         margin: 0 !important;
                         padding: 12px 0 8px !important;
                         border-top: 1px solid rgba(18, 24, 38, 0.08) !important;
-                        color: #333 !important;
+                        color: var(--settings-text-color) !important;
                         font-size: 12px !important;
                         font-weight: 700 !important;
                         line-height: 1.35 !important;
@@ -957,12 +957,12 @@ export class SettingsApp {
                     #tab-general > details[data-settings-fold-key] .setting-label {
                         font-size: 13px !important;
                         font-weight: 650 !important;
-                        color: #1d1d1f !important;
+                        color: var(--settings-text-color) !important;
                         line-height: 1.3 !important;
                     }
                     #tab-general > details[data-settings-fold-key] .setting-desc {
                         margin-top: 4px !important;
-                        color: #6b7280 !important;
+                        color: color-mix(in srgb, var(--settings-text-color) 68%, transparent) !important;
                         font-size: 11px !important;
                         line-height: 1.45 !important;
                     }
@@ -972,7 +972,7 @@ export class SettingsApp {
                         border: 1px solid rgba(18, 24, 38, 0.06) !important;
                         border-radius: 10px !important;
                         background: #f7f8fa !important;
-                        color: #6b7280 !important;
+                        color: color-mix(in srgb, var(--settings-text-color) 68%, transparent) !important;
                         font-size: 11px !important;
                         line-height: 1.55 !important;
                     }
@@ -1005,7 +1005,7 @@ export class SettingsApp {
                     }
                     #tab-general .phone-shell-scale-value {
                         min-width: 42px;
-                        color: #111827;
+                        color: var(--settings-text-color);
                         font-size: 12px;
                         font-weight: 700;
                         text-align: right;
@@ -1295,6 +1295,50 @@ export class SettingsApp {
                     .settings-app.settings-has-wallpaper .toggle-switch *,
                     .settings-app.settings-has-wallpaper .phone-version-info-btn {
                         background-color: initial;
+                    }
+                    .settings-app {
+                        --settings-muted-text-color: var(--settings-text-color);
+                    }
+                    .settings-app .settings-app-header,
+                    .settings-app .settings-app-header h2,
+                    .settings-app .settings-tabs .settings-tab-btn,
+                    .settings-app details[data-settings-fold-key] > summary,
+                    .settings-app details[data-settings-fold-key] > summary > span,
+                    .settings-app details[data-tts-fold-key] > summary,
+                    .settings-app details[data-tts-fold-key] > summary > span,
+                    .settings-app .setting-label,
+                    .settings-app .setting-value,
+                    .settings-app .settings-subsection-title,
+                    .settings-app .phone-shell-scale-value,
+                    .settings-app .app-name-custom-label,
+                    .settings-app label:not(.toggle-switch),
+                    .settings-app :is(div, span, summary, label, p, small)[style*="color: #000"],
+                    .settings-app :is(div, span, summary, label, p, small)[style*="color:#000"],
+                    .settings-app :is(div, span, summary, label, p, small)[style*="color: #111"],
+                    .settings-app :is(div, span, summary, label, p, small)[style*="color:#111"],
+                    .settings-app :is(div, span, summary, label, p, small)[style*="color: #333"],
+                    .settings-app :is(div, span, summary, label, p, small)[style*="color:#333"],
+                    .settings-app :is(div, span, summary, label, p, small)[style*="color: #666"],
+                    .settings-app :is(div, span, summary, label, p, small)[style*="color:#666"],
+                    .settings-app :is(div, span, summary, label, p, small)[style*="color: #1d1d1f"],
+                    .settings-app :is(div, span, summary, label, p, small)[style*="color:#1d1d1f"],
+                    .settings-app :is(div, span, summary, label, p, small)[style*="color: #6b7280"],
+                    .settings-app :is(div, span, summary, label, p, small)[style*="color:#6b7280"],
+                    .settings-app :is(div, span, summary, label, p, small)[style*="color: #111827"],
+                    .settings-app :is(div, span, summary, label, p, small)[style*="color:#111827"] {
+                        color: var(--settings-text-color) !important;
+                    }
+                    .settings-app .setting-desc,
+                    .settings-app .setting-info,
+                    .settings-app :is(div, span, p, small)[class*="desc"] {
+                        color: var(--settings-muted-text-color) !important;
+                    }
+                    .settings-app .setting-btn[style*="color: #ff"],
+                    .settings-app .setting-btn[style*="color:#ff"],
+                    .settings-app .setting-btn[style*="color: #d9"],
+                    .settings-app .setting-btn[style*="color:#d9"],
+                    .settings-app .phone-version-info-btn {
+                        color: revert !important;
                     }
                 </style>
                 <div class="settings-app-header" style="background: #f7f7f7; color: #000; border-bottom: 0.5px solid #d8d8d8; display: flex; align-items: center; justify-content: center; position: sticky; top: 0; z-index: 100; height: 78px; min-height: 78px; padding: 34px 14px 0; box-sizing: border-box; flex-shrink: 0;">
@@ -7179,11 +7223,9 @@ export class SettingsApp {
         // 🎨 颜色设置事件（新版：统一全局文字颜色）
 
         const applyGlobalTextColor = (color) => {
-            const safeColor = String(color || '#000000').trim() || '#000000';
-            document.documentElement.style.setProperty('--phone-global-text', safeColor);
-            document.querySelectorAll('.settings-app').forEach((root) => {
-                root.style.setProperty('--settings-text-color', safeColor);
-            });
+            const safeColor = typeof window.VirtualPhone?.applyGlobalTextColor === 'function'
+                ? window.VirtualPhone.applyGlobalTextColor(color)
+                : String(color || '#000000').trim() || '#000000';
             return safeColor;
         };
 
