@@ -225,6 +225,10 @@ export class ImageGenerationManager {
         return /^nai-diffusion-4(?:-|$)/i.test(String(model || '').trim());
     }
 
+    _isNovelAIV45Model(model) {
+        return /^nai-diffusion-4-5(?:-|$)/i.test(String(model || '').trim());
+    }
+
     _clampReferenceValue(value, fallback = 0.7, min = 0, max = 1) {
         const num = Number.parseFloat(value);
         if (!Number.isFinite(num)) return fallback;
@@ -368,9 +372,68 @@ export class ImageGenerationManager {
         return dataUrl.startsWith('data:image/') ? dataUrl : '';
     }
 
-    async _resolveNovelAIVibeReferences(options = {}) {
+    async _encodeNovelAIVibeImage(image, informationExtracted, config, signal) {
+        const endpoint = `${this._resolveNovelAIEndpoint(config)}/ai/encode-vibe`;
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${config.apiKey}`,
+                'Content-Type': 'application/json',
+                Accept: 'application/octet-stream, application/json'
+            },
+            body: JSON.stringify({
+                image,
+                information_extracted: informationExtracted,
+                model: config.model
+            }),
+            signal
+        });
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        if (!response.ok) {
+            const parsed = this._tryParseJsonBytes(bytes);
+            const message = parsed?.message || parsed?.error || this._getBytesPreview(bytes);
+            throw new Error(`Vibe 编码失败 (${response.status})${message ? `: ${String(message).slice(0, 160)}` : ''}`);
+        }
+        if (!bytes.length) throw new Error('Vibe 编码失败：NovelAI 返回空数据');
+        return this._uint8ArrayToBase64(bytes);
+    }
+
+    _looksLikeNovelAIVibeEncoding(value) {
+        const text = String(value || '').replace(/\s+/g, '');
+        return text.length > 2000 && !/^iVBORw0KGgo|^\/9j\/|^UklGR/i.test(text);
+    }
+
+    async _encodeNovelAIVibeItems(items, config, signal) {
+        if (!config || !this._isNovelAIV4Model(config.model)) return items;
+        const encodedItems = [];
+        for (const item of items) {
+            encodedItems.push({
+                ...item,
+                image: this._looksLikeNovelAIVibeEncoding(item.image)
+                    ? item.image
+                    : await this._encodeNovelAIVibeImage(
+                        item.image,
+                        item.informationExtracted,
+                        config,
+                        signal
+                    )
+            });
+        }
+        return encodedItems;
+    }
+
+    _uint8ArrayToBase64(bytes) {
+        let binary = '';
+        const chunkSize = 0x8000;
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+            binary += String.fromCharCode.apply(null, bytes.slice(i, i + chunkSize));
+        }
+        return btoa(binary);
+    }
+
+    async _resolveNovelAIVibeReferences(options = {}, config = null) {
         const explicit = this._normalizeNovelAIVibeItems(options.novelAIVibes || options.vibeReferences || []);
-        if (explicit.length) return explicit;
+        if (explicit.length) return this._encodeNovelAIVibeItems(explicit, config, options.signal);
         const enabled = this._getBool('phone-image-novelai-vibe-enabled', false);
         if (!enabled) return [];
         const activeId = String(this._get('phone-image-novelai-active-vibe-group', '') || '').trim();
@@ -397,14 +460,19 @@ export class ImageGenerationManager {
                 informationExtracted: item.informationExtracted
             });
         }
-        if (!this._getBool('phone-image-novelai-vibe-normalize-strength', false)) return resolved;
+        let finalItems = resolved;
 
-        const total = resolved.reduce((sum, item) => sum + Math.max(0, Number(item.strength) || 0), 0);
-        if (total <= 0) return resolved;
-        return resolved.map(item => ({
-            ...item,
-            strength: this._clampReferenceValue((Number(item.strength) || 0) / total, item.strength, 0, 1)
-        }));
+        if (this._getBool('phone-image-novelai-vibe-normalize-strength', false)) {
+            const total = resolved.reduce((sum, item) => sum + Math.max(0, Number(item.strength) || 0), 0);
+            if (total > 0) {
+                finalItems = resolved.map(item => ({
+                    ...item,
+                    strength: this._clampReferenceValue((Number(item.strength) || 0) / total, item.strength, 0, 1)
+                }));
+            }
+        }
+
+        return this._encodeNovelAIVibeItems(finalItems, config, options.signal);
     }
 
     _normalizeSdReferenceImages(options = {}) {
@@ -1379,6 +1447,14 @@ export class ImageGenerationManager {
         }
     }
 
+    _getNovelAISkipCfgAboveSigma(config) {
+        const sampler = String(config?.sampler || '').trim();
+        const schedule = String(config?.schedule || '').trim();
+        if (sampler !== 'k_euler_ancestral') return null;
+        if (schedule !== 'karras' && schedule !== 'exponential') return null;
+        return this._isNovelAIV45Model(config?.model) ? 19 : 58;
+    }
+
     async _buildNovelAIPayload(options, config) {
         const appKey = String(options.app || '').trim().toLowerCase();
         const rawPrompt = this._joinPrompt([
@@ -1400,7 +1476,7 @@ export class ImageGenerationManager {
         let steps = Number(options.steps || config.steps);
         const cfgRescale = Number(options.cfgRescale ?? config.cfgRescale);
         const novelAIReferences = this._normalizeNovelAIReferences(options);
-        const novelAIVibes = await this._resolveNovelAIVibeReferences(options);
+        const novelAIVibes = await this._resolveNovelAIVibeReferences(options, config);
         if (appKey === 'honey') {
             if (!Number.isFinite(width) || !Number.isFinite(height) || width < 512 || height < 768) {
                 width = appDefaults.width;
@@ -1449,22 +1525,30 @@ export class ImageGenerationManager {
                 legacy: false,
                 add_original_image: false,
                 legacy_v3_extend: false,
+                deliberate_euler_ancestral_bug: false,
                 v4_prompt: {
                     caption: {
                         base_caption: prompt,
                         char_captions: []
                     },
                     use_coords: false,
-                    use_order: true
+                    use_order: true,
+                    legacy_uc: false
                 },
                 v4_negative_prompt: {
                     caption: {
                         base_caption: negativePrompt,
                         char_captions: []
                     },
+                    use_coords: false,
+                    use_order: true,
                     legacy_uc: false
                 }
             });
+            const skipCfgAboveSigma = this._getNovelAISkipCfgAboveSigma(config);
+            if (Number.isFinite(skipCfgAboveSigma)) {
+                parameters.skip_cfg_above_sigma = skipCfgAboveSigma;
+            }
 
             if (novelAIReferences.length > 0) {
                 Object.assign(parameters, {
@@ -1477,8 +1561,8 @@ export class ImageGenerationManager {
                         legacy_uc: false
                     })),
                     director_reference_information_extracted: novelAIReferences.map(item => item.informationExtracted),
-                    director_reference_strength_values: novelAIReferences.map(item => item.strength),
-                    director_reference_secondary_strength_values: novelAIReferences.map(() => 0)
+                    director_reference_strength: novelAIReferences.map(item => item.strength),
+                    director_reference_secondary_strength: novelAIReferences.map(() => 0)
                 });
             }
 
@@ -3203,10 +3287,10 @@ export class ImageGenerationManager {
         if (!prompt) throw new Error('缺少生图提示词');
 
         const endpoint = `${this._resolveNovelAIEndpoint(config)}/ai/generate-image`;
-        const payload = await this._buildNovelAIPayload(options, config);
-        this._debugNovelAIRequest({ endpoint, payload, config, options });
         const queueInfo = await this._waitForNovelAIQueueTurn(config, options);
         try {
+            const payload = await this._buildNovelAIPayload(options, config);
+            this._debugNovelAIRequest({ endpoint, payload, config, options });
             const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: {

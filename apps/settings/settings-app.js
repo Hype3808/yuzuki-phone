@@ -2863,7 +2863,7 @@ export class SettingsApp {
                         ${novelaiVibeGroupItemsHtml}
                     </div>
                     <input type="file" id="phone-image-novelai-vibe-file" accept="image/png,image/jpeg,image/webp,image/*" multiple style="display:none;">
-                    <div class="setting-desc" id="phone-image-novelai-vibe-status" style="margin-top:8px;">下方开关启用后，当前 Vibe 组会随 NAI v4 / 4.5 生图一起发送。</div>
+                    <div class="setting-desc" id="phone-image-novelai-vibe-status" style="margin-top:8px;">下方开关启用后，当前 Vibe 组会在 NAI v4 / 4.5 生图前先编码，再随请求发送。</div>
                 </div>
 
                 <div class="setting-item setting-toggle">
