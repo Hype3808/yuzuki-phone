@@ -3824,6 +3824,22 @@ input:checked + .toggle-slider:before {
         bottom: 5.2% !important;
     }
 
+    #phone-panel-content .phone-screen .home-layout-cards .home-time-card {
+        align-self: start !important;
+        height: clamp(58px, 9.2vh, 70px) !important;
+        min-height: clamp(58px, 9.2vh, 70px) !important;
+        padding: clamp(5px, 1.3vh, 8px) clamp(10px, 3vw, 15px) !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+
+    #phone-panel-content .phone-screen .home-layout-cards .home-time-info {
+        height: 100% !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+
     #phone-panel-content .phone-screen .home-layout-cards .home-time-card,
     #phone-panel-content .phone-screen .home-layout-cards .home-app-cluster,
     #phone-panel-content .phone-screen .home-layout-cards .home-social-card,
@@ -3831,6 +3847,15 @@ input:checked + .toggle-slider:before {
     #phone-panel-content .phone-screen .home-layout-cards .home-settings-card {
         transform: scale(0.9) !important;
         transform-origin: center center !important;
+    }
+
+    #phone-panel-content .phone-screen .home-layout-cards .home-time-card {
+        transform-origin: top center !important;
+    }
+
+    #phone-panel-content .phone-screen .home-layout-cards .home-time-date {
+        align-items: center !important;
+        text-align: center !important;
     }
 
     #phone-panel-content .phone-screen .home-layout-cards .home-app-cluster {
