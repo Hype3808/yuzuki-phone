@@ -226,11 +226,15 @@ export class CalendarData {
         const curr = this.normalizeStoryTime(currentTime);
         if (!curr) return null;
         if (prev && prev.dateKey !== curr.dateKey) {
-            return { skipped: true, reason: 'cross_day' };
+            const prevParts = this.parseDateKey(prev.dateKey);
+            const currParts = this.parseDateKey(curr.dateKey);
+            if (!prevParts || !currParts || this.dateSerial(currParts) < this.dateSerial(prevParts)) {
+                return { skipped: true, reason: 'time_rewind' };
+            }
         }
 
         const currentMinutes = curr.minutes;
-        const previousMinutes = prev?.minutes ?? -1;
+        const previousMinutes = prev?.dateKey === curr.dateKey ? prev.minutes : -1;
         if (currentMinutes <= previousMinutes) return null;
 
         const due = this.getMemosByDate(curr.dateKey)

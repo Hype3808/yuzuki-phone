@@ -3529,7 +3529,7 @@ renderChatRoom(chat) {
         const defaultIcon = isVideo ? '<i class="fa-solid fa-video"></i>' : '<i class="fa-regular fa-image"></i>';
 
         const statusText = generationStatus === 'loading'
-            ? `⏳ 正在${actionText}中，请稍候...`
+            ? `正在${actionText}中，请稍候...`
             : generationStatus === 'failed'
                 ? '❌ 生成失败，点击重试'
                 : `点击${actionText}`;
