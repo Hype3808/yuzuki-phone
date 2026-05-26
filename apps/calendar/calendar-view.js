@@ -955,7 +955,7 @@ export class CalendarView {
 
     getStoryTime() {
         const tm = window.VirtualPhone?.timeManager;
-        return tm?.getCurrentTime?.() || tm?.getCurrentStoryTime?.() || null;
+        return tm?.getCurrentStoryTime?.() || tm?.getCurrentTime?.() || null;
     }
 
     getWeekdayLabel(dateParts) {

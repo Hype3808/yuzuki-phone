@@ -40,6 +40,10 @@ const ST_PHONE_CURRENT_UPDATE = {
     version: ST_PHONE_VERSION,
     date: '2026-05-26',
     items: [
+        '【必做】更新后请在设置中执行一次【一键恢复默认提示词】，以同步最新全局提示词。',
+        '【新增】NAI 生图设置新增 Prompt Guidance / Guidance Rescale 控件，实际请求会按设置页数值发送，默认值为 6 / 0.2。',
+        '【新增】NAI 新增 Vibe 氛围转移设置，支持 Vibe 组管理、强度归一化，并在 NAI v4 / 4.5 生图时随请求发送。',
+        '【优化】清空所有角色数据时会同步清理微信/微博自定义 CSS，避免错误 CSS 卡死 App 后无法恢复。',
         '【修复】修复微信好友聊天设置里清空聊天记录后，新发送的用户消息和 AI 回复不显示、状态灯卡住的问题。',
         '【修复】修复日历 App 的星期没有跟随正文剧情星期更新的问题。',
         '【修复】优化相册 App 删除逻辑，批量删除时不再逐张刷新闪屏，并避免重复触发删除确认。'
@@ -4936,12 +4940,45 @@ if (window.GGP_Loaded) {
 
     function parseWechatDateTimeLine(rawValue = '') {
         const raw = String(rawValue || '').trim();
-        if (!raw) return { date: '', time: '' };
-        const match = raw.match(/(\d{1,8}年\s*[0-9]{1,2}月\s*[0-9]{1,2}日)\s*([0-9]{1,2}[:：][0-9]{2})?/);
-        if (!match) return { date: raw, time: '' };
+        if (!raw) return { date: '', time: '', weekday: '' };
+        const weekdayMatch = raw.match(/(星期[一二三四五六日天]|周[一二三四五六日天])/);
+        const weekday = weekdayMatch
+            ? weekdayMatch[1].replace(/^周/, '星期').replace('星期天', '星期日')
+            : '';
+        const match = raw.match(/(\d{1,8}年\s*[0-9]{1,2}月\s*[0-9]{1,2}日)/);
+        const timeMatch = raw.match(/(?:^|[^\d])([01]?\d|2[0-3])[:：]([0-5]\d)(?:$|[^\d])/);
+        if (!match) return { date: raw, time: '', weekday };
         return {
             date: match[1].replace(/\s+/g, ''),
-            time: String(match[2] || '').replace('：', ':')
+            time: timeMatch ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}` : '',
+            weekday
+        };
+    }
+
+    function normalizeWechatDateText(value = '') {
+        const match = String(value || '').match(/(\d{1,8})[-\/年]\s*(\d{1,2})[-\/月]\s*(\d{1,2})\s*日?/);
+        if (!match) return String(value || '').trim();
+        return `${match[1]}年${String(Number(match[2])).padStart(2, '0')}月${String(Number(match[3])).padStart(2, '0')}日`;
+    }
+
+    function extractWechatStoryTimeFallback(text = '') {
+        const raw = String(text || '')
+            .replace(/<[^>]*>/g, ' ')
+            .replace(/｜/g, '|')
+            .replace(/／/g, '/');
+        const dateMatch = raw.match(/(\d{1,8})[-\/年]\s*(\d{1,2})[-\/月]\s*(\d{1,2})\s*日?/);
+        const weekdayMatch = raw.match(/(星期[一二三四五六日天]|周[一二三四五六日天])/);
+        const timeMatch = raw.match(/(?:^|[^\d])([01]?\d|2[0-3])[:：]([0-5]\d)(?:$|[^\d])/);
+        if (!dateMatch && !weekdayMatch && !timeMatch) return null;
+        const weekday = weekdayMatch
+            ? weekdayMatch[1].replace(/^周/, '星期').replace('星期天', '星期日')
+            : '';
+        return {
+            date: dateMatch
+                ? `${dateMatch[1]}年${String(Number(dateMatch[2])).padStart(2, '0')}月${String(Number(dateMatch[3])).padStart(2, '0')}日`
+                : '',
+            time: timeMatch ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}` : '',
+            weekday
         };
     }
 
@@ -5063,6 +5100,14 @@ if (window.GGP_Loaded) {
             .replace(/&#62;/gi, '>');
 
         const results = [];
+        const textStoryTime = (() => {
+            try {
+                const tm = window.VirtualPhone?.timeManager || timeManager;
+                return tm?.parseStatusbar?.(normalizedText) || extractWechatStoryTimeFallback(normalizedText);
+            } catch (e) {
+                return extractWechatStoryTimeFallback(normalizedText);
+            }
+        })();
 
         // 1. 检查空标签 <wechat></wechat> - 面对面对话或离线
         WECHAT_EMPTY_REGEX.lastIndex = 0;
@@ -5110,6 +5155,7 @@ if (window.GGP_Loaded) {
             let currentChatTypeSource = 'inferred';
             let currentDate = null;
             let currentTime = null;
+            let currentWeekday = null;
             let currentRecipient = null;
             let currentRecipientExplicit = false;
             let currentMessages = [];
@@ -5167,7 +5213,10 @@ if (window.GGP_Loaded) {
                         contact: currentContact,
                         chatType: currentChatType,
                         chatTypeSource: currentChatTypeSource,
-                        date: currentDate,
+                        date: currentDate || textStoryTime?.date || '',
+                        weekday: currentWeekday || (
+                            (!currentDate || normalizeWechatDateText(currentDate) === normalizeWechatDateText(textStoryTime?.date)) ? textStoryTime?.weekday : ''
+                        ),
                         recipient: currentRecipient || '',
                         messages: [...messagesToSave],
                         members: currentChatType === 'group' ? allowedGroupMembers : [],
@@ -5196,6 +5245,7 @@ if (window.GGP_Loaded) {
                     currentChatTypeSource = 'inferred';
                     currentDate = null;
                     currentTime = null;
+                    currentWeekday = null;
                     currentRecipient = null;
                     currentRecipientExplicit = false;
                     currentMessages = [];
@@ -5220,6 +5270,7 @@ if (window.GGP_Loaded) {
                     const parsedDateTime = parseWechatDateTimeLine(trimmedLine.substring(5));
                     currentDate = parsedDateTime.date || trimmedLine.substring(5).trim();
                     currentTime = parsedDateTime.time || currentTime;
+                    currentWeekday = parsedDateTime.weekday || currentWeekday;
                     if (parsedDateTime.time) {
                         currentMessages.forEach(msg => {
                             if (!msg.time) msg.time = parsedDateTime.time;
@@ -5243,6 +5294,7 @@ if (window.GGP_Loaded) {
                     currentChatType = 'single';
                     currentChatTypeSource = 'explicit';
                     currentTime = null;
+                    currentWeekday = null;
                     currentRecipient = null;
                     currentRecipientExplicit = false;
                     currentMessages = [];
@@ -5344,6 +5396,7 @@ if (window.GGP_Loaded) {
                     if (parsedCurrentDateTime.time) {
                         msgObj.time = parsedCurrentDateTime.time;
                         currentDate = parsedCurrentDateTime.date || currentDate;
+                        currentWeekday = parsedCurrentDateTime.weekday || currentWeekday;
                     }
                     parseMessageType(msgObj);
                     currentMessages.push(msgObj);
@@ -5503,12 +5556,12 @@ if (window.GGP_Loaded) {
         loadTimeManager().then(tm => {
             try {
                 if (tm && tm.setTime) {
-                    // 🔥 修复：尝试保留当前的星期几，防止被真实日历强行覆盖
+                    // 🔥 修复：优先使用正文/微信标签里的剧情星期，防止跨天后被日期公式覆盖
                     const current = tm.getCurrentStoryTime();
-                    let passWeekday = null;
+                    let passWeekday = data.weekday || null;
 
-                    // 如果日期没变，强行继承原有的自定义星期几
-                    if (current && current.date && baseDate && current.date.trim() === baseDate.trim()) {
+                    // 如果日期没变且本次标签没给星期，继承原有的自定义星期几
+                    if (!passWeekday && current && current.date && baseDate && current.date.trim() === baseDate.trim()) {
                         passWeekday = current.weekday;
                     }
 
@@ -5750,7 +5803,7 @@ if (window.GGP_Loaded) {
                 // 🔥 同步更新全局时间，确保跨会话也能递增
                 if (timeManager && timeManager.setTime) {
                     try {
-                        timeManager.setTime(finalTime, data.date || baseDate);
+                        timeManager.setTime(finalTime, data.date || baseDate, data.weekday || null);
                         checkCalendarScheduleReminders(timeManager.getCurrentStoryTime?.());
                     } catch (e) {
                         // 忽略错误
@@ -7671,6 +7724,21 @@ if (window.GGP_Loaded) {
                 }
             }
 
+            const clearGlobalCustomCssSettings = async () => {
+                try {
+                    await Promise.all([
+                        storage.remove('phone_global_chat_css'),
+                        storage.remove('phone_chat_css_profiles'),
+                        storage.remove('global_weibo_beautify')
+                    ]);
+                } catch (e) {
+                    console.warn('[ST-Phone] 清理全局自定义 CSS 配置失败:', e);
+                }
+
+                document.getElementById('wechat-custom-chat-style')?.remove();
+                document.getElementById('weibo-custom-avatar-frame-style')?.remove();
+            };
+
             // 监听清空数据
             window.addEventListener('phone:clearCurrentData', async () => { // 🔥 加上 async
                 if (window.VirtualPhone?.honeyApp) {
@@ -7745,6 +7813,7 @@ if (window.GGP_Loaded) {
                     }
                 }
                 storage.clearAllData();
+                await clearGlobalCustomCssSettings();
                 currentApps = JSON.parse(JSON.stringify(APPS));
                 totalNotifications = 0;
                 updateNotificationBadge(0);

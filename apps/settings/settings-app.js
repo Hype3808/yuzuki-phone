@@ -2654,8 +2654,8 @@ export class SettingsApp {
         const diaryWidth = readImageNumber('phone-image-diary-width', 512, 64, 2048, true);
         const diaryHeight = readImageNumber('phone-image-diary-height', 512, 64, 2048, true);
         const steps = Number(this.storage.get('phone-image-steps') || 28);
-        const scale = Number(this.storage.get('phone-image-scale') || 7);
-        const cfgRescale = Number(this.storage.get('phone-image-cfg-rescale') || 0);
+        const scale = Number(this.storage.get('phone-image-scale') || 6);
+        const cfgRescale = Number(this.storage.get('phone-image-cfg-rescale') || 0.2);
         const seed = Number(this.storage.get('phone-image-seed') ?? -1);
         const debugPayload = this.storage.get('phone-image-debug-payload') === true || this.storage.get('phone-image-debug-payload') === 'true';
         const imagePromptAppDefs = this._getImagePromptAppDefs();
@@ -2944,6 +2944,14 @@ export class SettingsApp {
                         <select id="phone-image-novelai-schedule" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
                             ${novelaiSchedules.map(([value, label]) => `<option value="${value}" ${scheduleValue === value ? 'selected' : ''}>${label}</option>`).join('')}
                         </select>
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-label">Prompt Guidance</div>
+                        <input type="number" id="phone-image-novelai-guidance" data-phone-image-number-key="phone-image-scale" min="0" max="50" step="0.1" value="${scale}" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-label">Guidance Rescale</div>
+                        <input type="number" id="phone-image-novelai-guidance-rescale" data-phone-image-number-key="phone-image-cfg-rescale" min="0" max="1" step="0.01" value="${cfgRescale}" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
                     </div>
                 </div>
             </div>
@@ -4743,10 +4751,15 @@ export class SettingsApp {
         };
         const setPresetNumber = async (id, value, fallback, min, max, integer = false) => {
             if (value === undefined || value === null || value === '') return;
-            const input = document.getElementById(id);
+            const inputs = Array.from(document.querySelectorAll(`#${id}, [data-phone-image-number-key="${id}"]`));
+            const input = inputs[0];
             if (!input) return;
             input.value = String(value);
-            await this.storage.set(id, clampNumberInput(input, fallback, min, max, integer));
+            const savedValue = clampNumberInput(input, fallback, min, max, integer);
+            inputs.forEach(item => {
+                item.value = String(savedValue);
+            });
+            await this.storage.set(id, savedValue);
         };
         const getImageGenerationPresetSettings = () => ({
             novelaiModel: String(imageNovelaiModel?.value || '').trim() || 'nai-diffusion-4-5-full',
@@ -4763,8 +4776,8 @@ export class SettingsApp {
             width: readPresetNumber('phone-image-width', 832, 64, 2048, true),
             height: readPresetNumber('phone-image-height', 1216, 64, 2048, true),
             steps: readPresetNumber('phone-image-steps', 28, 1, 50, true),
-            scale: readPresetNumber('phone-image-scale', 7, 0, 50, false),
-            cfgRescale: readPresetNumber('phone-image-cfg-rescale', 0, 0, 1, false),
+            scale: readPresetNumber('phone-image-scale', 6, 0, 50, false),
+            cfgRescale: readPresetNumber('phone-image-cfg-rescale', 0.2, 0, 1, false),
             seed: readPresetNumber('phone-image-seed', -1, -1, 4294967295, true)
         });
         const applyImageGenerationPresetSettings = async (preset) => {
@@ -4799,8 +4812,8 @@ export class SettingsApp {
             await setPresetNumber('phone-image-width', preset.width, 832, 64, 2048, true);
             await setPresetNumber('phone-image-height', preset.height, 1216, 64, 2048, true);
             await setPresetNumber('phone-image-steps', preset.steps, 28, 1, 50, true);
-            await setPresetNumber('phone-image-scale', preset.scale, 7, 0, 50, false);
-            await setPresetNumber('phone-image-cfg-rescale', preset.cfgRescale, 0, 0, 1, false);
+            await setPresetNumber('phone-image-scale', preset.scale, 6, 0, 50, false);
+            await setPresetNumber('phone-image-cfg-rescale', preset.cfgRescale, 0.2, 0, 1, false);
             await setPresetNumber('phone-image-seed', preset.seed, -1, -1, 4294967295, true);
         };
         const getOpenAIImagePresetSettings = () => ({
@@ -6956,8 +6969,8 @@ export class SettingsApp {
             ['phone-image-width', 832, 64, 2048, true],
             ['phone-image-height', 1216, 64, 2048, true],
             ['phone-image-steps', 28, 1, 50, true],
-            ['phone-image-scale', 7, 0, 50, false],
-            ['phone-image-cfg-rescale', 0, 0, 1, false],
+            ['phone-image-scale', 6, 0, 50, false],
+            ['phone-image-cfg-rescale', 0.2, 0, 1, false],
             ['phone-image-seed', -1, -1, 4294967295, true],
             ['phone-image-sd-clip-skip', 0, 0, 12, true],
             ['phone-image-sd-hires-steps', 0, 0, 80, true],
@@ -6977,21 +6990,30 @@ export class SettingsApp {
             'phone-image-height'
         ]);
         imageNumberInputs.forEach(([id, fallback, min, max, integer]) => {
-            const input = document.getElementById(id);
-            if (!input) return;
-            const saveNumberInput = async (e) => {
-                await this.storage.set(id, clampNumberInput(e.target, fallback, min, max, integer));
+            const inputs = Array.from(document.querySelectorAll(`#${id}, [data-phone-image-number-key="${id}"]`));
+            if (!inputs.length) return;
+            const syncLinkedInputs = (source, value) => {
+                inputs.forEach(input => {
+                    if (input !== source) input.value = String(value);
+                });
             };
-            if (integer && id !== 'phone-image-seed' && !appSizeInputIds.has(id)) {
-                input.addEventListener('input', saveNumberInput);
-            }
-            input.addEventListener('change', saveNumberInput);
-            input.addEventListener('blur', saveNumberInput);
-            input.addEventListener('keydown', (e) => {
-                if (e.key !== 'Enter') return;
-                e.preventDefault();
-                saveNumberInput(e).catch(err => console.warn('保存生图数字设置失败:', err));
-                e.currentTarget?.blur?.();
+            const saveNumberInput = async (e) => {
+                const value = clampNumberInput(e.target, fallback, min, max, integer);
+                syncLinkedInputs(e.target, value);
+                await this.storage.set(id, value);
+            };
+            inputs.forEach(input => {
+                if (integer && id !== 'phone-image-seed' && !appSizeInputIds.has(id)) {
+                    input.addEventListener('input', saveNumberInput);
+                }
+                input.addEventListener('change', saveNumberInput);
+                input.addEventListener('blur', saveNumberInput);
+                input.addEventListener('keydown', (e) => {
+                    if (e.key !== 'Enter') return;
+                    e.preventDefault();
+                    saveNumberInput(e).catch(err => console.warn('保存生图数字设置失败:', err));
+                    e.currentTarget?.blur?.();
+                });
             });
         });
 
@@ -7537,7 +7559,7 @@ export class SettingsApp {
 
         // 清空当前角色数据
         document.getElementById('clear-current-data')?.addEventListener('click', () => {
-            if (confirm('确定清空当前角色的所有手机数据（含蜜语生成内容）？\n\n此操作不可恢复！')) {
+            if (confirm('确定清空当前角色的所有手机数据（含蜜语生成内容）？\n\n微信/微博等全局自定义 CSS 会保留。\n此操作不可恢复！')) {
                 window.dispatchEvent(new CustomEvent('phone:clearCurrentData'));
                 alert('✅ 数据已清空！');
             }
@@ -7545,7 +7567,7 @@ export class SettingsApp {
         
         // 清空所有数据
         document.getElementById('clear-all-data')?.addEventListener('click', () => {
-            if (confirm('⚠️ 警告！\n\n确定清空所有角色的手机数据（含蜜语生成内容）？\n此操作将删除所有聊天记录、消息、联系人等！\n\n此操作不可恢复！')) {
+            if (confirm('⚠️ 警告！\n\n确定清空所有角色的手机数据（含蜜语生成内容）？\n此操作将删除所有聊天记录、消息、联系人，并恢复微信/微博自定义 CSS！\n\n此操作不可恢复！')) {
                 if (confirm('再次确认：真的要删除所有数据吗？')) {
                     window.dispatchEvent(new CustomEvent('phone:clearAllData'));
                     alert('✅ 所有数据已清空！');
