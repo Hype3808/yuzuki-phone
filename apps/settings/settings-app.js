@@ -2652,9 +2652,15 @@ export class SettingsApp {
         const weiboHeight = readImageNumber('phone-image-weibo-height', 1024, 64, 2048, true);
         const diaryWidth = readImageNumber('phone-image-diary-width', 512, 64, 2048, true);
         const diaryHeight = readImageNumber('phone-image-diary-height', 512, 64, 2048, true);
-        const steps = Number(this.storage.get('phone-image-steps') || 28);
-        const scale = Number(this.storage.get('phone-image-scale') || 6);
-        const cfgRescale = Number(this.storage.get('phone-image-cfg-rescale') || 0.2);
+        const readStoredNumber = (key, fallback) => {
+            const raw = this.storage.get(key);
+            if (raw === null || typeof raw === 'undefined' || raw === '') return fallback;
+            const value = Number(raw);
+            return Number.isFinite(value) ? value : fallback;
+        };
+        const steps = readStoredNumber('phone-image-steps', 28);
+        const scale = readStoredNumber('phone-image-scale', 6);
+        const cfgRescale = readStoredNumber('phone-image-cfg-rescale', 0.2);
         const seed = Number(this.storage.get('phone-image-seed') ?? -1);
         const debugPayload = this.storage.get('phone-image-debug-payload') === true || this.storage.get('phone-image-debug-payload') === 'true';
         const imagePromptAppDefs = this._getImagePromptAppDefs();

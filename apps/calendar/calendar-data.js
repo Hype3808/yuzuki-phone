@@ -7,10 +7,12 @@ export class CalendarData {
     constructor(storage) {
         this.storage = storage;
         this.memoKey = 'calendar_memos';
+        this.holidayKey = 'calendar_holidays';
         this.themeKey = 'calendar_theme';
         this.reminderEnabledKey = 'calendar_reminder_enabled';
         this.autoScheduleEnabledKey = 'calendar_auto_schedule_enabled';
         this._memos = null;
+        this._holidays = null;
     }
 
     getMemos() {
@@ -38,6 +40,13 @@ export class CalendarData {
             });
     }
 
+    getCalendarItemsByDate(dateKey) {
+        return [
+            ...this.getHolidaysByDate(dateKey),
+            ...this.getMemosByDate(dateKey)
+        ];
+    }
+
     getMemoDatesForMonth(year, month) {
         const prefix = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-`;
         const map = new Map();
@@ -62,10 +71,13 @@ export class CalendarData {
             const recurringKey = `${String(targetYear).padStart(4, '0')}-${String(targetMonth).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`;
             map.set(recurringKey, (map.get(recurringKey) || 0) + 1);
         });
+        this.getHolidayDatesForMonth(year, month).forEach((count, key) => {
+            map.set(key, (map.get(key) || 0) + count);
+        });
         return map;
     }
 
-    addMemo({ dateKey, title, time = '', type = 'daily', color = 'blue', source = 'manual', globalReminder = false }) {
+    addMemo({ dateKey, title, time = '', type = 'daily', color = 'blue', source = 'manual', globalReminder = null }) {
         const safeDateKey = String(dateKey || '').trim();
         const safeTitle = String(title || '').trim();
         if (!safeDateKey || !safeTitle) return null;
@@ -79,7 +91,9 @@ export class CalendarData {
             color: this.normalizeColor(color),
             type: safeType,
             source: String(source || 'manual').trim() || 'manual',
-            globalReminder: globalReminder === true,
+            globalReminder: globalReminder === null || typeof globalReminder === 'undefined'
+                ? this.isRecurringType(safeType)
+                : globalReminder === true,
             createdAt: Date.now(),
             pinned: false
         };
@@ -146,6 +160,195 @@ export class CalendarData {
     getGlobalReminderMemosByDate(dateKey) {
         return this.getMemosByDate(dateKey)
             .filter(memo => memo?.globalReminder === true);
+    }
+
+    getGlobalReminderItemsByDate(dateKey) {
+        return this.getCalendarItemsByDate(dateKey)
+            .filter(item => item?.globalReminder === true);
+    }
+
+    getHolidays() {
+        if (!this._holidays) {
+            try {
+                const saved = this.storage?.get?.(this.holidayKey, null);
+                if (saved === null || typeof saved === 'undefined' || saved === '') {
+                    this._holidays = this.getDefaultHolidays();
+                    this.saveHolidays();
+                } else {
+                    const parsed = Array.isArray(saved) ? saved : JSON.parse(saved || '[]');
+                    this._holidays = Array.isArray(parsed)
+                        ? parsed.map(item => this.normalizeHoliday(item)).filter(Boolean)
+                        : [];
+                }
+            } catch (e) {
+                console.warn('[CalendarData] 解析节日失败:', e);
+                this._holidays = this.getDefaultHolidays();
+                this.saveHolidays();
+            }
+        }
+        return this._holidays;
+    }
+
+    getDefaultHolidays() {
+        const now = Date.now();
+        return [
+            { id: 'holiday_new_year', title: '元旦', month: 1, day: 1 },
+            { id: 'holiday_valentine', title: '情人节', month: 2, day: 14 },
+            { id: 'holiday_labor', title: '劳动节', month: 5, day: 1 },
+            { id: 'holiday_national', title: '国庆节', month: 10, day: 1 },
+            { id: 'holiday_halloween', title: '万圣节', month: 10, day: 31 },
+            { id: 'holiday_christmas_eve', title: '平安夜', month: 12, day: 24 },
+            { id: 'holiday_christmas', title: '圣诞节', month: 12, day: 25 }
+        ].map(item => ({
+            ...item,
+            type: 'holiday',
+            globalReminder: true,
+            builtIn: true,
+            createdAt: now
+        }));
+    }
+
+    normalizeHoliday(item) {
+        const title = String(item?.title || '').trim();
+        const month = Number.parseInt(item?.month, 10);
+        const day = Number.parseInt(item?.day, 10);
+        if (!title || !this.isValidMonthDay(month, day)) return null;
+        return {
+            id: String(item?.id || `calendar_holiday_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`),
+            title: title.slice(0, 80),
+            month,
+            day,
+            type: 'holiday',
+            globalReminder: item?.globalReminder !== false,
+            builtIn: item?.builtIn === true,
+            createdAt: Number(item?.createdAt) || Date.now(),
+            updatedAt: Number(item?.updatedAt) || undefined
+        };
+    }
+
+    saveHolidays() {
+        this.storage?.set?.(this.holidayKey, JSON.stringify(this.getHolidays()));
+    }
+
+    addHoliday({ title, month, day, globalReminder = true }) {
+        const safeTitle = String(title || '').trim();
+        const safeMonth = Number.parseInt(month, 10);
+        const safeDay = Number.parseInt(day, 10);
+        if (!safeTitle || !this.isValidMonthDay(safeMonth, safeDay)) return null;
+        const holiday = {
+            id: `calendar_holiday_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            title: safeTitle.slice(0, 80),
+            month: safeMonth,
+            day: safeDay,
+            type: 'holiday',
+            globalReminder: globalReminder !== false,
+            builtIn: false,
+            createdAt: Date.now()
+        };
+        this.getHolidays().push(holiday);
+        this.saveHolidays();
+        return holiday;
+    }
+
+    updateHoliday(id, updates = {}) {
+        const holiday = this.getHolidays().find(item => String(item?.id || '') === String(id || ''));
+        if (!holiday) return false;
+
+        const nextTitle = Object.prototype.hasOwnProperty.call(updates, 'title')
+            ? String(updates.title || '').trim()
+            : holiday.title;
+        const nextMonth = Object.prototype.hasOwnProperty.call(updates, 'month')
+            ? Number.parseInt(updates.month, 10)
+            : holiday.month;
+        const nextDay = Object.prototype.hasOwnProperty.call(updates, 'day')
+            ? Number.parseInt(updates.day, 10)
+            : holiday.day;
+        if (!nextTitle || !this.isValidMonthDay(nextMonth, nextDay)) return false;
+
+        holiday.title = nextTitle.slice(0, 80);
+        holiday.month = nextMonth;
+        holiday.day = nextDay;
+        if (Object.prototype.hasOwnProperty.call(updates, 'globalReminder')) {
+            holiday.globalReminder = updates.globalReminder === true;
+        }
+        holiday.updatedAt = Date.now();
+        this.saveHolidays();
+        return true;
+    }
+
+    deleteHoliday(id) {
+        const safeId = String(id || '').trim();
+        if (!safeId) return false;
+        const holidays = this.getHolidays();
+        const idx = holidays.findIndex(item => String(item?.id || '') === safeId);
+        if (idx < 0) return false;
+        holidays.splice(idx, 1);
+        this.saveHolidays();
+        return true;
+    }
+
+    toggleHolidayGlobalReminder(id) {
+        const holiday = this.getHolidays().find(item => String(item?.id || '') === String(id || ''));
+        if (!holiday) return false;
+        holiday.globalReminder = holiday.globalReminder !== true;
+        holiday.updatedAt = Date.now();
+        this.saveHolidays();
+        return holiday.globalReminder;
+    }
+
+    getHolidaysByDate(dateKey) {
+        const parts = this.parseDateKey(dateKey);
+        if (!parts) return [];
+        return this.getHolidays()
+            .filter(holiday => holiday.month === parts.month && holiday.day === parts.day)
+            .sort((a, b) => String(a.title || '').localeCompare(String(b.title || ''), 'zh-Hans-CN'))
+            .map(holiday => this.toHolidayCalendarItem(holiday, dateKey));
+    }
+
+    getHolidayDatesForMonth(year, month) {
+        const targetYear = Number(year);
+        const targetMonth = Number(month);
+        const map = new Map();
+        this.getHolidays().forEach(holiday => {
+            if (holiday.month !== targetMonth) return;
+            if (holiday.day > this.getDaysInMonth(targetYear, targetMonth)) return;
+            const key = `${String(targetYear).padStart(4, '0')}-${String(targetMonth).padStart(2, '0')}-${String(holiday.day).padStart(2, '0')}`;
+            map.set(key, (map.get(key) || 0) + 1);
+        });
+        return map;
+    }
+
+    getUpcomingHolidayItems(currentDateKey, yearsAhead = 1) {
+        const currentParts = this.parseDateKey(currentDateKey);
+        if (!currentParts) return [];
+        const currentSerial = this.dateSerial(currentParts);
+        const items = [];
+        for (let year = currentParts.year; year <= currentParts.year + Number(yearsAhead || 0); year += 1) {
+            this.getHolidays().forEach(holiday => {
+                if (holiday.day > this.getDaysInMonth(year, holiday.month)) return;
+                const dateKey = `${String(year).padStart(4, '0')}-${String(holiday.month).padStart(2, '0')}-${String(holiday.day).padStart(2, '0')}`;
+                const parts = this.parseDateKey(dateKey);
+                if (!parts || this.dateSerial(parts) < currentSerial) return;
+                items.push(this.toHolidayCalendarItem(holiday, dateKey));
+            });
+        }
+        return items.sort((a, b) => this.dateSerial(this.parseDateKey(a.dateKey)) - this.dateSerial(this.parseDateKey(b.dateKey)));
+    }
+
+    toHolidayCalendarItem(holiday, dateKey) {
+        return {
+            id: `calendar_holiday_item_${holiday.id}_${dateKey}`,
+            holidayId: holiday.id,
+            dateKey,
+            title: holiday.title,
+            time: '',
+            type: 'event',
+            color: 'green',
+            source: 'holiday',
+            isHoliday: true,
+            globalReminder: holiday.globalReminder === true,
+            pinned: true
+        };
     }
 
     clearExpiredAutoMemos(currentDateKey) {
@@ -236,9 +439,21 @@ export class CalendarData {
         return y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0) ? 29 : 28;
     }
 
+    isValidMonthDay(month, day) {
+        const safeMonth = Number(month);
+        const safeDay = Number(day);
+        if (!Number.isFinite(safeMonth) || !Number.isFinite(safeDay)) return false;
+        if (safeMonth < 1 || safeMonth > 12 || safeDay < 1) return false;
+        return safeDay <= this.getDaysInMonth(2024, safeMonth);
+    }
+
     isRecurringMemo(memo) {
-        const type = this.normalizeType(memo?.type);
-        return type === 'birthday' || type === 'anniversary';
+        return this.isRecurringType(memo?.type);
+    }
+
+    isRecurringType(type) {
+        const normalized = this.normalizeType(type);
+        return normalized === 'birthday' || normalized === 'anniversary';
     }
 
     isMemoOnDate(memo, dateKey) {
@@ -372,5 +587,6 @@ export class CalendarData {
 
     clearCache() {
         this._memos = null;
+        this._holidays = null;
     }
 }

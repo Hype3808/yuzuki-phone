@@ -337,6 +337,76 @@
     gap: 8px !important;
 }
 
+#phone-panel-content .phone-screen .yzp-calendar-holiday-list {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 7px !important;
+}
+
+#phone-panel-content .phone-screen .yzp-calendar-holiday-row,
+#phone-panel-content .phone-screen .yzp-calendar-holiday-add {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) 38px 38px 28px 28px 28px !important;
+    align-items: center !important;
+    gap: 6px !important;
+}
+
+#phone-panel-content .phone-screen .yzp-calendar-holiday-add {
+    grid-template-columns: minmax(0, 1fr) 38px 38px 56px !important;
+    margin: 2px 0 0 !important;
+}
+
+#phone-panel-content .phone-screen .yzp-calendar-holiday-title,
+#phone-panel-content .phone-screen .yzp-calendar-holiday-month,
+#phone-panel-content .phone-screen .yzp-calendar-holiday-day {
+    min-width: 0 !important;
+    width: 100% !important;
+    height: 30px !important;
+    border: 1px solid var(--yzp-cal-line) !important;
+    border-radius: 8px !important;
+    padding: 0 8px !important;
+    background: var(--yzp-cal-soft) !important;
+    color: var(--yzp-cal-text) !important;
+    font-size: 11px !important;
+    line-height: 30px !important;
+    outline: none !important;
+    box-shadow: none !important;
+}
+
+#phone-panel-content .phone-screen .yzp-calendar-holiday-month,
+#phone-panel-content .phone-screen .yzp-calendar-holiday-day {
+    text-align: center !important;
+    padding: 0 4px !important;
+}
+
+#phone-panel-content .phone-screen .yzp-calendar-holiday-alarm,
+#phone-panel-content .phone-screen .yzp-calendar-holiday-save,
+#phone-panel-content .phone-screen .yzp-calendar-holiday-delete {
+    width: 28px !important;
+    height: 28px !important;
+    border: 0 !important;
+    border-radius: 50% !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    color: var(--yzp-cal-muted) !important;
+    font-size: 11px !important;
+    line-height: 1 !important;
+    cursor: pointer !important;
+}
+
+#phone-panel-content .phone-screen .yzp-calendar-holiday-alarm.is-active {
+    color: var(--yzp-cal-accent) !important;
+    background: color-mix(in srgb, var(--yzp-cal-accent) 16%, transparent) !important;
+}
+
+#phone-panel-content .phone-screen .yzp-calendar-holiday-delete {
+    color: #dc6262 !important;
+}
+
 #phone-panel-content .phone-screen .yzp-calendar-generate-btn {
     width: 100% !important;
     height: 38px !important;

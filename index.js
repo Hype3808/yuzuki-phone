@@ -1,4 +1,4 @@
-﻿/* ========================================================
+/* ========================================================
  *  柚月小手机 (Yuzuki's Little Phone)
  *  作者 (Author): yuzuki
  * 
@@ -1158,7 +1158,7 @@ if (window.GGP_Loaded) {
             if (!latestTime?.date || !latestTime?.time) return;
 
             if (!window.VirtualPhone?._calendarReminderApp) {
-                const module = await import('./apps/calendar/calendar-app.js?v=20260527-auto-schedule');
+                const module = await import('./apps/calendar/calendar-app.js?v=20260527-holidays');
                 window.VirtualPhone._calendarReminderApp = new module.CalendarApp(null, storage);
             }
 
@@ -4822,7 +4822,7 @@ if (window.GGP_Loaded) {
             if (!idleReady) return false;
             if (task.chatId && task.chatId !== getCurrentChatIdForQueue()) return false;
 
-            const module = await import('./apps/calendar/calendar-app.js?v=20260527-auto-schedule');
+            const module = await import('./apps/calendar/calendar-app.js?v=20260527-holidays');
             const calendarApp = window.VirtualPhone.calendarApp || window.VirtualPhone._calendarReminderApp || new module.CalendarApp(null, storage);
             window.VirtualPhone._calendarReminderApp = calendarApp;
 
@@ -4861,7 +4861,7 @@ if (window.GGP_Loaded) {
             const chatLength = Array.isArray(ctx?.chat) ? ctx.chat.length : 0;
             if (chatLength <= 0 && !options.forceCheck) return false;
 
-            import('./apps/calendar/calendar-data.js?v=20260527-auto-schedule').then(dataModule => {
+            import('./apps/calendar/calendar-data.js?v=20260527-holidays').then(dataModule => {
                 const calendarData = window.VirtualPhone?.calendarApp?.calendarData
                     || window.VirtualPhone?._calendarReminderApp?.calendarData
                     || new dataModule.CalendarData(storage);
@@ -7758,7 +7758,7 @@ if (window.GGP_Loaded) {
                             phoneShell?.showNotification('错误', '相册模块加载失败', '❌');
                         });
                 } else if (appId === 'calendar') {
-                    import('./apps/calendar/calendar-app.js?v=20260527-auto-schedule')
+                    import('./apps/calendar/calendar-app.js?v=20260527-holidays')
                         .then(module => {
                             try {
                                 if (!window.VirtualPhone.calendarApp || !window.VirtualPhone.calendarApp.phoneShell?.setContent) {
@@ -8789,15 +8789,18 @@ if (window.GGP_Loaded) {
                                                 || window.VirtualPhone?._calendarReminderApp?.calendarData
                                                 || null;
                                             if (!calendarData) {
-                                                const calendarModule = await import('./apps/calendar/calendar-data.js?v=20260527-auto-schedule');
+                                                const calendarModule = await import('./apps/calendar/calendar-data.js?v=20260527-holidays');
                                                 calendarData = new calendarModule.CalendarData(storage);
                                             }
-                                            const reminderMemos = calendarData?.getGlobalReminderMemosByDate?.(dateKey) || [];
+                                            const reminderMemos = calendarData?.getGlobalReminderItemsByDate?.(dateKey)
+                                                || calendarData?.getGlobalReminderMemosByDate?.(dateKey)
+                                                || [];
                                             if (reminderMemos.length > 0) {
                                                 const lines = reminderMemos.map(memo => {
                                                     const timeText = String(memo?.time || '').trim();
                                                     const titleText = String(memo?.title || '').replace(/\s+/g, ' ').trim();
-                                                    return timeText ? `${timeText} ${titleText}` : titleText;
+                                                    const typeText = memo?.isHoliday === true ? '节日：' : '';
+                                                    return timeText ? `${timeText} ${typeText}${titleText}` : `${typeText}${titleText}`;
                                                 }).filter(Boolean);
                                                 if (lines.length > 0) {
                                                     calendarReminderContent = [

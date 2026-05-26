@@ -25,6 +25,9 @@ export class CalendarView {
         this.editMemoTitle = '';
         this.editMemoTime = '';
         this.currentView = 'main';
+        this.holidayDraftTitle = '';
+        this.holidayDraftMonth = '';
+        this.holidayDraftDay = '';
     }
 
     async loadCSS() {
@@ -40,7 +43,7 @@ export class CalendarView {
         const link = existingLink || document.createElement('link');
         link.id = 'yzp-calendar-css';
         link.rel = 'stylesheet';
-        link.href = new URL('./calendar.css?v=20260527-auto-schedule', import.meta.url).href;
+        link.href = new URL('./calendar.css?v=20260527-holidays', import.meta.url).href;
         this._cssLoadingPromise = new Promise(resolve => {
             let settled = false;
             const finish = () => {
@@ -170,7 +173,7 @@ export class CalendarView {
 
     renderMemoSection(storyDate) {
         const selectedKey = this.toDateKey(this.selectedDate);
-        const memos = this.app.calendarData.getMemosByDate(selectedKey);
+        const memos = this.app.calendarData.getCalendarItemsByDate(selectedKey);
         if (!memos.length) return '';
 
         return `
@@ -234,6 +237,7 @@ export class CalendarView {
     renderSettings(theme) {
         const promptManager = this.getPromptManager();
         const prompt = this.getSchedulePromptConfig(promptManager);
+        const holidays = this.app.calendarData.getHolidays();
         const html = `
             <div class="yzp-calendar-app yzp-calendar-theme-${theme}">
                 <header class="yzp-calendar-settings-header">
@@ -269,6 +273,23 @@ export class CalendarView {
                         </div>
                     </section>
                     <section class="yzp-calendar-settings-section">
+                        <div class="yzp-calendar-settings-section-head">
+                            <div>
+                                <div class="yzp-calendar-settings-label">设定节日</div>
+                                <div class="yzp-calendar-settings-desc">固定月日循环，可按世界观修改日期或新增节日。</div>
+                            </div>
+                        </div>
+                        <div class="yzp-calendar-holiday-list">
+                            ${holidays.map(holiday => this.renderHolidaySettingRow(holiday)).join('')}
+                        </div>
+                        <form class="yzp-calendar-holiday-add" id="yzp-calendar-holiday-add-form" autocomplete="off">
+                            <input class="yzp-calendar-holiday-title" id="yzp-calendar-holiday-title" maxlength="80" placeholder="节日名" value="${this.escapeAttr(this.holidayDraftTitle)}">
+                            <input class="yzp-calendar-holiday-month" id="yzp-calendar-holiday-month" inputmode="numeric" maxlength="2" placeholder="月" value="${this.escapeAttr(this.holidayDraftMonth)}">
+                            <input class="yzp-calendar-holiday-day" id="yzp-calendar-holiday-day" inputmode="numeric" maxlength="2" placeholder="日" value="${this.escapeAttr(this.holidayDraftDay)}">
+                            <button type="submit" class="yzp-calendar-submit-btn">添加</button>
+                        </form>
+                    </section>
+                    <section class="yzp-calendar-settings-section">
                         <div class="phone-prompt-fold" data-default-open="false">
                             <div class="phone-prompt-fold-header">
                                 <div class="phone-prompt-fold-main">
@@ -301,6 +322,27 @@ export class CalendarView {
 
         this.app.phoneShell.setContent(html, 'calendar-settings');
         requestAnimationFrame(() => this.bindEvents());
+    }
+
+    renderHolidaySettingRow(holiday) {
+        const id = String(holiday?.id || '');
+        const active = holiday?.globalReminder === true;
+        return `
+            <div class="yzp-calendar-holiday-row" data-holiday-row="${this.escapeAttr(id)}">
+                <input class="yzp-calendar-holiday-title" data-holiday-title="${this.escapeAttr(id)}" maxlength="80" value="${this.escapeAttr(holiday?.title || '')}" aria-label="节日名">
+                <input class="yzp-calendar-holiday-month" data-holiday-month="${this.escapeAttr(id)}" inputmode="numeric" maxlength="2" value="${this.escapeAttr(holiday?.month || '')}" aria-label="月份">
+                <input class="yzp-calendar-holiday-day" data-holiday-day="${this.escapeAttr(id)}" inputmode="numeric" maxlength="2" value="${this.escapeAttr(holiday?.day || '')}" aria-label="日期">
+                <button type="button" class="yzp-calendar-holiday-alarm ${active ? 'is-active' : ''}" data-holiday-global-reminder="${this.escapeAttr(id)}" aria-label="全局提醒">
+                    <i class="fa-regular fa-clock"></i>
+                </button>
+                <button type="button" class="yzp-calendar-holiday-save" data-holiday-save="${this.escapeAttr(id)}" aria-label="保存">
+                    <i class="fa-regular fa-floppy-disk"></i>
+                </button>
+                <button type="button" class="yzp-calendar-holiday-delete" data-holiday-settings-delete="${this.escapeAttr(id)}" aria-label="删除">
+                    <i class="fa-regular fa-trash-can"></i>
+                </button>
+            </div>
+        `;
     }
 
     renderMonthPicker(storyDate) {
@@ -342,23 +384,24 @@ export class CalendarView {
         const memoId = String(memo.id || '');
         const showDelete = this.activeDeleteMemoId === memoId;
         const isGlobalReminder = memo.globalReminder === true;
+        const isHoliday = memo?.isHoliday === true;
         const memoTitle = this.escapeHtml(memo.title);
         const memoTime = String(memo.time || '').trim();
         const memoLine = memoTime
             ? `<span class="yzp-calendar-memo-time-inline">${this.escapeHtml(memoTime)}</span><span class="yzp-calendar-memo-dot">·</span>${memoTitle}`
             : memoTitle;
         return `
-            <div class="yzp-calendar-memo-item yzp-calendar-memo-type-${this.escapeAttr(type)} ${showDelete ? 'show-delete' : ''}" data-memo-id="${this.escapeAttr(memoId)}">
+            <div class="yzp-calendar-memo-item yzp-calendar-memo-type-${this.escapeAttr(type)} ${isHoliday ? 'is-holiday' : ''} ${showDelete ? 'show-delete' : ''}" data-memo-id="${this.escapeAttr(memoId)}" ${isHoliday ? `data-holiday-id="${this.escapeAttr(memo.holidayId || '')}"` : ''}>
                 <span class="yzp-calendar-memo-type-icon" aria-hidden="true">
                     <img src="${this.escapeAttr(typeIconUrl)}" alt="">
                 </span>
                 <div class="yzp-calendar-memo-copy">
                     <div class="yzp-calendar-memo-text">${memoLine}</div>
                 </div>
-                <button type="button" class="yzp-calendar-global-reminder-btn ${isGlobalReminder ? 'is-active' : ''}" data-memo-global-reminder="${this.escapeAttr(memoId)}" aria-label="全局提醒">
+                <button type="button" class="yzp-calendar-global-reminder-btn ${isGlobalReminder ? 'is-active' : ''}" ${isHoliday ? `data-holiday-global-reminder="${this.escapeAttr(memo.holidayId || '')}"` : `data-memo-global-reminder="${this.escapeAttr(memoId)}"`} aria-label="全局提醒">
                     <i class="fa-regular fa-clock"></i>
                 </button>
-                <button type="button" class="yzp-calendar-delete-btn" data-memo-delete="${this.escapeAttr(memoId)}" aria-label="删除">
+                <button type="button" class="yzp-calendar-delete-btn" ${isHoliday ? `data-holiday-delete="${this.escapeAttr(memo.holidayId || '')}"` : `data-memo-delete="${this.escapeAttr(memoId)}"`} aria-label="删除">
                     <i class="fa-regular fa-trash-can"></i>
                 </button>
             </div>
@@ -500,6 +543,42 @@ export class CalendarView {
             }
             this.app.phoneShell?.showNotification?.('日历', enabled ? '已开启自动补全日程' : '已关闭自动补全日程', '📅');
         });
+        root.querySelector('#yzp-calendar-holiday-add-form')?.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const titleInput = root.querySelector('#yzp-calendar-holiday-title');
+            const monthInput = root.querySelector('#yzp-calendar-holiday-month');
+            const dayInput = root.querySelector('#yzp-calendar-holiday-day');
+            const holiday = this.app.calendarData.addHoliday({
+                title: titleInput?.value,
+                month: monthInput?.value,
+                day: dayInput?.value,
+                globalReminder: true
+            });
+            if (!holiday) {
+                this.app.phoneShell?.showNotification?.('日历', '请填写有效的节日名称和日期', '📅');
+                return;
+            }
+            this.holidayDraftTitle = '';
+            this.holidayDraftMonth = '';
+            this.holidayDraftDay = '';
+            this.app.phoneShell?.showNotification?.('日历', '已添加设定节日', '📅');
+            this.render();
+        });
+        root.querySelectorAll('[data-holiday-save]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const id = btn.dataset.holidaySave;
+                const row = btn.closest('[data-holiday-row]');
+                const saved = this.app.calendarData.updateHoliday(id, {
+                    title: row?.querySelector('[data-holiday-title]')?.value,
+                    month: row?.querySelector('[data-holiday-month]')?.value,
+                    day: row?.querySelector('[data-holiday-day]')?.value
+                });
+                this.app.phoneShell?.showNotification?.('日历', saved ? '已保存设定节日' : '节日日期无效', '📅');
+                if (saved) this.render();
+            });
+        });
         root.querySelector('#yzp-calendar-save-prompt')?.addEventListener('click', () => {
             const promptManager = this.getPromptManager();
             const textarea = root.querySelector('#yzp-calendar-schedule-prompt');
@@ -608,6 +687,7 @@ export class CalendarView {
         });
         root.querySelectorAll('.yzp-calendar-memo-item').forEach(item => {
             const memoId = String(item.dataset.memoId || '');
+            const holidayId = String(item.dataset.holidayId || '');
             let pressTimer = null;
             let longPressOpened = false;
             const clearPress = () => {
@@ -643,6 +723,7 @@ export class CalendarView {
                     longPressOpened = false;
                     return;
                 }
+                if (holidayId) return;
                 this.detailMemoId = memoId;
                 this.detailEditMode = false;
                 this.detailTypePickerOpen = false;
@@ -717,6 +798,23 @@ export class CalendarView {
                 this.render();
             });
         });
+        root.querySelectorAll('[data-holiday-settings-delete]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.app.calendarData.deleteHoliday(btn.dataset.holidaySettingsDelete);
+                this.render();
+            });
+        });
+        root.querySelectorAll('[data-holiday-delete]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.app.calendarData.deleteHoliday(btn.dataset.holidayDelete);
+                this.activeDeleteMemoId = '';
+                this.render();
+            });
+        });
         root.querySelectorAll('[data-memo-global-reminder]').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
@@ -725,6 +823,16 @@ export class CalendarView {
                 this.activeDeleteMemoId = btn.dataset.memoGlobalReminder || '';
                 this.render();
                 this.app.phoneShell?.showNotification?.('日历', enabled ? '已加入全局提醒' : '已取消全局提醒', '📅');
+            });
+        });
+        root.querySelectorAll('[data-holiday-global-reminder]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const enabled = this.app.calendarData.toggleHolidayGlobalReminder(btn.dataset.holidayGlobalReminder);
+                this.activeDeleteMemoId = btn.closest('.yzp-calendar-memo-item')?.dataset?.memoId || '';
+                this.render();
+                this.app.phoneShell?.showNotification?.('日历', enabled ? '节日已加入全局提醒' : '节日已取消全局提醒', '📅');
             });
         });
     }

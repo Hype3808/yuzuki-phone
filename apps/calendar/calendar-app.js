@@ -3,8 +3,8 @@
  *  日历 APP 控制器
  * ======================================================== */
 
-import { CalendarData } from './calendar-data.js?v=20260527-auto-schedule';
-import { CalendarView } from './calendar-view.js?v=20260527-auto-schedule';
+import { CalendarData } from './calendar-data.js?v=20260527-holidays';
+import { CalendarView } from './calendar-view.js?v=20260527-holidays';
 import { applyPhoneTagFilter } from '../../config/tag-filter.js';
 
 export class CalendarApp {
@@ -245,7 +245,7 @@ export class CalendarApp {
         if (!currentParts) return '暂无';
         const currentSerial = this.calendarData.dateSerial(currentParts);
         const typeMap = new Map(this.calendarView.getMemoTypes().map(item => [item.id, item.label]));
-        const rows = this.calendarData.getMemos()
+        const memoRows = this.calendarData.getMemos()
             .map(memo => {
                 const memoParts = this.calendarData.parseDateKey(memo?.dateKey);
                 if (!memoParts) return null;
@@ -263,6 +263,22 @@ export class CalendarApp {
                     text: `- ${dateText} ${timeText} [${typeLabel}] ${title}`
                 };
             })
+            .filter(Boolean);
+        const holidayRows = this.calendarData.getUpcomingHolidayItems?.(currentKey, 1)
+            ?.map(item => {
+                const parts = this.calendarData.parseDateKey(item?.dateKey);
+                if (!parts) return null;
+                const title = String(item?.title || '').replace(/\s+/g, ' ').trim();
+                if (!title) return null;
+                const dateText = `${parts.year}年${String(parts.month).padStart(2, '0')}月${String(parts.day).padStart(2, '0')}日`;
+                return {
+                    serial: this.calendarData.dateSerial(parts),
+                    time: '00:00',
+                    text: `- ${dateText} 全天 [节日] ${title}`
+                };
+            })
+            .filter(Boolean) || [];
+        const rows = [...memoRows, ...holidayRows]
             .filter(Boolean)
             .sort((a, b) => {
                 if (a.serial !== b.serial) return a.serial - b.serial;
