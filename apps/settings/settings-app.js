@@ -5061,6 +5061,30 @@ export class SettingsApp {
                 seed: preset?.seed
             })).filter(preset => preset.name)
         });
+        const readImportedNegativePrompt = (preset = {}) => {
+            const direct = [
+                preset?.negativePrompt,
+                preset?.negative_prompt,
+                preset?.negative,
+                preset?.undesiredContent,
+                preset?.undesired_content,
+                preset?.uc,
+                preset?.ucPrompt,
+                preset?.uc_prompt
+            ].find(value => String(value || '').trim());
+            if (direct) return String(direct || '').trim();
+
+            const v4Negative = preset?.v4_negative_prompt?.caption?.base_caption
+                || preset?.parameters?.v4_negative_prompt?.caption?.base_caption
+                || preset?.params?.v4_negative_prompt?.caption?.base_caption;
+            if (String(v4Negative || '').trim()) return String(v4Negative).trim();
+
+            const nested = preset?.parameters?.negative_prompt
+                || preset?.params?.negative_prompt
+                || preset?.settings?.negative_prompt
+                || preset?.settings?.negativePrompt;
+            return String(nested || '').trim();
+        };
         const normalizeImportedImagePreset = (preset, fallbackName = '') => {
             const name = String(preset?.name || preset?.title || fallbackName || '').trim();
             if (!name) return null;
@@ -5069,7 +5093,7 @@ export class SettingsApp {
                 name,
                 fixedPrompt: String(preset?.fixedPrompt || ''),
                 fixedPromptEnd: String(preset?.fixedPromptEnd || ''),
-                negativePrompt: String(preset?.negativePrompt || ''),
+                negativePrompt: readImportedNegativePrompt(preset),
                 novelaiModel: String(preset?.novelaiModel || preset?.model || '').trim(),
                 novelaiSampler: String(preset?.novelaiSampler || preset?.sampler || '').trim(),
                 novelaiSchedule: String(preset?.novelaiSchedule || preset?.schedule || '').trim(),
