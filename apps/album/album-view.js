@@ -149,6 +149,25 @@ export class AlbumView {
         });
     }
 
+    refreshSelectionUI() {
+        const selectedCount = this.selectedPaths.size;
+        const allSelected = this.images.length > 0 && selectedCount === this.images.length;
+        const title = document.querySelector('.album-title');
+        if (title) title.textContent = this.selectionMode ? `已选 ${selectedCount} 张` : '相册';
+
+        const selectAllBtn = document.getElementById('album-select-all');
+        if (selectAllBtn) selectAllBtn.textContent = allSelected ? '取消全选' : '全选';
+
+        const deleteBtn = document.getElementById('album-delete-selected');
+        if (deleteBtn) deleteBtn.disabled = selectedCount === 0;
+
+        document.querySelectorAll('.album-tile').forEach(tile => {
+            const index = Number.parseInt(tile.dataset.index || '', 10);
+            const image = Number.isFinite(index) ? this.images[index] : null;
+            tile.classList.toggle('selected', !!image && this.selectedPaths.has(image.path));
+        });
+    }
+
     async handleMissingImage(image) {
         if (!image?.path || this._missingImagePaths.has(image.path)) return;
         this._missingImagePaths.add(image.path);
@@ -171,7 +190,7 @@ export class AlbumView {
         } else {
             this.selectedPaths.add(image.path);
         }
-        this.render();
+        this.refreshSelectionUI();
     }
 
     toggleSelectAll() {
@@ -181,7 +200,7 @@ export class AlbumView {
         } else {
             this.selectedPaths = new Set(this.images.map(image => image.path));
         }
-        this.render();
+        this.refreshSelectionUI();
     }
 
     openPreview(index) {
