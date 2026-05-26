@@ -744,7 +744,7 @@ if (window.GGP_Loaded) {
             import('./config/time-manager.js'),    // 👈 取消懒加载
             import('./config/prompt-manager.js'),  // 👈 取消懒加载
             import('./config/tts-manager.js'),
-            import('./config/image-generation-manager.js'),
+            import('./config/image-generation-manager.js?v=20260527-nai-ref-values'),
             import('./config/worldbook-manager.js')
         ]);
 

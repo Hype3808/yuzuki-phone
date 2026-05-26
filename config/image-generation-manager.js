@@ -669,22 +669,11 @@ export class ImageGenerationManager {
         const appKey = String(overrides.app || '').trim().toLowerCase();
         const legacySiliconflowKey = String(this._get('siliconflow_api_key', '') || '').trim();
         const legacySiliconflowModel = String(this._get('image_generation_model', '') || '').trim();
-        const appDefaults = this._getAppDefaultSize(appKey);
         const rawSize = this.getSizeForApp(appKey);
         const size = { ...rawSize };
         const rawSteps = this._getNumber('phone-image-steps', 28, 1, 50);
         const promptAppKey = this._normalizeImagePresetScope(appKey);
         const comfyuiAppWorkflow = this._getComfyUIWorkflowForApp(appKey);
-
-        if (appKey === 'honey') {
-            if (size.width < 512 || size.height < 768) {
-                size.width = appDefaults.width;
-                size.height = appDefaults.height;
-            }
-        }
-        const steps = appKey === 'honey' && provider === 'novelai' && rawSteps < 20
-            ? 28
-            : rawSteps;
 
         const site = String(overrides.site || this._get('phone-image-novelai-site', 'official')).trim() || 'official';
         const openaiSite = String(overrides.openaiSite || this._get('phone-image-openai-site', 'official')).trim() || 'official';
@@ -738,7 +727,7 @@ export class ImageGenerationManager {
             schedule: this._normalizeNovelAISchedule(overrides.schedule || this._get('phone-image-novelai-schedule', 'native')),
             width: size.width,
             height: size.height,
-            steps,
+            steps: rawSteps,
             scale: this._getNumber('phone-image-scale', 6, 0, 50),
             cfgRescale: this._getNumber('phone-image-cfg-rescale', 0.2, 0, 1),
             seed: this._getNumber('phone-image-seed', -1, -1, 4294967295),
@@ -1468,7 +1457,6 @@ export class ImageGenerationManager {
         const prompt = rawPrompt;
         const negativePrompt = rawNegativePrompt;
         const seed = Number(options.seed ?? config.seed);
-        const appDefaults = this._getAppDefaultSize(appKey);
         let width = Number(options.width || config.width);
         let height = Number(options.height || config.height);
         let scale = Number(options.scale ?? config.scale);
@@ -1476,25 +1464,6 @@ export class ImageGenerationManager {
         const cfgRescale = Number(options.cfgRescale ?? config.cfgRescale);
         const novelAIReferences = this._normalizeNovelAIReferences(options);
         const novelAIVibes = await this._resolveNovelAIVibeReferences(options, config);
-        if (appKey === 'honey') {
-            if (!Number.isFinite(width) || !Number.isFinite(height) || width < 512 || height < 768) {
-                width = appDefaults.width;
-                height = appDefaults.height;
-            }
-            if (!Number.isFinite(steps) || steps < 20) {
-                steps = 28;
-            }
-            if (!Number.isFinite(scale) || scale < 1) {
-                scale = 7;
-            }
-        }
-        if (appKey === 'weibo' && this._isNovelAIV4Model(config.model)) {
-            const isSquare = width === height;
-            if (!Number.isFinite(width) || !Number.isFinite(height) || (isSquare && width < 1024)) {
-                width = 1024;
-                height = 1024;
-            }
-        }
         const resolvedSeed = Number.isFinite(seed) && seed >= 0
             ? Math.floor(seed)
             : Math.floor(Math.random() * 4294967295);
@@ -1560,8 +1529,8 @@ export class ImageGenerationManager {
                         legacy_uc: false
                     })),
                     director_reference_information_extracted: novelAIReferences.map(item => item.informationExtracted),
-                    director_reference_strength: novelAIReferences.map(item => item.strength),
-                    director_reference_secondary_strength: novelAIReferences.map(() => 0)
+                    director_reference_strength_values: novelAIReferences.map(item => item.strength),
+                    director_reference_secondary_strength_values: novelAIReferences.map(() => 0)
                 });
             }
 

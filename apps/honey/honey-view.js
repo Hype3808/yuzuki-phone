@@ -2870,18 +2870,34 @@ export class HoneyView {
         scope.querySelectorAll('.honey-nai-generated-image').forEach(img => {
             if (img.dataset.honeyImageViewerBound === '1') return;
             img.dataset.honeyImageViewerBound = '1';
+            const openViewer = (target) => {
+                const imageUrl = target?.getAttribute?.('src') || '';
+                if (!imageUrl) return;
+                const hostName = String(this.currentSceneData?.host || 'honey').trim() || 'honey';
+                const seed = String(this.currentSceneData?.imageGenerationSeed || Date.now()).trim();
+                this.app?.phoneShell?.showImageViewer?.(imageUrl, {
+                    alt: '蜜语直播图片',
+                    download: true,
+                    filename: `honey_${hostName}_${seed}.png`
+                });
+            };
             img.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                const imageUrl = e.currentTarget?.getAttribute('src') || '';
-                if (imageUrl) {
-                    const hostName = String(this.currentSceneData?.host || 'honey').trim() || 'honey';
-                    const seed = String(this.currentSceneData?.imageGenerationSeed || Date.now()).trim();
-                    this.app?.phoneShell?.showImageViewer?.(imageUrl, {
-                        alt: '蜜语直播图片',
-                        download: true,
-                        filename: `honey_${hostName}_${seed}.png`
-                    });
+            });
+            img.addEventListener('dblclick', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                openViewer(e.currentTarget);
+            });
+            img.addEventListener('pointerup', (e) => {
+                e.stopPropagation();
+                const now = Date.now();
+                const lastTap = Number(e.currentTarget?.dataset?.honeyImageViewerLastTap || 0);
+                e.currentTarget.dataset.honeyImageViewerLastTap = String(now);
+                if (now - lastTap <= 320) {
+                    e.preventDefault();
+                    openViewer(e.currentTarget);
                 }
             });
         });
@@ -7069,19 +7085,15 @@ export class HoneyView {
         const imageSteps = readNumber('phone-image-steps', 28, 1, 50, true);
         const imageScale = readNumber('phone-image-scale', 7, 0, 50, false);
         const globalSeed = readNumber('phone-image-seed', -1, -1, 4294967295, true);
-        const safeHoneyWidth = honeyWidth < 512 ? 832 : honeyWidth;
-        const safeHoneyHeight = honeyHeight < 768 ? 1216 : honeyHeight;
-        const safeHoneySteps = provider === 'novelai' && imageSteps < 20 ? 28 : imageSteps;
-        const safeHoneyScale = provider === 'novelai' && imageScale < 1 ? 7 : imageScale;
         const requestSeed = -1;
         const promptPreview = typeof imageManager.previewFinalPrompt === 'function'
             ? imageManager.previewFinalPrompt({
                 app: 'honey',
                 prompt: normalizedPrompt,
-                width: safeHoneyWidth,
-                height: safeHoneyHeight,
-                steps: safeHoneySteps,
-                scale: safeHoneyScale,
+                width: honeyWidth,
+                height: honeyHeight,
+                steps: imageSteps,
+                scale: imageScale,
                 seed: requestSeed
             })
             : null;
@@ -7091,10 +7103,10 @@ export class HoneyView {
             ? imageManager.previewFinalPrompt({
                 app: 'honey',
                 prompt: generationPrompt,
-                width: safeHoneyWidth,
-                height: safeHoneyHeight,
-                steps: safeHoneySteps,
-                scale: safeHoneyScale,
+                width: honeyWidth,
+                height: honeyHeight,
+                steps: imageSteps,
+                scale: imageScale,
                 seed: requestSeed
             })
             : promptPreview;
@@ -7121,9 +7133,9 @@ export class HoneyView {
 
         console.log([
             auto ? '[Honey NAI] 自动请求直播生图' : '[Honey NAI] 即将请求直播生图',
-            `尺寸: ${safeHoneyWidth}x${safeHoneyHeight}`,
-            `Steps: ${safeHoneySteps}`,
-            `Scale: ${safeHoneyScale}`,
+            `尺寸: ${honeyWidth}x${honeyHeight}`,
+            `Steps: ${imageSteps}`,
+            `Scale: ${imageScale}`,
             `Provider: ${provider}`,
             `Seed: 随机（已忽略全局 Seed=${globalSeed}，避免重刷同图）`,
             `主播参考图: ${novelAIReferences.length ? `${sceneHostName || '未知主播'} · 已启用` : '未使用'}`,
@@ -7179,10 +7191,10 @@ export class HoneyView {
             const result = await imageManager.generate({
                 app: 'honey',
                 prompt: generationPrompt,
-                width: safeHoneyWidth,
-                height: safeHoneyHeight,
-                steps: safeHoneySteps,
-                scale: safeHoneyScale,
+                width: honeyWidth,
+                height: honeyHeight,
+                steps: imageSteps,
+                scale: imageScale,
                 seed: requestSeed,
                 novelAIReferences
             });
