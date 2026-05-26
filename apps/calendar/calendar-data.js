@@ -8,6 +8,8 @@ export class CalendarData {
         this.storage = storage;
         this.memoKey = 'calendar_memos';
         this.holidayKey = 'calendar_holidays';
+        this.defaultHolidayVersionKey = 'calendar_holiday_defaults_version';
+        this.defaultHolidayVersion = '20260527_school_and_festival_holidays';
         this.themeKey = 'calendar_theme';
         this.reminderEnabledKey = 'calendar_reminder_enabled';
         this.autoScheduleEnabledKey = 'calendar_auto_schedule_enabled';
@@ -179,6 +181,7 @@ export class CalendarData {
                     this._holidays = Array.isArray(parsed)
                         ? parsed.map(item => this.normalizeHoliday(item)).filter(Boolean)
                         : [];
+                    this.mergeDefaultHolidays();
                 }
             } catch (e) {
                 console.warn('[CalendarData] 解析节日失败:', e);
@@ -193,12 +196,23 @@ export class CalendarData {
         const now = Date.now();
         return [
             { id: 'holiday_new_year', title: '元旦', month: 1, day: 1, icon: 'yd.png' },
+            { id: 'holiday_winter_break', title: '寒假', month: 1, day: 15, icon: 'hj.png' },
+            { id: 'holiday_lantern', title: '元宵节', month: 1, day: 15, icon: 'yx.png' },
             { id: 'holiday_valentine', title: '情人节', month: 2, day: 14, icon: 'qr.png' },
+            { id: 'holiday_april_fools', title: '愚人节', month: 4, day: 1, icon: 'yr.png' },
+            { id: 'holiday_qingming', title: '清明节', month: 4, day: 4, icon: 'qm.png' },
             { id: 'holiday_labor', title: '劳动节', month: 5, day: 1, icon: 'ld.png' },
+            { id: 'holiday_dragon_boat', title: '端午', month: 5, day: 5, icon: 'dw.png' },
+            { id: 'holiday_children', title: '儿童节', month: 6, day: 1, icon: 'et.png' },
+            { id: 'holiday_summer_break', title: '暑假', month: 7, day: 1, icon: 'sj.png' },
+            { id: 'holiday_qixi', title: '七夕', month: 7, day: 7, icon: 'qx.png' },
+            { id: 'holiday_mid_autumn', title: '中秋', month: 8, day: 15, icon: 'zq.png' },
             { id: 'holiday_national', title: '国庆节', month: 10, day: 1, icon: 'gq.png' },
-            { id: 'holiday_halloween', title: '万圣节', month: 10, day: 31 },
+            { id: 'holiday_halloween', title: '万圣节', month: 10, day: 31, icon: 'ws.png' },
+            { id: 'holiday_winter_solstice', title: '冬至', month: 12, day: 22, icon: 'dz.png' },
             { id: 'holiday_christmas_eve', title: '平安夜', month: 12, day: 24, icon: 'pa.png' },
-            { id: 'holiday_christmas', title: '圣诞节', month: 12, day: 25, icon: 'sd.png' }
+            { id: 'holiday_christmas', title: '圣诞节', month: 12, day: 25, icon: 'sd.png' },
+            { id: 'holiday_new_year_eve', title: '除夕', month: 12, day: 30, icon: 'cxj.png' }
         ].map(item => ({
             ...item,
             type: 'holiday',
@@ -206,6 +220,37 @@ export class CalendarData {
             builtIn: true,
             createdAt: now
         }));
+    }
+
+    mergeDefaultHolidays() {
+        if (!Array.isArray(this._holidays)) return false;
+        const savedVersion = String(this.storage?.get?.(this.defaultHolidayVersionKey, '') || '');
+        if (savedVersion === this.defaultHolidayVersion) return false;
+
+        const idsToMerge = new Set([
+            'holiday_dragon_boat',
+            'holiday_qixi',
+            'holiday_mid_autumn',
+            'holiday_winter_solstice',
+            'holiday_new_year_eve',
+            'holiday_winter_break',
+            'holiday_lantern',
+            'holiday_april_fools',
+            'holiday_qingming',
+            'holiday_children',
+            'holiday_summer_break'
+        ]);
+        const existingIds = new Set(this._holidays.map(item => String(item?.id || '')));
+        const missing = this.getDefaultHolidays()
+            .filter(item => item?.id && idsToMerge.has(item.id) && !existingIds.has(item.id))
+            .map(item => this.normalizeHoliday(item))
+            .filter(Boolean);
+        if (missing.length) {
+            this._holidays.push(...missing);
+            this.saveHolidays();
+        }
+        this.storage?.set?.(this.defaultHolidayVersionKey, this.defaultHolidayVersion);
+        return missing.length > 0;
     }
 
     normalizeHoliday(item) {
@@ -344,6 +389,7 @@ export class CalendarData {
             dateKey,
             title: holiday.title,
             icon: this.normalizeHolidayIcon(holiday.icon, holiday.id, holiday.title),
+            heroIcon: this.normalizeHolidayHeroIcon(holiday.icon, holiday.id, holiday.title),
             time: '',
             type: 'event',
             color: 'green',
@@ -356,18 +402,58 @@ export class CalendarData {
 
     normalizeHolidayIcon(icon, id = '', title = '') {
         const value = String(icon || '').trim();
-        const allowed = new Set(['yd.png', 'qr.png', 'ld.png', 'gq.png', 'pa.png', 'sd.png', 'hd.png']);
+        const allowed = new Set(['yd.png', 'hj.png', 'yx.png', 'qr.png', 'yr.png', 'qm.png', 'ld.png', 'dw.png', 'et.png', 'sj.png', 'qx.png', 'zq.png', 'gq.png', 'ws.png', 'dz.png', 'pa.png', 'sd.png', 'cxj.png', 'hd.png']);
         if (allowed.has(value)) return value;
 
         const safeId = String(id || '').trim();
         const safeTitle = String(title || '').trim();
         if (safeId === 'holiday_new_year' || safeTitle === '元旦') return 'yd.png';
+        if (safeId === 'holiday_winter_break' || safeTitle === '寒假') return 'hj.png';
+        if (safeId === 'holiday_lantern' || safeTitle === '元宵节') return 'yx.png';
         if (safeId === 'holiday_valentine' || safeTitle === '情人节') return 'qr.png';
+        if (safeId === 'holiday_april_fools' || safeTitle === '愚人节') return 'yr.png';
+        if (safeId === 'holiday_qingming' || safeTitle === '清明节') return 'qm.png';
         if (safeId === 'holiday_labor' || safeTitle === '劳动节') return 'ld.png';
+        if (safeId === 'holiday_dragon_boat' || safeTitle === '端午') return 'dw.png';
+        if (safeId === 'holiday_children' || safeTitle === '儿童节') return 'et.png';
+        if (safeId === 'holiday_summer_break' || safeTitle === '暑假') return 'sj.png';
+        if (safeId === 'holiday_qixi' || safeTitle === '七夕') return 'qx.png';
+        if (safeId === 'holiday_mid_autumn' || safeTitle === '中秋') return 'zq.png';
         if (safeId === 'holiday_national' || safeTitle === '国庆节') return 'gq.png';
+        if (safeId === 'holiday_halloween' || safeTitle === '万圣节') return 'ws.png';
+        if (safeId === 'holiday_winter_solstice' || safeTitle === '冬至') return 'dz.png';
         if (safeId === 'holiday_christmas_eve' || safeTitle === '平安夜') return 'pa.png';
         if (safeId === 'holiday_christmas' || safeTitle === '圣诞节') return 'sd.png';
+        if (safeId === 'holiday_new_year_eve' || safeTitle === '除夕') return 'cxj.png';
         return 'hd.png';
+    }
+
+    normalizeHolidayHeroIcon(icon, id = '', title = '') {
+        const value = String(icon || '').trim();
+        const dedicated = new Set(['yd.png', 'hj.png', 'yx.png', 'qr.png', 'yr.png', 'qm.png', 'ld.png', 'dw.png', 'et.png', 'sj.png', 'qx.png', 'zq.png', 'gq.png', 'ws.png', 'dz.png', 'pa.png', 'sd.png', 'cxj.png']);
+        if (dedicated.has(value)) return value;
+
+        const safeId = String(id || '').trim();
+        const safeTitle = String(title || '').trim();
+        if (safeId === 'holiday_new_year' || safeTitle === '元旦') return 'yd.png';
+        if (safeId === 'holiday_winter_break' || safeTitle === '寒假') return 'hj.png';
+        if (safeId === 'holiday_lantern' || safeTitle === '元宵节') return 'yx.png';
+        if (safeId === 'holiday_valentine' || safeTitle === '情人节') return 'qr.png';
+        if (safeId === 'holiday_april_fools' || safeTitle === '愚人节') return 'yr.png';
+        if (safeId === 'holiday_qingming' || safeTitle === '清明节') return 'qm.png';
+        if (safeId === 'holiday_labor' || safeTitle === '劳动节') return 'ld.png';
+        if (safeId === 'holiday_dragon_boat' || safeTitle === '端午') return 'dw.png';
+        if (safeId === 'holiday_children' || safeTitle === '儿童节') return 'et.png';
+        if (safeId === 'holiday_summer_break' || safeTitle === '暑假') return 'sj.png';
+        if (safeId === 'holiday_qixi' || safeTitle === '七夕') return 'qx.png';
+        if (safeId === 'holiday_mid_autumn' || safeTitle === '中秋') return 'zq.png';
+        if (safeId === 'holiday_national' || safeTitle === '国庆节') return 'gq.png';
+        if (safeId === 'holiday_halloween' || safeTitle === '万圣节') return 'ws.png';
+        if (safeId === 'holiday_winter_solstice' || safeTitle === '冬至') return 'dz.png';
+        if (safeId === 'holiday_christmas_eve' || safeTitle === '平安夜') return 'pa.png';
+        if (safeId === 'holiday_christmas' || safeTitle === '圣诞节') return 'sd.png';
+        if (safeId === 'holiday_new_year_eve' || safeTitle === '除夕') return 'cxj.png';
+        return '';
     }
 
     clearExpiredAutoMemos(currentDateKey) {

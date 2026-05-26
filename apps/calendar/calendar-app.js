@@ -37,12 +37,29 @@ export class CalendarApp {
     handleSwipeBack() {
         const domCurrentView = document.querySelector('.phone-view-current');
         if (!domCurrentView?.querySelector?.('.yzp-calendar-app')) return;
-        if (this.calendarView?.currentView === 'settings') {
+
+        const isSettingsView = this.calendarView?.currentView === 'settings'
+            || domCurrentView?.dataset?.viewId === 'calendar-settings'
+            || !!domCurrentView?.querySelector?.('.yzp-calendar-settings-header');
+        if (isSettingsView) {
             this.calendarView.currentView = 'main';
+            this.calendarView.addPanelOpen = false;
+            this.calendarView.monthPickerOpen = false;
+            this.calendarView.typePickerOpen = false;
             this.calendarView.render();
+            this.blockGhostClick();
             return;
         }
         window.dispatchEvent(new CustomEvent('phone:goHome'));
+    }
+
+    blockGhostClick() {
+        const phoneScreen = document.querySelector('.phone-screen');
+        if (!phoneScreen) return;
+        phoneScreen.style.pointerEvents = 'none';
+        setTimeout(() => {
+            phoneScreen.style.pointerEvents = '';
+        }, 400);
     }
 
     clearCache() {

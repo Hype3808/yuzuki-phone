@@ -63,21 +63,29 @@ export class CalendarView {
 
     getHeroImageUrl(theme = 'light', storyDate = null) {
         const holidayIcon = this.getHeroHolidayIcon(storyDate);
-        const filename = holidayIcon || (theme === 'dark' ? 'calendar-theme-d.png' : 'calendar-theme.png');
+        const filename = holidayIcon || this.getDefaultHeroImage(theme);
         return new URL(`./assets/${filename}`, import.meta.url).href;
+    }
+
+    getDefaultHeroImage(theme = 'light') {
+        return theme === 'dark' ? 'calendar-theme-d.png' : 'calendar-theme.png';
+    }
+
+    getDefaultHeroImageUrl(theme = 'light') {
+        return new URL(`./assets/${this.getDefaultHeroImage(theme)}`, import.meta.url).href;
     }
 
     getHeroHolidayIcon(storyDate = null) {
         const selectedHoliday = this.getHeroHolidayForDate(this.selectedDate);
         const storyHoliday = storyDate ? this.getHeroHolidayForDate(storyDate) : null;
-        return selectedHoliday?.icon || storyHoliday?.icon || '';
+        return selectedHoliday?.heroIcon || storyHoliday?.heroIcon || '';
     }
 
     getHeroHolidayForDate(dateParts) {
         if (!dateParts) return null;
         const dateKey = this.toDateKey(dateParts);
         const holidays = this.app.calendarData.getHolidaysByDate?.(dateKey) || [];
-        return holidays.find(item => item?.icon) || null;
+        return holidays.find(item => item?.heroIcon) || null;
     }
 
     getAssetUrl(filename) {
@@ -99,6 +107,7 @@ export class CalendarView {
         }
         const heroHolidayIcon = this.getHeroHolidayIcon(storyDate);
         const heroUrl = this.getHeroImageUrl(theme, storyDate);
+        const defaultHeroUrl = this.getDefaultHeroImageUrl(theme);
         const html = `
             <div class="yzp-calendar-app yzp-calendar-theme-${theme}">
                 <header class="yzp-calendar-header">
@@ -119,7 +128,7 @@ export class CalendarView {
                 </header>
                 <main class="yzp-calendar-main">
                     <div class="yzp-calendar-hero ${heroHolidayIcon ? 'is-holiday' : ''}" aria-hidden="true">
-                        <img src="${this.escapeAttr(heroUrl)}" alt="">
+                        <img src="${this.escapeAttr(heroUrl)}" data-default-src="${this.escapeAttr(defaultHeroUrl)}" onerror="this.onerror=null;this.src=this.dataset.defaultSrc;this.closest('.yzp-calendar-hero')?.classList.remove('is-holiday');" alt="">
                     </div>
                     ${this.renderCalendarGrid(storyDate)}
                     ${this.renderMemoSection(storyDate)}
@@ -413,7 +422,7 @@ export class CalendarView {
         return `
             <div class="yzp-calendar-memo-item yzp-calendar-memo-type-${this.escapeAttr(type)} ${isHoliday ? 'is-holiday' : ''} ${showDelete ? 'show-delete' : ''}" data-memo-id="${this.escapeAttr(memoId)}" ${isHoliday ? `data-holiday-id="${this.escapeAttr(memo.holidayId || '')}"` : ''}>
                 <span class="yzp-calendar-memo-type-icon" aria-hidden="true">
-                    <img src="${this.escapeAttr(typeIconUrl)}" alt="">
+                    <img src="${this.escapeAttr(typeIconUrl)}" data-default-src="${this.escapeAttr(this.getAssetUrl('hd.png'))}" onerror="this.onerror=null;this.src=this.dataset.defaultSrc;" alt="">
                 </span>
                 <div class="yzp-calendar-memo-copy">
                     <div class="yzp-calendar-memo-text">${memoLine}</div>
