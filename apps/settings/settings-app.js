@@ -2526,8 +2526,7 @@ export class SettingsApp {
                         cacheSecretKey: String(item?.cacheSecretKey || item?.cache_secret_key || '').trim()
                     };
                 })
-                .filter(Boolean)
-                .slice(0, 4);
+                .filter(Boolean);
             return {
                 id,
                 name,
@@ -2839,56 +2838,6 @@ export class SettingsApp {
                 </div>
 
                 <div class="setting-item">
-                    <div class="setting-label">氛围转移设置</div>
-                    <div class="setting-desc">对应 NovelAI 官网的 Vibe Transfer。每组最多 4 张 Vibe 图，所有 App 的 NAI v4 / 4.5 生图共用当前启用组。</div>
-                    <div style="display:grid; grid-template-columns:1fr 84px; gap:8px; margin-top:8px;">
-                        <select id="phone-image-novelai-vibe-group-select" style="width:100%; height:30px; padding:0 8px; border:1px solid #e0e0e0; border-radius:8px; font-size:12px; background:#fafafa; box-sizing:border-box;">
-                            <option value="">未选择 Vibe 组</option>
-                            ${novelaiVibeGroupOptions}
-                        </select>
-                        <button type="button" id="phone-image-novelai-vibe-upload" style="height:30px; border:none; border-radius:8px; background:#7c3aed !important; color:#fff !important; font-size:12px; font-weight:600; cursor:pointer;">
-                            <i class="fa-solid fa-upload"></i> 添加
-                        </button>
-                    </div>
-                    <input type="text" id="phone-image-novelai-vibe-group-name"
-                           value="${activeNovelAIVibeGroupName}"
-                           placeholder="Vibe 组名称，例如：官网漫画风 / 暖色电影感"
-                           style="width:100%; height:30px; padding:0 8px; border:1px solid #e0e0e0; border-radius:8px; font-size:12px; background:#fafafa; box-sizing:border-box; margin-top:6px;">
-                    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:8px;">
-                        <button type="button" id="phone-image-novelai-vibe-save" style="height:30px; padding:0 8px; font-size:12px; background:#fff; color:#078a46; border:1px solid rgba(7,138,70,0.36); border-radius:8px; cursor:pointer;">保存组</button>
-                        <button type="button" id="phone-image-novelai-vibe-new" style="height:30px; padding:0 8px; font-size:12px; background:#f2f2f2; color:#222; border:1px solid #d8d8d8; border-radius:8px; cursor:pointer;">新建组</button>
-                        <button type="button" id="phone-image-novelai-vibe-delete" style="height:30px; padding:0 8px; font-size:12px; background:#fff; color:#d33; border:1px solid rgba(211,51,51,0.28); border-radius:8px; cursor:pointer;">删除组</button>
-                    </div>
-                    <div id="phone-image-novelai-vibe-list" style="margin-top:8px;">
-                        ${novelaiVibeGroupItemsHtml}
-                    </div>
-                    <input type="file" id="phone-image-novelai-vibe-file" accept="image/png,image/jpeg,image/webp,image/*" multiple style="display:none;">
-                    <div class="setting-desc" id="phone-image-novelai-vibe-status" style="margin-top:8px;">下方开关启用后，当前 Vibe 组会在 NAI v4 / 4.5 生图前先编码，再随请求发送。</div>
-                </div>
-
-                <div class="setting-item setting-toggle">
-                    <div>
-                        <div class="setting-label">启用 Vibe 组氛围转移</div>
-                        <div class="setting-desc">使用当前 Vibe 组进行氛围转移；最多同时使用 4 个 Vibe。</div>
-                    </div>
-                    <label class="toggle-switch">
-                        <input type="checkbox" id="phone-image-novelai-vibe-enabled" ${novelaiVibeEnabled ? 'checked' : ''}>
-                        <span class="toggle-slider"></span>
-                    </label>
-                </div>
-
-                <div class="setting-item setting-toggle">
-                    <div>
-                        <div class="setting-label">Normalize Reference Strength Values</div>
-                        <div class="setting-desc">开启后会把当前组内 Vibe 强度归一化为总和 1.0。</div>
-                    </div>
-                    <label class="toggle-switch">
-                        <input type="checkbox" id="phone-image-novelai-vibe-normalize-strength" ${novelaiVibeNormalizeStrength ? 'checked' : ''}>
-                        <span class="toggle-slider"></span>
-                    </label>
-                </div>
-
-                <div class="setting-item">
                     <div class="setting-label">NAI 生图预设</div>
                     <div class="setting-desc">预设按蜜语、微信/日记、微博分别管理；微信和日记使用同一套当前预设。</div>
                     <select id="phone-image-prompt-app-select" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
@@ -2952,6 +2901,14 @@ export class SettingsApp {
                     <div class="setting-item">
                         <div class="setting-label">Guidance Rescale</div>
                         <input type="number" id="phone-image-novelai-guidance-rescale" data-phone-image-number-key="phone-image-cfg-rescale" min="0" max="1" step="0.01" value="${cfgRescale}" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-label">Steps</div>
+                        <input type="number" id="phone-image-steps" min="1" max="50" value="${steps}" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-label">Seed</div>
+                        <input type="number" id="phone-image-seed" min="-1" value="${seed}" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
                     </div>
                 </div>
             </div>
@@ -3358,33 +3315,10 @@ export class SettingsApp {
                         <div style="font-size: 12px; color: #333;">日记</div>
                         <input type="number" id="phone-image-diary-width" min="64" max="2048" step="64" value="${diaryWidth}" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box;">
                         <input type="number" id="phone-image-diary-height" min="64" max="2048" step="64" value="${diaryHeight}" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box;">
-                    </div>
-                </div>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                    <div class="setting-item">
-                        <div class="setting-label">全局兜底宽度</div>
-                        <input type="number" id="phone-image-width" min="64" max="2048" step="64" value="${width}" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
-                    </div>
-                    <div class="setting-item">
-                        <div class="setting-label">全局兜底高度</div>
-                        <input type="number" id="phone-image-height" min="64" max="2048" step="64" value="${height}" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
-                    </div>
-                    <div class="setting-item">
-                        <div class="setting-label">Steps</div>
-                        <input type="number" id="phone-image-steps" min="1" max="50" value="${steps}" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
-                    </div>
-                    <div class="setting-item">
-                        <div class="setting-label">Scale</div>
-                        <input type="number" id="phone-image-scale" min="0" max="50" step="0.1" value="${scale}" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
-                    </div>
-                    <div class="setting-item">
-                        <div class="setting-label">CFG Rescale</div>
-                        <input type="number" id="phone-image-cfg-rescale" min="0" max="1" step="0.01" value="${cfgRescale}" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
-                    </div>
-                    <div class="setting-item">
-                        <div class="setting-label">Seed</div>
-                        <input type="number" id="phone-image-seed" min="-1" value="${seed}" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; margin-top: 6px;">
+                        <div style="font-size: 12px; color: #333;">全局兜底</div>
+                        <input type="number" id="phone-image-width" min="64" max="2048" step="64" value="${width}" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box;">
+                        <input type="number" id="phone-image-height" min="64" max="2048" step="64" value="${height}" style="width: 100%; height: 30px; padding: 0 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box;">
                     </div>
                 </div>
 
@@ -3404,6 +3338,56 @@ export class SettingsApp {
                     <div class="setting-label">负面提示词</div>
                     <div class="setting-desc">只对当前选择的 App 生效；日记跟随微信，例如 low quality、bad hands、text、watermark。</div>
                     <textarea id="phone-image-negative-prompt" style="width: 100%; min-height: 70px; padding: 8px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 12px; background: #fafafa; box-sizing: border-box; resize: vertical; margin-top: 6px;">${negativePrompt}</textarea>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-label">氛围转移设置</div>
+                    <div class="setting-desc">对应 NovelAI 官网的 Vibe Transfer，所有 App 的 NAI v4 / 4.5 生图共用当前启用组。</div>
+                    <div style="display:grid; grid-template-columns:1fr 84px; gap:8px; margin-top:8px;">
+                        <select id="phone-image-novelai-vibe-group-select" style="width:100%; height:30px; padding:0 8px; border:1px solid #e0e0e0; border-radius:8px; font-size:12px; background:#fafafa; box-sizing:border-box;">
+                            <option value="">未选择 Vibe 组</option>
+                            ${novelaiVibeGroupOptions}
+                        </select>
+                        <button type="button" id="phone-image-novelai-vibe-upload" style="height:30px; border:none; border-radius:8px; background:#7c3aed !important; color:#fff !important; font-size:12px; font-weight:600; cursor:pointer;">
+                            <i class="fa-solid fa-upload"></i> 添加
+                        </button>
+                    </div>
+                    <input type="text" id="phone-image-novelai-vibe-group-name"
+                           value="${activeNovelAIVibeGroupName}"
+                           placeholder="Vibe 组名称，例如：官网漫画风 / 暖色电影感"
+                           style="width:100%; height:30px; padding:0 8px; border:1px solid #e0e0e0; border-radius:8px; font-size:12px; background:#fafafa; box-sizing:border-box; margin-top:6px;">
+                    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:8px;">
+                        <button type="button" id="phone-image-novelai-vibe-save" style="height:30px; padding:0 8px; font-size:12px; background:#fff; color:#078a46; border:1px solid rgba(7,138,70,0.36); border-radius:8px; cursor:pointer;">保存组</button>
+                        <button type="button" id="phone-image-novelai-vibe-new" style="height:30px; padding:0 8px; font-size:12px; background:#f2f2f2; color:#222; border:1px solid #d8d8d8; border-radius:8px; cursor:pointer;">新建组</button>
+                        <button type="button" id="phone-image-novelai-vibe-delete" style="height:30px; padding:0 8px; font-size:12px; background:#fff; color:#d33; border:1px solid rgba(211,51,51,0.28); border-radius:8px; cursor:pointer;">删除组</button>
+                    </div>
+                    <div id="phone-image-novelai-vibe-list" style="margin-top:8px;">
+                        ${novelaiVibeGroupItemsHtml}
+                    </div>
+                    <input type="file" id="phone-image-novelai-vibe-file" accept="image/png,image/jpeg,image/webp,image/*" multiple style="display:none;">
+                    <div class="setting-desc" id="phone-image-novelai-vibe-status" style="margin-top:8px;"></div>
+                </div>
+
+                <div class="setting-item setting-toggle">
+                    <div>
+                        <div class="setting-label">启用 Vibe 组氛围转移</div>
+                        <div class="setting-desc">使用当前 Vibe 组进行氛围转移。</div>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="phone-image-novelai-vibe-enabled" ${novelaiVibeEnabled ? 'checked' : ''}>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="setting-item setting-toggle">
+                    <div>
+                        <div class="setting-label">Normalize Reference Strength Values</div>
+                        <div class="setting-desc">开启后会把当前组内 Vibe 强度归一化为总和 1.0。</div>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="phone-image-novelai-vibe-normalize-strength" ${novelaiVibeNormalizeStrength ? 'checked' : ''}>
+                        <span class="toggle-slider"></span>
+                    </label>
                 </div>
             </div>
         `;
@@ -4993,12 +4977,11 @@ export class SettingsApp {
                     informationExtracted: this._clampNovelAIVibeValue(row.querySelector('.phone-image-vibe-info')?.value, 1),
                     cacheSecretKey: String(row.dataset.vibeCacheKey || '').trim()
                 }))
-                .filter(item => item.image)
-                .slice(0, 4);
+                .filter(item => item.image);
         };
         const renderNovelAIVibeList = (items = []) => {
             if (!imageNovelAIVibeList) return;
-            const normalizedItems = (Array.isArray(items) ? items : []).slice(0, 4);
+            const normalizedItems = Array.isArray(items) ? items : [];
             if (!normalizedItems.length) {
                 imageNovelAIVibeList.innerHTML = '<div class="setting-desc" style="margin-top:8px;">当前组还没有 Vibe 图片。</div>';
                 return;
@@ -5749,18 +5732,12 @@ export class SettingsApp {
             const files = Array.from(imageNovelAIVibeFile.files || []).filter(file => /^image\//i.test(String(file.type || '')));
             if (!files.length) return;
             const existing = getNovelAIVibeDraftItems();
-            const slots = Math.max(0, 4 - existing.length);
-            if (slots <= 0) {
-                this.phoneShell?.showNotification?.('添加失败', '每个 Vibe 组最多 4 张图片', '⚠️');
-                imageNovelAIVibeFile.value = '';
-                return;
-            }
             try {
                 setNovelAIVibeStatus('正在上传 Vibe 图片...', '#7c3aed');
                 const uploader = window.VirtualPhone?.imageManager || this.imageManager;
                 if (!uploader?.uploadBlob) throw new Error('图片上传器未初始化');
                 const uploaded = [];
-                for (const file of files.slice(0, slots)) {
+                for (const file of files) {
                     const image = await uploader.uploadBlob(file, 'nai_vibe');
                     uploaded.push({
                         id: createNovelAIVibeId(),

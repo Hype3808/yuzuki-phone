@@ -302,8 +302,7 @@ export class ImageGenerationManager {
                     )
                 };
             })
-            .filter(Boolean)
-            .slice(0, 4);
+            .filter(Boolean);
     }
 
     _normalizeNovelAIVibeGroups(groups = []) {
@@ -333,7 +332,7 @@ export class ImageGenerationManager {
                         };
                     })
                     .filter(Boolean)
-                    .slice(0, 4) || [];
+                    || [];
                 if (!items.length) return null;
                 return {
                     id,
@@ -442,7 +441,7 @@ export class ImageGenerationManager {
         if (!group?.items?.length) return [];
 
         const resolved = [];
-        for (const item of group.items.slice(0, 4)) {
+        for (const item of group.items) {
             const source = String(item.image || '').trim();
             let image = this._normalizeNovelAIReferenceImage(source);
             if (!image && source) {
