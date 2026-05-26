@@ -40,7 +40,7 @@ export class CalendarView {
         const link = existingLink || document.createElement('link');
         link.id = 'yzp-calendar-css';
         link.rel = 'stylesheet';
-        link.href = new URL('./calendar.css?v=1.0.0', import.meta.url).href;
+        link.href = new URL('./calendar.css?v=20260527-auto-schedule', import.meta.url).href;
         this._cssLoadingPromise = new Promise(resolve => {
             let settled = false;
             const finish = () => {
@@ -257,6 +257,18 @@ export class CalendarView {
                         </div>
                     </section>
                     <section class="yzp-calendar-settings-section">
+                        <div class="yzp-calendar-setting-row">
+                            <div>
+                                <div class="yzp-calendar-settings-label">自动补全日程</div>
+                                <div class="yzp-calendar-settings-desc">开启后，若今天及未来没有普通日程，会在 API 空闲时自动规划。</div>
+                            </div>
+                            <label class="yzp-calendar-switch">
+                                <input type="checkbox" id="yzp-calendar-auto-schedule-toggle" ${this.app.calendarData.isAutoScheduleEnabled() ? 'checked' : ''}>
+                                <span></span>
+                            </label>
+                        </div>
+                    </section>
+                    <section class="yzp-calendar-settings-section">
                         <div class="phone-prompt-fold" data-default-open="false">
                             <div class="phone-prompt-fold-header">
                                 <div class="phone-prompt-fold-main">
@@ -329,6 +341,7 @@ export class CalendarView {
         const typeIconUrl = this.getMemoTypeIconUrl(type);
         const memoId = String(memo.id || '');
         const showDelete = this.activeDeleteMemoId === memoId;
+        const isGlobalReminder = memo.globalReminder === true;
         const memoTitle = this.escapeHtml(memo.title);
         const memoTime = String(memo.time || '').trim();
         const memoLine = memoTime
@@ -342,6 +355,9 @@ export class CalendarView {
                 <div class="yzp-calendar-memo-copy">
                     <div class="yzp-calendar-memo-text">${memoLine}</div>
                 </div>
+                <button type="button" class="yzp-calendar-global-reminder-btn ${isGlobalReminder ? 'is-active' : ''}" data-memo-global-reminder="${this.escapeAttr(memoId)}" aria-label="全局提醒">
+                    <i class="fa-regular fa-clock"></i>
+                </button>
                 <button type="button" class="yzp-calendar-delete-btn" data-memo-delete="${this.escapeAttr(memoId)}" aria-label="删除">
                     <i class="fa-regular fa-trash-can"></i>
                 </button>
@@ -476,6 +492,13 @@ export class CalendarView {
                 this.app.checkScheduleReminders(window.VirtualPhone?.timeManager?.getCurrentStoryTime?.());
             }
             this.app.phoneShell?.showNotification?.('日历提醒', enabled ? '已开启日程提醒' : '已关闭日程提醒', '📅');
+        });
+        root.querySelector('#yzp-calendar-auto-schedule-toggle')?.addEventListener('change', (e) => {
+            const enabled = this.app.calendarData.setAutoScheduleEnabled(!!e.target.checked);
+            if (enabled) {
+                window.VirtualPhone?._scheduleAutoCalendarIfNeeded?.({ reason: 'settings_enabled', forceCheck: true, delay: 800 });
+            }
+            this.app.phoneShell?.showNotification?.('日历', enabled ? '已开启自动补全日程' : '已关闭自动补全日程', '📅');
         });
         root.querySelector('#yzp-calendar-save-prompt')?.addEventListener('click', () => {
             const promptManager = this.getPromptManager();
@@ -615,7 +638,7 @@ export class CalendarView {
             item.addEventListener('mouseleave', clearPress);
             item.addEventListener('contextmenu', openDelete);
             item.addEventListener('click', (e) => {
-                if (e.target?.closest?.('.yzp-calendar-delete-btn')) return;
+                if (e.target?.closest?.('.yzp-calendar-delete-btn, .yzp-calendar-global-reminder-btn')) return;
                 if (longPressOpened) {
                     longPressOpened = false;
                     return;
@@ -692,6 +715,16 @@ export class CalendarView {
                 this.app.calendarData.deleteMemo(btn.dataset.memoDelete);
                 this.activeDeleteMemoId = '';
                 this.render();
+            });
+        });
+        root.querySelectorAll('[data-memo-global-reminder]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const enabled = this.app.calendarData.toggleGlobalReminder(btn.dataset.memoGlobalReminder);
+                this.activeDeleteMemoId = btn.dataset.memoGlobalReminder || '';
+                this.render();
+                this.app.phoneShell?.showNotification?.('日历', enabled ? '已加入全局提醒' : '已取消全局提醒', '📅');
             });
         });
     }

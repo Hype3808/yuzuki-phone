@@ -1,4 +1,4 @@
-/* ========================================================
+﻿/* ========================================================
  *  柚月小手机 (Yuzuki's Little Phone)
  *  作者 (Author): yuzuki
  * 
@@ -38,11 +38,12 @@ const WECHAT_MESSAGE_SOUND_ENABLED_KEY = 'wechat_message_sound_enabled';
 const WECHAT_MESSAGE_SOUND_URL = new URL('./assets/sounds/iphone-message-notification.mp3', ST_PHONE_BASE_URL).href;
 const ST_PHONE_CURRENT_UPDATE = {
     version: ST_PHONE_VERSION,
-    date: '2026-05-26',
+    date: '2026-05-27',
     items: [
         '【必做】更新后请在设置中执行一次【一键恢复默认提示词】，以同步最新全局提示词。',
         '【新增】NAI 生图设置新增 Prompt Guidance / Guidance Rescale 控件，实际请求会按设置页数值发送，默认值为 6 / 0.2。',
         '【新增】NAI 新增 Vibe 氛围转移设置，支持 Vibe 组管理、强度归一化，并在 NAI v4 / 4.5 生图时随请求发送。',
+        '【新增】日历新增自动补全日程开关：当今天及未来没有普通日程时，会在 API 空闲后自动规划并写入日历。',
         '【优化】清空所有角色数据时会同步清理微信/微博自定义 CSS，避免错误 CSS 卡死 App 后无法恢复。',
         '【修复】修复微信好友聊天设置里清空聊天记录后，新发送的用户消息和 AI 回复不显示、状态灯卡住的问题。',
         '【修复】修复日历 App 的星期没有跟随正文剧情星期更新的问题。',
@@ -1157,7 +1158,7 @@ if (window.GGP_Loaded) {
             if (!latestTime?.date || !latestTime?.time) return;
 
             if (!window.VirtualPhone?._calendarReminderApp) {
-                const module = await import('./apps/calendar/calendar-app.js');
+                const module = await import('./apps/calendar/calendar-app.js?v=20260527-auto-schedule');
                 window.VirtualPhone._calendarReminderApp = new module.CalendarApp(null, storage);
             }
 
@@ -4780,6 +4781,112 @@ if (window.GGP_Loaded) {
         return true;
     }
 
+    function ensureAutoCalendarState() {
+        if (!window.VirtualPhone) window.VirtualPhone = {};
+        if (typeof window.VirtualPhone._autoCalendarGeneration !== 'number') {
+            window.VirtualPhone._autoCalendarGeneration = 0;
+        }
+        if (typeof window.VirtualPhone._autoCalendarRunning !== 'boolean') {
+            window.VirtualPhone._autoCalendarRunning = false;
+        }
+        if (typeof window.VirtualPhone._autoCalendarQueued !== 'boolean') {
+            window.VirtualPhone._autoCalendarQueued = false;
+        }
+        return window.VirtualPhone;
+    }
+
+    async function waitForAutoCalendarIdle(generation, retryDelay = 1600) {
+        const state = ensureAutoCalendarState();
+        const delay = Math.max(500, parseInt(retryDelay, 10) || 1600);
+        while (true) {
+            if (state._autoCalendarGeneration !== generation) return false;
+            if (!isPhoneApiBusy() && !isTavernPrimaryGenerationBusy()) return true;
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+    }
+
+    async function runAutoCalendarQueue(task = {}) {
+        const state = ensureAutoCalendarState();
+        if (state._autoCalendarRunning) return false;
+        state._autoCalendarRunning = true;
+        state._autoCalendarQueued = false;
+        const generation = state._autoCalendarGeneration;
+
+        try {
+            const delay = Math.max(0, parseInt(task.delay, 10) || 0);
+            if (delay > 0) await new Promise(resolve => setTimeout(resolve, delay));
+            if (state._autoCalendarGeneration !== generation) return false;
+            if (task.chatId && task.chatId !== getCurrentChatIdForQueue()) return false;
+
+            const idleReady = await waitForAutoCalendarIdle(generation);
+            if (!idleReady) return false;
+            if (task.chatId && task.chatId !== getCurrentChatIdForQueue()) return false;
+
+            const module = await import('./apps/calendar/calendar-app.js?v=20260527-auto-schedule');
+            const calendarApp = window.VirtualPhone.calendarApp || window.VirtualPhone._calendarReminderApp || new module.CalendarApp(null, storage);
+            window.VirtualPhone._calendarReminderApp = calendarApp;
+
+            const storyDate = calendarApp.calendarView?.getStoryDateParts?.();
+            const currentKey = storyDate ? calendarApp.calendarView.toDateKey(storyDate) : '';
+            if (!calendarApp.calendarData?.isAutoScheduleEnabled?.()) return false;
+            if (!currentKey || calendarApp.calendarData.hasCurrentOrFutureOrdinaryMemos?.(currentKey)) return false;
+            if (String(storage?.get?.('calendar_auto_schedule_last_empty_date') || '') === currentKey) return false;
+
+            await calendarApp.generateScheduleMemos({ silent: true, source: 'auto_schedule_empty_future' });
+            storage?.set?.('calendar_auto_schedule_last_empty_date', currentKey);
+            return true;
+        } catch (e) {
+            console.warn('[Calendar] 自动补全日程失败:', e);
+            return false;
+        } finally {
+            state._autoCalendarRunning = false;
+            if (state._autoCalendarQueued) {
+                state._autoCalendarQueued = false;
+                setTimeout(() => runAutoCalendarQueue({ chatId: getCurrentChatIdForQueue(), delay: 1200 }), 100);
+            }
+        }
+    }
+
+    function scheduleAutoCalendarIfNeeded(options = {}) {
+        try {
+            if (!isPhoneFeatureEnabled()) return false;
+            const state = ensureAutoCalendarState();
+            if (state._autoCalendarRunning) {
+                state._autoCalendarQueued = true;
+                return false;
+            }
+
+            const ctx = getContext();
+            const chatId = getCurrentChatIdForQueue();
+            const chatLength = Array.isArray(ctx?.chat) ? ctx.chat.length : 0;
+            if (chatLength <= 0 && !options.forceCheck) return false;
+
+            import('./apps/calendar/calendar-data.js?v=20260527-auto-schedule').then(dataModule => {
+                const calendarData = window.VirtualPhone?.calendarApp?.calendarData
+                    || window.VirtualPhone?._calendarReminderApp?.calendarData
+                    || new dataModule.CalendarData(storage);
+                if (!calendarData.isAutoScheduleEnabled?.()) return;
+
+                const tm = timeManager || window.VirtualPhone?.timeManager;
+                const current = tm?.getCurrentStoryTime?.();
+                const normalized = calendarData.normalizeStoryTime?.(current);
+                if (!normalized?.dateKey) return;
+                if (calendarData.hasCurrentOrFutureOrdinaryMemos?.(normalized.dateKey)) return;
+                if (String(storage?.get?.('calendar_auto_schedule_last_empty_date') || '') === normalized.dateKey) return;
+
+                state._autoCalendarGeneration += 1;
+                runAutoCalendarQueue({
+                    chatId,
+                    delay: Math.max(0, parseInt(options.delay, 10) || 2500)
+                });
+            }).catch(e => console.warn('[Calendar] 自动补全日程模块加载失败:', e));
+            return true;
+        } catch (e) {
+            console.warn('[Calendar] 自动补全日程检测异常:', e);
+            return false;
+        }
+    }
+
     function scheduleAutoWeiboIfDue(options = {}) {
         try {
             if (!isPhoneFeatureEnabled()) return;
@@ -6885,6 +6992,7 @@ if (window.GGP_Loaded) {
 
             // 📱 自动微博生成检测（统一调度）
             scheduleAutoWeiboIfDue({ reason: 'ai_message' });
+            scheduleAutoCalendarIfNeeded({ reason: 'ai_message' });
 
         } catch (e) {
             console.error('❌ 消息处理失败:', e);
@@ -7290,6 +7398,7 @@ if (window.GGP_Loaded) {
                 _parseMusicCard: parseMusicCard,
                 _scheduleAutoWeiboIfDue: scheduleAutoWeiboIfDue,
                 _suppressAutoWeiboTrigger: suppressAutoWeiboTrigger,
+                _scheduleAutoCalendarIfNeeded: scheduleAutoCalendarIfNeeded,
                 triggerWechatOnlineProactive: (options = {}) => triggerWechatOnlineProactive(options),
                 _autoWeiboQueue: [],
                 _autoWeiboQueuedKeys: new Set(),
@@ -7649,7 +7758,7 @@ if (window.GGP_Loaded) {
                             phoneShell?.showNotification('错误', '相册模块加载失败', '❌');
                         });
                 } else if (appId === 'calendar') {
-                    import('./apps/calendar/calendar-app.js')
+                    import('./apps/calendar/calendar-app.js?v=20260527-auto-schedule')
                         .then(module => {
                             try {
                                 if (!window.VirtualPhone.calendarApp || !window.VirtualPhone.calendarApp.phoneShell?.setContent) {
@@ -7995,7 +8104,7 @@ if (window.GGP_Loaded) {
                         // 🔥 终极护盾：专门为懒加载失败、页面休眠、提前退出准备的清洗器
                         const forceFallbackCleanup = (chatArray) => {
                             if (!Array.isArray(chatArray)) return;
-                            const macros = ['{{PHONE_PROMPT}}', '{{PHONE_HISTORY}}', '{{WEIBO_HISTORY}}', '{{MUSIC_PROMPT}}', '{{MOFO_PROMPT}}', '{{DIARY_HISTORY}}'];
+                            const macros = ['{{PHONE_PROMPT}}', '{{PHONE_HISTORY}}', '{{WEIBO_HISTORY}}', '{{MUSIC_PROMPT}}', '{{MOFO_PROMPT}}', '{{DIARY_HISTORY}}', '{{CALENDAR_REMINDER}}'];
                             chatArray.forEach(msg => {
                                 // 🌟 兼容移动端特殊请求体格式读取
                                 let c = msg.content || msg.mes || (msg.parts && msg.parts[0] ? msg.parts[0].text : '') || '';
@@ -8008,8 +8117,8 @@ if (window.GGP_Loaded) {
                                         }
                                     });
                                     // 兼容 {{ XXX }}（含空格）
-                                    if (/\{\{\s*(MOFO_PROMPT|DIARY_HISTORY)\s*\}\}/i.test(c)) {
-                                        c = c.replace(/\{\{\s*(MOFO_PROMPT|DIARY_HISTORY)\s*\}\}/gi, '').trim();
+                                    if (/\{\{\s*(MOFO_PROMPT|DIARY_HISTORY|CALENDAR_REMINDER)\s*\}\}/i.test(c)) {
+                                        c = c.replace(/\{\{\s*(MOFO_PROMPT|DIARY_HISTORY|CALENDAR_REMINDER)\s*\}\}/gi, '').trim();
                                         modified = true;
                                     }
                                     if (modified) {
@@ -8521,6 +8630,7 @@ if (window.GGP_Loaded) {
                                     let weiboHistoryContent = '';
                                     let mofoPromptContent = '';
                                     let diaryHistoryContent = '';
+                                    let calendarReminderContent = '';
                                     let weiboInjectEnabled = false;
 
                                     // 🔥 确保 promptManager 已加载（修复懒加载导致的 null 问题）
@@ -8664,6 +8774,44 @@ if (window.GGP_Loaded) {
                                     } catch (e) {
                                         diaryHistoryContent = '';
                                         console.warn('⚠️ [手机] 注入日记记录失败:', e);
+                                    }
+
+                                    // 2.7️⃣ 日历全局提醒变量：只注入当天被闹钟标记的事项
+                                    try {
+                                        const dateMatch = String(latestPhoneDate || '').match(/(\d{1,6})[-\/年]\s*(\d{1,2})[-\/月]\s*(\d{1,2})\s*日?/);
+                                        if (dateMatch) {
+                                            const dateKey = [
+                                                String(dateMatch[1]).padStart(4, '0'),
+                                                String(Number.parseInt(dateMatch[2], 10)).padStart(2, '0'),
+                                                String(Number.parseInt(dateMatch[3], 10)).padStart(2, '0')
+                                            ].join('-');
+                                            let calendarData = window.VirtualPhone?.calendarApp?.calendarData
+                                                || window.VirtualPhone?._calendarReminderApp?.calendarData
+                                                || null;
+                                            if (!calendarData) {
+                                                const calendarModule = await import('./apps/calendar/calendar-data.js?v=20260527-auto-schedule');
+                                                calendarData = new calendarModule.CalendarData(storage);
+                                            }
+                                            const reminderMemos = calendarData?.getGlobalReminderMemosByDate?.(dateKey) || [];
+                                            if (reminderMemos.length > 0) {
+                                                const lines = reminderMemos.map(memo => {
+                                                    const timeText = String(memo?.time || '').trim();
+                                                    const titleText = String(memo?.title || '').replace(/\s+/g, ' ').trim();
+                                                    return timeText ? `${timeText} ${titleText}` : titleText;
+                                                }).filter(Boolean);
+                                                if (lines.length > 0) {
+                                                    calendarReminderContent = [
+                                                        '【今日日历提醒】',
+                                                        `当前日期：${latestPhoneDate}`,
+                                                        '以下是用户在日历中标记为全局提醒、需要你注意的事项；未列出的日历事项只是给用户查看，不要主动提及。',
+                                                        ...lines.map(line => `- ${line}`)
+                                                    ].join('\n');
+                                                }
+                                            }
+                                        }
+                                    } catch (e) {
+                                        calendarReminderContent = '';
+                                        console.warn('⚠️ [手机] 注入日历全局提醒失败:', e);
                                     }
 
                                     // 3️⃣ 添加微信聊天记录（按会话窗口分组显示，含日期）
@@ -9011,6 +9159,7 @@ if (window.GGP_Loaded) {
                                             if (id === 'phone_system_history') return 'SYSTEM (微信历史)';
                                             if (id === 'mofo_system_prompt') return 'SYSTEM (魔坊)';
                                             if (id === 'diary_system_history') return 'SYSTEM (日记)';
+                                            if (id === 'calendar_system_reminder') return 'SYSTEM (日历)';
                                             if (id === 'phone_system_rules') {
                                                 const source = String(text || '');
                                                 const tags = [];
@@ -9088,6 +9237,7 @@ if (window.GGP_Loaded) {
                                     }
                                     injectIntoMessages('{{MOFO_PROMPT}}', mofoPromptContent, 'mofo_system_prompt');
                                     injectIntoMessages('{{DIARY_HISTORY}}', diaryHistoryContent, 'diary_system_history');
+                                    injectIntoMessages('{{CALENDAR_REMINDER}}', calendarReminderContent, 'calendar_system_reminder');
 
                                     // ============================
                                     // 🎵 {{MUSIC_PROMPT}} 独立注入
@@ -9292,12 +9442,14 @@ if (window.GGP_Loaded) {
                                             const MUSIC_VAR = '{{MUSIC_PROMPT}}';
                                             const MOFO_VAR = '{{MOFO_PROMPT}}';
                                             const DIARY_VAR = '{{DIARY_HISTORY}}';
+                                            const CALENDAR_VAR = '{{CALENDAR_REMINDER}}';
                                             const PHONE_PROMPT_SPACED_REGEX = /\{\{\s*PHONE_PROMPT\s*\}\}/gi;
                                             const PHONE_HISTORY_SPACED_REGEX = /\{\{\s*PHONE_HISTORY\s*\}\}/gi;
                                             const WEIBO_HISTORY_SPACED_REGEX = /\{\{\s*WEIBO_HISTORY\s*\}\}/gi;
                                             const MUSIC_PROMPT_SPACED_REGEX = /\{\{\s*MUSIC_PROMPT\s*\}\}/gi;
                                             const MOFO_PROMPT_SPACED_REGEX = /\{\{\s*MOFO_PROMPT\s*\}\}/gi;
                                             const DIARY_HISTORY_SPACED_REGEX = /\{\{\s*DIARY_HISTORY\s*\}\}/gi;
+                                            const CALENDAR_REMINDER_SPACED_REGEX = /\{\{\s*CALENDAR_REMINDER\s*\}\}/gi;
                                             if (c.includes(TARGET_VAR)) {
                                                 c = c.split(TARGET_VAR).join('');
                                                 modified = true;
@@ -9344,6 +9496,14 @@ if (window.GGP_Loaded) {
                                             }
                                             if (DIARY_HISTORY_SPACED_REGEX.test(c)) {
                                                 c = c.replace(DIARY_HISTORY_SPACED_REGEX, '');
+                                                modified = true;
+                                            }
+                                            if (c.includes(CALENDAR_VAR)) {
+                                                c = c.split(CALENDAR_VAR).join('');
+                                                modified = true;
+                                            }
+                                            if (CALENDAR_REMINDER_SPACED_REGEX.test(c)) {
+                                                c = c.replace(CALENDAR_REMINDER_SPACED_REGEX, '');
                                                 modified = true;
                                             }
 
@@ -9450,7 +9610,7 @@ if (window.GGP_Loaded) {
 
                             if (targetArray) {
                                 // 🌟 1. 核心防御：连同外层 bodyObj 一起检查，防止变量被移动端或 Claude 抽离到 system 字段
-                                const hasMacros = JSON.stringify(bodyObj).match(/\{\{\s*PHONE_PROMPT\s*\}\}|\{\{\s*PHONE_HISTORY\s*\}\}|\{\{\s*WEIBO_HISTORY\s*\}\}|\{\{\s*MUSIC_PROMPT\s*\}\}|\{\{\s*MOFO_PROMPT\s*\}\}|\{\{\s*DIARY_HISTORY\s*\}\}/i);
+                                const hasMacros = JSON.stringify(bodyObj).match(/\{\{\s*PHONE_PROMPT\s*\}\}|\{\{\s*PHONE_HISTORY\s*\}\}|\{\{\s*WEIBO_HISTORY\s*\}\}|\{\{\s*MUSIC_PROMPT\s*\}\}|\{\{\s*MOFO_PROMPT\s*\}\}|\{\{\s*DIARY_HISTORY\s*\}\}|\{\{\s*CALENDAR_REMINDER\s*\}\}/i);
 
                                 if (hasMacros) {
                                     console.log('🚨 [手机插件] 警告：酒馆发送过快导致 Hook 被无视，请求体残留变量！正在执行网卡级底层强行注入...');

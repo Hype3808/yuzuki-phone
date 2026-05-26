@@ -913,7 +913,8 @@
 }
 
 #phone-panel-content .phone-screen .yzp-calendar-memo-type-icon,
-#phone-panel-content .phone-screen .yzp-calendar-delete-btn {
+#phone-panel-content .phone-screen .yzp-calendar-delete-btn,
+#phone-panel-content .phone-screen .yzp-calendar-global-reminder-btn {
     width: 28px !important;
     height: 28px !important;
     border: 0 !important;
@@ -949,11 +950,27 @@
     color: #dc6262 !important;
 }
 
-#phone-panel-content .phone-screen .yzp-calendar-memo-item.show-delete {
-    padding-right: 40px !important;
+#phone-panel-content .phone-screen .yzp-calendar-global-reminder-btn {
+    position: absolute !important;
+    right: 39px !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    color: color-mix(in srgb, var(--yzp-cal-muted) 62%, transparent) !important;
 }
 
-#phone-panel-content .phone-screen .yzp-calendar-memo-item.show-delete .yzp-calendar-delete-btn {
+#phone-panel-content .phone-screen .yzp-calendar-global-reminder-btn.is-active {
+    color: var(--yzp-cal-accent) !important;
+    background: color-mix(in srgb, var(--yzp-cal-accent) 16%, transparent) !important;
+}
+
+#phone-panel-content .phone-screen .yzp-calendar-memo-item.show-delete {
+    padding-right: 72px !important;
+}
+
+#phone-panel-content .phone-screen .yzp-calendar-memo-item.show-delete .yzp-calendar-delete-btn,
+#phone-panel-content .phone-screen .yzp-calendar-memo-item.show-delete .yzp-calendar-global-reminder-btn {
     opacity: 1 !important;
     pointer-events: auto !important;
 }

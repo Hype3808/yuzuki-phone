@@ -9,6 +9,7 @@ export class CalendarData {
         this.memoKey = 'calendar_memos';
         this.themeKey = 'calendar_theme';
         this.reminderEnabledKey = 'calendar_reminder_enabled';
+        this.autoScheduleEnabledKey = 'calendar_auto_schedule_enabled';
         this._memos = null;
     }
 
@@ -64,7 +65,7 @@ export class CalendarData {
         return map;
     }
 
-    addMemo({ dateKey, title, time = '', type = 'daily', color = 'blue', source = 'manual' }) {
+    addMemo({ dateKey, title, time = '', type = 'daily', color = 'blue', source = 'manual', globalReminder = false }) {
         const safeDateKey = String(dateKey || '').trim();
         const safeTitle = String(title || '').trim();
         if (!safeDateKey || !safeTitle) return null;
@@ -78,6 +79,7 @@ export class CalendarData {
             color: this.normalizeColor(color),
             type: safeType,
             source: String(source || 'manual').trim() || 'manual',
+            globalReminder: globalReminder === true,
             createdAt: Date.now(),
             pinned: false
         };
@@ -105,6 +107,9 @@ export class CalendarData {
         if (Object.prototype.hasOwnProperty.call(updates, 'remindedKeys')) {
             memo.remindedKeys = Array.isArray(updates.remindedKeys) ? updates.remindedKeys : [];
         }
+        if (Object.prototype.hasOwnProperty.call(updates, 'globalReminder')) {
+            memo.globalReminder = updates.globalReminder === true;
+        }
         memo.updatedAt = Date.now();
         this.saveMemos();
         return true;
@@ -127,6 +132,20 @@ export class CalendarData {
         memo.pinned = memo.pinned !== true;
         this.saveMemos();
         return true;
+    }
+
+    toggleGlobalReminder(id) {
+        const memo = this.getMemos().find(item => String(item?.id || '') === String(id || ''));
+        if (!memo) return false;
+        memo.globalReminder = memo.globalReminder !== true;
+        memo.updatedAt = Date.now();
+        this.saveMemos();
+        return memo.globalReminder;
+    }
+
+    getGlobalReminderMemosByDate(dateKey) {
+        return this.getMemosByDate(dateKey)
+            .filter(memo => memo?.globalReminder === true);
     }
 
     clearExpiredAutoMemos(currentDateKey) {
@@ -162,6 +181,29 @@ export class CalendarData {
         const value = !!enabled;
         this.storage?.set?.(this.reminderEnabledKey, value);
         return value;
+    }
+
+    isAutoScheduleEnabled() {
+        const raw = this.storage?.get?.(this.autoScheduleEnabledKey, false);
+        return raw === true || raw === 'true' || raw === 1 || raw === '1';
+    }
+
+    setAutoScheduleEnabled(enabled) {
+        const value = !!enabled;
+        this.storage?.set?.(this.autoScheduleEnabledKey, value);
+        return value;
+    }
+
+    hasCurrentOrFutureOrdinaryMemos(currentDateKey) {
+        const currentParts = this.parseDateKey(currentDateKey);
+        if (!currentParts) return true;
+        const currentSerial = this.dateSerial(currentParts);
+        return this.getMemos().some(memo => {
+            if (this.isRecurringMemo(memo)) return false;
+            const memoParts = this.parseDateKey(memo?.dateKey);
+            if (!memoParts) return false;
+            return this.dateSerial(memoParts) >= currentSerial;
+        });
     }
 
     getTheme() {

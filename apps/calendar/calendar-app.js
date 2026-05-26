@@ -3,8 +3,8 @@
  *  日历 APP 控制器
  * ======================================================== */
 
-import { CalendarData } from './calendar-data.js';
-import { CalendarView } from './calendar-view.js';
+import { CalendarData } from './calendar-data.js?v=20260527-auto-schedule';
+import { CalendarView } from './calendar-view.js?v=20260527-auto-schedule';
 import { applyPhoneTagFilter } from '../../config/tag-filter.js';
 
 export class CalendarApp {
@@ -88,17 +88,18 @@ export class CalendarApp {
         return text.length > 12 ? `${text.slice(0, 12)}...` : text;
     }
 
-    async generateScheduleMemos() {
+    async generateScheduleMemos(options = {}) {
         if (this.isGeneratingSchedule) return;
 
+        const silent = options.silent === true || !this.phoneShell?.setContent;
         const apiManager = window.VirtualPhone?.apiManager;
         if (!apiManager?.callAI) {
-            this.phoneShell?.showNotification?.('日历', 'API Manager 未初始化', '📅');
+            if (!silent) this.phoneShell?.showNotification?.('日历', 'API Manager 未初始化', '📅');
             return;
         }
 
         this.isGeneratingSchedule = true;
-        this.calendarView.render();
+        if (!silent) this.calendarView.render();
 
         try {
             const messages = await this._buildScheduleAiMessages();
@@ -136,24 +137,28 @@ export class CalendarApp {
 
             if (!created.length) throw new Error('没有写入有效日程');
 
-            const first = created[0].dateParts;
-            this.calendarView.selectedDate = first;
-            this.calendarView.visibleYear = first.year;
-            this.calendarView.visibleMonth = first.month;
-            this.calendarView.currentView = 'main';
-            this.calendarView.addPanelOpen = false;
-            this.calendarView.typePickerOpen = false;
-            this.calendarView.draftMemoTitle = '';
-            this.calendarView.draftMemoTime = '';
-            this.calendarView.selectedMemoType = 'daily';
+            if (!silent) {
+                const first = created[0].dateParts;
+                this.calendarView.selectedDate = first;
+                this.calendarView.visibleYear = first.year;
+                this.calendarView.visibleMonth = first.month;
+                this.calendarView.currentView = 'main';
+                this.calendarView.addPanelOpen = false;
+                this.calendarView.typePickerOpen = false;
+                this.calendarView.draftMemoTitle = '';
+                this.calendarView.draftMemoTime = '';
+                this.calendarView.selectedMemoType = 'daily';
+            }
 
             this.phoneShell?.showNotification?.('日历', `已添加 ${created.length} 条日程`, '📅');
+            return { createdCount: created.length };
         } catch (error) {
             console.warn('[Calendar] AI 日程生成失败:', error);
-            this.phoneShell?.showNotification?.('日历', error?.message || '日程生成失败', '📅');
+            if (!silent) this.phoneShell?.showNotification?.('日历', error?.message || '日程生成失败', '📅');
+            if (silent) throw error;
         } finally {
             this.isGeneratingSchedule = false;
-            this.calendarView.render();
+            if (!silent) this.calendarView.render();
         }
     }
 
@@ -164,12 +169,14 @@ export class CalendarApp {
         const storyDate = this.calendarView.getStoryDateParts();
         const storyTime = this.calendarView.getStoryTimeLabel();
         const typeLabels = this.calendarView.getMemoTypes().map(item => item.label).join('、');
+        const existingSchedules = this._buildExistingSchedulesText(storyDate);
         const systemPrompt = this._buildScheduleSystemPrompt({
             userName,
             charName,
             storyDate,
             storyTime,
-            typeLabels
+            typeLabels,
+            existingSchedules
         });
         if (!systemPrompt) throw new Error('日历规划提示词为空，请先在日历设置中恢复默认提示词');
         const messages = [{
@@ -194,7 +201,9 @@ export class CalendarApp {
             role: 'user',
             content: [
                 `当前剧情时间：${storyTime}`,
+                `已有日历日程：${existingSchedules}`,
                 `请为${userName}规划当天及未来几天时间内的日历安排；若剧情或设定中存在更远但明确到期的还款、赴约、生日、纪念日或特殊事件，也可以加入。`,
+                '不要重复生成已有日历日程中的任何事项。',
                 '请严格遵守系统提示词中的日程类型、数量、时间和输出格式要求。'
             ].join('\n'),
             isPhoneMessage: true
@@ -203,7 +212,7 @@ export class CalendarApp {
         return messages;
     }
 
-    _buildScheduleSystemPrompt({ userName, charName, storyDate, storyTime, typeLabels }) {
+    _buildScheduleSystemPrompt({ userName, charName, storyDate, storyTime, typeLabels, existingSchedules }) {
         const promptManager = window.VirtualPhone?.promptManager;
         if (promptManager && !promptManager._loaded) {
             promptManager.ensureLoaded();
@@ -219,7 +228,8 @@ export class CalendarApp {
             char: charName || '角色',
             storyTime: storyTime || '',
             types: typeLabels || '',
-            dateExample
+            dateExample,
+            existingSchedules: existingSchedules || '暂无'
         };
 
         Object.entries(replacements).forEach(([key, value]) => {
@@ -227,6 +237,40 @@ export class CalendarApp {
         });
 
         return String(prompt || '').trim();
+    }
+
+    _buildExistingSchedulesText(storyDate) {
+        const currentKey = this.calendarView.toDateKey(storyDate);
+        const currentParts = this.calendarData.parseDateKey(currentKey);
+        if (!currentParts) return '暂无';
+        const currentSerial = this.calendarData.dateSerial(currentParts);
+        const typeMap = new Map(this.calendarView.getMemoTypes().map(item => [item.id, item.label]));
+        const rows = this.calendarData.getMemos()
+            .map(memo => {
+                const memoParts = this.calendarData.parseDateKey(memo?.dateKey);
+                if (!memoParts) return null;
+                const memoSerial = this.calendarData.dateSerial(memoParts);
+                if (!this.calendarData.isRecurringMemo(memo) && memoSerial < currentSerial) return null;
+                const type = this.calendarData.normalizeType(memo?.type);
+                const typeLabel = typeMap.get(type) || '日常';
+                const dateText = `${memoParts.year}年${String(memoParts.month).padStart(2, '0')}月${String(memoParts.day).padStart(2, '0')}日`;
+                const timeText = String(memo?.time || '').trim() || '未定时间';
+                const title = String(memo?.title || '').replace(/\s+/g, ' ').trim();
+                if (!title) return null;
+                return {
+                    serial: memoSerial,
+                    time: timeText,
+                    text: `- ${dateText} ${timeText} [${typeLabel}] ${title}`
+                };
+            })
+            .filter(Boolean)
+            .sort((a, b) => {
+                if (a.serial !== b.serial) return a.serial - b.serial;
+                return String(a.time || '').localeCompare(String(b.time || ''));
+            })
+            .slice(0, 80)
+            .map(item => item.text);
+        return rows.length ? rows.join('\n') : '暂无';
     }
 
     _buildCharacterMessage(context, fallbackName = '角色') {
