@@ -192,13 +192,13 @@ export class CalendarData {
     getDefaultHolidays() {
         const now = Date.now();
         return [
-            { id: 'holiday_new_year', title: '元旦', month: 1, day: 1 },
-            { id: 'holiday_valentine', title: '情人节', month: 2, day: 14 },
-            { id: 'holiday_labor', title: '劳动节', month: 5, day: 1 },
-            { id: 'holiday_national', title: '国庆节', month: 10, day: 1 },
+            { id: 'holiday_new_year', title: '元旦', month: 1, day: 1, icon: 'yd.png' },
+            { id: 'holiday_valentine', title: '情人节', month: 2, day: 14, icon: 'qr.png' },
+            { id: 'holiday_labor', title: '劳动节', month: 5, day: 1, icon: 'ld.png' },
+            { id: 'holiday_national', title: '国庆节', month: 10, day: 1, icon: 'gq.png' },
             { id: 'holiday_halloween', title: '万圣节', month: 10, day: 31 },
-            { id: 'holiday_christmas_eve', title: '平安夜', month: 12, day: 24 },
-            { id: 'holiday_christmas', title: '圣诞节', month: 12, day: 25 }
+            { id: 'holiday_christmas_eve', title: '平安夜', month: 12, day: 24, icon: 'pa.png' },
+            { id: 'holiday_christmas', title: '圣诞节', month: 12, day: 25, icon: 'sd.png' }
         ].map(item => ({
             ...item,
             type: 'holiday',
@@ -219,6 +219,7 @@ export class CalendarData {
             month,
             day,
             type: 'holiday',
+            icon: this.normalizeHolidayIcon(item?.icon, item?.id, title),
             globalReminder: item?.globalReminder !== false,
             builtIn: item?.builtIn === true,
             createdAt: Number(item?.createdAt) || Date.now(),
@@ -241,6 +242,7 @@ export class CalendarData {
             month: safeMonth,
             day: safeDay,
             type: 'holiday',
+            icon: this.normalizeHolidayIcon('hd.png'),
             globalReminder: globalReminder !== false,
             builtIn: false,
             createdAt: Date.now()
@@ -341,6 +343,7 @@ export class CalendarData {
             holidayId: holiday.id,
             dateKey,
             title: holiday.title,
+            icon: this.normalizeHolidayIcon(holiday.icon, holiday.id, holiday.title),
             time: '',
             type: 'event',
             color: 'green',
@@ -349,6 +352,22 @@ export class CalendarData {
             globalReminder: holiday.globalReminder === true,
             pinned: true
         };
+    }
+
+    normalizeHolidayIcon(icon, id = '', title = '') {
+        const value = String(icon || '').trim();
+        const allowed = new Set(['yd.png', 'qr.png', 'ld.png', 'gq.png', 'pa.png', 'sd.png', 'hd.png']);
+        if (allowed.has(value)) return value;
+
+        const safeId = String(id || '').trim();
+        const safeTitle = String(title || '').trim();
+        if (safeId === 'holiday_new_year' || safeTitle === '元旦') return 'yd.png';
+        if (safeId === 'holiday_valentine' || safeTitle === '情人节') return 'qr.png';
+        if (safeId === 'holiday_labor' || safeTitle === '劳动节') return 'ld.png';
+        if (safeId === 'holiday_national' || safeTitle === '国庆节') return 'gq.png';
+        if (safeId === 'holiday_christmas_eve' || safeTitle === '平安夜') return 'pa.png';
+        if (safeId === 'holiday_christmas' || safeTitle === '圣诞节') return 'sd.png';
+        return 'hd.png';
     }
 
     clearExpiredAutoMemos(currentDateKey) {

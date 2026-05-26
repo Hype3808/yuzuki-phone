@@ -3,8 +3,8 @@
  *  日历 APP 控制器
  * ======================================================== */
 
-import { CalendarData } from './calendar-data.js?v=20260527-holidays';
-import { CalendarView } from './calendar-view.js?v=20260527-holidays';
+import { CalendarData } from './calendar-data.js?v=20260527-calendar-polish';
+import { CalendarView } from './calendar-view.js?v=20260527-calendar-polish';
 import { applyPhoneTagFilter } from '../../config/tag-filter.js';
 
 export class CalendarApp {

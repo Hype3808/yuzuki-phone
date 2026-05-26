@@ -1158,7 +1158,7 @@ if (window.GGP_Loaded) {
             if (!latestTime?.date || !latestTime?.time) return;
 
             if (!window.VirtualPhone?._calendarReminderApp) {
-                const module = await import('./apps/calendar/calendar-app.js?v=20260527-holidays');
+                const module = await import('./apps/calendar/calendar-app.js?v=20260527-calendar-polish');
                 window.VirtualPhone._calendarReminderApp = new module.CalendarApp(null, storage);
             }
 
@@ -4822,7 +4822,7 @@ if (window.GGP_Loaded) {
             if (!idleReady) return false;
             if (task.chatId && task.chatId !== getCurrentChatIdForQueue()) return false;
 
-            const module = await import('./apps/calendar/calendar-app.js?v=20260527-holidays');
+            const module = await import('./apps/calendar/calendar-app.js?v=20260527-calendar-polish');
             const calendarApp = window.VirtualPhone.calendarApp || window.VirtualPhone._calendarReminderApp || new module.CalendarApp(null, storage);
             window.VirtualPhone._calendarReminderApp = calendarApp;
 
@@ -4861,7 +4861,7 @@ if (window.GGP_Loaded) {
             const chatLength = Array.isArray(ctx?.chat) ? ctx.chat.length : 0;
             if (chatLength <= 0 && !options.forceCheck) return false;
 
-            import('./apps/calendar/calendar-data.js?v=20260527-holidays').then(dataModule => {
+            import('./apps/calendar/calendar-data.js?v=20260527-calendar-polish').then(dataModule => {
                 const calendarData = window.VirtualPhone?.calendarApp?.calendarData
                     || window.VirtualPhone?._calendarReminderApp?.calendarData
                     || new dataModule.CalendarData(storage);
@@ -7142,6 +7142,17 @@ if (window.GGP_Loaded) {
             if (window.VirtualPhone.mofoApp) {
                 window.VirtualPhone.mofoApp.clearCache();
             }
+            // 📅 清空日历缓存，防止设定节日/日程在切换会话后串味
+            if (window.VirtualPhone.calendarApp) {
+                window.VirtualPhone.calendarApp.clearCache();
+            }
+            if (window.VirtualPhone._calendarReminderApp) {
+                window.VirtualPhone._calendarReminderApp.clearCache();
+            }
+            _lastCalendarReminderCheckTime = null;
+            const autoCalendarState = ensureAutoCalendarState();
+            autoCalendarState._autoCalendarGeneration += 1;
+            autoCalendarState._autoCalendarQueued = false;
             // 🎵 音乐：清空缓存 + 刷新悬浮窗 + 扫描当前会话卡片
             if (window.VirtualPhone.musicApp) {
                 window.VirtualPhone.musicApp.onChatChanged(storage);
@@ -7758,7 +7769,7 @@ if (window.GGP_Loaded) {
                             phoneShell?.showNotification('错误', '相册模块加载失败', '❌');
                         });
                 } else if (appId === 'calendar') {
-                    import('./apps/calendar/calendar-app.js?v=20260527-holidays')
+                    import('./apps/calendar/calendar-app.js?v=20260527-calendar-polish')
                         .then(module => {
                             try {
                                 if (!window.VirtualPhone.calendarApp || !window.VirtualPhone.calendarApp.phoneShell?.setContent) {
@@ -8789,7 +8800,7 @@ if (window.GGP_Loaded) {
                                                 || window.VirtualPhone?._calendarReminderApp?.calendarData
                                                 || null;
                                             if (!calendarData) {
-                                                const calendarModule = await import('./apps/calendar/calendar-data.js?v=20260527-holidays');
+                                                const calendarModule = await import('./apps/calendar/calendar-data.js?v=20260527-calendar-polish');
                                                 calendarData = new calendarModule.CalendarData(storage);
                                             }
                                             const reminderMemos = calendarData?.getGlobalReminderItemsByDate?.(dateKey)

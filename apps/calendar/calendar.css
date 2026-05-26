@@ -447,6 +447,11 @@
     filter: drop-shadow(0 10px 14px rgba(31, 41, 51, 0.08)) !important;
 }
 
+#phone-panel-content .phone-screen .yzp-calendar-hero.is-holiday img {
+    height: 124px !important;
+    max-width: 82% !important;
+}
+
 #phone-panel-content .phone-screen .yzp-calendar-board {
     padding: 0 0 6px !important;
 }
@@ -1157,6 +1162,64 @@
     overscroll-behavior: contain !important;
     scrollbar-width: none !important;
     -ms-overflow-style: none !important;
+}
+
+#phone-panel-content .phone-screen .yzp-calendar-theme-dark .yzp-calendar-settings-label,
+#phone-panel-content .phone-screen .yzp-calendar-theme-dark .yzp-calendar-add-title,
+#phone-panel-content .phone-screen .yzp-calendar-theme-dark .yzp-calendar-add-title span,
+#phone-panel-content .phone-screen .yzp-calendar-theme-dark .yzp-calendar-add-title-icon,
+#phone-panel-content .phone-screen .yzp-calendar-theme-dark .yzp-calendar-add-title-icon i,
+#phone-panel-content .phone-screen .yzp-calendar-theme-dark .yzp-calendar-memo-text,
+#phone-panel-content .phone-screen .yzp-calendar-theme-dark .yzp-calendar-detail-type,
+#phone-panel-content .phone-screen .yzp-calendar-theme-dark .phone-prompt-fold-title {
+    color: #f4f7fb !important;
+    -webkit-text-fill-color: #f4f7fb !important;
+}
+
+#phone-panel-content .phone-screen .yzp-calendar-theme-dark .yzp-calendar-settings-desc,
+#phone-panel-content .phone-screen .yzp-calendar-theme-dark .yzp-calendar-add-date,
+#phone-panel-content .phone-screen .yzp-calendar-theme-dark .yzp-calendar-memo-time-inline,
+#phone-panel-content .phone-screen .yzp-calendar-theme-dark .yzp-calendar-memo-dot,
+#phone-panel-content .phone-screen .yzp-calendar-theme-dark .yzp-calendar-detail-date,
+#phone-panel-content .phone-screen .yzp-calendar-theme-dark .phone-prompt-fold-desc {
+    color: #9aa8b6 !important;
+    -webkit-text-fill-color: #9aa8b6 !important;
+}
+
+#phone-panel-content .phone-screen .yzp-calendar-theme-dark .yzp-calendar-memo-input,
+#phone-panel-content .phone-screen .yzp-calendar-theme-dark .yzp-calendar-time-input,
+#phone-panel-content .phone-screen .yzp-calendar-theme-dark .yzp-calendar-type-select,
+#phone-panel-content .phone-screen .yzp-calendar-theme-dark .yzp-calendar-holiday-title,
+#phone-panel-content .phone-screen .yzp-calendar-theme-dark .yzp-calendar-holiday-month,
+#phone-panel-content .phone-screen .yzp-calendar-theme-dark .yzp-calendar-holiday-day,
+#phone-panel-content .phone-screen .yzp-calendar-theme-dark .yzp-calendar-prompt-editor {
+    background: #1d2530 !important;
+    color: #f4f7fb !important;
+    -webkit-text-fill-color: #f4f7fb !important;
+    caret-color: #8fb8d9 !important;
+}
+
+#phone-panel-content .phone-screen .yzp-calendar-app.yzp-calendar-theme-dark input.yzp-calendar-holiday-title,
+#phone-panel-content .phone-screen .yzp-calendar-app.yzp-calendar-theme-dark input.yzp-calendar-holiday-month,
+#phone-panel-content .phone-screen .yzp-calendar-app.yzp-calendar-theme-dark input.yzp-calendar-holiday-day,
+#phone-panel-content .phone-screen .yzp-calendar-app.yzp-calendar-theme-dark textarea.yzp-calendar-memo-input,
+#phone-panel-content .phone-screen .yzp-calendar-app.yzp-calendar-theme-dark input.yzp-calendar-time-input,
+#phone-panel-content .phone-screen .yzp-calendar-app.yzp-calendar-theme-dark textarea.yzp-calendar-prompt-editor {
+    background-color: #111923 !important;
+    background-image: none !important;
+    color: #f4f7fb !important;
+    -webkit-text-fill-color: #f4f7fb !important;
+    border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+#phone-panel-content .phone-screen .yzp-calendar-theme-dark .yzp-calendar-memo-input::placeholder,
+#phone-panel-content .phone-screen .yzp-calendar-theme-dark .yzp-calendar-time-input::placeholder,
+#phone-panel-content .phone-screen .yzp-calendar-theme-dark .yzp-calendar-holiday-title::placeholder,
+#phone-panel-content .phone-screen .yzp-calendar-theme-dark .yzp-calendar-holiday-month::placeholder,
+#phone-panel-content .phone-screen .yzp-calendar-theme-dark .yzp-calendar-holiday-day::placeholder {
+    color: #8190a0 !important;
+    -webkit-text-fill-color: #8190a0 !important;
+    opacity: 1 !important;
 }
 
 #phone-panel-content .phone-screen .yzp-calendar-edit-form {

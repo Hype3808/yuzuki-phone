@@ -43,7 +43,7 @@ export class CalendarView {
         const link = existingLink || document.createElement('link');
         link.id = 'yzp-calendar-css';
         link.rel = 'stylesheet';
-        link.href = new URL('./calendar.css?v=20260527-holidays', import.meta.url).href;
+        link.href = new URL('./calendar.css?v=20260527-calendar-polish', import.meta.url).href;
         this._cssLoadingPromise = new Promise(resolve => {
             let settled = false;
             const finish = () => {
@@ -61,9 +61,23 @@ export class CalendarView {
         return this._cssLoadingPromise;
     }
 
-    getHeroImageUrl(theme = 'light') {
-        const filename = theme === 'dark' ? 'calendar-theme-d.png' : 'calendar-theme.png';
+    getHeroImageUrl(theme = 'light', storyDate = null) {
+        const holidayIcon = this.getHeroHolidayIcon(storyDate);
+        const filename = holidayIcon || (theme === 'dark' ? 'calendar-theme-d.png' : 'calendar-theme.png');
         return new URL(`./assets/${filename}`, import.meta.url).href;
+    }
+
+    getHeroHolidayIcon(storyDate = null) {
+        const selectedHoliday = this.getHeroHolidayForDate(this.selectedDate);
+        const storyHoliday = storyDate ? this.getHeroHolidayForDate(storyDate) : null;
+        return selectedHoliday?.icon || storyHoliday?.icon || '';
+    }
+
+    getHeroHolidayForDate(dateParts) {
+        if (!dateParts) return null;
+        const dateKey = this.toDateKey(dateParts);
+        const holidays = this.app.calendarData.getHolidaysByDate?.(dateKey) || [];
+        return holidays.find(item => item?.icon) || null;
     }
 
     getAssetUrl(filename) {
@@ -83,7 +97,8 @@ export class CalendarView {
             this.renderSettings(theme);
             return;
         }
-        const heroUrl = this.getHeroImageUrl(theme);
+        const heroHolidayIcon = this.getHeroHolidayIcon(storyDate);
+        const heroUrl = this.getHeroImageUrl(theme, storyDate);
         const html = `
             <div class="yzp-calendar-app yzp-calendar-theme-${theme}">
                 <header class="yzp-calendar-header">
@@ -103,7 +118,7 @@ export class CalendarView {
                     </div>
                 </header>
                 <main class="yzp-calendar-main">
-                    <div class="yzp-calendar-hero" aria-hidden="true">
+                    <div class="yzp-calendar-hero ${heroHolidayIcon ? 'is-holiday' : ''}" aria-hidden="true">
                         <img src="${this.escapeAttr(heroUrl)}" alt="">
                     </div>
                     ${this.renderCalendarGrid(storyDate)}
@@ -273,21 +288,26 @@ export class CalendarView {
                         </div>
                     </section>
                     <section class="yzp-calendar-settings-section">
-                        <div class="yzp-calendar-settings-section-head">
-                            <div>
-                                <div class="yzp-calendar-settings-label">设定节日</div>
-                                <div class="yzp-calendar-settings-desc">固定月日循环，可按世界观修改日期或新增节日。</div>
+                        <div class="phone-prompt-fold" data-default-open="false">
+                            <div class="phone-prompt-fold-header">
+                                <div class="phone-prompt-fold-main">
+                                    <div class="phone-prompt-fold-title">设定节日</div>
+                                    <div class="phone-prompt-fold-desc">固定月日循环，可按世界观修改日期或新增节日。</div>
+                                </div>
+                                <i class="fa-solid fa-chevron-right phone-prompt-fold-arrow"></i>
+                            </div>
+                            <div class="phone-prompt-fold-content">
+                                <div class="yzp-calendar-holiday-list">
+                                    ${holidays.map(holiday => this.renderHolidaySettingRow(holiday)).join('')}
+                                </div>
+                                <form class="yzp-calendar-holiday-add" id="yzp-calendar-holiday-add-form" autocomplete="off">
+                                    <input class="yzp-calendar-holiday-title" id="yzp-calendar-holiday-title" maxlength="80" placeholder="节日名" value="${this.escapeAttr(this.holidayDraftTitle)}">
+                                    <input class="yzp-calendar-holiday-month" id="yzp-calendar-holiday-month" inputmode="numeric" maxlength="2" placeholder="月" value="${this.escapeAttr(this.holidayDraftMonth)}">
+                                    <input class="yzp-calendar-holiday-day" id="yzp-calendar-holiday-day" inputmode="numeric" maxlength="2" placeholder="日" value="${this.escapeAttr(this.holidayDraftDay)}">
+                                    <button type="submit" class="yzp-calendar-submit-btn">添加</button>
+                                </form>
                             </div>
                         </div>
-                        <div class="yzp-calendar-holiday-list">
-                            ${holidays.map(holiday => this.renderHolidaySettingRow(holiday)).join('')}
-                        </div>
-                        <form class="yzp-calendar-holiday-add" id="yzp-calendar-holiday-add-form" autocomplete="off">
-                            <input class="yzp-calendar-holiday-title" id="yzp-calendar-holiday-title" maxlength="80" placeholder="节日名" value="${this.escapeAttr(this.holidayDraftTitle)}">
-                            <input class="yzp-calendar-holiday-month" id="yzp-calendar-holiday-month" inputmode="numeric" maxlength="2" placeholder="月" value="${this.escapeAttr(this.holidayDraftMonth)}">
-                            <input class="yzp-calendar-holiday-day" id="yzp-calendar-holiday-day" inputmode="numeric" maxlength="2" placeholder="日" value="${this.escapeAttr(this.holidayDraftDay)}">
-                            <button type="submit" class="yzp-calendar-submit-btn">添加</button>
-                        </form>
                     </section>
                     <section class="yzp-calendar-settings-section">
                         <div class="phone-prompt-fold" data-default-open="false">
