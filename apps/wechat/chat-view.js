@@ -3238,6 +3238,8 @@ renderChatRoom(chat) {
             this.app.phoneShell?.showNotification('提示', '这条图片消息缺少描述，无法生成', '⚠️');
             return;
         }
+        const parsedCurrentPrompt = this._parseImagePromptText(String(message.content || ''));
+        const descriptionText = String(message.imageDescription || parsedCurrentPrompt.description || promptText).trim();
 
         const imageManager = window.VirtualPhone?.imageGenerationManager;
         if (!imageManager || typeof imageManager.generate !== 'function') {
@@ -3259,6 +3261,7 @@ renderChatRoom(chat) {
             imageGenerationId: generationId,
             imageGenError: '',
             imagePrompt: promptText,
+            imageDescription: descriptionText,
             generatedImageUrl: '',
             imageModel: '',
             imageProvider: '',
@@ -3289,6 +3292,7 @@ renderChatRoom(chat) {
 
             this.app.wechatData.updateMessageById(chatId, safeMessageId, {
                 imagePrompt: promptText,
+                imageDescription: descriptionText,
                 generatedImageUrl: imageUrl,
                 imageGenStatus: 'done',
                 imageGenError: '',
@@ -3315,6 +3319,7 @@ renderChatRoom(chat) {
 
             this.app.wechatData.updateMessageById(chatId, safeMessageId, {
                 imagePrompt: promptText,
+                imageDescription: descriptionText,
                 imageGenStatus: 'failed',
                 imageGenError: friendlyMessage
             });
@@ -3516,6 +3521,9 @@ renderChatRoom(chat) {
     renderImagePromptCard(msg) {
         const promptRaw = String(msg?.imagePrompt || msg?.content || '待生成图片').trim() || '待生成图片';
         const promptText = this._escapeHtml(promptRaw);
+        const parsedPrompt = this._parseImagePromptText(String(msg?.content || ''));
+        const descriptionRaw = String(msg?.imageDescription || parsedPrompt.description || promptRaw).trim() || promptRaw;
+        const descriptionText = this._escapeHtml(descriptionRaw);
         const cardId = this.escapeInlineStickerAttr(String(msg?.id || `imgprompt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`));
         const generatedImageUrl = String(msg?.generatedImageUrl || '').trim();
         const safeImageUrl = this.escapeInlineStickerAttr(generatedImageUrl);
@@ -3635,7 +3643,7 @@ renderChatRoom(chat) {
                             text-align:center;
                             width:100%;
                             text-shadow:0 1px 2px rgba(0,0,0,0.18);
-                        ">${promptText}</div>
+                        ">${descriptionText}</div>
                     </div>
                     <div class="message-image-prompt-restore" data-message-id="${cardId}" title="恢复卡片正面" style="
                         position:absolute;

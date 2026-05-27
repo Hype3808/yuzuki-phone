@@ -2676,6 +2676,8 @@ export class SettingsApp {
         const cfgRescale = readStoredNumber('phone-image-cfg-rescale', 0.2);
         const seed = Number(this.storage.get('phone-image-seed') ?? -1);
         const debugPayload = this.storage.get('phone-image-debug-payload') === true || this.storage.get('phone-image-debug-payload') === 'true';
+        const novelaiSkipCfgCompat = this.storage.get('phone-image-novelai-skip-cfg-compat') !== false
+            && this.storage.get('phone-image-novelai-skip-cfg-compat') !== 'false';
         const imagePromptAppDefs = this._getImagePromptAppDefs();
         const activeImagePromptApp = this._normalizeImagePromptApp(this.storage.get('phone-image-active-prompt-app') || 'honey');
         const activeImagePresetScope = this._normalizeImagePresetScope(activeImagePromptApp);
@@ -2852,6 +2854,17 @@ export class SettingsApp {
                     </div>
                     <label class="toggle-switch">
                         <input type="checkbox" id="phone-image-debug-payload" ${debugPayload ? 'checked' : ''}>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="setting-item setting-toggle">
+                    <div>
+                        <div class="setting-label">NAI 4/4.5 自动兼容参数</div>
+                        <div class="setting-desc">Euler Ancestral + karras/exponential 时自动发送 skip_cfg_above_sigma；关闭后按原始参数发包。</div>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="phone-image-novelai-skip-cfg-compat" ${novelaiSkipCfgCompat ? 'checked' : ''}>
                         <span class="toggle-slider"></span>
                     </label>
                 </div>
@@ -5787,6 +5800,10 @@ export class SettingsApp {
 
         document.getElementById('phone-image-debug-payload')?.addEventListener('change', async (e) => {
             await this.storage.set('phone-image-debug-payload', !!e.target.checked);
+        });
+
+        document.getElementById('phone-image-novelai-skip-cfg-compat')?.addEventListener('change', async (e) => {
+            await this.storage.set('phone-image-novelai-skip-cfg-compat', !!e.target.checked);
         });
 
         imageNovelAIVibeEnabled?.addEventListener('change', async (e) => {

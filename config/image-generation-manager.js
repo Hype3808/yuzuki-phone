@@ -39,6 +39,11 @@ export class ImageGenerationManager {
         return value === true || value === 'true';
     }
 
+    _getBoolDefaultTrue(key) {
+        const value = this.storage?.get?.(key);
+        return value !== false && value !== 'false';
+    }
+
     _getNumber(key, fallback, min = null, max = null) {
         const raw = this.storage?.get?.(key);
         if (raw === null || raw === undefined || raw === '') return fallback;
@@ -741,6 +746,7 @@ export class ImageGenerationManager {
             fixedPromptEnd: String(overrides.fixedPromptEnd ?? (promptAppKey ? this._get(`phone-image-${promptAppKey}-fixed-prompt-end`, '') : '')).trim(),
             negativePrompt: String(overrides.negativePrompt ?? (promptAppKey ? this._get(`phone-image-${promptAppKey}-negative-prompt`, '') : '')).trim(),
             debugPayload: this._getBool('phone-image-debug-payload', false),
+            novelAISkipCfgCompat: this._getBoolDefaultTrue('phone-image-novelai-skip-cfg-compat'),
             saveToBackgrounds: this._getBool('phone-image-save-backgrounds', false)
         };
     }
@@ -793,6 +799,8 @@ export class ImageGenerationManager {
             steps: payload?.parameters?.steps,
             scale: payload?.parameters?.scale,
             cfgRescale: payload?.parameters?.cfg_rescale,
+            skipCfgAboveSigma: payload?.parameters?.skip_cfg_above_sigma,
+            novelAISkipCfgCompat: config.novelAISkipCfgCompat !== false,
             seed: payload?.parameters?.seed,
             originalPrompt,
             translatedPrompt,
@@ -824,6 +832,8 @@ export class ImageGenerationManager {
                 `Schedule: ${debugInfo.schedule}`,
                 `Scale: ${debugInfo.scale}`,
                 `CFG Rescale: ${debugInfo.cfgRescale}`,
+                `Skip CFG Above Sigma: ${debugInfo.skipCfgAboveSigma ?? '(未发送)'}`,
+                `自动兼容参数: ${debugInfo.novelAISkipCfgCompat ? '开启' : '关闭'}`,
                 `Seed: ${debugInfo.seed}`,
                 `参考图: ${debugInfo.referenceCount} 张`,
                 `Vibe: ${debugInfo.vibeCount} 个`,
@@ -857,6 +867,8 @@ export class ImageGenerationManager {
                 schedule: debugInfo.schedule,
                 scale: debugInfo.scale,
                 cfgRescale: debugInfo.cfgRescale,
+                skipCfgAboveSigma: debugInfo.skipCfgAboveSigma,
+                novelAISkipCfgCompat: debugInfo.novelAISkipCfgCompat,
                 seed: debugInfo.seed,
                 referenceCount: debugInfo.referenceCount,
                 vibeCount: debugInfo.vibeCount
@@ -1519,9 +1531,11 @@ export class ImageGenerationManager {
                     legacy_uc: false
                 }
             });
-            const skipCfgAboveSigma = this._getNovelAISkipCfgAboveSigma(config);
-            if (Number.isFinite(skipCfgAboveSigma)) {
-                parameters.skip_cfg_above_sigma = skipCfgAboveSigma;
+            if (config.novelAISkipCfgCompat !== false) {
+                const skipCfgAboveSigma = this._getNovelAISkipCfgAboveSigma(config);
+                if (Number.isFinite(skipCfgAboveSigma)) {
+                    parameters.skip_cfg_above_sigma = skipCfgAboveSigma;
+                }
             }
 
             if (novelAIReferences.length > 0) {

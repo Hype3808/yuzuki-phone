@@ -299,6 +299,24 @@ export class HoneyView {
         this.renderRecommendPage();
     }
 
+    _isCurrentHoneyView() {
+        return !!document.querySelector('.phone-view-current .honey-app');
+    }
+
+    _refreshHoneyImageGenerationView(sourceRoot = null) {
+        if (!this._isCurrentHoneyView()) return false;
+        const isCurrentLiveRoot = this.currentPage === 'live'
+            && sourceRoot
+            && sourceRoot.isConnected
+            && !!sourceRoot.closest?.('.phone-view-current');
+        if (isCurrentLiveRoot) {
+            this._refreshLivePageDom({ sourceRoot, scene: this.currentSceneData });
+        } else {
+            this.render();
+        }
+        return true;
+    }
+
     _getRecommendRefreshHintText() {
         return '回推荐页下拉刷新生成剧情。';
     }
@@ -7187,11 +7205,7 @@ export class HoneyView {
             imageGenerationError: ''
         };
         this._persistCurrentScene();
-        if (this.currentPage === 'live' && sourceRoot) {
-            this._refreshLivePageDom({ sourceRoot, scene: this.currentSceneData });
-        } else {
-            this.render();
-        }
+        this._refreshHoneyImageGenerationView(sourceRoot);
 
         try {
             const result = await imageManager.generate({
@@ -7240,11 +7254,7 @@ export class HoneyView {
                 imageGenerationError: ''
             };
             this._persistCurrentScene();
-            if (this.currentPage === 'live' && sourceRoot) {
-                this._refreshLivePageDom({ sourceRoot, scene: this.currentSceneData });
-            } else {
-                this.render();
-            }
+            this._refreshHoneyImageGenerationView(sourceRoot);
             this.app?.phoneShell?.showNotification?.('蜜语', auto ? '新剧情图片已自动生成' : '直播图片已生成', '🖼️');
             return result;
         } catch (err) {
@@ -7261,13 +7271,11 @@ export class HoneyView {
                 imageGenerationError: message
             };
             this._persistCurrentScene();
-            if (this.currentPage === 'live' && sourceRoot) {
-                this._refreshLivePageDom({ sourceRoot, scene: this.currentSceneData });
-            } else {
-                this.render();
-            }
+            const didRefreshHoneyView = this._refreshHoneyImageGenerationView(sourceRoot);
             this.app?.phoneShell?.showNotification?.(auto ? '自动生图失败' : '生图失败', message, '❌');
-            this._showHoneyImageErrorModal(message, { title: auto ? '自动生图失败' : '生图失败' });
+            if (didRefreshHoneyView) {
+                this._showHoneyImageErrorModal(message, { title: auto ? '自动生图失败' : '生图失败' });
+            }
             return null;
         }
     }
