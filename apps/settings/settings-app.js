@@ -2631,27 +2631,40 @@ export class SettingsApp {
         const samplerValue = novelaiSamplers.some(([value]) => value === sampler) ? sampler : 'k_euler';
         const scheduleValue = novelaiSchedules.some(([value]) => value === schedule) ? schedule : 'native';
         const readImageNumber = (key, fallback, min = null, max = null, integer = true) => {
-            const num = Number(this.storage.get(key));
+            const raw = this.storage.get(key);
+            const num = raw === null || raw === undefined || raw === '' ? NaN : Number(raw);
             let value = Number.isFinite(num) ? num : fallback;
             if (integer) value = Math.round(value);
             if (min !== null) value = Math.max(min, value);
             if (max !== null) value = Math.min(max, value);
             return value;
         };
+        const readImageSizePair = (widthKey, heightKey, fallbackWidth, fallbackHeight) => {
+            const widthValue = readImageNumber(widthKey, fallbackWidth, 64, 2048, true);
+            const heightValue = readImageNumber(heightKey, fallbackHeight, 64, 2048, true);
+            return widthValue <= 64 && heightValue <= 64
+                ? { width: fallbackWidth, height: fallbackHeight }
+                : { width: widthValue, height: heightValue };
+        };
         const sdClipSkip = readImageNumber('phone-image-sd-clip-skip', 0, 0, 12, true);
         const sdHiresSteps = readImageNumber('phone-image-sd-hires-steps', 0, 0, 80, true);
         const sdUpscaleFactor = readImageNumber('phone-image-sd-upscale-factor', 1.5, 1, 4, false);
         const sdDenoisingStrength = readImageNumber('phone-image-sd-denoising-strength', 0.45, 0, 1, false);
-        const width = readImageNumber('phone-image-width', 832, 64, 2048, true);
-        const height = readImageNumber('phone-image-height', 1216, 64, 2048, true);
-        const honeyWidth = readImageNumber('phone-image-honey-width', 832, 64, 2048, true);
-        const honeyHeight = readImageNumber('phone-image-honey-height', 1216, 64, 2048, true);
-        const wechatWidth = readImageNumber('phone-image-wechat-width', 512, 64, 2048, true);
-        const wechatHeight = readImageNumber('phone-image-wechat-height', 512, 64, 2048, true);
-        const weiboWidth = readImageNumber('phone-image-weibo-width', 1024, 64, 2048, true);
-        const weiboHeight = readImageNumber('phone-image-weibo-height', 1024, 64, 2048, true);
-        const diaryWidth = readImageNumber('phone-image-diary-width', 512, 64, 2048, true);
-        const diaryHeight = readImageNumber('phone-image-diary-height', 512, 64, 2048, true);
+        const fallbackSize = readImageSizePair('phone-image-width', 'phone-image-height', 832, 1216);
+        const honeySize = readImageSizePair('phone-image-honey-width', 'phone-image-honey-height', 832, 1216);
+        const wechatSize = readImageSizePair('phone-image-wechat-width', 'phone-image-wechat-height', 512, 512);
+        const weiboSize = readImageSizePair('phone-image-weibo-width', 'phone-image-weibo-height', 1024, 1024);
+        const diarySize = readImageSizePair('phone-image-diary-width', 'phone-image-diary-height', 512, 512);
+        const width = fallbackSize.width;
+        const height = fallbackSize.height;
+        const honeyWidth = honeySize.width;
+        const honeyHeight = honeySize.height;
+        const wechatWidth = wechatSize.width;
+        const wechatHeight = wechatSize.height;
+        const weiboWidth = weiboSize.width;
+        const weiboHeight = weiboSize.height;
+        const diaryWidth = diarySize.width;
+        const diaryHeight = diarySize.height;
         const readStoredNumber = (key, fallback) => {
             const raw = this.storage.get(key);
             if (raw === null || typeof raw === 'undefined' || raw === '') return fallback;
@@ -4736,7 +4749,8 @@ export class SettingsApp {
             negativePrompt: String(imageNegativePromptInput?.value || '').trim()
         });
         const readPresetNumber = (id, fallback, min, max, integer = false) => {
-            const input = document.getElementById(id);
+            const input = document.getElementById(id)
+                || document.querySelector(`[data-phone-image-number-key="${id}"]`);
             return clampNumberInput(input, fallback, min, max, integer);
         };
         const setPresetNumber = async (id, value, fallback, min, max, integer = false) => {
@@ -4750,6 +4764,31 @@ export class SettingsApp {
                 item.value = String(savedValue);
             });
             await this.storage.set(id, savedValue);
+        };
+        const setPresetDimension = async (id, value, fallback) => {
+            const rawText = String(value ?? '').trim();
+            const numeric = rawText ? Number(rawText) : NaN;
+            if (!Number.isFinite(numeric) || numeric < 64) {
+                await setPresetNumber(id, fallback, fallback, 64, 2048, true);
+                return;
+            }
+            await setPresetNumber(id, numeric, fallback, 64, 2048, true);
+        };
+        const setPresetDimensionPair = async (widthId, heightId, widthValue, heightValue, fallbackWidth, fallbackHeight) => {
+            const widthNumber = String(widthValue ?? '').trim() ? Number(widthValue) : NaN;
+            const heightNumber = String(heightValue ?? '').trim() ? Number(heightValue) : NaN;
+            if (
+                Number.isFinite(widthNumber) &&
+                Number.isFinite(heightNumber) &&
+                widthNumber <= 64 &&
+                heightNumber <= 64
+            ) {
+                await setPresetDimension(widthId, fallbackWidth, fallbackWidth);
+                await setPresetDimension(heightId, fallbackHeight, fallbackHeight);
+                return;
+            }
+            await setPresetDimension(widthId, widthValue, fallbackWidth);
+            await setPresetDimension(heightId, heightValue, fallbackHeight);
         };
         const getImageGenerationPresetSettings = () => ({
             novelaiModel: String(imageNovelaiModel?.value || '').trim() || 'nai-diffusion-4-5-full',
@@ -4791,16 +4830,11 @@ export class SettingsApp {
                 await this.storage.set('phone-image-novelai-schedule', value);
             }
 
-            await setPresetNumber('phone-image-honey-width', preset.honeyWidth, 832, 64, 2048, true);
-            await setPresetNumber('phone-image-honey-height', preset.honeyHeight, 1216, 64, 2048, true);
-            await setPresetNumber('phone-image-wechat-width', preset.wechatWidth, 512, 64, 2048, true);
-            await setPresetNumber('phone-image-wechat-height', preset.wechatHeight, 512, 64, 2048, true);
-            await setPresetNumber('phone-image-weibo-width', preset.weiboWidth, 1024, 64, 2048, true);
-            await setPresetNumber('phone-image-weibo-height', preset.weiboHeight, 1024, 64, 2048, true);
-            await setPresetNumber('phone-image-diary-width', preset.diaryWidth, 512, 64, 2048, true);
-            await setPresetNumber('phone-image-diary-height', preset.diaryHeight, 512, 64, 2048, true);
-            await setPresetNumber('phone-image-width', preset.width, 832, 64, 2048, true);
-            await setPresetNumber('phone-image-height', preset.height, 1216, 64, 2048, true);
+            await setPresetDimensionPair('phone-image-honey-width', 'phone-image-honey-height', preset.honeyWidth, preset.honeyHeight, 832, 1216);
+            await setPresetDimensionPair('phone-image-wechat-width', 'phone-image-wechat-height', preset.wechatWidth, preset.wechatHeight, 512, 512);
+            await setPresetDimensionPair('phone-image-weibo-width', 'phone-image-weibo-height', preset.weiboWidth, preset.weiboHeight, 1024, 1024);
+            await setPresetDimensionPair('phone-image-diary-width', 'phone-image-diary-height', preset.diaryWidth, preset.diaryHeight, 512, 512);
+            await setPresetDimensionPair('phone-image-width', 'phone-image-height', preset.width, preset.height, 832, 1216);
             await setPresetNumber('phone-image-steps', preset.steps, 28, 1, 50, true);
             await setPresetNumber('phone-image-scale', preset.scale, 6, 0, 50, false);
             await setPresetNumber('phone-image-cfg-rescale', preset.cfgRescale, 0.2, 0, 1, false);
@@ -4854,16 +4888,11 @@ export class SettingsApp {
                 await this.storage.set('phone-image-openai-quality', value);
             }
 
-            await setPresetNumber('phone-image-honey-width', preset.honeyWidth, 832, 64, 2048, true);
-            await setPresetNumber('phone-image-honey-height', preset.honeyHeight, 1216, 64, 2048, true);
-            await setPresetNumber('phone-image-wechat-width', preset.wechatWidth, 512, 64, 2048, true);
-            await setPresetNumber('phone-image-wechat-height', preset.wechatHeight, 512, 64, 2048, true);
-            await setPresetNumber('phone-image-weibo-width', preset.weiboWidth, 1024, 64, 2048, true);
-            await setPresetNumber('phone-image-weibo-height', preset.weiboHeight, 1024, 64, 2048, true);
-            await setPresetNumber('phone-image-diary-width', preset.diaryWidth, 512, 64, 2048, true);
-            await setPresetNumber('phone-image-diary-height', preset.diaryHeight, 512, 64, 2048, true);
-            await setPresetNumber('phone-image-width', preset.width, 832, 64, 2048, true);
-            await setPresetNumber('phone-image-height', preset.height, 1216, 64, 2048, true);
+            await setPresetDimensionPair('phone-image-honey-width', 'phone-image-honey-height', preset.honeyWidth, preset.honeyHeight, 832, 1216);
+            await setPresetDimensionPair('phone-image-wechat-width', 'phone-image-wechat-height', preset.wechatWidth, preset.wechatHeight, 512, 512);
+            await setPresetDimensionPair('phone-image-weibo-width', 'phone-image-weibo-height', preset.weiboWidth, preset.weiboHeight, 1024, 1024);
+            await setPresetDimensionPair('phone-image-diary-width', 'phone-image-diary-height', preset.diaryWidth, preset.diaryHeight, 512, 512);
+            await setPresetDimensionPair('phone-image-width', 'phone-image-height', preset.width, preset.height, 832, 1216);
         };
         const fillOpenAIImagePresetSelect = (presets, activeId = '') => {
             if (!imageOpenaiPresetSelect) return;
@@ -5085,6 +5114,14 @@ export class SettingsApp {
                 || preset?.settings?.negativePrompt;
             return String(nested || '').trim();
         };
+        const firstFiniteNumber = (...values) => {
+            for (const value of values) {
+                if (value === undefined || value === null || value === '') continue;
+                const number = Number(value);
+                if (Number.isFinite(number)) return number;
+            }
+            return undefined;
+        };
         const normalizeImportedImagePreset = (preset, fallbackName = '') => {
             const name = String(preset?.name || preset?.title || fallbackName || '').trim();
             if (!name) return null;
@@ -5108,8 +5145,32 @@ export class SettingsApp {
                 width: preset?.width,
                 height: preset?.height,
                 steps: preset?.steps,
-                scale: preset?.scale,
-                cfgRescale: preset?.cfgRescale,
+                scale: firstFiniteNumber(
+                    preset?.scale,
+                    preset?.promptGuidance,
+                    preset?.prompt_guidance,
+                    preset?.guidance,
+                    preset?.cfgScale,
+                    preset?.cfg_scale,
+                    preset?.parameters?.scale,
+                    preset?.parameters?.cfg_scale,
+                    preset?.params?.scale,
+                    preset?.params?.cfg_scale,
+                    preset?.settings?.scale,
+                    preset?.settings?.cfg_scale
+                ),
+                cfgRescale: firstFiniteNumber(
+                    preset?.cfgRescale,
+                    preset?.cfg_rescale,
+                    preset?.guidanceRescale,
+                    preset?.guidance_rescale,
+                    preset?.parameters?.cfg_rescale,
+                    preset?.parameters?.guidance_rescale,
+                    preset?.params?.cfg_rescale,
+                    preset?.params?.guidance_rescale,
+                    preset?.settings?.cfgRescale,
+                    preset?.settings?.cfg_rescale
+                ),
                 seed: preset?.seed,
                 updatedAt: Date.now()
             };

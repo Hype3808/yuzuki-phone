@@ -651,17 +651,23 @@ export class ImageGenerationManager {
     getSizeForApp(app = '') {
         const appKey = String(app || '').trim().toLowerCase();
         const defaults = this._getAppDefaultSize(appKey);
+        const normalizeSize = (width, height) => {
+            if (Number(width) <= 64 && Number(height) <= 64) {
+                return { width: defaults.width, height: defaults.height };
+            }
+            return { width, height };
+        };
         if (!appKey) {
-            return {
-                width: this._getNumber('phone-image-width', defaults.width, 64, 2048),
-                height: this._getNumber('phone-image-height', defaults.height, 64, 2048)
-            };
+            return normalizeSize(
+                this._getNumber('phone-image-width', defaults.width, 64, 2048),
+                this._getNumber('phone-image-height', defaults.height, 64, 2048)
+            );
         }
 
-        return {
-            width: this._getNumber(`phone-image-${appKey}-width`, defaults.width, 64, 2048),
-            height: this._getNumber(`phone-image-${appKey}-height`, defaults.height, 64, 2048)
-        };
+        return normalizeSize(
+            this._getNumber(`phone-image-${appKey}-width`, defaults.width, 64, 2048),
+            this._getNumber(`phone-image-${appKey}-height`, defaults.height, 64, 2048)
+        );
     }
 
     getConfig(overrides = {}) {

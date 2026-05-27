@@ -7074,18 +7074,24 @@ export class HoneyView {
             imageManager.storage = imageStorage;
         }
         const readNumber = (key, fallback, min, max, integer = true) => {
-            const value = Number(imageStorage?.get?.(key));
+            const raw = imageStorage?.get?.(key);
+            const value = raw === null || raw === undefined || raw === '' ? NaN : Number(raw);
             let next = Number.isFinite(value) ? value : fallback;
             next = Math.max(min, Math.min(max, next));
             return integer ? Math.round(next) : next;
         };
         const provider = String(imageManager.resolveProvider?.({ app: 'honey' }) || imageStorage?.get?.('phone-image-provider') || 'novelai').trim() || 'novelai';
-        const honeyWidth = readNumber('phone-image-honey-width', 832, 64, 2048, true);
-        const honeyHeight = readNumber('phone-image-honey-height', 1216, 64, 2048, true);
+        let honeyWidth = readNumber('phone-image-honey-width', 832, 64, 2048, true);
+        let honeyHeight = readNumber('phone-image-honey-height', 1216, 64, 2048, true);
+        if (honeyWidth <= 64 && honeyHeight <= 64) {
+            honeyWidth = 832;
+            honeyHeight = 1216;
+        }
         const imageSteps = readNumber('phone-image-steps', 28, 1, 50, true);
         const imageScale = readNumber('phone-image-scale', 7, 0, 50, false);
         const globalSeed = readNumber('phone-image-seed', -1, -1, 4294967295, true);
-        const requestSeed = -1;
+        const requestSeed = Number.isFinite(globalSeed) && globalSeed >= 0 ? Math.floor(globalSeed) : -1;
+        const seedLogText = requestSeed >= 0 ? String(requestSeed) : '随机（Seed=-1）';
         const promptPreview = typeof imageManager.previewFinalPrompt === 'function'
             ? imageManager.previewFinalPrompt({
                 app: 'honey',
@@ -7137,7 +7143,7 @@ export class HoneyView {
             `Steps: ${imageSteps}`,
             `Scale: ${imageScale}`,
             `Provider: ${provider}`,
-            `Seed: 随机（已忽略全局 Seed=${globalSeed}，避免重刷同图）`,
+            `Seed: ${seedLogText}`,
             `主播参考图: ${novelAIReferences.length ? `${sceneHostName || '未知主播'} · 已启用` : '未使用'}`,
             '',
             'AI 原始画面 tag:',
