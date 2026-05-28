@@ -72,6 +72,24 @@ export class ImageGenerationManager {
         return baseUrl;
     }
 
+    _isBrowserNetworkFetchError(error) {
+        const message = String(error?.message || error || '').trim();
+        return /failed to fetch|networkerror|load failed/i.test(message);
+    }
+
+    _buildComfyUIBrowserFetchError(baseUrl, action = '请求') {
+        const targetUrl = String(baseUrl || '').trim() || '未配置地址';
+        let hint = '请让 ComfyUI 允许当前页面的跨域访问，或通过同源反向代理访问。';
+        try {
+            if (typeof window !== 'undefined' && window.location?.protocol === 'https:' && /^http:\/\//i.test(targetUrl)) {
+                hint = '当前页面是 HTTPS，但 ComfyUI 使用 HTTP，浏览器会拦截混合内容。请改用 HTTPS、同源代理，或把页面也放到 HTTP 环境。';
+            }
+        } catch (err) {
+            // ignore
+        }
+        return `ComfyUI ${action} 被浏览器拦截或网络失败：${targetUrl}。若控制台提示 CORS，说明 ComfyUI 没有给当前页面返回 Access-Control-Allow-Origin。${hint}`;
+    }
+
     _normalizeApiBaseUrl(value, fallback = '') {
         let baseUrl = String(value || fallback || '').trim().replace(/\/+$/, '');
         if (!baseUrl) return '';
@@ -1785,10 +1803,18 @@ export class ImageGenerationManager {
             return this._comfyUIResourcesCache;
         }
 
-        const response = await fetch(`${normalizedUrl}/object_info`, {
-            method: 'GET',
-            headers: { Accept: 'application/json' }
-        });
+        let response;
+        try {
+            response = await fetch(`${normalizedUrl}/object_info`, {
+                method: 'GET',
+                headers: { Accept: 'application/json' }
+            });
+        } catch (error) {
+            if (this._isBrowserNetworkFetchError(error)) {
+                throw new Error(this._buildComfyUIBrowserFetchError(normalizedUrl, '读取 /object_info'));
+            }
+            throw error;
+        }
         if (!response.ok) {
             const text = await response.text().catch(() => '');
             throw new Error(`ComfyUI object_info 读取失败：HTTP ${response.status}${text ? ` ${text.slice(0, 120)}` : ''}`);
@@ -2515,11 +2541,19 @@ export class ImageGenerationManager {
         const timeoutMs = 180000;
         while (Date.now() - startedAt < timeoutMs) {
             if (signal?.aborted) throw new Error('ComfyUI 请求已取消');
-            const response = await fetch(`${baseUrl}/history/${encodeURIComponent(promptId)}`, {
-                method: 'GET',
-                headers: { Accept: 'application/json' },
-                signal
-            });
+            let response;
+            try {
+                response = await fetch(`${baseUrl}/history/${encodeURIComponent(promptId)}`, {
+                    method: 'GET',
+                    headers: { Accept: 'application/json' },
+                    signal
+                });
+            } catch (error) {
+                if (this._isBrowserNetworkFetchError(error)) {
+                    throw new Error(this._buildComfyUIBrowserFetchError(baseUrl, '读取 history'));
+                }
+                throw error;
+            }
             if (response.ok) {
                 const payload = await response.json().catch(() => null);
                 const image = this._extractComfyUIImage(payload, promptId);
@@ -2542,10 +2576,18 @@ export class ImageGenerationManager {
             subfolder: output.subfolder || '',
             type: output.type || 'output'
         });
-        const response = await fetch(`${baseUrl}/view?${params.toString()}`, {
-            method: 'GET',
-            signal
-        });
+        let response;
+        try {
+            response = await fetch(`${baseUrl}/view?${params.toString()}`, {
+                method: 'GET',
+                signal
+            });
+        } catch (error) {
+            if (this._isBrowserNetworkFetchError(error)) {
+                throw new Error(this._buildComfyUIBrowserFetchError(baseUrl, '读取输出图片'));
+            }
+            throw error;
+        }
         if (!response.ok) {
             const text = await response.text().catch(() => '');
             throw new Error(`ComfyUI 输出读取失败：HTTP ${response.status}${text ? ` ${text.slice(0, 120)}` : ''}`);
@@ -2569,11 +2611,19 @@ export class ImageGenerationManager {
         formData.append('type', 'input');
         formData.append('overwrite', 'true');
 
-        const response = await fetch(`${baseUrl}/upload/image`, {
-            method: 'POST',
-            body: formData,
-            signal
-        });
+        let response;
+        try {
+            response = await fetch(`${baseUrl}/upload/image`, {
+                method: 'POST',
+                body: formData,
+                signal
+            });
+        } catch (error) {
+            if (this._isBrowserNetworkFetchError(error)) {
+                throw new Error(this._buildComfyUIBrowserFetchError(baseUrl, '上传参考图'));
+            }
+            throw error;
+        }
         const text = await response.text();
         let payload = null;
         try {
@@ -3219,18 +3269,26 @@ export class ImageGenerationManager {
             throw new Error('当前 ComfyUI 工作流需要参考图，但本次没有可用的微信联系人参考图');
         }
 
-        const response = await fetch(`${baseUrl}/prompt`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Accept: 'application/json'
-            },
-            body: JSON.stringify({
-                prompt: built.workflow,
-                client_id: `yuzuki-phone-${Date.now()}-${Math.random().toString(16).slice(2)}`
-            }),
-            signal: options.signal
-        });
+        let response;
+        try {
+            response = await fetch(`${baseUrl}/prompt`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json'
+                },
+                body: JSON.stringify({
+                    prompt: built.workflow,
+                    client_id: `yuzuki-phone-${Date.now()}-${Math.random().toString(16).slice(2)}`
+                }),
+                signal: options.signal
+            });
+        } catch (error) {
+            if (this._isBrowserNetworkFetchError(error)) {
+                throw new Error(this._buildComfyUIBrowserFetchError(baseUrl, '提交 prompt'));
+            }
+            throw error;
+        }
         const text = await response.text();
         let payload = null;
         try {
